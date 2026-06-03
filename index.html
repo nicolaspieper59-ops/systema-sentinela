@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v6.8 — Horloge Atomique & Anti-AdBlock</title>
+    <title>SYSTEMA SENTINELA v6.14 — Horloge Atomique & Anti-AdBlock</title>
     <style>
         :root {
             --bg-main: #0a0e14;
@@ -122,7 +122,7 @@
     <div class="dashboard-container">
         <div class="main-panel">
             <div class="header-title">
-                <h1>Systema Sentinela v6.8</h1>
+                <h1>Systema Sentinela v6.14</h1>
                 <span class="system-status-tag">PASSIF PUR — SYNC ATOMIQUE RATIFIÉE</span>
             </div>
 
@@ -169,12 +169,10 @@
     let cachePlanetaireJPL = null;
     let deltaTempsAtomiqueMS = 0; 
     
-    // CORRECTION ULTRA-CRITIQUE : Détection de l'origine pour éviter le blocage Mixed Content
-    // Si on est sur GitHub (https), on cherche le manifest local au projet GitHub.
-    // Si on est sur Termux (localhost), on interroge le serveur C++.
+    // CORRECTION ORIGINE : Routage intelligent dynamique HTTPS (GitHub) vs HTTP (Localhost Termux)
     const URL_DONNEES_JPL = window.location.hostname.includes("github.io") 
-        ? "manifest.json" // Chemin relatif pour GitHub Pages
-        : `/manifest.json?v=${Date.now()}`; // Chemin pour le serveur C++ Termux
+        ? "manifest.json" 
+        : `/manifest.json?v=${Date.now()}`;
     
     const COULEURS = {
         "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "MERCURE": "#64748b",
@@ -245,86 +243,77 @@
         }
     }
 
+    function boucleCalculSentinela() {
+        if (!cachePlanetaireJPL) return;
 
-function boucleCalculSentinela() {
-    if (!cachePlanetaireJPL) return;
+        // Base temps Android pour s'accorder avec le manifest C++
+        let tempsDispositif = new Date();
+        
+        // Base temps Atomique pour l'affichage du HUD principal
+        let millisecondesAtomiques = Date.now() + deltaTempsAtomiqueMS;
+        let tempsAtomiqueReel = new Date(millisecondesAtomiques);
 
-    // 1. Horloge Réelle Système (Base de calcul pour correspondre à Termux)
-    let tempsDispositif = new Date();
-    
-    // 2. Horloge Atomique Synchronisée (Uniquement pour l'affichage HUD)
-    let millisecondesAtomiques = Date.now() + deltaTempsAtomiqueMS;
-    let tempsAtomiqueReel = new Date(millisecondesAtomiques);
+        document.getElementById('kpi-utc').innerText = tempsAtomiqueReel.toISOString().replace("T", " ").replace("Z", " UTC");
 
-    // Mise à jour de l'horloge globale sur l'interface
-    document.getElementById('kpi-utc').innerText = tempsAtomiqueReel.toISOString().replace("T", " ").replace("Z", " UTC");
+        // Utilisation de l'heure système Android pour l'indexation du JSON
+        let minuteAxe = tempsDispositif.getUTCHours() * 60 + tempsDispositif.getUTCMinutes();
+        let fractionSeconde = tempsDispositif.getUTCSeconds() / 60.0;
 
-    // CORRECTION OFFSET : On utilise l'heure d'Android pour être en phase avec le manifest.json de Termux
-    let minuteAxe = tempsDispositif.getUTCHours() * 60 + tempsDispositif.getUTCMinutes();
-    let fractionSeconde = tempsDispositif.getUTCSeconds() / 60.0;
+        let offsetReelSecondes = deltaTempsAtomiqueMS / 1000;
+        document.getElementById('kpi-offset').innerText = `${offsetReelSecondes.toFixed(3)}s`;
 
-    // Affichage de la Désynchronisation Interne Réelle du Matériel Android
-    let offsetReelSecondes = deltaTempsAtomiqueMS / 1000;
-    document.getElementById('kpi-offset').innerText = `${offsetReelSecondes.toFixed(3)}s`;
+        for (let nomAstre in cachePlanetaireJPL) {
+            try {
+                let dataset = cachePlanetaireJPL[nomAstre];
+                let altitudeFinale = 0;
+                let azimut = 0;
 
-    // 3. Extraction et interpolation des coordonnées
-    for (let nomAstre in cachePlanetaireJPL) {
-        try {
-            let dataset = cachePlanetaireJPL[nomAstre];
-            let altitudeFinale = 0;
-            let azimut = 0;
+                if (Array.isArray(dataset)) {
+                    let indexA = minuteAxe % dataset.length;
+                    let indexB = (minuteAxe + 1) % dataset.length;
+                    
+                    let pA = dataset[indexA];
+                    let pB = dataset[indexB];
+                    
+                    if (!pA || !pB) {
+                        pA = dataset[dataset.length - 1];
+                        pB = dataset[0];
+                    }
 
-            if (Array.isArray(dataset)) {
-                // Sécurité contre le dépassement d'index (cycle de 1440 minutes)
-                let indexA = minuteAxe % dataset.length;
-                let indexB = (minuteAxe + 1) % dataset.length;
-                
-                let pA = dataset[indexA];
-                let pB = dataset[indexB];
-                
-                // Si la minute n'est pas trouvée, on prend la dernière position connue au lieu de reset à 0
-                if (!pA || !pB) {
-                    pA = dataset[dataset.length - 1];
-                    pB = dataset[0];
+                    let altA = (pA.alt !== undefined) ? pA.alt : pA.h;
+                    let altB = (pB.alt !== undefined) ? pB.alt : pB.h;
+                    altitudeFinale = altA + (altB - altA) * fractionSeconde;
+
+                    let azA = (pA.az !== undefined) ? pA.az : pA.Az;
+                    let azB = (pB.az !== undefined) ? pB.az : pB.Az;
+                    let diffAz = azB - azA;
+                    if (diffAz > 180) diffAz -= 360;
+                    if (diffAz < -180) diffAz += 360;
+                    azimut = (azA + diffAz * fractionSeconde + 360) % 360;
                 }
 
-                let altA = (pA.alt !== undefined) ? pA.alt : pA.h;
-                let altB = (pB.alt !== undefined) ? pB.alt : pB.h;
-                altitudeFinale = altA + (altB - altA) * fractionSeconde;
-
-                let azA = (pA.az !== undefined) ? pA.az : pA.Az;
-                let azB = (pB.az !== undefined) ? pB.az : pB.Az;
-                let diffAz = azB - azA;
-                if (diffAz > 180) diffAz -= 360;
-                if (diffAz < -180) diffAz += 360;
-                azimut = (azA + diffAz * fractionSeconde + 360) % 360;
-            }
-
-            // 4. Rendu Graphique SVG
-            const line = document.getElementById(`ptr-${nomAstre}`);
-            if (line) {
-                line.setAttribute("transform", `rotate(${azimut} 200 200)`);
-                if (altitudeFinale < 0) {
-                    line.style.opacity = "0.2"; 
-                    line.setAttribute("y2", "190"); // Mode passif (sous l'horizon)
-                } else {
-                    line.style.opacity = "1";
-                    let rayonRendu = ((90 - altitudeFinale) / 90) * 160;
-                    line.setAttribute("y2", (200 - rayonRendu).toString());
+                const line = document.getElementById(`ptr-${nomAstre}`);
+                if (line) {
+                    line.setAttribute("transform", `rotate(${azimut} 200 200)`);
+                    if (altitudeFinale < 0) {
+                        line.style.opacity = "0.2"; 
+                        line.setAttribute("y2", "190"); 
+                    } else {
+                        line.style.opacity = "1";
+                        let rayonRendu = ((90 - altitudeFinale) / 90) * 160;
+                        line.setAttribute("y2", (200 - rayonRendu).toString());
+                    }
                 }
+                
+                const valSpan = document.getElementById(`val-${nomAstre}`);
+                if (valSpan) {
+                    valSpan.innerHTML = `h: ${altitudeFinale.toFixed(2)}° | Az: ${azimut.toFixed(1)}° ${altitudeFinale < 0 ? '⧗' : '✦'}`;
+                }
+            } catch(e) {
+                console.error("Erreur de rendu sur " + nomAstre, e);
             }
-            
-            // 5. Rendu du Tableau des Valeurs
-            const valSpan = document.getElementById(`val-${nomAstre}`);
-            if (valSpan) {
-                valSpan.innerHTML = `h: ${altitudeFinale.toFixed(2)}° | Az: ${azimut.toFixed(1)}° ${altitudeFinale < 0 ? '⧗' : '✦'}`;
-            }
-        } catch(e) {
-            console.error("Erreur de rendu sur " + nomAstre, e);
         }
     }
-        }
-        }
 
     function genererMatriceHorizonsSecours() {
         let matrice = {};
@@ -361,11 +350,11 @@ function boucleCalculSentinela() {
     }
 
     (async () => {
-        ajouterLog("SYS : Initialisation du Core v6.11.");
+        ajouterLog("SYS : Initialisation du Core v6.14.");
         await synchroniserHorlogeAtomique();
         setInterval(boucleCalculSentinela, 150);
         setTimeout(chargerDonneesJPL, 200);
     })();
     </script>
 </body>
-</html>
+                    </html>
