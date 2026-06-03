@@ -16,6 +16,8 @@ struct HorizonCoords {
     std::string nom;
     double azimut;
     double altitude;
+    double ra_deg;   // Ajout pour compatibilité v6.8
+    double dec_deg;  // Ajout pour compatibilité v6.8
     std::string symbole;
 };
 
@@ -96,7 +98,7 @@ HorizonCoords calculerCoordonnees(const ÉlémentsKepler& p, double joursJ2000, 
     double azimut = std::acos(cos_az) * 180.0 / PI;
     if (std::sin(angleHoraire_rad) > 0) azimut = 360.0 - azimut;
 
-    return { p.nom, azimut, altitude_finale, p.symbole };
+    return { p.nom, azimut, altitude_finale, ra_rad * 180.0 / PI, declinaison_rad * 180.0 / PI, p.symbole };
 }
 
 int main() {
@@ -157,14 +159,17 @@ int main() {
 
                 // 2. Construction de la matrice JSON pour l'interface v6.8 (Uniquement SOLEIL et LUNE)
                 // 2. Construction de la matrice JSON pour l'interface v6.8 (Uniquement SOLEIL et LUNE)
-if (astre.nom == "SOLEIL" || astre.nom == "LUNE") {
-    json_flux += "  \"" + astre.nom + "\": {\n";
-    json_flux += "    \"h\": " + std::to_string(astre.altitude) + ",\n";
-    json_flux += "    \"Az\": " + std::to_string(astre.azimut) + "\n";
-    json_flux += "  }";
-    if (astre.nom == "SOLEIL") json_flux += ",\n";
-    else json_flux += "\n";
-}
+// 2. Construction de la matrice JSON conforme au schéma RA/DEC
+                if (astre.nom == "SOLEIL" || astre.nom == "LUNE") {
+                    json_flux += "  \"" + astre.nom + "\": {\n";
+                    json_flux += "    \"h\": " + std::to_string(astre.altitude) + ",\n";
+                    json_flux += "    \"Az\": " + std::to_string(astre.azimut) + ",\n";
+                    json_flux += "    \"RA\": " + std::to_string(astre.ra_deg) + ",\n";
+                    json_flux += "    \"DEC\": " + std::to_string(astre.dec_deg) + "\n";
+                    json_flux += "  }";
+                    if (astre.nom == "SOLEIL") json_flux += ",\n";
+                    else json_flux += "\n";
+                }
             }
             json_flux += "}";
 
