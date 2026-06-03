@@ -129,10 +129,19 @@ def main():
         manifeste_final["JUPITER"][cle_minute] = [round(nasa_jupiter[i]["az"], 2), round(alt_jup, 2)]
 
 # Fin du script calculer_orbites.py
+# Fin du script calculer_orbites.py
+    maintenant_utc = datetime.now(timezone.utc)
+    
+    # Structure finale enrichie
+    structure_production = {
+        "TIMESTAMP_REF": int(maintenant_utc.timestamp() * 1000),
+        "DONNEES": manifeste_final
+    }
+
     with open("orbites.json", "w", encoding="utf-8") as f:
-        json.dump(manifeste_final, f, indent=2, ensure_ascii=False)
-    print("[SUCCESS] Le fichier orbites.json a été généré avec succès.")
-# Émulation Python de padStart JavaScript pour assurer la compatibilité
+        json.dump(structure_production, f, indent=2, ensure_ascii=False)
+    print("[SUCCESS] Matrice enrichie exportée dans orbites.json")
+
 if not hasattr(str, 'padStart'):
     str.padStart = lambda self, width, fillchar=' ': self.rjust(width, fillchar)
 
