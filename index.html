@@ -3,351 +3,142 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.6 — Flux Temporel Absolu</title>
+    <title>SYSTEMA SENTINELA v8.6 — Spatiale Autonome</title>
     <style>
         :root {
-            --bg-main: #0a0e14;
-            --bg-card: #101520;
-            --border-color: #262c36;
-            --text-primary: #e1e7ef;
-            --text-secondary: #717f91;
-            --accent-blue: #38bdf8;
-            --accent-green: #4ade80;
-            --accent-orange: #fb923c;
-            --accent-red: #ef4444;
+            --bg-main: #0a0e14; --bg-card: #101520; --border-color: #262c36;
+            --text-primary: #e1e7ef; --text-secondary: #717f91;
+            --accent-blue: #38bdf8; --accent-green: #4ade80; --accent-orange: #fb923c;
         }
-
         body {
-            background-color: var(--bg-main);
-            color: var(--text-primary);
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            box-sizing: border-box;
+            background-color: var(--bg-main); color: var(--text-primary);
+            font-family: monospace; margin: 0; padding: 20px;
+            display: flex; justify-content: center; min-height: 100vh; box-sizing: border-box;
         }
-
-        .dashboard-container {
-            display: grid;
-            grid-template-columns: 1fr 420px;
-            gap: 24px;
-            max-width: 1150px;
-            width: 100%;
-        }
-
-        @media (max-width: 950px) {
-            .dashboard-container { grid-template-columns: 1fr; }
-        }
-
-        .main-panel {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 24px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .header-title h1 {
-            color: var(--accent-blue);
-            font-size: 1.2rem;
-            margin: 0;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            text-align: center;
-        }
-
-        .system-status-tag {
-            font-size: 0.65rem;
-            color: var(--text-secondary);
-            display: block;
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        #radar {
-            width: 100%;
-            max-width: 360px;
-            background: #05070c;
-            border-radius: 50%;
-            border: 1px solid var(--border-color);
-        }
-
-        .grid-line { stroke: #1e293b; stroke-width: 1; }
-        .radar-ring { fill: none; stroke: #0284c7; stroke-width: 1; stroke-dasharray: 2 4; opacity: 0.5; }
-        .cardinal-text { fill: var(--text-secondary); font-size: 11px; text-anchor: middle; dominant-baseline: middle; }
-        .pointer { stroke-linecap: round; opacity: 0.85; transition: transform 0.15s linear; }
-
-        .side-analytics { display: flex; flex-direction: column; gap: 16px; }
-        .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-        .kpi-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; }
-        .kpi-card.full-width { grid-column: span 2; }
-        .kpi-title { font-size: 0.6rem; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 4px; }
-        .kpi-value { font-size: 0.85rem; font-weight: bold; color: var(--text-primary); }
-
-        #legend { display: grid; grid-template-columns: 1fr; gap: 8px; max-height: 240px; overflow-y: auto; }
-        .legend-item {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            padding: 10px;
-            border-radius: 6px;
-            font-size: 0.7rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .system-console { background: #02040a; border: 1px solid var(--border-color); border-radius: 6px; }
-        .console-header { background: #0b0f17; padding: 6px 12px; font-size: 0.6rem; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); }
-        .console-body { padding: 10px; height: 130px; overflow-y: auto; font-size: 0.65rem; color: var(--accent-green); line-height: 1.5; white-space: pre-wrap; }
+        .dashboard { display: grid; grid-template-columns: 1fr 400px; gap: 20px; max-width: 1100px; width: 100%; }
+        @media (max-width: 900px) { .dashboard { grid-template-columns: 1fr; } }
+        .panel { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        #radar { width: 100%; max-width: 340px; background: #05070c; border-radius: 50%; border: 1px solid var(--border-color); }
+        .grid-line { stroke: #1e293b; }
+        .radar-ring { fill: none; stroke: #0284c7; stroke-dasharray: 2 4; opacity: 0.5; }
+        .pointer { stroke-linecap: round; transition: transform 0.3s ease-out; }
+        .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; width: 100%; }
+        .kpi { background: var(--bg-card); border: 1px solid var(--border-color); padding: 12px; border-radius: 6px; }
+        .full { grid-column: span 2; }
+        .kpi-title { font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; }
+        .kpi-value { font-size: 0.85rem; font-weight: bold; display: block; margin-top: 4px; }
+        #legend { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+        .legend-item { background: var(--bg-card); border: 1px solid var(--border-color); padding: 8px; border-radius: 4px; font-size: 0.75rem; display: flex; justify-content: space-between; }
     </style>
 </head>
 <body>
 
-    <div class="dashboard-container">
-        <div class="main-panel">
-            <div class="header-title">
-                <h1>Systema Sentinela v8.6</h1>
-                <span class="system-status-tag">PASSIF PUR — TRANSLATION QUANTIQUE ISOLÉE</span>
-            </div>
-
+    <div class="dashboard">
+        <div class="panel">
+            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SYSTEMA SENTINELA v8.6</h2>
             <svg id="radar" viewBox="0 0 400 400">
                 <line x1="200" y1="20" x2="200" y2="380" class="grid-line" />
                 <line x1="20" y1="200" x2="380" y2="200" class="grid-line" />
                 <circle cx="200" cy="200" r="160" class="radar-ring" />
-                <circle cx="200" cy="200" r="107" class="radar-ring" />
-                <circle cx="200" cy="200" r="53" class="radar-ring" />
-                <text x="200" y="32" class="cardinal-text">N</text>
-                <text x="360" y="200" class="cardinal-text">E</text>
-                <text x="200" y="368" class="cardinal-text">S</text>
-                <text x="40" y="200" class="cardinal-text">O</text>
-                <g id="pointers-group"></g>
+                <circle cx="200" cy="200" r="100" class="radar-ring" />
+                <g id="pointers"></g>
             </svg>
         </div>
 
-        <div class="side-analytics">
+        <div style="display: flex; flex-direction: column; gap: 15px;">
             <div class="kpi-grid">
-                <div class="kpi-card">
-                    <span class="kpi-title">Statut Réseau (Port 8080)</span>
-                    <span class="kpi-value" id="kpi-adblock" style="color: var(--accent-orange);">SYNCHRONISATION...</span>
-                </div>
-                <div class="kpi-card">
-                    <span class="kpi-title">Référentiel Horloge</span>
-                    <span class="kpi-value" id="kpi-clock-source" style="color: var(--accent-orange);">SATELLITE INITIAL</span>
-                </div>
-                <div class="kpi-card full-width">
-                    <span class="kpi-title">Horloge Temps Réel Atomique Monotone Indépendante</span>
-                    <span class="kpi-value" id="kpi-utc" style="color: var(--accent-blue);">00:00:00.000 UTC</span>
-                </div>
+                <div class="kpi"><span class="kpi-title">Filtre Cinétique</span><span class="kpi-value" id="kpi-filtre" style="color: var(--accent-green);">STABLE</span></div>
+                <div class="kpi"><span class="kpi-title">Maille Géo (AuroraMap)</span><span class="kpi-value" id="kpi-pos">---</span></div>
+                <div class="kpi full"><span class="kpi-title">Horloge Monotone (Insensible dérive Android)</span><span class="kpi-value" id="kpi-time" style="color: var(--accent-blue);">00:00:00.000 UTC</span></div>
             </div>
-
             <div id="legend"></div>
-
-            <div class="system-console">
-                <div class="console-header">MONITEUR DE FLUX & SYNCHRONISATION ANTI-BLOCAGE DNS</div>
-                <div class="console-body" id="log-terminal"></div>
-            </div>
         </div>
     </div>
 
     <script>
-    let cachePlanetaireJPL = null;
-    
-    // Variables de la ligne de temps monotone découplée d'Android
-    let baseTempsAtomiqueMS = 0;
-    let referencePerformanceMS = 0;
+        let baseTime = Date.now(), refPerf = performance.now();
+        let lastValidPos = { lat: 43.28, lon: 5.36, alt: 0 };
+        const ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" };
+        const COULEURS = { "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "JUPITER": "#fb923c" };
 
-    // Utilisation explicite de localhost sur le port d'écoute du serveur C++
-    const URL_DONNEES_JPL = "http://127.0.0.1:8080/manifest.json";
-    
-    const COULEURS = {
-        "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "MERCURE": "#64748b",
-        "VENUS": "#f472b6", "MARS": "#ef4444", "JUPITER": "#fb923c", "SATURNE": "#eab308"
-    };
+        // Initialisation de la montre monotone
+        setInterval(() => {
+            let now = new Date(baseTime + (performance.now() - refPerf));
+            document.getElementById('kpi-time').innerText = now.toISOString().replace("T"," ").replace("Z"," UTC");
+        }, 100);
 
-    function ajouterLog(msg, couleur = "var(--accent-green)") {
-        const cb = document.getElementById('log-terminal');
-        if (cb) {
-            cb.innerHTML += `\n<span>[${new Date().toLocaleTimeString()}] ${msg}</span>`;
-            cb.style.color = couleur;
-            cb.scrollTop = cb.scrollHeight;
-        }
-    }
-
-    async function synchroniserHorlogeAtomiqueResiliente() {
-        ajouterLog("TIME : Bypass AdGuard - Requête directe vers serveurs de secours...");
-        
-        // Liste de serveurs de secours de confiance non filtrés par AdGuard pour le temps global
-        const endpoints = [
-            "https://timeapi.io/api/time/current/zone?timeZone=UTC",
-            "https://worldtimeapi.org/api/timezone/Etc/UTC"
-        ];
-
-        for (let url of endpoints) {
-            try {
-                let t0 = performance.now();
-                let response = await fetch(url, { cache: 'no-store', mode: 'cors' });
-                if (response.ok) {
-                    let data = await response.json();
-                    let t1 = performance.now();
-                    let latenceReseau = (t1 - t0) / 2;
-                    
-                    let chaineTemps = data.dateTime ? data.dateTime : data.datetime;
-                    let tempsMilli = new Date(chaineTemps).getTime();
-
-                    if (tempsMilli > 0) {
-                        // ANCRAGE QUANTIQUE : On capture l'instant T réel et on s'aligne sur l'horloge haute précision du CPU (indépendante de l'heure système)
-                        baseTempsAtomiqueMS = tempsMilli + latenceReseau;
-                        referencePerformanceMS = performance.now();
-                        
-                        document.getElementById('kpi-clock-source').innerText = "ATOMIC_MONOTONE";
-                        document.getElementById('kpi-clock-source').style.color = "var(--accent-green)";
-                        ajouterLog("TIME : Horloge matérielle isolée avec succès.");
-                        return true;
-                    }
-                }
-            } catch (e) {
-                // Échec silencieux, passage au serveur suivant
-            }
-        }
-        
-        // Ultime recours si AdGuard bloque absolument tout l'extérieur : synchronisation via le serveur C++ lui-même
-        try {
-            ajouterLog("TIME WARN : Blocage DNS externe suspecté. Alignement sur le serveur C++ local...");
-            let response = await fetch("http://127.0.0.1:8080/manifest.json", { cache: 'no-store' });
-            if (response.ok) {
-                // Si le serveur répond, on utilise l'heure d'exécution de la machine hôte
-                baseTempsAtomiqueMS = Date.now(); // Faute de mieux, verrouillé à l'instant du fetch
-                referencePerformanceMS = performance.now();
-                document.getElementById('kpi-clock-source').innerText = "LOCAL_SERVER_REF";
-                return true;
-            }
-        } catch(err) {}
-
-        ajouterLog("TIME CRIT : Échec de la montre atomique autonome.", "var(--accent-red)");
-        return false;
-    }
-
-    async function chargerDonneesJPL() {
-        ajouterLog("NET : Capture du flux mémoire C++ sur 127.0.0.1:8080...");
-        try {
-            let response = await fetch(URL_DONNEES_JPL, { method: 'GET', mode: 'cors', cache: 'no-store' });
-            if (!response.ok) throw new Error(`HTTP_ERR_${response.status}`);
-            
-            let donneesBrutes = await response.json();
-            
-            if (donneesBrutes && (donneesBrutes.SOLEIL || donneesBrutes.Soleil)) {
-                cachePlanetaireJPL = {};
-                for (let key in donneesBrutes) {
-                    cachePlanetaireJPL[key.toUpperCase()] = donneesBrutes[key];
-                }
-                document.getElementById('kpi-adblock').innerText = "LIVE_STREAM_OK";
-                document.getElementById('kpi-adblock').style.color = "var(--accent-green)";
-                ajouterLog("NET : Matrice de production verrouillée.");
-                initialiserInterface();
+        // Capture GPS avec filtrage de vélocité et d'altitude
+        function piloterGeolocalisation() {
+            if (!navigator.geolocation) return;
+            navigator.geolocation.watchPosition((p) => {
+                let speed = p.coords.speed || 0; // Vitesse en m/s
                 
-                setInterval(boucleCalculSentinela, 100);
-            } else {
-                throw new Error("STRUCTURE_JSON_INVALID");
-            }
-        } catch (error) {
-            document.getElementById('kpi-adblock').innerText = "CRIT_NETWORK_ERR";
-            document.getElementById('kpi-adblock').style.color = "var(--accent-red)";
-            ajouterLog(`NET CRIT : Blocage ou indisponibilité du moteur local (${error.message}).`, "var(--accent-red)");
-        }
-    }
-
-    function boucleCalculSentinela() {
-        if (!cachePlanetaireJPL) return;
-
-        // CALCUL DU TEMPS MONOTONE REEL (Insensible aux modifications de l'heure du téléphone Android)
-        let tempsEcouleDepuisAncrage = performance.now() - referencePerformanceMS;
-        let millisecondesAtomiquesReelles = baseTempsAtomiqueMS + tempsEcouleDepuisAncrage;
-        
-        let tempsAtomiqueReel = new Date(millisecondesAtomiquesReelles);
-        document.getElementById('kpi-utc').innerText = tempsAtomiqueReel.toISOString().replace("T", " ").replace("Z", " UTC");
-
-        let minuteAxe = tempsAtomiqueReel.getUTCHours() * 60 + tempsAtomiqueReel.getUTCMinutes();
-        let fractionSeconde = (tempsAtomiqueReel.getUTCSeconds() * 1000 + tempsAtomiqueReel.getUTCMilliseconds()) / 60000.0;
-
-        for (let nomAstre in cachePlanetaireJPL) {
-            try {
-                let dataset = cachePlanetaireJPL[nomAstre];
-                let altitudeFinale = 0;
-                let azimut = 0;
-
-                if (Array.isArray(dataset) && dataset.length > 0) {
-                    let indexA = Math.abs(minuteAxe) % dataset.length;
-                    let indexB = (indexA + 1) % dataset.length;
-                    
-                    let pA = dataset[indexA];
-                    let pB = dataset[indexB];
-
-                    let altA = pA.alt !== undefined ? pA.alt : 0;
-                    let altB = pB.alt !== undefined ? pB.alt : 0;
-                    altitudeFinale = altA + (altB - altA) * fractionSeconde;
-
-                    let azA = pA.az !== undefined ? pA.az : 0;
-                    let azB = pB.az !== undefined ? pB.az : 0;
-                    
-                    let diffAz = azB - azA;
-                    if (diffAz > 180) diffAz -= 360;
-                    if (diffAz < -180) diffAz += 360;
-                    azimut = (azA + diffAz * fractionSeconde + 360) % 360;
+                // Si la vitesse dépasse 40 m/s (~144 km/h : accélération de manège ou anomalie EM), on fige la position
+                if (speed > 40) {
+                    document.getElementById('kpi-filtre').innerText = "VERROUILLÉ (CINÉTIQUE)";
+                    document.getElementById('kpi-filtre').style.color = "var(--accent-orange)";
+                    return; 
                 }
 
-                const line = document.getElementById(`ptr-${nomAstre}`);
-                if (line) {
-                    line.setAttribute("transform", `rotate(${azimut} 200 200)`);
-                    if (altitudeFinale < 0) {
-                        line.style.opacity = "0.10"; 
-                        line.setAttribute("y2", "198"); 
-                    } else {
-                        line.style.opacity = "1";
-                        let rayonRendu = ((90 - altitudeFinale) / 90) * 160;
-                        line.setAttribute("y2", (200 - rayonRendu).toString());
-                    }
-                }
+                // Application de la maille AuroraMap (arrondi à 2 décimales pour lisser la gigue)
+                lastValidPos.lat = Math.round(p.coords.latitude * 100) / 100;
+                lastValidPos.lon = Math.round(p.coords.longitude * 100) / 100;
+                lastValidPos.alt = Math.round(p.coords.altitude || 0);
+
+                document.getElementById('kpi-filtre').innerText = "STABLE";
+                document.getElementById('kpi-filtre').style.color = "var(--accent-green)";
+                document.getElementById('kpi-pos').innerText = `${lastValidPos.lat}N / ${lastValidPos.lon}E / ${lastValidPos.alt}m`;
                 
-                const valSpan = document.getElementById(`val-${nomAstre}`);
-                if (valSpan) {
-                    valSpan.innerHTML = `h: ${altitudeFinale.toFixed(2)}° | Az: ${azimut.toFixed(1)}° ${altitudeFinale < 0 ? '⧗' : '✦'}`;
-                }
-            } catch(e) {}
+                interrogerJPL();
+            }, null, { enableHighAccuracy: true });
         }
-    }
 
-    function initialiserInterface() {
-        const group = document.getElementById('pointers-group');
-        const legend = document.getElementById('legend');
-        if (!group || !legend) return;
-        group.innerHTML = ""; legend.innerHTML = "";
-        for (let nomAstre in cachePlanetaireJPL) {
-            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            line.setAttribute("id", `ptr-${nomAstre}`);
-            line.setAttribute("x1", "200"); line.setAttribute("y1", "200");
-            line.setAttribute("x2", "200"); line.setAttribute("y2", "40");
-            line.setAttribute("stroke", COULEURS[nomAstre] || '#fff');
-            line.setAttribute("stroke-width", "2.5");
-            line.setAttribute("class", "pointer");
-            group.appendChild(line);
-
-            const div = document.createElement('div'); div.className = 'legend-item';
-            div.style.borderLeft = `4px solid ${COULEURS[nomAstre] || '#fff'}`;
-            div.innerHTML = `<span><strong>${nomAstre}</strong></span><span id="val-${nomAstre}">...</span>`;
-            legend.appendChild(div);
+        async function interrogerJPL() {
+            let dateStr = new Date(baseTime + (performance.now() - refPerf)).toISOString().slice(0,16).replace("T", " ");
+            for (let name in ASTRES) {
+                // Requête directe vers l'API JPL Horizons incluant la position topocentrique de l'observateur (longitude, latitude, altitude en km)
+                let url = `https://ssd-api.jpl.nasa.gov/horizons.api?format=json&COMMAND='${ASTRES[name]}'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='OBSERVER'&CENTER='coord@399'&COORD_TYPE='GEODETIC'&SITE_COORD='${lastValidPos.lon},${lastValidPos.lat},${lastValidPos.alt/1000}'&START_TIME='${dateStr}'&STOP_TIME='${dateStr}'&STEP_SIZE='1m'&QUANTITIES='4'`;
+                try {
+                    let res = await fetch("https://corsproxy.io/?" + encodeURIComponent(url));
+                    if (res.ok) {
+                        let data = await res.json();
+                        parseJPLData(name, data.result);
+                    }
+                } catch (e) {}
+            }
         }
-    }
 
-    (async () => {
-        ajouterLog("SYS : Init Core v8.6 (Isolation Écliptique Pure).");
-        await synchroniserHorlogeAtomiqueResiliente();
-        setTimeout(chargerDonneesJPL, 100);
-    })();
+        function parseJPLData(name, text) {
+            if (!text) return;
+            let idx = text.indexOf("$$SOE");
+            if (idx === -1) return;
+            let line = text.substring(idx + 5).trim().split("\n")[0];
+            let cols = line.trim().split(/\s+/);
+            let az = parseFloat(cols[3]);
+            let alt = parseFloat(cols[4]);
+
+            // Tracé SVG
+            const ptr = document.getElementById(`ptr-${name}`);
+            if (ptr) {
+                ptr.setAttribute("transform", `rotate(${az} 200 200)`);
+                ptr.style.opacity = alt < 0 ? "0.15" : "1";
+            }
+            document.getElementById(`val-${name}`).innerText = `h: ${alt}° | Az: ${az}°`;
+        }
+
+        // Init de l'UI
+        const g = document.getElementById('pointers'), leg = document.getElementById('legend');
+        for (let name in ASTRES) {
+            let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("id", `ptr-${name}`); line.setAttribute("x1", "200"); line.setAttribute("y1", "200");
+            line.setAttribute("x2", "200"); line.setAttribute("y2", "50");
+            line.setAttribute("stroke", COULEURS[name]); line.setAttribute("stroke-width", "3"); line.className.baseVal = "pointer";
+            g.appendChild(line);
+
+            leg.innerHTML += `<div class="legend-item"><span style="color:${COULEURS[name]}">■ <strong>${name}</strong></span><span id="val-${name}">---</span></div>`;
+        }
+
+        piloterGeolocalisation();
     </script>
 </body>
-    </html>
+                                                                                                              </html>
