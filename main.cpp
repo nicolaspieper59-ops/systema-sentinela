@@ -108,9 +108,31 @@ int main() {
     // Initialisation des données météo barométriques
     DonneesMeteo meteoLocale = { 1017.2, 19.5 }; // 1017.2 hPa, 19.5°C au sol
 
-int new_socket = accept(server_fd, nullptr, nullptr);
+    // --- INITIALISATION DU SERVEUR HTTP NATIF ---
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    int opt = 1; 
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    
+    struct sockaddr_in address; 
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY; 
+    address.sin_port = htons(8080);
+    
+    bind(server_fd, (struct sockaddr*)&address, sizeof(address)); 
+    listen(server_fd, 3);
+
+    std::cout << "=========================================" << std::endl;
+    std::cout << "  SYSTEMA SENTINELA v8.0 - COCKPIT HUD   " << std::endl;
+    std::cout << "  GPS Actif : LAT " << latitude << " | LON " << longitude << std::endl;
+    std::cout << "  Baromètre : " << meteoLocale.pression_hpa << " hPa | Temp : " << meteoLocale.temperature_c << "°C" << std::endl;
+    std::cout << "  Interface Web : http://localhost:8080  " << std::endl;
+    std::cout << "=========================================" << std::endl;
+
+    while (true) {
+        int new_socket = accept(server_fd, nullptr, nullptr);
         if (new_socket >= 0) {
-            char buffer[1024] = {0}; read(new_socket, buffer, 1024);
+            char buffer[1024] = {0}; 
+            read(new_socket, buffer, 1024);
 
             auto maintenant = std::chrono::system_clock::now();
             time_t temps_c = std::chrono::system_clock::to_time_t(maintenant);
@@ -172,5 +194,6 @@ int new_socket = accept(server_fd, nullptr, nullptr);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    close(server_fd); return 0;
+    close(server_fd); 
+    return 0;
 }
