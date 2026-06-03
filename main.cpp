@@ -9,7 +9,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
-#include <signal.h> // Requis pour bloquer les crashs de sockets fermés
+#include <signal.h>
+#include <sys/time.h> // Requis pour la gestion des timeouts (struct timeval)
 
 const double PI = 3.14159265358979323846;
 
@@ -50,13 +51,12 @@ double corrigerRefractionAtmospherique(double alt_brute, const DonneesMeteo& met
     if (alt_brute < -0.5) return alt_brute;
     double alt_deg = alt_brute < 0.0 ? 0.0 : alt_brute;
     double cotangente = 1.0 / std::tan((alt_deg + 7.31 / (alt_deg + 4.4)) * (PI / 180.0));
-    double facteur_pression = meteo.pression_hpa / 1013.25;
-    double facteur_temperature = 288.15 / (273.15 + meteo.temperature_c); 
-    return alt_brute + ((cotangente / 60.0) * facteur_pression * facteur_temperature);
+    return alt_brute + ((cotangente / 60.0) * (meteo.pression_hpa / 1013.25) * (288.15 / (273.15 + meteo.temperature_c)));
 }
 
 void interrogerCapteurGPS(double& lat, double& lon) {
-    std::string cmd = "termux-location -p last -s network > gps.txt 2>/dev/null";
+    // Ajout d'un timeout système pour éviter que Termux ne fige le démarrage si pas de réseau
+    std::string cmd = "timeout 2 termux-location -p last -s network > gps.txt 2>/dev/null";
     if (std::system(cmd.c_str()) == 0) {
         std::ifstream fichier("gps.txt");
         std::string ligne;
@@ -92,21 +92,19 @@ HorizonCoords calculerCoordonnees(const ÉlémentsKepler& p, double joursJ2000, 
 }
 
 int main() {
-    signal(SIGPIPE, SIG_IGN); // Empêche le programme de se couper si le navigateur se rafraîchit trop vite
+    signal(SIGPIPE, SIG_IGN); // Protection contre les fermetures brutales de sockets du navigateur
 
     double latitude = 43.284565;
     double longitude = 5.358658;
     interrogerCapteurGPS(latitude, longitude);
     DonneesMeteo meteoLocale = { 1017.2, 19.5 };
 
-    std::cout << "[INIT] Génération de la matrice globale 1440 points pour les 7 astres..." << std::endl;
-
+    // 1. Génération de la matrice en RAM au démarrage
     auto maintenant = std::chrono::system_clock::now();
     time_t temps_c = std::chrono::system_clock::to_time_t(maintenant);
     struct tm* utc = gmtime(&temps_c);
     double baseJoursJ2000 = (utc->tm_year - 100) * 365.25 + utc->tm_yday - 1.5;
 
-    // Compilation complète de la matrice attendue par l'interface graphique v6.8
     std::string json_cache = "{\n";
     for (size_t i = 0; i < SYSTEME_SOLAIRE.size(); ++i) {
         const auto& p = SYSTEME_SOLAIRE[i];
@@ -124,7 +122,7 @@ int main() {
     }
     json_cache += "}";
 
-    // Écriture unique de sauvegarde sur disque au démarrage
+    // Écriture unique du manifeste de persistance
     std::ofstream fichier_manifest("manifest.json");
     if (fichier_manifest.is_open()) { fichier_manifest << json_cache; fichier_manifest.close(); }
 
@@ -132,21 +130,31 @@ int main() {
     int opt = 1; setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     struct sockaddr_in address; address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY; address.sin_port = htons(8080);
-    bind(server_fd, (struct sockaddr*)&address, sizeof(address)); listen(server_fd, 10);
+    bind(server_fd, (struct sockaddr*)&address, sizeof(address)); listen(server_fd, 20);
 
-    std::cout << "=========================================" << std::endl;
-    std::cout << "  SYSTEMA SENTINELA v8.1 HYBRIDE ACTIVE  " << std::endl;
-    std::cout << "  Calculs : RAM pure (0% CPU en boucle)   " << std::endl;
-    std::cout << "=========================================" << std::endl;
+    std::cout << "[ONLINE] Sentinela Engine v8.2 opérationnel (ZÉRO BLOCAGE)." << std::endl;
 
     while (true) {
         int new_socket = accept(server_fd, nullptr, nullptr);
         if (new_socket >= 0) {
+            
+            // TIMEOUT DE SÉCURITÉ : Empêche le "read" de bloquer le thread si le navigateur envoie une connexion vide
+            struct timeval tv;
+            tv.tv_sec = 0;
+            tv.tv_usec = 50000; // 50 millisecondes max d'attente
+            setsockopt(new_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+
             char buffer[2048] = {0}; 
-            read(new_socket, buffer, 2048);
+            int octets_lus = read(new_socket, buffer, 2048);
+            
+            // Si la connexion est vide ou a expiré (Spéculation navigateur), on ferme et on passe à la suite sans freezer
+            if (octets_lus <= 0) {
+                close(new_socket);
+                continue;
+            }
+
             std::string requete(buffer);
 
-            // 1. ROUTAGE DU PRÉ-CONTRÔLE CORS
             if (requete.find("OPTIONS") != std::string::npos) {
                 std::string reponse = "HTTP/1.1 204 No Content\r\n"
                                       "Access-Control-Allow-Origin: *\r\n"
@@ -155,7 +163,6 @@ int main() {
                                       "Connection: close\r\n\r\n";
                 write(new_socket, reponse.c_str(), reponse.length());
             }
-            // 2. ROUTAGE DU MANIFESTE JSON POUR L'HORLOGE ATOMIQUE v6.8
             else if (requete.find("GET /manifest.json") != std::string::npos) {
                 std::string reponse = "HTTP/1.1 200 OK\r\n"
                                       "Content-Type: application/json; charset=UTF-8\r\n"
@@ -163,7 +170,6 @@ int main() {
                                       "Connection: close\r\n\r\n" + json_cache;
                 write(new_socket, reponse.c_str(), reponse.length());
             }
-            // 3. ROUTAGE PAR DÉFAUT : LE HUD VISUEL v8.0 (Seulement 7 calculs à l'instant T)
             else {
                 auto m_maintenant = std::chrono::system_clock::now();
                 time_t m_temps_c = std::chrono::system_clock::to_time_t(m_maintenant);
@@ -186,14 +192,14 @@ int main() {
                     "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n"
                     "Access-Control-Allow-Origin: *\r\n"
                     "Connection: close\r\n\r\n"
-                    "<html><head><meta http-equiv='refresh' content='1'>" // Augmenté à 1s pour éviter de saturer inutilement la connexion
+                    "<html><head><meta http-equiv='refresh' content='1'>" 
                     "<style>body{background:#0d1117;color:#c9d1d9;font-family:monospace;padding:20px;text-align:center;}"
                     "h1{color:#58a6ff;margin-bottom:2px;} .hud-bar{background:#161b22;border:1px solid #30363d;padding:12px 25px;display:inline-block;border-radius:30px;font-size:12px;color:#8b949e;margin-bottom:25px;box-shadow:0 4px 10px rgba(0,0,0,0.4);}"
                     ".card{border:1px solid #30363d;background:#161b22;padding:15px;margin:12px auto;width:440px;border-radius:10px;text-align:left;box-shadow:0 2px 5px rgba(0,0,0,0.2);}"
                     ".card h3{margin:0 0 12px 0;color:#58a6ff;font-size:16px;border-bottom:1px solid #21262d;padding-bottom:6px;display:flex;justify-content:space-between;align-items:center;}"
                     ".data{font-size:15px;margin:6px 0;color:#e6edf3;} small{color:#8b949e;font-size:11px;}</style></head>"
                     "<body>"
-                    "<h1>SYSTEMA SENTINELA v8.1</h1>"
+                    "<h1>SYSTEMA SENTINELA v8.2</h1>"
                     "<div class='hud-bar'>📍 LAT " + std::to_string(latitude) + " | LON " + std::to_string(longitude) + " &nbsp;&nbsp;|&nbsp;&nbsp; 🌀 " + std::to_string(meteoLocale.pression_hpa) + " hPa &nbsp;&nbsp;|&nbsp;&nbsp; 🌡️ " + std::to_string(meteoLocale.temperature_c) + "°C</div>"
                     + cartes_html +
                     "</body></html>";
