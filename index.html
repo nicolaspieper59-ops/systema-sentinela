@@ -246,78 +246,83 @@
         }
     }
 
-    function boucleCalculSentinela() {
-        if (!cachePlanetaireJPL) return;
+function boucleCalculSentinela() {
+    if (!cachePlanetaireJPL) return;
 
-        // 1. Horloge Atomique Pure (Pour affichage du tableau de bord)
-        let millisecondesAtomiques = Date.now() + deltaTempsAtomiqueMS;
-        let tempsAtomiqueReel = new Date(millisecondesAtomiques);
-        document.getElementById('kpi-utc').innerText = tempsAtomiqueReel.toISOString().replace("T", " ").replace("Z", " UTC");
+    // 1. Horloge Atomique Pure (HUD principal)
+    let millisecondesAtomiques = Date.now() + deltaTempsAtomiqueMS;
+    let tempsAtomiqueReel = new Date(millisecondesAtomiques);
+    document.getElementById('kpi-utc').innerText = tempsAtomiqueReel.toISOString().replace("T", " ").replace("Z", " UTC");
 
-        // 2. Affichage de la désynchronisation
-        let offsetReelSecondes = deltaTempsAtomiqueMS / 1000;
-        document.getElementById('kpi-offset').innerText = `${offsetReelSecondes.toFixed(3)}s`;
+    // 2. Affichage de l'offset matériel
+    let offsetReelSecondes = deltaTempsAtomiqueMS / 1000;
+    document.getElementById('kpi-offset').innerText = `${offsetReelSecondes.toFixed(3)}s`;
 
-        // 3. CORRECTIF CRITIQUE : Alignement forcé de l'index sur la distorsion de l'appareil
-        // On utilise l'heure locale brute d'Android (qui correspond à la génération Termux) pour l'index du tableau
-        let tempsIndexation = new Date(); 
-        let minuteAxe = tempsIndexation.getUTCHours() * 60 + tempsIndexation.getUTCMinutes();
-        let fractionSeconde = tempsIndexation.getUTCSeconds() / 60.0;
+    // 3. Variables de temps pour l'indexation (au cas où c'est un tableau)
+    let tempsIndexation = new Date(); 
+    let minuteAxe = tempsIndexation.getUTCHours() * 60 + tempsIndexation.getUTCMinutes();
+    let fractionSeconde = tempsIndexation.getUTCSeconds() / 60.0;
 
-        for (let nomAstre in cachePlanetaireJPL) {
-            try {
-                let dataset = cachePlanetaireJPL[nomAstre];
-                let altitudeFinale = 0;
-                let azimut = 0;
+    for (let nomAstre in cachePlanetaireJPL) {
+        try {
+            let dataset = cachePlanetaireJPL[nomAstre];
+            let altitudeFinale = 0;
+            let azimut = 0;
 
-                if (Array.isArray(dataset) && dataset.length > 0) {
-                    let indexA = Math.abs(minuteAxe) % dataset.length;
-                    let indexB = (indexA + 1) % dataset.length;
-                    
-                    let pA = dataset[indexA];
-                    let pB = dataset[indexB];
-                    
-                    if (!pA || !pB) {
-                        pA = dataset[0];
-                        pB = dataset[dataset.length - 1];
-                    }
-
-                    let altA = (pA.alt !== undefined) ? pA.alt : (pA.h !== undefined ? pA.h : 0);
-                    let altB = (pB.alt !== undefined) ? pB.alt : (pB.h !== undefined ? pB.h : 0);
-                    altitudeFinale = altA + (altB - altA) * fractionSeconde;
-
-                    let azA = (pA.az !== undefined) ? pA.az : (pA.Az !== undefined ? pA.Az : 0);
-                    let azB = (pB.az !== undefined) ? pB.az : (pB.Az !== undefined ? pB.Az : 0);
-                    
-                    let diffAz = azB - azA;
-                    if (diffAz > 180) diffAz -= 360;
-                    if (diffAz < -180) diffAz += 360;
-                    azimut = (azA + diffAz * fractionSeconde + 360) % 360;
-                }
-
-                // 4. Actualisation Graphique
-                const line = document.getElementById(`ptr-${nomAstre}`);
-                if (line) {
-                    line.setAttribute("transform", `rotate(${azimut} 200 200)`);
-                    if (altitudeFinale < 0) {
-                        line.style.opacity = "0.15"; 
-                        line.setAttribute("y2", "195"); 
-                    } else {
-                        line.style.opacity = "1";
-                        let rayonRendu = ((90 - altitudeFinale) / 90) * 160;
-                        line.setAttribute("y2", (200 - rayonRendu).toString());
-                    }
-                }
+            // Détection du format structurel du JSON
+            if (Array.isArray(dataset) && dataset.length > 0) {
+                // FORMAT A : C'est un tableau chronologique (Éphémérides complètes)
+                let indexA = Math.abs(minuteAxe) % dataset.length;
+                let indexB = (indexA + 1) % dataset.length;
                 
-                const valSpan = document.getElementById(`val-${nomAstre}`);
-                if (valSpan) {
-                    valSpan.innerHTML = `h: ${altitudeFinale.toFixed(2)}° | Az: ${azimut.toFixed(1)}° ${altitudeFinale < 0 ? '⧗' : '✦'}`;
-                }
-            } catch(e) {
-                console.error("Échec du rendu cinématique : " + nomAstre, e);
+                let pA = dataset[indexA];
+                let pB = dataset[indexB];
+                
+                if (!pA) pA = dataset[0];
+                if (!pB) pB = dataset[dataset.length - 1];
+
+                let altA = (pA.alt !== undefined) ? pA.alt : (pA.h !== undefined ? pA.h : 0);
+                let altB = (pB.alt !== undefined) ? pB.alt : (pB.h !== undefined ? pB.h : 0);
+                altitudeFinale = altA + (altB - altA) * fractionSeconde;
+
+                let azA = (pA.az !== undefined) ? pA.az : (pA.Az !== undefined ? pA.Az : 0);
+                let azB = (pB.az !== undefined) ? pB.az : (pB.Az !== undefined ? pB.Az : 0);
+                
+                let diffAz = azB - azA;
+                if (diffAz > 180) diffAz -= 360;
+                if (diffAz < -180) diffAz += 360;
+                azimut = (azA + diffAz * fractionSeconde + 360) % 360;
+
+            } else if (dataset && typeof dataset === 'object') {
+                // FORMAT B : C'est une position instantanée unique (Temps Réel Direct)
+                altitudeFinale = (dataset.alt !== undefined) ? dataset.alt : (dataset.h !== undefined ? dataset.h : 0);
+                azimut = (dataset.az !== undefined) ? dataset.az : (dataset.Az !== undefined ? dataset.Az : 0);
             }
+
+            // 4. Actualisation du Radar SVG
+            const line = document.getElementById(`ptr-${nomAstre}`);
+            if (line) {
+                line.setAttribute("transform", `rotate(${azimut} 200 200)`);
+                if (altitudeFinale < 0) {
+                    line.style.opacity = "0.15"; 
+                    line.setAttribute("y2", "195"); 
+                } else {
+                    line.style.opacity = "1";
+                    let rayonRendu = ((90 - altitudeFinale) / 90) * 160;
+                    line.setAttribute("y2", (200 - rayonRendu).toString());
+                }
+            }
+            
+            // 5. Actualisation des Données du Tableau
+            const valSpan = document.getElementById(`val-${nomAstre}`);
+            if (valSpan) {
+                valSpan.innerHTML = `h: ${altitudeFinale.toFixed(2)}° | Az: ${azimut.toFixed(1)}° ${altitudeFinale < 0 ? '⧗' : '✦'}`;
+            }
+        } catch(e) {
+            console.error("Erreur d'analyse sur l'astre : " + nomAstre, e);
         }
     }
+        }
 
     function genererMatriceHorizonsSecours() {
         let matrice = {};
