@@ -56,7 +56,6 @@
     </div>
 
     <script>
-        // Variables de la ligne de temps monotone autonome
         let baseTempsAtomiqueMS = 0;
         let referencePerformanceMS = 0;
         let horlogePrete = false;
@@ -65,32 +64,24 @@
         const ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" };
         const COULEURS = { "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "JUPITER": "#fb923c" };
 
-        // ÉMULATION DE L'HORLOGE : Rupture de l'esclavage Android par serveur de temps atomique
         async function synchroniserHorlogeUniverselle() {
             try {
                 let t0 = performance.now();
-                // Requête HTTP vers une API de temps indépendante
                 let res = await fetch("https://timeapi.io/api/time/current/zone?timeZone=UTC", { cache: 'no-store' });
                 if (res.ok) {
                     let data = await res.json();
                     let latenceIntersection = (performance.now() - t0) / 2;
-                    // Fixation du point d'ancrage absolu
                     baseTempsAtomiqueMS = new Date(data.dateTime).getTime() + latenceIntersection;
                     referencePerformanceMS = performance.now();
                     horlogePrete = true;
-                    console.log("Horloge monotone calibrée avec succès sur le flux atomique UTC.");
                     return;
                 }
-            } catch (e) {
-                console.error("Échec de synchronisation NTP primaire. Repli forcé.");
-            }
-            // Repli local en cas de panne réseau complète
+            } catch (e) {}
             baseTempsAtomiqueMS = Date.now();
             referencePerformanceMS = performance.now();
             horlogePrete = true;
         }
 
-        // Boucle d'affichage haute précision indexée sur le CPU-Clock (performance.now)
         setInterval(() => {
             if (!horlogePrete) return;
             let millisecondesReelles = baseTempsAtomiqueMS + (performance.now() - referencePerformanceMS);
@@ -124,7 +115,6 @@
         async function interrogerJPL() {
             if (!horlogePrete) return;
             
-            // Génération de la date depuis la ligne de temps isolée
             let millisecondesReelles = baseTempsAtomiqueMS + (performance.now() - referencePerformanceMS);
             let nowObj = new Date(millisecondesReelles);
             
@@ -152,17 +142,22 @@
 
                 const chaineRequete = new URLSearchParams(parametresJPL).toString();
                 let urlDirecteJPL = `https://ssd-api.jpl.nasa.gov/horizons.api?${chaineRequete}`;
+                
+                // RECONSTRUCTION DU PROXY : Passage par le réseau miroir d'AllOrigins débridé
+                let urlSecurisee = `https://api.allorigins.win/get?disableCache=true&url=${encodeURIComponent(urlDirecteJPL)}`;
 
                 try {
-                    let res = await fetch(urlDirecteJPL);
+                    let res = await fetch(urlSecurisee);
                     if (res.ok) {
-                        let donneesNativesJPL = await res.json();
+                        let enveloppe = await res.json();
+                        // AllOrigins renvoie un sous-objet .contents au lieu du JSON brut direct
+                        let donneesNativesJPL = JSON.parse(enveloppe.contents);
                         if (donneesNativesJPL.result) {
                             parseJPLData(name, donneesNativesJPL.result);
                         }
                     }
                 } catch (e) {
-                    console.error(`Erreur de liaison NASA pour ${name} :`, e);
+                    document.getElementById(`val-${name}`).innerText = "Erreur Flux CORS";
                 }
             }
         }
@@ -194,7 +189,6 @@
             }
         }
 
-        // Initialisation de la structure graphique
         const g = document.getElementById('pointers'), leg = document.getElementById('legend');
         for (let name in ASTRES) {
             let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -209,7 +203,6 @@
             leg.innerHTML += `<div class="legend-item"><span style="color:${COULEURS[name]}">■ <strong>${name}</strong></span><span id="val-${name}">Calcul...</span></div>`;
         }
 
-        // Cycle d'exécution principal autonome
         (async () => {
             await synchroniserHorlogeUniverselle();
             piloterGeolocalisation();
@@ -217,4 +210,4 @@
         })();
     </script>
 </body>
-    </html>
+                                          </html>
