@@ -108,21 +108,7 @@ int main() {
     // Initialisation des données météo barométriques
     DonneesMeteo meteoLocale = { 1017.2, 19.5 }; // 1017.2 hPa, 19.5°C au sol
 
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    int opt = 1; setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    struct sockaddr_in address; address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY; address.sin_port = htons(8080);
-    bind(server_fd, (struct sockaddr*)&address, sizeof(address)); listen(server_fd, 3);
-
-    std::cout << "=========================================" << std::endl;
-    std::cout << "  SYSTEMA SENTINELA v8.0 - COCKPIT HUD   " << std::endl;
-    std::cout << "  GPS Actif : LAT " << latitude << " | LON " << longitude << std::endl;
-    std::cout << "  Baromètre : " << meteoLocale.pression_hpa << " hPa | Temp : " << meteoLocale.temperature_c << "°C" << std::endl;
-    std::cout << "  Interface Web : http://localhost:8080  " << std::endl;
-    std::cout << "=========================================" << std::endl;
-
-    while (true) {
-        int new_socket = accept(server_fd, nullptr, nullptr);
+int new_socket = accept(server_fd, nullptr, nullptr);
         if (new_socket >= 0) {
             char buffer[1024] = {0}; read(new_socket, buffer, 1024);
 
@@ -133,17 +119,40 @@ int main() {
             double joursJ2000 = (utc->tm_year - 100) * 365.25 + utc->tm_yday + (heureUTC / 24.0) - 1.5;
 
             std::string cartes_html = "";
-            for (const auto& p : SYSTEME_SOLAIRE) {
+            std::string json_flux = "{\n";
+
+            for (size_t i = 0; i < SYSTEME_SOLAIRE.size(); ++i) {
+                const auto& p = SYSTEME_SOLAIRE[i];
                 HorizonCoords astre = calculerCoordonnees(p, joursJ2000, latitude, longitude, heureUTC, meteoLocale);
-                std::string vue = (astre.altitude > 0) ? "<span style='color:#2ea043;font-weight:bold;'>🟢 VISIBLE</span>" : "<span style='color:#8b949e;'>🔴 HORIZON INF</span>";
                 
+                // 1. Génération du HTML pour le Cockpit HUD v8.0
+                std::string vue = (astre.altitude > 0) ? "<span style='color:#2ea043;font-weight:bold;'>🟢 VISIBLE</span>" : "<span style='color:#8b949e;'>🔴 HORIZON INF</span>";
                 cartes_html += "<div class='card'>"
                                "<h3>" + astre.symbole + " " + astre.nom + " <span class='status'>" + vue + "</span></h3>"
                                "<div class='data'>🧭 AZIMUT : " + std::to_string(astre.azimut) + "°</div>"
                                "<div class='data'>📐 ALTITUDE : " + std::to_string(astre.altitude) + "° <small>(Baro-corrigée)</small></div>"
                                "</div>";
+
+                // 2. Construction de la matrice JSON pour l'interface v6.8 (Uniquement SOLEIL et LUNE)
+                if (astre.nom == "SOLEIL" || astre.nom == "LUNE") {
+                    json_flux += "  \"" + astre.nom + "\": {\n";
+                    json_flux += "    \"h\": " + std::to_string(astre.altitude) + ",\n";
+                    json_flux += "    \"Az\": " + std::to_string(astre.azimut) + "\n";
+                    json_flux += "  }";
+                    if (astre.nom == "SOLEIL") json_flux += ",\n"; // Virgule de séparation standard
+                    else json_flux += "\n";
+                }
+            }
+            json_flux += "}";
+
+            // Écriture immédiate du manifeste mis à jour sur le stockage local
+            std::ofstream fichier_manifest("manifest.json");
+            if (fichier_manifest.is_open()) {
+                fichier_manifest << json_flux;
+                fichier_manifest.close();
             }
 
+            // Envoi de la réponse HTML au navigateur (Cockpit HUD)
             std::string html = 
                 "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n"
                 "<html><head><meta http-equiv='refresh' content='0.2'>"
