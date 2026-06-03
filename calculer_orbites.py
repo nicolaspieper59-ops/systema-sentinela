@@ -36,7 +36,7 @@ def recuperer_jpl_nasa(id_astre):
     base_url = "https://ssd-api.jpl.nasa.gov/horizons.api"
     
     # Paramétrage strict de l'éphéméride d'observation géocentrique
-    params = {
+params = {
         "format": "json",
         "COMMAND": f"'{id_astre}'",
         "OBJ_DATA": "NO",
@@ -44,13 +44,16 @@ def recuperer_jpl_nasa(id_astre):
         "EPHEM_TYPE": "OBSERVER",
         "CENTER": "coord@399",
         "SITE_COORD": f"'{LONGITUDE},{LATITUDE},{ALTITUDE}'",
-        "START_TIME": f"'{aujourdhui} 00:00'",
-        "STOP_TIME": f"'{aujourdhui} 23:59'",
+        
+        # CORRECTIF PROFESSIONNEL : Forçage du référentiel Universal Time (UT / UTC)
+        "START_TIME": f"'{aujourdhui} 00:00 UT'", 
+        "STOP_TIME": f"'{aujourdhui} 23:59 UT'",  
+        
         "STEP_SIZE": "1m",
         "QUANTITIES": "4",
         "REF_SYSTEM": "J2000",
         "ANG_FORMAT": "DEG"
-    }
+}
     
     dict_points = {}
     try:
