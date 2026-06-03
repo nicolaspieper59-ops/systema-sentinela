@@ -1,3 +1,4 @@
+#include <signal.h>
 #include <fstream>
 #include <iostream>
 #include <cmath>
@@ -65,6 +66,7 @@ HorizonCoords calculerPositionAstre(const ÉlémentsKepler& p, double joursJ2000
 }
 
 int main() {
+    signal(SIGPIPE, SIG_IGN);
     double latitude = 43.284565;  
     double longitude = 5.358658;
     DonneesMeteo meteoLocale = { 1017.2, 19.5 };
