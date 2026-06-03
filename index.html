@@ -169,7 +169,8 @@
     let cachePlanetaireJPL = null;
     let deltaTempsAtomiqueMS = 0; 
     
-    const URL_DONNEES_JPL = window.location.hostname.includes("github.io") 
+    // Remplacement de la détection d'URL par un ciblage direct du port d'écoute C++
+const URL_DONNEES_JPL = "http://127.0.0.1:8080/manifest.json";
         ? "manifest.json" 
         : `/manifest.json?v=${Date.now()}`;
     
