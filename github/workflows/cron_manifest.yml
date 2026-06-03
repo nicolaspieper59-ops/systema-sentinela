@@ -8,6 +8,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    
+    # CORRECTIF SÉCURITÉ : Autorise explicitement GitHub Actions à modifier et pousser des fichiers
+    permissions:
+      contents: write
+
     steps:
       - name: Connexion au dépôt
         uses: actions/checkout@v4
@@ -24,6 +29,10 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add manifest.json
+          
+          # CORRECTIF ARBORESCENCE : On indexe le fichier orbites.json généré par Python
+          git add orbites.json
+          
+          # Utilisation de || true pour éviter le crash du pipeline si les données météo sont identiques à 100%
           git commit -m "Mise à jour Télémétrie Espace-Météo (Zéro-Termux)" || echo "Aucun changement"
-          git push
+          git push origin HEAD:${{ github.ref }}
