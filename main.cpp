@@ -69,9 +69,8 @@ int main() {
     double longitude = 5.358658;
     DonneesMeteo meteoLocale = { 1017.2, 19.5 };
 
-    std::cout << "[INIT] Pré-calcul de la matrice journalière (ZÉRO LAG)..." << std::endl;
+    std::cout << "[INIT] Génération de la matrice en RAM..." << std::endl;
 
-    // 1. GÉNÉRATION UNIQUE DE LA MATRICE AU DÉMARRAGE
     auto maintenant = std::chrono::system_clock::now();
     time_t temps_c = std::chrono::system_clock::to_time_t(maintenant);
     struct tm* utc = gmtime(&temps_c);
@@ -96,34 +95,40 @@ int main() {
     }
     json_cache += "\n  ]\n}";
 
-    // Écriture unique du fichier de persistance
-    std::ofstream f("manifest.json");
-    if (f.is_open()) { f << json_cache; f.close(); }
-
-    // 2. LANCEMENT DU SERVEUR
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     int opt = 1; setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     struct sockaddr_in address; address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY; address.sin_port = htons(8080);
-    bind(server_fd, (struct sockaddr*)&address, sizeof(address)); listen(server_fd, 3);
+    bind(server_fd, (struct sockaddr*)&address, sizeof(address)); listen(server_fd, 10);
 
-    std::cout << "[READY] Serveur optimisé actif sur le port 8080. Calculs terminés." << std::endl;
+    std::cout << "[READY] Moteur Sentinela v6.8 stable en ligne." << std::endl;
 
     while (true) {
         int new_socket = accept(server_fd, nullptr, nullptr);
         if (new_socket >= 0) {
-            char buffer[1024] = {0}; read(new_socket, buffer, 1024);
+            char buffer[2048] = {0}; // Augmenté à 2KB pour éviter les coupures de paquets navigateurs
+            read(new_socket, buffer, 2048);
             std::string requete(buffer);
 
-            if (requete.find("GET /manifest.json") != std::string::npos) {
-                // Envoi direct de la chaîne pré-calculée en RAM : charge CPU = 0%
+            // GESTION DU PRÉ-CONTRÔLE DE SÉCURITÉ SANS TRAÎNER (OPTIONS)
+            if (requete.find("OPTIONS /manifest.json") != std::string::npos) {
+                std::string reponse = "HTTP/1.1 204 No Content\r\n"
+                                      "Access-Control-Allow-Origin: *\r\n"
+                                      "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
+                                      "Access-Control-Allow-Headers: *\r\n"
+                                      "Connection: close\r\n\r\n";
+                write(new_socket, reponse.c_str(), reponse.length());
+            } 
+            // LIVRAISON ULTRA-RAPIDE DU FLUX DE DONNÉES
+            else if (requete.find("GET /manifest.json") != std::string::npos) {
                 std::string reponse = "HTTP/1.1 200 OK\r\n"
                                       "Content-Type: application/json\r\n"
                                       "Access-Control-Allow-Origin: *\r\n"
                                       "Connection: close\r\n\r\n" + json_cache;
                 write(new_socket, reponse.c_str(), reponse.length());
-            } else {
-                std::string reponse_html = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nSentinela Engine Active.";
+            } 
+            else {
+                std::string reponse_html = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nSentinela Online.";
                 write(new_socket, reponse_html.c_str(), reponse_html.length());
             }
             close(new_socket);
