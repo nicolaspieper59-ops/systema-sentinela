@@ -121,20 +121,26 @@
             }, { enableHighAccuracy: true });
         }
 
+
 async function interrogerJPL() {
     if (!horlogePrete) return;
     
     let millisecondesReelles = baseTempsAtomiqueMS + (performance.now() - referencePerformanceMS);
     let nowObj = new Date(millisecondesReelles);
     
-    // Extraction de la clé de l'heure courante au format "HH:MM"
     let heureUTC = String(nowObj.getUTCHours()).padStart(2, '0');
     let minuteUTC = String(nowObj.getUTCMinutes()).padStart(2, '0');
     let cleMinute = `${heureUTC}:${minuteUTC}`;
 
     try {
-        // Lecture du fichier de positionnement local généré par le script Python
-        let res = await fetch("./orbites.json", { cache: 'no-store' });
+        // Tente d'abord de lire manifest.json (le fichier généré à l'origine par votre Python)
+        let res = await fetch(`./manifest.json?v=${Date.now()}`, { cache: 'no-store' });
+        
+        // Si manifest.json n'est pas trouvé, tente un repli sur orbites.json
+        if (!res.ok) {
+            res = await fetch(`./orbites.json?v=${Date.now()}`, { cache: 'no-store' });
+        }
+
         if (res.ok) {
             let baseDonnees = await res.json();
             
@@ -144,30 +150,25 @@ async function interrogerJPL() {
                     let az = donneesAstre[0];
                     let alt = donneesAstre[1];
 
-                    // Mise à jour du pointeur SVG
                     const ptr = document.getElementById(`ptr-${name}`);
                     if (ptr) {
                         ptr.setAttribute("transform", `rotate(${az} 200 200)`);
                         ptr.style.opacity = alt < 0 ? "0.15" : "1";
                     }
                     
-                    // Mise à jour du texte
                     const txt = document.getElementById(`val-${name}`);
                     if (txt) {
                         txt.innerHTML = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}° ${alt < 0 ? '⧗' : '✦'}`;
                     }
                 } else {
-                    document.getElementById(`val-${name}`).innerText = "Index Temporel Manquant";
+                    document.getElementById(`val-${name}`).innerText = "Minute non indexée";
                 }
             }
         } else {
-            for (let name in ASTRES) { document.getElementById(`val-${name}`).innerText = "Fichier Introuvable"; }
+            for (let name in ASTRES) { document.getElementById(`val-${name}`).innerText = "Matrice Introuvable (404)"; }
         }
     } catch (e) {
-        console.error("Erreur de lecture I/O :", e);
-        for (let name in ASTRES) {
-            document.getElementById(`val-${name}`).innerText = "Erreur Format JSON";
-        }
+        for (let name in ASTRES) { document.getElementById(`val-${name}`).innerText = "Erreur de Structure JSON"; }
     }
         }
         
