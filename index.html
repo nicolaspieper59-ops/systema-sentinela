@@ -133,55 +133,85 @@
         }
 
         async function interrogerJPL() {
-            if (!horlogePrete) return;
-            
-            let millisecondesReelles = Date.now() + decalageSystemeMS;
-            let nowObj = new Date(millisecondesReelles);
-            
-            let heureUTC = String(nowObj.getUTCHours()).padStart(2, '0');
-            let minuteUTC = String(nowObj.getUTCMinutes()).padStart(2, '0');
-            let cleMinute = `${heureUTC}:${minuteUTC}`;
+    if (!horlogePrete) return;
+    
+    let millisecondesReelles = Date.now() + decalageSystemeMS;
+    let nowObj = new Date(millisecondesReelles);
+    
+    let heureUTC = String(nowObj.getUTCHours()).padStart(2, '0');
+    let minuteUTC = String(nowObj.getUTCMinutes()).padStart(2, '0');
+    let cleMinute = `${heureUTC}:${minuteUTC}`;
 
-            try {
-                let res = await fetch(`./orbites.json?v=${Date.now()}`, { cache: 'no-store' });
-                if (!res.ok) {
-                    res = await fetch(`./manifest.json?v=${Date.now()}`, { cache: 'no-store' });
-                }
-
-                if (res.ok) {
-                    let enveloppe = await res.json();
-                    
-                    // Ciblage de la sous-structure 'DONNEES' exportée par le script Python professionnel
-                    let baseDonnees = enveloppe.DONNEES ? enveloppe.DONNEES : enveloppe;
-                    
-                    for (let name in ASTRES) {
-                        if (baseDonnees[name] && baseDonnees[name][cleMinute]) {
-                            let donneesAstre = baseDonnees[name][cleMinute]; 
-                            let az = donneesAstre[0];
-                            let alt = donneesAstre[1];
-
-                            const ptr = document.getElementById(`ptr-${name}`);
-                            if (ptr) {
-                                ptr.setAttribute("transform", `rotate(${az} 200 200)`);
-                                ptr.style.opacity = alt < 0 ? "0.15" : "1";
-                            }
-                            
-                            const txt = document.getElementById(`val-${name}`);
-                            if (txt) {
-                                txt.innerHTML = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}° ${alt < 0 ? '⧗' : '✦'}`;
-                            }
-                        } else {
-                            document.getElementById(`val-${name}`).innerText = "Minute non indexée";
-                        }
-                    }
-                } else {
-                    for (let name in ASTRES) { document.getElementById(`val-${name}`).innerText = `Erreur HTTP ${res.status}`; }
-                }
-            } catch (e) {
-                for (let name in ASTRES) { document.getElementById(`val-${name}`).innerText = "Erreur Dépaquetage JSON"; }
-            }
+    try {
+        // Ajout d'un paramètre dynamique pour détruire le cache navigateur
+        let res = await fetch(`./orbites.json?v=${Date.now()}`, { cache: 'no-store' });
+        if (!res.ok) {
+            res = await fetch(`./manifest.json?v=${Date.now()}`, { cache: 'no-store' });
         }
 
+        if (!res.ok) {
+            panneInterface(`Erreur HTTP ${res.status}`);
+            return;
+        }
+
+        // Vérification du type de contenu pour éviter de parser du HTML de secours
+        let contentType = res.headers.get("content-type");
+        if (contentType && !contentType.includes("application/json")) {
+            panneInterface("Réponse Serveur Non-JSON");
+            return;
+        }
+
+        let enveloppe = await res.json();
+        if (!enveloppe) {
+            panneInterface("Fichier JSON Vide");
+            return;
+        }
+
+        // Extraction tolérante de la base de données
+        let baseDonnees = null;
+        if (enveloppe.DONNEES) {
+            baseDonnees = enveloppe.DONNEES;
+        } else if (enveloppe.SOLEIL || enveloppe.LUNE) {
+            baseDonnees = enveloppe; // Le fichier est à la racine
+        }
+
+        if (!baseDonnees) {
+            panneInterface("Matrice Absente du JSON");
+            return;
+        }
+        
+        // Injection des coordonnées sur le radar SVG
+        for (let name in ASTRES) {
+            if (baseDonnees[name] && baseDonnees[name][cleMinute]) {
+                let donneesAstre = baseDonnees[name][cleMinute]; 
+                
+                // Sécurité : s'assurer que les données reçues forment bien un tableau [Az, Alt]
+                if (Array.isArray(donneesAstre) && donneesAstre.length >= 2) {
+                    let az = donneesAstre[0];
+                    let alt = donneesAstre[1];
+
+                    const ptr = document.getElementById(`ptr-${name}`);
+                    if (ptr) {
+                        ptr.setAttribute("transform", `rotate(${az} 200 200)`);
+                        ptr.style.opacity = alt < 0 ? "0.15" : "1";
+                    }
+                    
+                    const txt = document.getElementById(`val-${name}`);
+                    if (txt) {
+                        txt.innerHTML = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}° ${alt < 0 ? '⧗' : '✦'}`;
+                    }
+                } else {
+                    document.getElementById(`val-${name}`).innerText = "Format Coordonnées Invalide";
+                }
+            } else {
+                document.getElementById(`val-${name}`).innerText = `Clé ${cleMinute} manquante`;
+            }
+        }
+    } catch (e) {
+        console.error(e);
+        panneInterface("Exception Interne Flux");
+    }
+                                            }
         // Initialisation de la couche graphique du Radar SVG
         const g = document.getElementById('pointers'), leg = document.getElementById('legend');
         for (let name in ASTRES) {
