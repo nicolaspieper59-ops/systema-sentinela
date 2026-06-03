@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.6 — Horloge Atomique & Correcteur Synchrone</title>
+    <title>SYSTEMA SENTINELA v8.6 — Flux Synchrone Pur</title>
     <style>
         :root {
             --bg-main: #0a0e14;
@@ -144,7 +144,7 @@
             <div class="kpi-grid">
                 <div class="kpi-card">
                     <span class="kpi-title">Statut Réseau / Extension</span>
-                    <span class="kpi-value" id="kpi-adblock" style="color: var(--accent-green);">VÉRIFICATION...</span>
+                    <span class="kpi-value" id="kpi-adblock" style="color: var(--accent-orange);">INITIALISATION...</span>
                 </div>
                 <div class="kpi-card">
                     <span class="kpi-title">Désynchronisation Interne</span>
@@ -212,7 +212,7 @@
                 }
             } catch (e) {}
         }
-        ajouterLog("TIME WARN : Utilisation de l'heure système locale.", "var(--accent-orange)");
+        ajouterLog("TIME CRIT : Impossible de synchroniser l'horloge atomique.", "var(--accent-red)");
     }
 
     async function chargerDonneesJPL() {
@@ -232,23 +232,23 @@
                 document.getElementById('kpi-adblock').style.color = "var(--accent-green)";
                 ajouterLog("NET : Flux validé et verrouillé.");
                 initialiserInterface();
+                
+                // Démarrage de la boucle uniquement si le manifest est valide
+                setInterval(boucleCalculSentinela, 150);
                 return;
             } else {
-                throw new Error("SCHEMA_INCONNU");
+                throw new Error("SCHEMA_DONNEES_INVALID");
             }
         } catch (error) {
-            document.getElementById('kpi-adblock').innerText = "FALLBACK_ACTIVE";
-            document.getElementById('kpi-adblock').style.color = "var(--accent-orange)";
-            ajouterLog(`NET : Connexion impossible (${error.message}). Bascule mode hybride.`);
-            genererMatriceHorizonsSecours();
-            initialiserInterface();
+            document.getElementById('kpi-adblock').innerText = "CRITICAL_ERROR";
+            document.getElementById('kpi-adblock').style.color = "var(--accent-red)";
+            ajouterLog(`NET CRIT : Interruption du Core (${error.message}). Flux interrompu.`, "var(--accent-red)");
         }
     }
 
     function boucleCalculSentinela() {
         if (!cachePlanetaireJPL) return;
 
-        // 1. Alignement sur le Temps Atomique Réel
         let millisecondesAtomiques = Date.now() + deltaTempsAtomiqueMS;
         let tempsAtomiqueReel = new Date(millisecondesAtomiques);
         document.getElementById('kpi-utc').innerText = tempsAtomiqueReel.toISOString().replace("T", " ").replace("Z", " UTC");
@@ -256,7 +256,6 @@
         let offsetReelSecondes = deltaTempsAtomiqueMS / 1000;
         document.getElementById('kpi-offset').innerText = `${offsetReelSecondes.toFixed(3)}s`;
 
-        // CORRECTION CRITIQUE : Utilisation stricte des heures de l'horloge atomique pour l'indexation
         let minuteAxe = tempsAtomiqueReel.getUTCHours() * 60 + tempsAtomiqueReel.getUTCMinutes();
         let fractionSeconde = (tempsAtomiqueReel.getUTCSeconds() * 1000 + tempsAtomiqueReel.getUTCMilliseconds()) / 60000.0;
 
@@ -287,13 +286,8 @@
                     if (diffAz > 180) diffAz -= 360;
                     if (diffAz < -180) diffAz += 360;
                     azimut = (azA + diffAz * fractionSeconde + 360) % 360;
-
-                } else if (dataset && typeof dataset === 'object') {
-                    altitudeFinale = (dataset.alt !== undefined) ? dataset.alt : (dataset.h !== undefined ? dataset.h : 0);
-                    azimut = (dataset.az !== undefined) ? dataset.az : (dataset.Az !== undefined ? dataset.Az : 0);
                 }
 
-                // Actualisation du Radar SVG
                 const line = document.getElementById(`ptr-${nomAstre}`);
                 if (line) {
                     line.setAttribute("transform", `rotate(${azimut} 200 200)`);
@@ -307,7 +301,6 @@
                     }
                 }
                 
-                // Actualisation des Données du Tableau
                 const valSpan = document.getElementById(`val-${nomAstre}`);
                 if (valSpan) {
                     valSpan.innerHTML = `h: ${altitudeFinale.toFixed(2)}° | Az: ${azimut.toFixed(1)}° ${altitudeFinale < 0 ? '⧗' : '✦'}`;
@@ -316,18 +309,6 @@
                 console.error("Erreur d'analyse sur l'astre : " + nomAstre, e);
             }
         }
-    }
-
-    function genererMatriceHorizonsSecours() {
-        let matrice = {};
-        const presets = { "SOLEIL": { azMoy: 180, altMoy: 25 }, "LUNE": { azMoy: 120, altMoy: 35 } };
-        for (let astre in presets) {
-            matrice[astre] = [];
-            for (let m = 0; m < 1440; m++) {
-                matrice[astre].push({ az: (presets[astre].azMoy + m * 0.25) % 360, alt: presets[astre].altMoy + 10 * Math.sin(m/100) });
-            }
-        }
-        cachePlanetaireJPL = matrice;
     }
 
     function initialiserInterface() {
@@ -353,11 +334,10 @@
     }
 
     (async () => {
-        ajouterLog("SYS : Initialisation du Core v8.6.");
+        ajouterLog("SYS : Initialisation du Core v8.6 (Mode Strict-Synchrone).");
         await synchroniserHorlogeAtomique();
-        setInterval(boucleCalculSentinela, 150);
         setTimeout(chargerDonneesJPL, 200);
     })();
     </script>
 </body>
-                                                                                              </html>
+    </html>
