@@ -10,7 +10,7 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <signal.h>
-#include <sys/time.h> // Requis pour la gestion des timeouts (struct timeval)
+#include <sys/time.h>
 
 const double PI = 3.14159265358979323846;
 
@@ -55,7 +55,6 @@ double corrigerRefractionAtmospherique(double alt_brute, const DonneesMeteo& met
 }
 
 void interrogerCapteurGPS(double& lat, double& lon) {
-    // Ajout d'un timeout système pour éviter que Termux ne fige le démarrage si pas de réseau
     std::string cmd = "timeout 2 termux-location -p last -s network > gps.txt 2>/dev/null";
     if (std::system(cmd.c_str()) == 0) {
         std::ifstream fichier("gps.txt");
@@ -92,14 +91,13 @@ HorizonCoords calculerCoordonnees(const ÉlémentsKepler& p, double joursJ2000, 
 }
 
 int main() {
-    signal(SIGPIPE, SIG_IGN); // Protection contre les fermetures brutales de sockets du navigateur
+    signal(SIGPIPE, SIG_IGN);
 
     double latitude = 43.284565;
     double longitude = 5.358658;
     interrogerCapteurGPS(latitude, longitude);
     DonneesMeteo meteoLocale = { 1017.2, 19.5 };
 
-    // 1. Génération de la matrice en RAM au démarrage
     auto maintenant = std::chrono::system_clock::now();
     time_t temps_c = std::chrono::system_clock::to_time_t(maintenant);
     struct tm* utc = gmtime(&temps_c);
@@ -122,7 +120,6 @@ int main() {
     }
     json_cache += "}";
 
-    // Écriture unique du manifeste de persistance
     std::ofstream fichier_manifest("manifest.json");
     if (fichier_manifest.is_open()) { fichier_manifest << json_cache; fichier_manifest.close(); }
 
@@ -132,26 +129,19 @@ int main() {
     address.sin_addr.s_addr = INADDR_ANY; address.sin_port = htons(8080);
     bind(server_fd, (struct sockaddr*)&address, sizeof(address)); listen(server_fd, 20);
 
-    std::cout << "[ONLINE] Sentinela Engine v8.2 opérationnel (ZÉRO BLOCAGE)." << std::endl;
+    std::cout << "[ONLINE] Sentinela Engine v8.3 opérationnel." << std::endl;
 
     while (true) {
         int new_socket = accept(server_fd, nullptr, nullptr);
         if (new_socket >= 0) {
-            
-            // TIMEOUT DE SÉCURITÉ : Empêche le "read" de bloquer le thread si le navigateur envoie une connexion vide
-            struct timeval tv;
-            tv.tv_sec = 0;
-            tv.tv_usec = 50000; // 50 millisecondes max d'attente
+            struct timeval tv; tv.tv_sec = 0; tv.tv_usec = 50000;
             setsockopt(new_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
 
-            char buffer[2048] = {0}; 
-            int octets_lus = read(new_socket, buffer, 2048);
+            // CORRECTION CRITIQUE : Augmentation à 8192 octets pour lire toute la requête du navigateur
+            char buffer[8192] = {0}; 
+            int octets_lus = read(new_socket, buffer, 8191);
             
-            // Si la connexion est vide ou a expiré (Spéculation navigateur), on ferme et on passe à la suite sans freezer
-            if (octets_lus <= 0) {
-                close(new_socket);
-                continue;
-            }
+            if (octets_lus <= 0) { close(new_socket); continue; }
 
             std::string requete(buffer);
 
@@ -164,8 +154,10 @@ int main() {
                 write(new_socket, reponse.c_str(), reponse.length());
             }
             else if (requete.find("GET /manifest.json") != std::string::npos) {
+                // CORRECTION CRITIQUE : Ajout de Content-Length pour éviter les interruptions de flux
                 std::string reponse = "HTTP/1.1 200 OK\r\n"
                                       "Content-Type: application/json; charset=UTF-8\r\n"
+                                      "Content-Length: " + std::to_string(json_cache.length()) + "\r\n"
                                       "Access-Control-Allow-Origin: *\r\n"
                                       "Connection: close\r\n\r\n" + json_cache;
                 write(new_socket, reponse.c_str(), reponse.length());
@@ -184,27 +176,24 @@ int main() {
                     cartes_html += "<div class='card'>"
                                    "<h3>" + astre.symbole + " " + astre.nom + " <span class='status'>" + vue + "</span></h3>"
                                    "<div class='data'>🧭 AZIMUT : " + std::to_string(astre.azimut) + "°</div>"
-                                   "<div class='data'>📐 ALTITUDE : " + std::to_string(astre.altitude) + "° <small>(Baro-corrigée)</small></div>"
+                                   "<div class='data'>📐 ALTITUDE : " + std::to_string(astre.altitude) + "°</div>"
                                    "</div>";
                 }
 
-                std::string html = 
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n"
-                    "Access-Control-Allow-Origin: *\r\n"
-                    "Connection: close\r\n\r\n"
-                    "<html><head><meta http-equiv='refresh' content='1'>" 
+                std::string html_body = "<html><head><meta http-equiv='refresh' content='1'>"
                     "<style>body{background:#0d1117;color:#c9d1d9;font-family:monospace;padding:20px;text-align:center;}"
-                    "h1{color:#58a6ff;margin-bottom:2px;} .hud-bar{background:#161b22;border:1px solid #30363d;padding:12px 25px;display:inline-block;border-radius:30px;font-size:12px;color:#8b949e;margin-bottom:25px;box-shadow:0 4px 10px rgba(0,0,0,0.4);}"
-                    ".card{border:1px solid #30363d;background:#161b22;padding:15px;margin:12px auto;width:440px;border-radius:10px;text-align:left;box-shadow:0 2px 5px rgba(0,0,0,0.2);}"
-                    ".card h3{margin:0 0 12px 0;color:#58a6ff;font-size:16px;border-bottom:1px solid #21262d;padding-bottom:6px;display:flex;justify-content:space-between;align-items:center;}"
-                    ".data{font-size:15px;margin:6px 0;color:#e6edf3;} small{color:#8b949e;font-size:11px;}</style></head>"
-                    "<body>"
-                    "<h1>SYSTEMA SENTINELA v8.2</h1>"
-                    "<div class='hud-bar'>📍 LAT " + std::to_string(latitude) + " | LON " + std::to_string(longitude) + " &nbsp;&nbsp;|&nbsp;&nbsp; 🌀 " + std::to_string(meteoLocale.pression_hpa) + " hPa &nbsp;&nbsp;|&nbsp;&nbsp; 🌡️ " + std::to_string(meteoLocale.temperature_c) + "°C</div>"
-                    + cartes_html +
-                    "</body></html>";
+                    "h1{color:#58a6ff;}.hud-bar{background:#161b22;border:1px solid #30363d;padding:12px 25px;display:inline-block;border-radius:30px;font-size:12px;margin-bottom:25px;}"
+                    ".card{border:1px solid #30363d;background:#161b22;padding:15px;margin:12px auto;width:440px;border-radius:10px;text-align:left;}"
+                    ".card h3{margin:0 0 12px 0;color:#58a6ff;display:flex;justify-content:space-between;}"
+                    ".data{font-size:15px;margin:6px 0;}</style></head>"
+                    "<body><h1>SYSTEMA SENTINELA v8.3</h1>"
+                    "<div class='hud-bar'>📍 LAT " + std::to_string(latitude) + " | LON " + std::to_string(longitude) + "</div>" + cartes_html + "</body></html>";
 
-                write(new_socket, html.c_str(), html.length());
+                std::string reponse = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n"
+                                      "Content-Length: " + std::to_string(html_body.length()) + "\r\n"
+                                      "Access-Control-Allow-Origin: *\r\n"
+                                      "Connection: close\r\n\r\n" + html_body;
+                write(new_socket, reponse.c_str(), reponse.length());
             }
             close(new_socket);
         }
