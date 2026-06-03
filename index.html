@@ -60,7 +60,7 @@
         let referencePerformanceMS = 0;
         let horlogePrete = false;
 
-        let lastValidPos = { lat: 43.28, lon: 5.36, alt: 0 };
+        let lastValidPos = { lat: 43.28, lon: 5.36, alt: 100 };
         const ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" };
         const COULEURS = { "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "JUPITER": "#fb923c" };
 
@@ -90,7 +90,11 @@
         }, 100);
 
         function piloterGeolocalisation() {
-            if (!navigator.geolocation) return;
+            if (!navigator.geolocation) {
+                // Forçage de l'appel initial si pas de GPS opérationnel immédiat
+                if (horlogePrete) interrogerJPL();
+                return;
+            }
             navigator.geolocation.watchPosition((p) => {
                 let speed = p.coords.speed || 0; 
                 
@@ -102,14 +106,18 @@
 
                 lastValidPos.lat = Math.round(p.coords.latitude * 100) / 100;
                 lastValidPos.lon = Math.round(p.coords.longitude * 100) / 100;
-                lastValidPos.alt = Math.round(p.coords.altitude || 0);
+                lastValidPos.alt = Math.round(p.coords.altitude || 100);
 
                 document.getElementById('kpi-filtre').innerText = "STABLE";
                 document.getElementById('kpi-filtre').style.color = "var(--accent-green)";
                 document.getElementById('kpi-pos').innerText = `${lastValidPos.lat}N / ${lastValidPos.lon}E / ${lastValidPos.alt}m`;
                 
                 if (horlogePrete) interrogerJPL();
-            }, null, { enableHighAccuracy: true });
+            }, (err) => {
+                // En cas de refus/erreur GPS, utilisation des coordonnées par défaut
+                document.getElementById('kpi-pos').innerText = `${lastValidPos.lat}N / ${lastValidPos.lon}E / ${lastValidPos.alt}m`;
+                if (horlogePrete) interrogerJPL();
+            }, { enableHighAccuracy: true });
         }
 
         async function interrogerJPL() {
@@ -124,6 +132,7 @@
                           String(nowObj.getUTCHours()).padStart(2, '0') + ":" + 
                           String(nowObj.getUTCMinutes()).padStart(2, '0');
             
+            // Transformation de la boucle en exécution séquentielle stricte pour éviter la saturation du proxy
             for (let name in ASTRES) {
                 const parametresJPL = {
                     format: 'json',
@@ -142,22 +151,24 @@
 
                 const chaineRequete = new URLSearchParams(parametresJPL).toString();
                 let urlDirecteJPL = `https://ssd-api.jpl.nasa.gov/horizons.api?${chaineRequete}`;
-                
-                // RECONSTRUCTION DU PROXY : Passage par le réseau miroir d'AllOrigins débridé
-                let urlSecurisee = `https://api.allorigins.win/get?disableCache=true&url=${encodeURIComponent(urlDirecteJPL)}`;
+                let urlSecurisee = `https://api.allorigins.win/get?url=${encodeURIComponent(urlDirecteJPL)}`;
 
                 try {
+                    // Utilisation de await à l'intérieur de la boucle pour espacer les requêtes
                     let res = await fetch(urlSecurisee);
                     if (res.ok) {
                         let enveloppe = await res.json();
-                        // AllOrigins renvoie un sous-objet .contents au lieu du JSON brut direct
-                        let donneesNativesJPL = JSON.parse(enveloppe.contents);
-                        if (donneesNativesJPL.result) {
-                            parseJPLData(name, donneesNativesJPL.result);
+                        if (enveloppe && enveloppe.contents) {
+                            let donneesNativesJPL = JSON.parse(enveloppe.contents);
+                            if (donneesNativesJPL && donneesNativesJPL.result) {
+                                parseJPLData(name, donneesNativesJPL.result);
+                            }
                         }
                     }
+                    // Micro-pause de 300ms entre chaque astre pour stabiliser la file réseau
+                    await new Promise(r => setTimeout(r, 300));
                 } catch (e) {
-                    document.getElementById(`val-${name}`).innerText = "Erreur Flux CORS";
+                    document.getElementById(`val-${name}`).innerText = "Erreur Synchronisation";
                 }
             }
         }
@@ -210,4 +221,4 @@
         })();
     </script>
 </body>
-                                          </html>
+</html>
