@@ -67,7 +67,8 @@
         async function synchroniserHorlogeUniverselle() {
             try {
                 let t0 = performance.now();
-                let res = await fetch("https://timeapi.io/api/time/current/zone?timeZone=UTC", { cache: 'no-store' });
+                // Le paramètre ?_=[timestamp] force GitHub Pages à ignorer son cache et fournir le fichier réel
+        let res = await fetch(`./orbites.json?_=${Date.now()}`, { cache: 'no-store' });
                 if (res.ok) {
                     let data = await res.json();
                     let latenceIntersection = (performance.now() - t0) / 2;
