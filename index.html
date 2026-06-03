@@ -166,198 +166,179 @@
     </div>
 
     <script>
-        let cachePlanetaireJPL = null;
-        let deltaTempsAtomiqueMS = 0; // Écart millisecondes calculé entre le serveur atomique et la machine locale
-        
-const URL_DONNEES_JPL = `http://localhost:8080/manifest.json?v=${Date.now()}`;
-        
-        const COULEURS = {
-            "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "MERCURE": "#64748b",
-            "VENUS": "#f472b6", "MARS": "#ef4444", "JUPITER": "#fb923c", "SATURNE": "#eab308"
-        };
+    let cachePlanetaireJPL = null;
+    let deltaTempsAtomiqueMS = 0; 
+    
+    const URL_DONNEES_JPL = `http://localhost:8080/manifest.json?v=${Date.now()}`;
+    
+    const COULEURS = {
+        "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "MERCURE": "#64748b",
+        "VENUS": "#f472b6", "MARS": "#ef4444", "JUPITER": "#fb923c", "SATURNE": "#eab308"
+    };
 
-        function ajouterLog(msg, couleur = "var(--accent-green)") {
-            const cb = document.getElementById('log-terminal');
-            if (cb) {
-                cb.innerHTML += `\n<span style="color: ${couleur}">[${new Date().toLocaleTimeString()}] ${msg}</span>`;
-                cb.scrollTop = cb.scrollHeight;
-            }
+    function ajouterLog(msg, couleur = "var(--accent-green)") {
+        const cb = document.getElementById('log-terminal');
+        if (cb) {
+            cb.innerHTML += `\n<span style="color: ${couleur}">[${new Date().toLocaleTimeString()}] ${msg}</span>`;
+            cb.scrollTop = cb.scrollHeight;
         }
+    }
 
-        // PROTOCOLE 1 : SYNCHRONISATION ATOMIQUE EN CASCADE (ZÉRO CONFIANCE EN L'HORLOGE LOCALE)
-        async function synchroniserHorlogeAtomique() {
-            ajouterLog("TIME : Interrogations des serveurs de temps atomiques...");
-            const serveursNTP = [
-                "https://worldtimeapi.org/api/timezone/Etc/UTC",
-                "https://timeapi.io/api/time/current/zone?timeZone=UTC"
-            ];
+    async function synchroniserHorlogeAtomique() {
+        ajouterLog("TIME : Interrogations des serveurs de temps atomiques...");
+        const serveursNTP = [
+            "https://worldtimeapi.org/api/timezone/Etc/UTC",
+            "https://timeapi.io/api/time/current/zone?timeZone=UTC"
+        ];
 
-            for (let url of serveursNTP) {
-                try {
-                    let t0 = Date.now();
-                    let response = await fetch(url, { cache: 'no-store' });
-                    if (response.ok) {
-                        let data = await response.json();
-                        let t1 = Date.now();
-                        let latenceReseau = (t1 - t0) / 2; // Estimation du temps de trajet aller simple
-                        
-                        let tempsAtomiqueReelMS = 0;
-                        if (data.datetime) tempsAtomiqueReelMS = new Date(data.datetime).getTime();
-                        else if (data.dateTime) tempsAtomiqueReelMS = new Date(data.dateTime).getTime();
-
-                        if (tempsAtomiqueReelMS > 0) {
-                            // Calcul du décalage exact de la machine de l'utilisateur
-                            deltaTempsAtomiqueMS = (tempsAtomiqueReelMS + latenceReseau) - t1;
-                            
-                            document.getElementById('kpi-offset').innerText = `${(deltaTempsAtomiqueMS / 1000).toFixed(3)}s`;
-                            if (Math.abs(deltaTempsAtomiqueMS) > 1000) {
-                                document.getElementById('kpi-offset').style.color = "var(--accent-orange)";
-                                ajouterLog(`TIME : Horloge locale décalée de ${(deltaTempsAtomiqueMS/1000).toFixed(3)}s. Correction matérielle active.`, "var(--accent-orange)");
-                            } else {
-                                ajouterLog("TIME : Horloge locale saine (<1s d'écart). Synchronisation atomique validée.");
-                            }
-                            return;
-                        }
-                    }
-                } catch (e) {
-                    // Échec d'un serveur, bascule sur le suivant dans la cascade
-                }
-            }
-            ajouterLog("TIME WARN : Serveurs atomiques injoignables ou bloqués. Utilisation de l'heure système locale.", "var(--accent-orange)");
-            document.getElementById('kpi-offset').innerText = "INDISPONIBLE";
-            document.getElementById('kpi-offset').style.color = "var(--accent-orange)";
-        }
-
-        // PROTOCOLE 2 : CAPTURE DU FLUX & IMMUNITÉ EXTENSIONS (ADBLOCK BYPASS)
-        async function chargerDonneesJPL() {
-            ajouterLog("NET : Téléchargement du manifeste d'éphémérides JPL...");
+        for (let url of serveursNTP) {
             try {
-                let response = await fetch(URL_DONNEES_JPL, { cache: 'no-store' });
-                
-                if (!response.ok) throw new Error(`HTTP_ERROR_${response.status}`);
-                
-                let donneesBrutes = await response.json();
-                
-                // Validation stricte du schéma corrigé de la NASA (Doit posséder .az et .alt)
-                if (donneesBrutes.SOLEIL && Array.isArray(donneesBrutes.SOLEIL) && typeof donneesBrutes.SOLEIL[0].az !== 'undefined') {
-                    cachePlanetaireJPL = donneesBrutes;
-                    document.getElementById('kpi-adblock').innerText = "LIVE_STREAM_OK";
-                    document.getElementById('kpi-adblock').style.color = "var(--accent-green)";
-                    ajouterLog("NET : Flux validé syntaxiquement. Verrouillage du mode passif pur.");
-                    initialiserInterface();
-                    return;
-                } else {
-                    throw new Error("SCHEMA_INVALID_RA_DEC_DETECTED");
-                }
+                let t0 = Date.now();
+                let response = await fetch(url, { cache: 'no-store' });
+                if (response.ok) {
+                    let data = await response.json();
+                    let t1 = Date.now();
+                    let latenceReseau = (t1 - t0) / 2;
+                    let tempsAtomiqueReelMS = data.datetime ? new Date(data.datetime).getTime() : new Date(data.dateTime).getTime();
 
-            } catch (error) {
-                // Détection intelligente du blocage réseau provoqué par AdBlock / uBlock Origin
-                if (error.name === 'TypeError' || error.message.includes('fetch') || error.message.includes('HTTP_ERROR_40') || error.message.includes('Failed')) {
-                    document.getElementById('kpi-adblock').innerText = "ADBLOCK_DETECTED";
-                    document.getElementById('kpi-adblock').style.color = "var(--accent-red)";
-                    ajouterLog(`ALERTE : Flux réseau intercepté ou corrompu (${error.message}).`, "var(--accent-red)");
-                    ajouterLog("CONSEIL : Renommez votre fichier en 'manifest.json' sur GitHub ou désactivez uBlock.", "var(--accent-orange)");
-                } else {
-                    ajouterLog(`ERREUR CONFIGURATION : ${error.message}`, "var(--accent-orange)");
+                    if (tempsAtomiqueReelMS > 0) {
+                        deltaTempsAtomiqueMS = (tempsAtomiqueReelMS + latenceReseau) - t1;
+                        document.getElementById('kpi-offset').innerText = `${(deltaTempsAtomiqueMS / 1000).toFixed(3)}s`;
+                        ajouterLog("TIME : Synchronisation atomique validée.");
+                        return;
+                    }
                 }
-                
-                // Activation instantanée de la matrice de secours pour empêcher l'écran noir
-                genererMatriceHorizonsSecours();
-                initialiserInterface();
-            }
+            } catch (e) {}
         }
+        ajouterLog("TIME WARN : Utilisation de l'heure système locale.", "var(--accent-orange)");
+    }
 
-        function boucleCalculSentinela() {
-            if (!cachePlanetaireJPL) return;
-
-            // Application du décalage atomique calculé au démarrage pour obtenir la milliseconde pure
-            let millisecondesAtomiques = Date.now() + deltaTempsAtomiqueMS;
-            let tempsAtomiqueReel = new Date(millisecondesAtomiques);
+    async function chargerDonneesJPL() {
+        ajouterLog("NET : Téléchargement du manifeste Sentinela...");
+        try {
+            let response = await fetch(URL_DONNEES_JPL, { cache: 'no-store' });
+            if (!response.ok) throw new Error(`HTTP_ERROR_${response.status}`);
             
-            // Extraction de l'index temporel exact
-            let minuteAxe = tempsAtomiqueReel.getUTCHours() * 60 + tempsAtomiqueReel.getUTCMinutes();
-            let fractionSeconde = tempsAtomiqueReel.getUTCSeconds() / 60.0;
+            let donneesBrutes = await response.json();
+            
+            // CORRECTION : Acceptation agnostique de n'importe quel format (Matrice ou Fragment unique)
+            if (donneesBrutes && (donneesBrutes.SOLEIL || donneesBrutes.Soleil)) {
+                cachePlanetaireJPL = donneesBrutes;
+                document.getElementById('kpi-adblock').innerText = "LIVE_STREAM_OK";
+                document.getElementById('kpi-adblock').style.color = "var(--accent-green)";
+                ajouterLog("NET : Flux validé et verrouillé.");
+                initialiserInterface();
+                return;
+            } else {
+                throw new Error("SCHEMA_INCONNU");
+            }
+        } catch (error) {
+            document.getElementById('kpi-adblock').innerText = "FALLBACK_ACTIVE";
+            document.getElementById('kpi-adblock').style.color = "var(--accent-orange)";
+            ajouterLog(`NET : Connexion impossible ou format alternatif détecté (${error.message}). Bascule mode hybride.`);
+            genererMatriceHorizonsSecours();
+            initialiserInterface();
+        }
+    }
 
-            // Affichage de l'heure atomique avec les millisecondes à l'écran
-            document.getElementById('kpi-utc').innerText = tempsAtomiqueReel.toISOString().replace("T", " ").replace("Z", " UTC");
+    function boucleCalculSentinela() {
+        if (!cachePlanetaireJPL) return;
 
-            for (let nomAstre in cachePlanetaireJPL) {
-                try {
-                    let dataset = cachePlanetaireJPL[nomAstre];
+        let millisecondesAtomiques = Date.now() + deltaTempsAtomiqueMS;
+        let tempsAtomiqueReel = new Date(millisecondesAtomiques);
+        
+        let minuteAxe = tempsAtomiqueReel.getUTCHours() * 60 + tempsAtomiqueReel.getUTCMinutes();
+        let fractionSeconde = tempsAtomiqueReel.getUTCSeconds() / 60.0;
+
+        document.getElementById('kpi-utc').innerText = tempsAtomiqueReel.toISOString().replace("T", " ").replace("Z", " UTC");
+
+        for (let nomAstre in cachePlanetaireJPL) {
+            try {
+                let dataset = cachePlanetaireJPL[nomAstre];
+                let altitudeFinale = 0;
+                let azimut = 0;
+
+                // CORRECTION : L'analyseur s'adapte dynamiquement au format reçu
+                if (Array.isArray(dataset)) {
+                    // Format 1 : Matrice C++ complète (1440 points)
                     let pA = dataset[minuteAxe];
                     let pB = dataset[(minuteAxe + 1) % dataset.length];
                     if (!pA || !pB) continue;
 
-                    // Interpolation temporelle linéaire précise à la milliseconde
-                    let altitudeFinale = pA.alt + (pB.alt - pA.alt) * fractionSeconde;
-                    let diffAz = pB.az - pA.az;
+                    let altA = (pA.alt !== undefined) ? pA.alt : pA.h;
+                    let altB = (pB.alt !== undefined) ? pB.alt : pB.h;
+                    altitudeFinale = altA + (altB - altA) * fractionSeconde;
+
+                    let azA = (pA.az !== undefined) ? pA.az : pA.Az;
+                    let azB = (pB.az !== undefined) ? pB.az : pB.Az;
+                    let diffAz = azB - azA;
                     if (diffAz > 180) diffAz -= 360;
                     if (diffAz < -180) diffAz += 360;
-                    let azimut = (pA.az + diffAz * fractionSeconde + 360) % 360;
-
-                    // Commande graphique des aiguilles SVG (ZÉRO CALCUL LOCAL)
-                    const line = document.getElementById(`ptr-${nomAstre}`);
-                    if (line) {
-                        line.setAttribute("transform", `rotate(${azimut} 200 200)`);
-                        if (altitudeFinale < 0) {
-                            line.style.opacity = "0.12"; line.setAttribute("y2", "192");
-                        } else {
-                            line.style.opacity = "1";
-                            let rayonRendu = ((90 - altitudeFinale) / 90) * 160;
-                            line.setAttribute("y2", (200 - rayonRendu).toString());
-                        }
-                    }
-                    const valSpan = document.getElementById(`val-${nomAstre}`);
-                    if (valSpan) {
-                        valSpan.innerHTML = `h: ${altitudeFinale.toFixed(3)}° | Az: ${azimut.toFixed(2)}° ${altitudeFinale < 0 ? '⧗' : '✦'}`;
-                    }
-                } catch(e) {}
-            }
-        }
-
-        function genererMatriceHorizonsSecours() {
-            let matrice = {};
-            const presets = { "SOLEIL": { azMoy: 180, altMoy: 25 }, "LUNE": { azMoy: 120, altMoy: 35 } };
-            for (let astre in presets) {
-                matrice[astre] = [];
-                for (let m = 0; m < 1440; m++) {
-                    matrice[astre].push({ az: (presets[astre].azMoy + m * 0.25) % 360, alt: presets[astre].altMoy + 10 * Math.sin(m/100) });
+                    azimut = (azA + diffAz * fractionSeconde + 360) % 360;
+                } else if (dataset && typeof dataset === 'object') {
+                    // Format 2 : Fragment instantané / Statique (ex: h et Az)
+                    altitudeFinale = (dataset.alt !== undefined) ? dataset.alt : dataset.h;
+                    azimut = (dataset.az !== undefined) ? dataset.az : dataset.Az;
                 }
-            }
-            cachePlanetaireJPL = matrice;
+
+                const line = document.getElementById(`ptr-${nomAstre}`);
+                if (line) {
+                    line.setAttribute("transform", `rotate(${azimut} 200 200)`);
+                    if (altitudeFinale < 0) {
+                        line.style.opacity = "0.12"; line.setAttribute("y2", "192");
+                    } else {
+                        line.style.opacity = "1";
+                        let rayonRendu = ((90 - altitudeFinale) / 90) * 160;
+                        line.setAttribute("y2", (200 - rayonRendu).toString());
+                    }
+                }
+                const valSpan = document.getElementById(`val-${nomAstre}`);
+                if (valSpan) {
+                    valSpan.innerHTML = `h: ${altitudeFinale.toFixed(2)}° | Az: ${azimut.toFixed(1)}° ${altitudeFinale < 0 ? '⧗' : '✦'}`;
+                }
+            } catch(e) {}
         }
+    }
 
-        function initialiserInterface() {
-            const group = document.getElementById('pointers-group');
-            const legend = document.getElementById('legend');
-            group.innerHTML = ""; legend.innerHTML = "";
-            for (let nomAstre in cachePlanetaireJPL) {
-                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                line.setAttribute("id", `ptr-${nomAstre}`);
-                line.setAttribute("x1", "200"); line.setAttribute("y1", "200");
-                line.setAttribute("x2", "200"); line.setAttribute("y2", "40");
-                line.setAttribute("stroke", COULEURS[nomAstre] || '#fff');
-                line.setAttribute("stroke-width", nomAstre === "SOLEIL" ? "4" : "2.5");
-                line.setAttribute("class", "pointer");
-                group.appendChild(line);
-
-                const div = document.createElement('div'); div.className = 'legend-item';
-                div.style.borderLeft = `4px solid ${COULEURS[nomAstre] || '#fff'}`;
-                div.innerHTML = `<span><strong>${nomAstre}</strong></span><span id="val-${nomAstre}">...</span>`;
-                legend.appendChild(div);
+    function genererMatriceHorizonsSecours() {
+        let matrice = {};
+        const presets = { "SOLEIL": { azMoy: 180, altMoy: 25 }, "LUNE": { azMoy: 120, altMoy: 35 } };
+        for (let astre in presets) {
+            matrice[astre] = [];
+            for (let m = 0; m < 1440; m++) {
+                matrice[astre].push({ az: (presets[astre].azMoy + m * 0.25) % 360, alt: presets[astre].altMoy + 10 * Math.sin(m/100) });
             }
         }
+        cachePlanetaireJPL = matrice;
+    }
 
-        // INITIALISATION SÉQUENTIELLE SÉCURISÉE
-        (async () => {
-            ajouterLog("SYS : Démarrage de la console de supervision.");
-            // 1. Interroger le temps atomique pour calibrer l'écart temporel
-            await synchroniserHorlogeAtomique();
-            // 2. Lancer la boucle graphique immédiatement (tourne sur l'heure corrigée)
-            setInterval(boucleCalculSentinela, 150);
-            // 3. Charger le fichier distant avec la protection AdBlock
-            setTimeout(chargerDonneesJPL, 200);
-        })();
+    function initialiserInterface() {
+        const group = document.getElementById('pointers-group');
+        const legend = document.getElementById('legend');
+        group.innerHTML = ""; legend.innerHTML = "";
+        for (let nomAstre in cachePlanetaireJPL) {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("id", `ptr-${nomAstre}`);
+            line.setAttribute("x1", "200"); line.setAttribute("y1", "200");
+            line.setAttribute("x2", "200"); line.setAttribute("y2", "40");
+            line.setAttribute("stroke", COULEURS[nomAstre] || '#fff');
+            line.setAttribute("stroke-width", "2.5");
+            line.setAttribute("class", "pointer");
+            group.appendChild(line);
+
+            const div = document.createElement('div'); div.className = 'legend-item';
+            div.style.borderLeft = `4px solid ${COULEURS[nomAstre] || '#fff'}`;
+            div.innerHTML = `<span><strong>${nomAstre}</strong></span><span id="val-${nomAstre}">...</span>`;
+            legend.appendChild(div);
+        }
+    }
+
+    (async () => {
+        ajouterLog("SYS : Initialisation du Core v6.9.");
+        await synchroniserHorlogeAtomique();
+        setInterval(boucleCalculSentinela, 150);
+        setTimeout(chargerDonneesJPL, 200);
+    })();
     </script>
 </body>
 </html>
