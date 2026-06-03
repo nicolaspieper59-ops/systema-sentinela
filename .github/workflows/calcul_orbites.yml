@@ -5,6 +5,10 @@ on:
     - cron: '0 */6 * * *'
   workflow_dispatch:
 
+# CORRECTIF CRITIQUE : Donne explicitement les droits d'écriture au jeton d'action
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
