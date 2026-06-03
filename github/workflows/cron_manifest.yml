@@ -1,0 +1,29 @@
+name: Regénération Environnementale Tempête et Espace
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # S'exécute automatiquement toutes les 6 heures (Météo dynamique)
+  workflow_dispatch:      # Permet de forcer manuellement le rafraîchissement depuis GitHub
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Connexion au dépôt
+        uses: actions/checkout@v4
+
+      - name: Lancement de Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Fusion NASA et Satellites Météo
+        run: python calculer_orbites.py
+
+      - name: Déploiement Synchrone
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "Mise à jour Télémétrie Espace-Météo (Zéro-Termux)" || echo "Aucun changement"
+          git push
