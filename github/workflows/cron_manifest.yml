@@ -2,17 +2,17 @@ name: Regénération Environnementale Tempête et Espace
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # S'exécute automatiquement toutes les 6 heures (Météo dynamique)
-  workflow_dispatch:      # Permet de forcer manuellement le rafraîchissement depuis GitHub
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    
-    # CORRECTIF SÉCURITÉ : Autorise explicitement GitHub Actions à modifier et pousser des fichiers
-    permissions:
-      contents: write
-
     steps:
       - name: Connexion au dépôt
         uses: actions/checkout@v4
@@ -25,14 +25,13 @@ jobs:
       - name: Fusion NASA et Satellites Météo
         run: python calculer_orbites.py
 
-      - name: Déploiement Synchrone
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # CORRECTIF ARBORESCENCE : On indexe le fichier orbites.json généré par Python
-          git add orbites.json
-          
-          # Utilisation de || true pour éviter le crash du pipeline si les données météo sont identiques à 100%
-          git commit -m "Mise à jour Télémétrie Espace-Météo (Zéro-Termux)" || echo "Aucun changement"
-          git push origin HEAD:${{ github.ref }}
+      - name: Configuration de Pages
+        uses: actions/configure-pages@v4
+
+      - name: Téléchargement de l'artefact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Déploiement public
+        uses: actions/deploy-pages@v4
