@@ -169,7 +169,12 @@
     let cachePlanetaireJPL = null;
     let deltaTempsAtomiqueMS = 0; 
     
-    const URL_DONNEES_JPL = `http://localhost:8080/manifest.json?v=${Date.now()}`;
+    // CORRECTION ULTRA-CRITIQUE : Détection de l'origine pour éviter le blocage Mixed Content
+    // Si on est sur GitHub (https), on cherche le manifest local au projet GitHub.
+    // Si on est sur Termux (localhost), on interroge le serveur C++.
+    const URL_DONNEES_JPL = window.location.hostname.includes("github.io") 
+        ? "manifest.json" // Chemin relatif pour GitHub Pages
+        : `/manifest.json?v=${Date.now()}`; // Chemin pour le serveur C++ Termux
     
     const COULEURS = {
         "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "MERCURE": "#64748b",
@@ -214,14 +219,13 @@
     }
 
     async function chargerDonneesJPL() {
-        ajouterLog("NET : Téléchargement du manifeste Sentinela...");
+        ajouterLog(`NET : Téléchargement du manifeste depuis ${URL_DONNEES_JPL}...`);
         try {
             let response = await fetch(URL_DONNEES_JPL, { cache: 'no-store' });
             if (!response.ok) throw new Error(`HTTP_ERROR_${response.status}`);
             
             let donneesBrutes = await response.json();
             
-            // CORRECTION : Acceptation agnostique de n'importe quel format (Matrice ou Fragment unique)
             if (donneesBrutes && (donneesBrutes.SOLEIL || donneesBrutes.Soleil)) {
                 cachePlanetaireJPL = donneesBrutes;
                 document.getElementById('kpi-adblock').innerText = "LIVE_STREAM_OK";
@@ -235,7 +239,7 @@
         } catch (error) {
             document.getElementById('kpi-adblock').innerText = "FALLBACK_ACTIVE";
             document.getElementById('kpi-adblock').style.color = "var(--accent-orange)";
-            ajouterLog(`NET : Connexion impossible ou format alternatif détecté (${error.message}). Bascule mode hybride.`);
+            ajouterLog(`NET : Connexion impossible (${error.message}). Bascule mode hybride.`);
             genererMatriceHorizonsSecours();
             initialiserInterface();
         }
@@ -258,9 +262,7 @@
                 let altitudeFinale = 0;
                 let azimut = 0;
 
-                // CORRECTION : L'analyseur s'adapte dynamiquement au format reçu
                 if (Array.isArray(dataset)) {
-                    // Format 1 : Matrice C++ complète (1440 points)
                     let pA = dataset[minuteAxe];
                     let pB = dataset[(minuteAxe + 1) % dataset.length];
                     if (!pA || !pB) continue;
@@ -276,7 +278,6 @@
                     if (diffAz < -180) diffAz += 360;
                     azimut = (azA + diffAz * fractionSeconde + 360) % 360;
                 } else if (dataset && typeof dataset === 'object') {
-                    // Format 2 : Fragment instantané / Statique (ex: h et Az)
                     altitudeFinale = (dataset.alt !== undefined) ? dataset.alt : dataset.h;
                     azimut = (dataset.az !== undefined) ? dataset.az : dataset.Az;
                 }
@@ -315,6 +316,7 @@
     function initialiserInterface() {
         const group = document.getElementById('pointers-group');
         const legend = document.getElementById('legend');
+        if (!group || !legend) return;
         group.innerHTML = ""; legend.innerHTML = "";
         for (let nomAstre in cachePlanetaireJPL) {
             const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -334,7 +336,7 @@
     }
 
     (async () => {
-        ajouterLog("SYS : Initialisation du Core v6.9.");
+        ajouterLog("SYS : Initialisation du Core v6.11.");
         await synchroniserHorlogeAtomique();
         setInterval(boucleCalculSentinela, 150);
         setTimeout(chargerDonneesJPL, 200);
