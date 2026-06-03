@@ -48,7 +48,7 @@
         <div style="display: flex; flex-direction: column; gap: 15px;">
             <div class="kpi-grid">
                 <div class="kpi"><span class="kpi-title">Filtre Cinétique</span><span class="kpi-value" id="kpi-filtre" style="color: var(--accent-green);">STABLE</span></div>
-                <div class="kpi"><span class="kpi-title">Maille Géo (AuroraMap)</span><span class="kpi-value" id="kpi-pos">---</span></div>
+                <div class="kpi"><span class="kpi-title">Maille Géo (AuroraMap)</span><span class="kpi-value" id="kpi-pos">43.28N / 5.36E / 100m</span></div>
                 <div class="kpi full"><span class="kpi-title">Horloge Monotone Absolue (Ancrée NTP)</span><span class="kpi-value" id="kpi-time" style="color: var(--accent-blue);">Synchronisation...</span></div>
             </div>
             <div id="legend"></div>
@@ -59,40 +59,52 @@
         let baseTempsAtomiqueMS = 0;
         let referencePerformanceMS = 0;
         let horlogePrete = false;
+        let decalageSystemeMS = 0; 
 
         let lastValidPos = { lat: 43.28, lon: 5.36, alt: 100 };
         const ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" };
         const COULEURS = { "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "JUPITER": "#fb923c" };
 
+        // Émancipation de l'heure système par lecture de la télémétrie du fichier d'orbites
         async function synchroniserHorlogeUniverselle() {
             try {
                 let t0 = performance.now();
-                // Le paramètre ?_=[timestamp] force GitHub Pages à ignorer son cache et fournir le fichier réel
-        let res = await fetch(`./orbites.json?_=${Date.now()}`, { cache: 'no-store' });
-                if (res.ok) {
-                    let data = await res.json();
-                    let latenceIntersection = (performance.now() - t0) / 2;
-                    baseTempsAtomiqueMS = new Date(data.dateTime).getTime() + latenceIntersection;
-                    referencePerformanceMS = performance.now();
-                    horlogePrete = true;
-                    return;
+                let res = await fetch(`./orbites.json?v=${Date.now()}`, { cache: 'no-store' });
+                if (!res.ok) {
+                    res = await fetch(`./manifest.json?v=${Date.now()}`, { cache: 'no-store' });
                 }
-            } catch (e) {}
+
+                if (res.ok) {
+                    let enveloppe = await res.json();
+                    let latenceReseau = (performance.now() - t0) / 2;
+                    
+                    if (enveloppe.TIMESTAMP_REF) {
+                        let tempsServeurReel = enveloppe.TIMESTAMP_REF + latenceReseau;
+                        decalageSystemeMS = tempsServeurReel - Date.now();
+                        baseTempsAtomiqueMS = tempsServeurReel;
+                        referencePerformanceMS = performance.now();
+                        horlogePrete = true;
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.warn("Échec de synchronisation via matrice. Repli sur l'horloge système locale.");
+            }
             baseTempsAtomiqueMS = Date.now();
             referencePerformanceMS = performance.now();
             horlogePrete = true;
         }
 
+        // Boucle haute fréquence d'affichage de l'horloge calibrée
         setInterval(() => {
             if (!horlogePrete) return;
-            let millisecondesReelles = baseTempsAtomiqueMS + (performance.now() - referencePerformanceMS);
+            let millisecondesReelles = Date.now() + decalageSystemeMS;
             let tempsAtomiqueReel = new Date(millisecondesReelles);
             document.getElementById('kpi-time').innerText = tempsAtomiqueReel.toISOString().replace("T"," ").replace("Z"," UTC");
         }, 100);
 
         function piloterGeolocalisation() {
             if (!navigator.geolocation) {
-                // Forçage de l'appel initial si pas de GPS opérationnel immédiat
                 if (horlogePrete) interrogerJPL();
                 return;
             }
@@ -113,92 +125,64 @@
                 document.getElementById('kpi-filtre').style.color = "var(--accent-green)";
                 document.getElementById('kpi-pos').innerText = `${lastValidPos.lat}N / ${lastValidPos.lon}E / ${lastValidPos.alt}m`;
                 
-                if (horlogePrete) interrogerJPL();
+                interrogerJPL();
             }, (err) => {
-                // En cas de refus/erreur GPS, utilisation des coordonnées par défaut
                 document.getElementById('kpi-pos').innerText = `${lastValidPos.lat}N / ${lastValidPos.lon}E / ${lastValidPos.alt}m`;
-                if (horlogePrete) interrogerJPL();
+                interrogerJPL();
             }, { enableHighAccuracy: true });
         }
 
-
-async function interrogerJPL() {
-    if (!horlogePrete) return;
-    
-    let millisecondesReelles = baseTempsAtomiqueMS + (performance.now() - referencePerformanceMS);
-    let nowObj = new Date(millisecondesReelles);
-    
-    let heureUTC = String(nowObj.getUTCHours()).padStart(2, '0');
-    let minuteUTC = String(nowObj.getUTCMinutes()).padStart(2, '0');
-    let cleMinute = `${heureUTC}:${minuteUTC}`;
-
-    try {
-        // Tente d'abord de lire manifest.json (le fichier généré à l'origine par votre Python)
-        let res = await fetch(`./manifest.json?v=${Date.now()}`, { cache: 'no-store' });
-        
-        // Si manifest.json n'est pas trouvé, tente un repli sur orbites.json
-        if (!res.ok) {
-            res = await fetch(`./orbites.json?v=${Date.now()}`, { cache: 'no-store' });
-        }
-
-        if (res.ok) {
-            let baseDonnees = await res.json();
+        async function interrogerJPL() {
+            if (!horlogePrete) return;
             
-            for (let name in ASTRES) {
-                if (baseDonnees[name] && baseDonnees[name][cleMinute]) {
-                    let donneesAstre = baseDonnees[name][cleMinute]; 
-                    let az = donneesAstre[0];
-                    let alt = donneesAstre[1];
+            let millisecondesReelles = Date.now() + decalageSystemeMS;
+            let nowObj = new Date(millisecondesReelles);
+            
+            let heureUTC = String(nowObj.getUTCHours()).padStart(2, '0');
+            let minuteUTC = String(nowObj.getUTCMinutes()).padStart(2, '0');
+            let cleMinute = `${heureUTC}:${minuteUTC}`;
 
-                    const ptr = document.getElementById(`ptr-${name}`);
-                    if (ptr) {
-                        ptr.setAttribute("transform", `rotate(${az} 200 200)`);
-                        ptr.style.opacity = alt < 0 ? "0.15" : "1";
-                    }
+            try {
+                let res = await fetch(`./orbites.json?v=${Date.now()}`, { cache: 'no-store' });
+                if (!res.ok) {
+                    res = await fetch(`./manifest.json?v=${Date.now()}`, { cache: 'no-store' });
+                }
+
+                if (res.ok) {
+                    let enveloppe = await res.json();
                     
-                    const txt = document.getElementById(`val-${name}`);
-                    if (txt) {
-                        txt.innerHTML = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}° ${alt < 0 ? '⧗' : '✦'}`;
+                    // Ciblage de la sous-structure 'DONNEES' exportée par le script Python professionnel
+                    let baseDonnees = enveloppe.DONNEES ? enveloppe.DONNEES : enveloppe;
+                    
+                    for (let name in ASTRES) {
+                        if (baseDonnees[name] && baseDonnees[name][cleMinute]) {
+                            let donneesAstre = baseDonnees[name][cleMinute]; 
+                            let az = donneesAstre[0];
+                            let alt = donneesAstre[1];
+
+                            const ptr = document.getElementById(`ptr-${name}`);
+                            if (ptr) {
+                                ptr.setAttribute("transform", `rotate(${az} 200 200)`);
+                                ptr.style.opacity = alt < 0 ? "0.15" : "1";
+                            }
+                            
+                            const txt = document.getElementById(`val-${name}`);
+                            if (txt) {
+                                txt.innerHTML = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}° ${alt < 0 ? '⧗' : '✦'}`;
+                            }
+                        } else {
+                            document.getElementById(`val-${name}`).innerText = "Minute non indexée";
+                        }
                     }
                 } else {
-                    document.getElementById(`val-${name}`).innerText = "Minute non indexée";
+                    for (let name in ASTRES) { document.getElementById(`val-${name}`).innerText = `Erreur HTTP ${res.status}`; }
                 }
-            }
-        } else {
-            for (let name in ASTRES) { document.getElementById(`val-${name}`).innerText = "Matrice Introuvable (404)"; }
-        }
-    } catch (e) {
-        for (let name in ASTRES) { document.getElementById(`val-${name}`).innerText = "Erreur de Structure JSON"; }
-    }
-        }
-        
-        function parseJPLData(name, text) {
-            if (!text) return;
-            let idx = text.indexOf("$$SOE");
-            if (idx === -1) return;
-            
-            let cleanText = text.substring(idx + 5).trim();
-            let lines = cleanText.split(/\r?\n/);
-            if (lines.length === 0) return;
-            
-            let cols = lines[0].trim().split(/\s+/);
-            if (cols.length < 5) return;
-            
-            let az = parseFloat(cols[3]);
-            let alt = parseFloat(cols[4]);
-
-            const ptr = document.getElementById(`ptr-${name}`);
-            if (ptr) {
-                ptr.setAttribute("transform", `rotate(${az} 200 200)`);
-                ptr.style.opacity = alt < 0 ? "0.15" : "1";
-            }
-            
-            const txt = document.getElementById(`val-${name}`);
-            if (txt) {
-                txt.innerHTML = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}° ${alt < 0 ? '⧗' : '✦'}`;
+            } catch (e) {
+                for (let name in ASTRES) { document.getElementById(`val-${name}`).innerText = "Erreur Dépaquetage JSON"; }
             }
         }
 
+        // Initialisation de la couche graphique du Radar SVG
         const g = document.getElementById('pointers'), leg = document.getElementById('legend');
         for (let name in ASTRES) {
             let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -210,13 +194,15 @@ async function interrogerJPL() {
             line.setAttribute("class", "pointer");
             g.appendChild(line);
 
-            leg.innerHTML += `<div class="legend-item"><span style="color:${COULEURS[name]}">■ <strong>${name}</strong></span><span id="val-${name}">Calcul...</span></div>`;
+            leg.innerHTML += `<div class="legend-item"><span style="color:${COULEURS[name]}">■ <strong>${name}</strong></span><span id="val-${name}">Initialisation...</span></div>`;
         }
 
+        // Cycle d'allumage principal
         (async () => {
             await synchroniserHorlogeUniverselle();
             piloterGeolocalisation();
-            setInterval(interrogerJPL, 120000);
+            // Rafraîchissement automatique toutes les minutes de l'état des positions locales
+            setInterval(interrogerJPL, 60000);
         })();
     </script>
 </body>
