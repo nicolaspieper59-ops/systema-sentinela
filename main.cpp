@@ -245,11 +245,17 @@ int main() {
                     html_body = "<html><body><h1>SYSTEMA SENTINELA Engine Online</h1></body></html>";
                 }
 
-                std::string reponse = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n"
-                                      "Content-Length: " + std::to_string(html_body.length()) + "\r\n"
-                                      "Access-Control-Allow-Origin: *\r\n"
-                                      "Connection: close\r\n\r\n" + html_body;
-                write(new_socket, reponse.c_str(), reponse.length());
+                else if (requete.find("GET /manifest.json") != std::string::npos) {
+    // Ajout explicite des entêtes CORS de sécurité pour autoriser le script HTML à lire le flux
+    std::string reponse = "HTTP/1.1 200 OK\r\n"
+                          "Content-Type: application/json; charset=UTF-8\r\n"
+                          "Content-Length: " + std::to_string(json_cache.length()) + "\r\n"
+                          "Access-Control-Allow-Origin: *\r\n"
+                          "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
+                          "Access-Control-Allow-Headers: *\r\n"
+                          "Connection: close\r\n\r\n" + json_cache;
+    write(new_socket, reponse.c_str(), reponse.length());
+                }
             }
             close(new_socket);
         }
