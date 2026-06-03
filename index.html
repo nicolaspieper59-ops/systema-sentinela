@@ -61,15 +61,12 @@
         let horlogePrete = false;
         let decalageSystemeMS = 0; 
 
-        // Stockage local de la matrice (évite les fetchs réseau intempestifs)
         let matriceEpheremidesCachee = null;
 
         let lastValidPos = { lat: 43.28, lon: 5.36, alt: 100 };
         const ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" };
         const COULEURS = { "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "JUPITER": "#fb923c" };
 
-        // Synchronisation et chargement de la base de données orbitale
-       // Synchronisation et chargement de la base de données orbitale
         async function initialiserComposantsReseau() {
             try {
                 const cacheBuster = Date.now();
@@ -81,45 +78,38 @@
                 }
 
                 if (res.ok) {
-                    // 1. Calcul du décalage de l'horloge
                     let enteteDate = res.headers.get("Date");
                     let tempsServeurReel = enteteDate ? Date.parse(enteteDate) : Date.now();
                     decalageSystemeMS = tempsServeurReel - Date.now();
 
-                    // 2. Hydratation de la matrice mémoire
                     let enveloppe = await res.json();
                     matriceEpheremidesCachee = enveloppe.DONNEES ? enveloppe.DONNEES : enveloppe;
-                    console.log("[SYSTEMA] Matrice chargée avec succès en mémoire vive.");
+                    console.log("[SYSTEMA] Matrice chargée en mémoire vive.");
                 } else {
-                    console.error("[SYSTEMA] Fichiers introuvables (404). Utilisation du temps local standard.");
+                    console.error("[SYSTEMA] Erreur 404. Utilisation du temps local standard.");
                     decalageSystemeMS = 0;
                 }
             } catch (e) {
-                console.error("[CRITICAL] Échec de l'initialisation réseau :", e);
+                console.error("[CRITICAL] Panne réseau :", e);
                 decalageSystemeMS = 0;
             } finally {
-                // GARANTIE SÉCURITÉ : Quoi qu'il arrive (Succès, 404, ou Panne), on démarre l'horloge
                 horlogePrete = true;
             }
-                        }
+        }
 
-        // Boucle d'affichage et de pointage ultra-rapide (100ms) - ZÉRO APPEL RÉSEAU
+        // Boucle de rendu de haute précision (100ms)
         setInterval(() => {
             if (!horlogePrete) return;
             
-            // Calcul du temps absolu stabilisé
             let millisecondesReelles = Date.now() + decalageSystemeMS;
             let nowObj = new Date(millisecondesReelles);
             
-            // Mise à jour de l'interface horaire
             document.getElementById('kpi-time').innerText = nowObj.toISOString().replace("T"," ").replace("Z"," UTC");
 
-            // Extraction des clés UTC conformes aux standards NASA UT
             let heureUTC = String(nowObj.getUTCHours()).padStart(2, '0');
             let minuteUTC = String(nowObj.getUTCMinutes()).padStart(2, '0');
             let cleMinute = `${heureUTC}:${minuteUTC}`;
 
-            // Calcul cinématique direct depuis la RAM
             if (matriceEpheremidesCachee) {
                 for (let name in ASTRES) {
                     if (matriceEpheremidesCachee[name] && matriceEpheremidesCachee[name][cleMinute]) {
@@ -127,20 +117,19 @@
                         let az = donneesAstre[0];
                         let alt = donneesAstre[1];
 
-                        // Pilotage graphique du vecteur SVG
                         const ptr = document.getElementById(`ptr-${name}`);
                         if (ptr) {
                             ptr.setAttribute("transform", `rotate(${az} 200 200)`);
-                            ptr.style.opacity = alt < 0 ? "0.15" : "1"; // Atténuation si l'astre est sous l'horizon
+                            ptr.style.opacity = alt < 0 ? "0.15" : "1";
                         }
                         
-                        // Mise à jour des télémétries
                         const txt = document.getElementById(`val-${name}`);
                         if (txt) {
-                            txt.innerHTML = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}° ${alt < 0 ? '⧗ (Sous l'horizon)' : '✦ (Visible)'}`;
+                            // CORRECTIF APOS : Chaînes sécurisées par guillemets doubles
+                            txt.innerHTML = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}° ${alt < 0 ? "⧗ (Sous l'horizon)" : "✦ (Visible)"}`;
                         }
                     } else {
-                        document.getElementById(`val-${name}`).innerText = `Clé UTC ${cleMinute} manquante dans la matrice`;
+                        document.getElementById(`val-${name}`).innerText = `Clé UTC ${cleMinute} absente`;
                     }
                 }
             }
@@ -168,7 +157,6 @@
             }, { enableHighAccuracy: true });
         }
 
-        // Initialisation de la structure graphique du Radar SVG
         const g = document.getElementById('pointers'), leg = document.getElementById('legend');
         for (let name in ASTRES) {
             let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -183,14 +171,11 @@
             leg.innerHTML += `<div class="legend-item"><span style="color:${COULEURS[name]}">■ <strong>${name}</strong></span><span id="val-${name}">Calcul cinématique...</span></div>`;
         }
 
-        // Cycle d'allumage principal
         (async () => {
             await initialiserComposantsReseau();
             piloterGeolocalisation();
-            
-            // Rechargement de sécurité de la matrice toutes les heures (60 minutes)
             setInterval(initialiserComposantsReseau, 3600000);
         })();
     </script>
 </body>
-    </html>
+</html>
