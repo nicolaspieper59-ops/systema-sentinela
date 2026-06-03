@@ -121,58 +121,53 @@
         }
 
         async function interrogerJPL() {
-            if (!horlogePrete) return;
+    // Calcul de la clé de temps (Heure et Minute) basée sur l'horloge monotone
+    let millisecondesReelles = baseTempsAtomiqueMS + (performance.now() - referencePerformanceMS);
+    let nowObj = new Date(millisecondesReelles);
+    
+    // Format clé : "HH:MM" pour rechercher dans votre base locale
+    let cleMinute = String(nowObj.getUTCHours()).padStart(2, '0') + ":" + 
+                    String(nowObj.getUTCMinutes()).padStart(2, '0');
+
+    try {
+        // Lecture du fichier local généré par votre script calculer_orbites.py
+        // Garanti sans erreur CORS car stocké sur le même domaine GitHub Pages
+        let res = await fetch("./manifest.json", { cache: 'no-store' });
+        if (res.ok) {
+            let baseDonnees = await res.json();
             
-            let millisecondesReelles = baseTempsAtomiqueMS + (performance.now() - referencePerformanceMS);
-            let nowObj = new Date(millisecondesReelles);
-            
-            let dateStr = nowObj.getUTCFullYear() + "-" + 
-                          String(nowObj.getUTCMonth() + 1).padStart(2, '0') + "-" + 
-                          String(nowObj.getUTCDate()).padStart(2, '0') + " " + 
-                          String(nowObj.getUTCHours()).padStart(2, '0') + ":" + 
-                          String(nowObj.getUTCMinutes()).padStart(2, '0');
-            
-            // Transformation de la boucle en exécution séquentielle stricte pour éviter la saturation du proxy
+            // Extraction et injection des coordonnées locales pour chaque astre
             for (let name in ASTRES) {
-                const parametresJPL = {
-                    format: 'json',
-                    COMMAND: `'${ASTRES[name]}'`,
-                    OBJ_DATA: 'NO',
-                    MAKE_EPHEM: 'YES',
-                    EPHEM_TYPE: 'OBSERVER',
-                    CENTER: 'coord@399',
-                    COORD_TYPE: 'GEODETIC',
-                    SITE_COORD: `'${lastValidPos.lon},${lastValidPos.lat},${lastValidPos.alt/1000}'`,
-                    START_TIME: `'${dateStr}'`,
-                    STOP_TIME: `'${dateStr}'`,
-                    STEP_SIZE: '1m',
-                    QUANTITIES: '4'
-                };
+                if (baseDonnees[name] && baseDonnees[name][cleMinute]) {
+                    let donneesAstre = baseDonnees[name][cleMinute]; // Attend [az, alt]
+                    let az = donneesAstre[0];
+                    let alt = donneesAstre[1];
 
-                const chaineRequete = new URLSearchParams(parametresJPL).toString();
-                let urlDirecteJPL = `https://ssd-api.jpl.nasa.gov/horizons.api?${chaineRequete}`;
-                let urlSecurisee = `https://api.allorigins.win/get?url=${encodeURIComponent(urlDirecteJPL)}`;
-
-                try {
-                    // Utilisation de await à l'intérieur de la boucle pour espacer les requêtes
-                    let res = await fetch(urlSecurisee);
-                    if (res.ok) {
-                        let enveloppe = await res.json();
-                        if (enveloppe && enveloppe.contents) {
-                            let donneesNativesJPL = JSON.parse(enveloppe.contents);
-                            if (donneesNativesJPL && donneesNativesJPL.result) {
-                                parseJPLData(name, donneesNativesJPL.result);
-                            }
-                        }
+                    // Actualisation graphique du radar SVG
+                    const ptr = document.getElementById(`ptr-${name}`);
+                    if (ptr) {
+                        ptr.setAttribute("transform", `rotate(${az} 200 200)`);
+                        ptr.style.opacity = alt < 0 ? "0.15" : "1";
                     }
-                    // Micro-pause de 300ms entre chaque astre pour stabiliser la file réseau
-                    await new Promise(r => setTimeout(r, 300));
-                } catch (e) {
-                    document.getElementById(`val-${name}`).innerText = "Erreur Synchronisation";
+                    
+                    const txt = document.getElementById(`val-${name}`);
+                    if (txt) {
+                        txt.innerHTML = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}° ${alt < 0 ? '⧗' : '✦'}`;
+                    }
+                } else {
+                    document.getElementById(`val-${name}`).innerText = "Hors Matrice";
                 }
             }
         }
-
+    } catch (e) {
+        console.error("Erreur de lecture du manifeste local :", e);
+        for (let name in ASTRES) {
+            document.getElementById(`val-${name}`).innerText = "Erreur Local IO";
+        }
+    }
+        }
+        }
+        
         function parseJPLData(name, text) {
             if (!text) return;
             let idx = text.indexOf("$$SOE");
