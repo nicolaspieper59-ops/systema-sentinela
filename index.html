@@ -120,7 +120,7 @@
             }, { enableHighAccuracy: true });
         }
 
-        async function interrogerJPL() {
+async function interrogerJPL() {
     // Calcul de la clé de temps (Heure et Minute) basée sur l'horloge monotone
     let millisecondesReelles = baseTempsAtomiqueMS + (performance.now() - referencePerformanceMS);
     let nowObj = new Date(millisecondesReelles);
@@ -164,7 +164,6 @@
         for (let name in ASTRES) {
             document.getElementById(`val-${name}`).innerText = "Erreur Local IO";
         }
-    }
         }
         }
         
