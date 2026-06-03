@@ -156,14 +156,15 @@ int main() {
                                "</div>";
 
                 // 2. Construction de la matrice JSON pour l'interface v6.8 (Uniquement SOLEIL et LUNE)
-                if (astre.nom == "SOLEIL" || astre.nom == "LUNE") {
-                    json_flux += "  \"" + astre.nom + "\": {\n";
-                    json_flux += "    \"h\": " + std::to_string(astre.altitude) + ",\n";
-                    json_flux += "    \"Az\": " + std::to_string(astre.azimut) + "\n";
-                    json_flux += "  }";
-                    if (astre.nom == "SOLEIL") json_flux += ",\n"; // Virgule de séparation standard
-                    else json_flux += "\n";
-                }
+                // 2. Construction de la matrice JSON pour l'interface v6.8 (Uniquement SOLEIL et LUNE)
+if (astre.nom == "SOLEIL" || astre.nom == "LUNE") {
+    json_flux += "  \"" + astre.nom + "\": {\n";
+    json_flux += "    \"h\": " + std::to_string(astre.altitude) + ",\n";
+    json_flux += "    \"Az\": " + std::to_string(astre.azimut) + "\n";
+    json_flux += "  }";
+    if (astre.nom == "SOLEIL") json_flux += ",\n";
+    else json_flux += "\n";
+}
             }
             json_flux += "}";
 
