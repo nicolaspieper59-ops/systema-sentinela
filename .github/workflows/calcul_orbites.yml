@@ -1,0 +1,29 @@
+name: Synchronisation Orbitale NASA JPL
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du dépôt
+        uses: actions/checkout@v4
+
+      - name: Configuration de Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Calcul des éphémérides et correction atmosphérique
+        run: python calculer_orbites.py
+
+      - name: Déploiement de la nouvelle matrice
+        run: |
+          git config --global user.name "Sentinela-Automation"
+          git config --global user.email "sentinela@auroramap.local"
+          git add orbites.json
+          git commit -m "Compilateur Cinématique : Mise à jour de la matrice JPL [Marseille]" || exit 0
+          git push
