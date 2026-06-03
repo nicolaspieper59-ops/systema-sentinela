@@ -71,16 +71,14 @@
         function piloterGeolocalisation() {
             if (!navigator.geolocation) return;
             navigator.geolocation.watchPosition((p) => {
-                let speed = p.coords.speed || 0; // Vitesse en m/s
+                let speed = p.coords.speed || 0; 
                 
-                // Si la vitesse dépasse 40 m/s (~144 km/h : accélération de manège ou anomalie EM), on fige la position
                 if (speed > 40) {
                     document.getElementById('kpi-filtre').innerText = "VERROUILLÉ (CINÉTIQUE)";
                     document.getElementById('kpi-filtre').style.color = "var(--accent-orange)";
                     return; 
                 }
 
-                // Application de la maille AuroraMap (arrondi à 2 décimales pour lisser la gigue)
                 lastValidPos.lat = Math.round(p.coords.latitude * 100) / 100;
                 lastValidPos.lon = Math.round(p.coords.longitude * 100) / 100;
                 lastValidPos.alt = Math.round(p.coords.altitude || 0);
@@ -94,77 +92,94 @@
         }
 
         async function interrogerJPL() {
-    let dateStr = new Date(baseTime + (performance.now() - refPerf)).toISOString().slice(0,16).replace("T", " ");
-    
-    for (let name in ASTRES) {
-        // Construction standardisée des paramètres de requêtes requis par la NASA
-        const parametresJPL = {
-            format: 'json',
-            COMMAND: `'${ASTRES[name]}'`,
-            OBJ_DATA: 'NO',
-            MAKE_EPHEM: 'YES',
-            EPHEM_TYPE: 'OBSERVER',
-            CENTER: 'coord@399',
-            COORD_TYPE: 'GEODETIC',
-            SITE_COORD: `'${lastValidPos.lon},${lastValidPos.lat},${lastValidPos.alt/1000}'`,
-            START_TIME: `'${dateStr}'`,
-            STOP_TIME: `'${dateStr}'`,
-            STEP_SIZE: '1m',
-            QUANTITIES: '4'
-        };
+            // Format d'horodatage strict accepté par l'analyseur d'éphémérides de la NASA
+            let nowObj = new Date(baseTime + (performance.now() - refPerf));
+            let dateStr = nowObj.toISOString().slice(0,10) + " " + nowObj.toISOString().slice(11,16);
+            
+            for (let name in ASTRES) {
+                const parametresJPL = {
+                    format: 'json',
+                    COMMAND: `'${ASTRES[name]}'`,
+                    OBJ_DATA: 'NO',
+                    MAKE_EPHEM: 'YES',
+                    EPHEM_TYPE: 'OBSERVER',
+                    CENTER: 'coord@399',
+                    COORD_TYPE: 'GEODETIC',
+                    SITE_COORD: `'${lastValidPos.lon},${lastValidPos.lat},${lastValidPos.alt/1000}'`,
+                    START_TIME: `'${dateStr}'`,
+                    STOP_TIME: `'${dateStr}'`,
+                    STEP_SIZE: '1m',
+                    QUANTITIES: '4'
+                };
 
-        // Encodage automatique et sécurisé pour l'infrastructure réseau HTTPS
-        const chaineRequete = new URLSearchParams(parametresJPL).toString();
-        let urlOfficielleJPL = `https://ssd-api.jpl.nasa.gov/horizons.api?${chaineRequete}`;
-        
-        // Utilisation d'un point d'accès d'échappement CORS alternatif et stable
-        let urlSecurisee = `https://api.allorigins.win/get?url=${encodeURIComponent(urlOfficielleJPL)}`;
+                const chaineRequete = new URLSearchParams(parametresJPL).toString();
+                let urlOfficielleJPL = `https://ssd-api.jpl.nasa.gov/horizons.api?${chaineRequete}`;
+                let urlSecurisee = `https://api.allorigins.win/get?url=${encodeURIComponent(urlOfficielleJPL)}`;
 
-        try {
-            let res = await fetch(urlSecurisee);
-            if (res.ok) {
-                let conteneur = await res.json();
-                // AllOrigins encapsule la réponse dans la propriété "contents"
-                let donneesNativesJPL = JSON.parse(conteneur.contents);
-                parseJPLData(name, donneesNativesJPL.result);
+                try {
+                    let res = await fetch(urlSecurisee);
+                    if (res.ok) {
+                        let conteneur = await res.json();
+                        if (conteneur.contents) {
+                            let donneesNativesJPL = JSON.parse(conteneur.contents);
+                            parseJPLData(name, donneesNativesJPL.result);
+                        }
+                    }
+                } catch (e) {
+                    console.error(`Erreur de liaison réseau pour l'astre ${name} :`, e);
+                }
             }
-        } catch (e) {
-            console.error(`Erreur de liaison réseau pour l'astre ${name} :`, e);
-        }
-    }
         }
 
         function parseJPLData(name, text) {
             if (!text) return;
             let idx = text.indexOf("$$SOE");
             if (idx === -1) return;
-            let line = text.substring(idx + 5).trim().split("\n")[0];
-            let cols = line.trim().split(/\s+/);
+            
+            // Séparation des lignes en éliminant les résidus d'échappement système \r
+            let cleanText = text.substring(idx + 5).trim();
+            let lines = cleanText.split(/\r?\n/);
+            if (lines.length === 0) return;
+            
+            let cols = lines[0].trim().split(/\s+/);
+            if (cols.length < 5) return;
+            
+            // Extraction des valeurs d'angles calculées par Horizons
             let az = parseFloat(cols[3]);
             let alt = parseFloat(cols[4]);
 
-            // Tracé SVG
+            // Tracé et modification graphique du conteneur SVG
             const ptr = document.getElementById(`ptr-${name}`);
             if (ptr) {
                 ptr.setAttribute("transform", `rotate(${az} 200 200)`);
                 ptr.style.opacity = alt < 0 ? "0.15" : "1";
             }
-            document.getElementById(`val-${name}`).innerText = `h: ${alt}° | Az: ${az}°`;
+            
+            const txt = document.getElementById(`val-${name}`);
+            if (txt) {
+                txt.innerText = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}°`;
+            }
         }
 
-        // Init de l'UI
+        // Création dynamique des lignes de visée du radar
         const g = document.getElementById('pointers'), leg = document.getElementById('legend');
         for (let name in ASTRES) {
             let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            line.setAttribute("id", `ptr-${name}`); line.setAttribute("x1", "200"); line.setAttribute("y1", "200");
+            line.setAttribute("id", `ptr-${name}`); 
+            line.setAttribute("x1", "200"); line.setAttribute("y1", "200");
             line.setAttribute("x2", "200"); line.setAttribute("y2", "50");
-            line.setAttribute("stroke", COULEURS[name]); line.setAttribute("stroke-width", "3"); line.className.baseVal = "pointer";
+            line.setAttribute("stroke", COULEURS[name]); 
+            line.setAttribute("stroke-width", "3"); 
+            line.setAttribute("class", "pointer");
             g.appendChild(line);
 
-            leg.innerHTML += `<div class="legend-item"><span style="color:${COULEURS[name]}">■ <strong>${name}</strong></span><span id="val-${name}">---</span></div>`;
+            leg.innerHTML += `<div class="legend-item"><span style="color:${COULEURS[name]}">■ <strong>${name}</strong></span><span id="val-${name}">Calcul...</span></div>`;
         }
 
         piloterGeolocalisation();
+        
+        // Intervalle récursif automatique de rafraîchissement (toutes les 2 minutes)
+        setInterval(interrogerJPL, 120000);
     </script>
 </body>
-                                                                                                              </html>
+</html>
