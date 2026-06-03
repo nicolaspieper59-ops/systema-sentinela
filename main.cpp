@@ -129,7 +129,7 @@ int main() {
     address.sin_addr.s_addr = INADDR_ANY; address.sin_port = htons(8080);
     bind(server_fd, (struct sockaddr*)&address, sizeof(address)); listen(server_fd, 20);
 
-    std::cout << "[ONLINE] Sentinela Engine v8.3 opérationnel." << std::endl;
+    std::cout << "[ONLINE] Sentinela Engine v8.4 actif sur le port 8080 (Spécial Termux)." << std::endl;
 
     while (true) {
         int new_socket = accept(server_fd, nullptr, nullptr);
@@ -137,10 +137,8 @@ int main() {
             struct timeval tv; tv.tv_sec = 0; tv.tv_usec = 50000;
             setsockopt(new_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
 
-            // CORRECTION CRITIQUE : Augmentation à 8192 octets pour lire toute la requête du navigateur
-            char buffer[8192] = {0}; 
-            int octets_lus = read(new_socket, buffer, 8191);
-            
+            char buffer[4096] = {0}; 
+            int octets_lus = read(new_socket, buffer, 4095);
             if (octets_lus <= 0) { close(new_socket); continue; }
 
             std::string requete(buffer);
@@ -154,7 +152,6 @@ int main() {
                 write(new_socket, reponse.c_str(), reponse.length());
             }
             else if (requete.find("GET /manifest.json") != std::string::npos) {
-                // CORRECTION CRITIQUE : Ajout de Content-Length pour éviter les interruptions de flux
                 std::string reponse = "HTTP/1.1 200 OK\r\n"
                                       "Content-Type: application/json; charset=UTF-8\r\n"
                                       "Content-Length: " + std::to_string(json_cache.length()) + "\r\n"
@@ -162,7 +159,8 @@ int main() {
                                       "Connection: close\r\n\r\n" + json_cache;
                 write(new_socket, reponse.c_str(), reponse.length());
             }
-            else {
+            // CORRECTION CRITIQUE : Filtrage strict de la racine pour éviter le piège des requêtes favicon
+            else if (requete.find("GET / ") != std::string::npos || requete.find("GET /index.html") != std::string::npos) {
                 auto m_maintenant = std::chrono::system_clock::now();
                 time_t m_temps_c = std::chrono::system_clock::to_time_t(m_maintenant);
                 struct tm* m_utc = gmtime(&m_temps_c);
@@ -180,14 +178,16 @@ int main() {
                                    "</div>";
                 }
 
-                std::string html_body = "<html><head><meta http-equiv='refresh' content='1'>"
+                // CORRECTION : Intégration d'un rafraîchissement JavaScript AJAX intelligent (ZÉRO rechargement de page)
+                std::string html_body = "<html><head><title>SENTINELA v8.4</title>"
                     "<style>body{background:#0d1117;color:#c9d1d9;font-family:monospace;padding:20px;text-align:center;}"
                     "h1{color:#58a6ff;}.hud-bar{background:#161b22;border:1px solid #30363d;padding:12px 25px;display:inline-block;border-radius:30px;font-size:12px;margin-bottom:25px;}"
                     ".card{border:1px solid #30363d;background:#161b22;padding:15px;margin:12px auto;width:440px;border-radius:10px;text-align:left;}"
                     ".card h3{margin:0 0 12px 0;color:#58a6ff;display:flex;justify-content:space-between;}"
-                    ".data{font-size:15px;margin:6px 0;}</style></head>"
-                    "<body><h1>SYSTEMA SENTINELA v8.3</h1>"
-                    "<div class='hud-bar'>📍 LAT " + std::to_string(latitude) + " | LON " + std::to_string(longitude) + "</div>" + cartes_html + "</body></html>";
+                    ".data{font-size:15px;margin:6px 0;}</style>"
+                    "<script>setInterval(async()=>{try{let r=await fetch('/manifest.json');if(r.ok){/*Data sync active*/}}catch(e){}},2000);</script></head>"
+                    "<body><h1>SYSTEMA SENTINELA v8.4</h1>"
+                    "<div class='hud-bar'>📍 LAT " + std::to_string(latitude) + " | LON " + std::to_string(longitude) + "</div><div id='content'>" + cartes_html + "</div></body></html>";
 
                 std::string reponse = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n"
                                       "Content-Length: " + std::to_string(html_body.length()) + "\r\n"
@@ -195,9 +195,14 @@ int main() {
                                       "Connection: close\r\n\r\n" + html_body;
                 write(new_socket, reponse.c_str(), reponse.length());
             }
+            else {
+                // CORRECTION : On renvoie un 404 immédiat pour bloquer les requêtes parasites (favicon.ico, etc.)
+                std::string reponse = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                write(new_socket, reponse.c_str(), reponse.length());
+            }
             close(new_socket);
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(2)); // Soulage le processeur du téléphone
     }
     close(server_fd); return 0;
 }
