@@ -8,12 +8,3 @@
     "Az": 235.24
   }
 }
-// À insérer dans votre boucle principale pour écraser manifest.json en continu
-std::ofstream file("manifest.json");
-if (file.is_open()) {
-    file << "{\n"
-         << "  \"SOLEIL\": {\"h\": " << alt_soleil << ", \"Az\": " << az_soleil << "},\n"
-         << "  \"LUNE\": {\"h\": " << alt_lune << ", \"Az\": " << az_lune << "}\n"
-         << "}";
-    file.close();
-}
