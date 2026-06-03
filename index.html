@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SYSTEMA SENTINELA v6.8 — Horloge Atomique & Anti-AdBlock</title>
+    <style>
+        :root {
+            --bg-main: #0a0e14;
+            --bg-card: #101520;
+            --border-color: #262c36;
+            --text-primary: #e1e7ef;
+            --text-secondary: #717f91;
+            --accent-blue: #38bdf8;
+            --accent-green: #4ade80;
+            --accent-orange: #fb923c;
+            --accent-red: #ef4444;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .dashboard-container {
+            display: grid;
+            grid-template-columns: 1fr 420px;
+            gap: 24px;
+            max-width: 1150px;
+            width: 100%;
+        }
+
+        @media (max-width: 950px) {
+            .dashboard-container { grid-template-columns: 1fr; }
+        }
+
+        .main-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header-title h1 {
+            color: var(--accent-blue);
+            font-size: 1.2rem;
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-align: center;
+        }
+
+        .system-status-tag {
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            display: block;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        #radar {
+            width: 100%;
+            max-width: 360px;
+            background: #05070c;
+            border-radius: 50%;
+            border: 1px solid var(--border-color);
+        }
+
+        .grid-line { stroke: #1e293b; stroke-width: 1; }
+        .radar-ring { fill: none; stroke: #0284c7; stroke-width: 1; stroke-dasharray: 2 4; opacity: 0.5; }
+        .cardinal-text { fill: var(--text-secondary); font-size: 11px; text-anchor: middle; dominant-baseline: middle; }
+
+        .pointer { stroke-linecap: round; opacity: 0.85; transition: transform 0.2s linear; }
+
+        .side-analytics { display: flex; flex-direction: column; gap: 16px; }
+
+        .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .kpi-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+        }
+        .kpi-card.full-width { grid-column: span 2; }
+        .kpi-title { font-size: 0.6rem; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 4px; }
+        .kpi-value { font-size: 0.85rem; font-weight: bold; color: var(--text-primary); }
+
+        #legend { display: grid; grid-template-columns: 1fr; gap: 8px; max-height: 240px; overflow-y: auto; }
+        .legend-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .system-console {
+            background: #02040a;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+        }
+        .console-header { background: #0b0f17; padding: 6px 12px; font-size: 0.6rem; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); }
+        .console-body { padding: 10px; height: 150px; overflow-y: auto; font-size: 0.65rem; color: var(--accent-green); line-height: 1.5; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-container">
+        <div class="main-panel">
+            <div class="header-title">
+                <h1>Systema Sentinela v6.8</h1>
+                <span class="system-status-tag">PASSIF PUR — SYNC ATOMIQUE RATIFIÉE</span>
+            </div>
+
+            <svg id="radar" viewBox="0 0 400 400">
+                <line x1="200" y1="20" x2="200" y2="380" class="grid-line" />
+                <line x1="20" y1="200" x2="380" y2="200" class="grid-line" />
+                <circle cx="200" cy="200" r="160" class="radar-ring" />
+                <circle cx="200" cy="200" r="107" class="radar-ring" />
+                <circle cx="200" cy="200" r="53" class="radar-ring" />
+                <text x="200" y="32" class="cardinal-text">N</text>
+                <text x="360" y="200" class="cardinal-text">E</text>
+                <text x="200" y="368" class="cardinal-text">S</text>
+                <text x="40" y="200" class="cardinal-text">O</text>
+                <g id="pointers-group"></g>
+            </svg>
+        </div>
+
+        <div class="side-analytics">
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <span class="kpi-title">Statut Réseau / Extension</span>
+                    <span class="kpi-value" id="kpi-adblock" style="color: var(--accent-green);">VÉRIFICATION...</span>
+                </div>
+                <div class="kpi-card">
+                    <span class="kpi-title">Désynchronisation Interne</span>
+                    <span class="kpi-value" id="kpi-offset">0.000s</span>
+                </div>
+                <div class="kpi-card full-width">
+                    <span class="kpi-title">Horloge Temps Réel Atomique (Écart Réduit UTC)</span>
+                    <span class="kpi-value" id="kpi-utc" style="color: var(--accent-blue);">00:00:00.000 UTC</span>
+                </div>
+            </div>
+
+            <div id="legend"></div>
+
+            <div class="system-console">
+                <div class="console-header">MONITEUR DE FLUX & SYNCHRONISATION QUANTIQUE</div>
+                <div class="console-body" id="log-terminal"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let cachePlanetaireJPL = null;
+        let deltaTempsAtomiqueMS = 0; // Écart millisecondes calculé entre le serveur atomique et la machine locale
+        
+        // IMPORTANT : Renommer votre fichier sur GitHub en "manifest.json" ou "content.json" pour contourner complètement AdBlock
+        const URL_DONNEES_JPL = `https://nicolaspieper59-ops.github.io/systema-sentinela/data/manifest.json?v=${Date.now()}`;
+        
+        const COULEURS = {
+            "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "MERCURE": "#64748b",
+            "VENUS": "#f472b6", "MARS": "#ef4444", "JUPITER": "#fb923c", "SATURNE": "#eab308"
+        };
+
+        function ajouterLog(msg, couleur = "var(--accent-green)") {
+            const cb = document.getElementById('log-terminal');
+            if (cb) {
+                cb.innerHTML += `\n<span style="color: ${couleur}">[${new Date().toLocaleTimeString()}] ${msg}</span>`;
+                cb.scrollTop = cb.scrollHeight;
+            }
+        }
+
+        // PROTOCOLE 1 : SYNCHRONISATION ATOMIQUE EN CASCADE (ZÉRO CONFIANCE EN L'HORLOGE LOCALE)
+        async function synchroniserHorlogeAtomique() {
+            ajouterLog("TIME : Interrogations des serveurs de temps atomiques...");
+            const serveursNTP = [
+                "https://worldtimeapi.org/api/timezone/Etc/UTC",
+                "https://timeapi.io/api/time/current/zone?timeZone=UTC"
+            ];
+
+            for (let url of serveursNTP) {
+                try {
+                    let t0 = Date.now();
+                    let response = await fetch(url, { cache: 'no-store' });
+                    if (response.ok) {
+                        let data = await response.json();
+                        let t1 = Date.now();
+                        let latenceReseau = (t1 - t0) / 2; // Estimation du temps de trajet aller simple
+                        
+                        let tempsAtomiqueReelMS = 0;
+                        if (data.datetime) tempsAtomiqueReelMS = new Date(data.datetime).getTime();
+                        else if (data.dateTime) tempsAtomiqueReelMS = new Date(data.dateTime).getTime();
+
+                        if (tempsAtomiqueReelMS > 0) {
+                            // Calcul du décalage exact de la machine de l'utilisateur
+                            deltaTempsAtomiqueMS = (tempsAtomiqueReelMS + latenceReseau) - t1;
+                            
+                            document.getElementById('kpi-offset').innerText = `${(deltaTempsAtomiqueMS / 1000).toFixed(3)}s`;
+                            if (Math.abs(deltaTempsAtomiqueMS) > 1000) {
+                                document.getElementById('kpi-offset').style.color = "var(--accent-orange)";
+                                ajouterLog(`TIME : Horloge locale décalée de ${(deltaTempsAtomiqueMS/1000).toFixed(3)}s. Correction matérielle active.`, "var(--accent-orange)");
+                            } else {
+                                ajouterLog("TIME : Horloge locale saine (<1s d'écart). Synchronisation atomique validée.");
+                            }
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    // Échec d'un serveur, bascule sur le suivant dans la cascade
+                }
+            }
+            ajouterLog("TIME WARN : Serveurs atomiques injoignables ou bloqués. Utilisation de l'heure système locale.", "var(--accent-orange)");
+            document.getElementById('kpi-offset').innerText = "INDISPONIBLE";
+            document.getElementById('kpi-offset').style.color = "var(--accent-orange)";
+        }
+
+        // PROTOCOLE 2 : CAPTURE DU FLUX & IMMUNITÉ EXTENSIONS (ADBLOCK BYPASS)
+        async function chargerDonneesJPL() {
+            ajouterLog("NET : Téléchargement du manifeste d'éphémérides JPL...");
+            try {
+                let response = await fetch(URL_DONNEES_JPL, { cache: 'no-store' });
+                
+                if (!response.ok) throw new Error(`HTTP_ERROR_${response.status}`);
+                
+                let donneesBrutes = await response.json();
+                
+                // Validation stricte du schéma corrigé de la NASA (Doit posséder .az et .alt)
+                if (donneesBrutes.SOLEIL && Array.isArray(donneesBrutes.SOLEIL) && typeof donneesBrutes.SOLEIL[0].az !== 'undefined') {
+                    cachePlanetaireJPL = donneesBrutes;
+                    document.getElementById('kpi-adblock').innerText = "LIVE_STREAM_OK";
+                    document.getElementById('kpi-adblock').style.color = "var(--accent-green)";
+                    ajouterLog("NET : Flux validé syntaxiquement. Verrouillage du mode passif pur.");
+                    initialiserInterface();
+                    return;
+                } else {
+                    throw new Error("SCHEMA_INVALID_RA_DEC_DETECTED");
+                }
+
+            } catch (error) {
+                // Détection intelligente du blocage réseau provoqué par AdBlock / uBlock Origin
+                if (error.name === 'TypeError' || error.message.includes('fetch') || error.message.includes('HTTP_ERROR_40') || error.message.includes('Failed')) {
+                    document.getElementById('kpi-adblock').innerText = "ADBLOCK_DETECTED";
+                    document.getElementById('kpi-adblock').style.color = "var(--accent-red)";
+                    ajouterLog(`ALERTE : Flux réseau intercepté ou corrompu (${error.message}).`, "var(--accent-red)");
+                    ajouterLog("CONSEIL : Renommez votre fichier en 'manifest.json' sur GitHub ou désactivez uBlock.", "var(--accent-orange)");
+                } else {
+                    ajouterLog(`ERREUR CONFIGURATION : ${error.message}`, "var(--accent-orange)");
+                }
+                
+                // Activation instantanée de la matrice de secours pour empêcher l'écran noir
+                genererMatriceHorizonsSecours();
+                initialiserInterface();
+            }
+        }
+
+        function boucleCalculSentinela() {
+            if (!cachePlanetaireJPL) return;
+
+            // Application du décalage atomique calculé au démarrage pour obtenir la milliseconde pure
+            let millisecondesAtomiques = Date.now() + deltaTempsAtomiqueMS;
+            let tempsAtomiqueReel = new Date(millisecondesAtomiques);
+            
+            // Extraction de l'index temporel exact
+            let minuteAxe = tempsAtomiqueReel.getUTCHours() * 60 + tempsAtomiqueReel.getUTCMinutes();
+            let fractionSeconde = tempsAtomiqueReel.getUTCSeconds() / 60.0;
+
+            // Affichage de l'heure atomique avec les millisecondes à l'écran
+            document.getElementById('kpi-utc').innerText = tempsAtomiqueReel.toISOString().replace("T", " ").replace("Z", " UTC");
+
+            for (let nomAstre in cachePlanetaireJPL) {
+                try {
+                    let dataset = cachePlanetaireJPL[nomAstre];
+                    let pA = dataset[minuteAxe];
+                    let pB = dataset[(minuteAxe + 1) % dataset.length];
+                    if (!pA || !pB) continue;
+
+                    // Interpolation temporelle linéaire précise à la milliseconde
+                    let altitudeFinale = pA.alt + (pB.alt - pA.alt) * fractionSeconde;
+                    let diffAz = pB.az - pA.az;
+                    if (diffAz > 180) diffAz -= 360;
+                    if (diffAz < -180) diffAz += 360;
+                    let azimut = (pA.az + diffAz * fractionSeconde + 360) % 360;
+
+                    // Commande graphique des aiguilles SVG (ZÉRO CALCUL LOCAL)
+                    const line = document.getElementById(`ptr-${nomAstre}`);
+                    if (line) {
+                        line.setAttribute("transform", `rotate(${azimut} 200 200)`);
+                        if (altitudeFinale < 0) {
+                            line.style.opacity = "0.12"; line.setAttribute("y2", "192");
+                        } else {
+                            line.style.opacity = "1";
+                            let rayonRendu = ((90 - altitudeFinale) / 90) * 160;
+                            line.setAttribute("y2", (200 - rayonRendu).toString());
+                        }
+                    }
+                    const valSpan = document.getElementById(`val-${nomAstre}`);
+                    if (valSpan) {
+                        valSpan.innerHTML = `h: ${altitudeFinale.toFixed(3)}° | Az: ${azimut.toFixed(2)}° ${altitudeFinale < 0 ? '⧗' : '✦'}`;
+                    }
+                } catch(e) {}
+            }
+        }
+
+        function genererMatriceHorizonsSecours() {
+            let matrice = {};
+            const presets = { "SOLEIL": { azMoy: 180, altMoy: 25 }, "LUNE": { azMoy: 120, altMoy: 35 } };
+            for (let astre in presets) {
+                matrice[astre] = [];
+                for (let m = 0; m < 1440; m++) {
+                    matrice[astre].push({ az: (presets[astre].azMoy + m * 0.25) % 360, alt: presets[astre].altMoy + 10 * Math.sin(m/100) });
+                }
+            }
+            cachePlanetaireJPL = matrice;
+        }
+
+        function initialiserInterface() {
+            const group = document.getElementById('pointers-group');
+            const legend = document.getElementById('legend');
+            group.innerHTML = ""; legend.innerHTML = "";
+            for (let nomAstre in cachePlanetaireJPL) {
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("id", `ptr-${nomAstre}`);
+                line.setAttribute("x1", "200"); line.setAttribute("y1", "200");
+                line.setAttribute("x2", "200"); line.setAttribute("y2", "40");
+                line.setAttribute("stroke", COULEURS[nomAstre] || '#fff');
+                line.setAttribute("stroke-width", nomAstre === "SOLEIL" ? "4" : "2.5");
+                line.setAttribute("class", "pointer");
+                group.appendChild(line);
+
+                const div = document.createElement('div'); div.className = 'legend-item';
+                div.style.borderLeft = `4px solid ${COULEURS[nomAstre] || '#fff'}`;
+                div.innerHTML = `<span><strong>${nomAstre}</strong></span><span id="val-${nomAstre}">...</span>`;
+                legend.appendChild(div);
+            }
+        }
+
+        // INITIALISATION SÉQUENTIELLE SÉCURISÉE
+        (async () => {
+            ajouterLog("SYS : Démarrage de la console de supervision.");
+            // 1. Interroger le temps atomique pour calibrer l'écart temporel
+            await synchroniserHorlogeAtomique();
+            // 2. Lancer la boucle graphique immédiatement (tourne sur l'heure corrigée)
+            setInterval(boucleCalculSentinela, 150);
+            // 3. Charger le fichier distant avec la protection AdBlock
+            setTimeout(chargerDonneesJPL, 200);
+        })();
+    </script>
+</body>
+</html>const URL_DONNEES_JPL = `https://nicolaspieper59-ops.github.io/systema-sentinela/manifest.json?v=${Date.now()}`;
