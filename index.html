@@ -121,50 +121,53 @@
         }
 
 async function interrogerJPL() {
-    // Calcul de la clé de temps (Heure et Minute) basée sur l'horloge monotone
+    if (!horlogePrete) return;
+    
     let millisecondesReelles = baseTempsAtomiqueMS + (performance.now() - referencePerformanceMS);
     let nowObj = new Date(millisecondesReelles);
     
-    // Format clé : "HH:MM" pour rechercher dans votre base locale
-    let cleMinute = String(nowObj.getUTCHours()).padStart(2, '0') + ":" + 
-                    String(nowObj.getUTCMinutes()).padStart(2, '0');
+    // Extraction de la clé de l'heure courante au format "HH:MM"
+    let heureUTC = String(nowObj.getUTCHours()).padStart(2, '0');
+    let minuteUTC = String(nowObj.getUTCMinutes()).padStart(2, '0');
+    let cleMinute = `${heureUTC}:${minuteUTC}`;
 
     try {
-        // Lecture du fichier local généré par votre script calculer_orbites.py
-        // Garanti sans erreur CORS car stocké sur le même domaine GitHub Pages
-        let res = await fetch("./manifest.json", { cache: 'no-store' });
+        // Lecture du fichier de positionnement local généré par le script Python
+        let res = await fetch("./orbites.json", { cache: 'no-store' });
         if (res.ok) {
             let baseDonnees = await res.json();
             
-            // Extraction et injection des coordonnées locales pour chaque astre
             for (let name in ASTRES) {
                 if (baseDonnees[name] && baseDonnees[name][cleMinute]) {
-                    let donneesAstre = baseDonnees[name][cleMinute]; // Attend [az, alt]
+                    let donneesAstre = baseDonnees[name][cleMinute]; 
                     let az = donneesAstre[0];
                     let alt = donneesAstre[1];
 
-                    // Actualisation graphique du radar SVG
+                    // Mise à jour du pointeur SVG
                     const ptr = document.getElementById(`ptr-${name}`);
                     if (ptr) {
                         ptr.setAttribute("transform", `rotate(${az} 200 200)`);
                         ptr.style.opacity = alt < 0 ? "0.15" : "1";
                     }
                     
+                    // Mise à jour du texte
                     const txt = document.getElementById(`val-${name}`);
                     if (txt) {
                         txt.innerHTML = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}° ${alt < 0 ? '⧗' : '✦'}`;
                     }
                 } else {
-                    document.getElementById(`val-${name}`).innerText = "Hors Matrice";
+                    document.getElementById(`val-${name}`).innerText = "Index Temporel Manquant";
                 }
             }
+        } else {
+            for (let name in ASTRES) { document.getElementById(`val-${name}`).innerText = "Fichier Introuvable"; }
         }
     } catch (e) {
-        console.error("Erreur de lecture du manifeste local :", e);
+        console.error("Erreur de lecture I/O :", e);
         for (let name in ASTRES) {
-            document.getElementById(`val-${name}`).innerText = "Erreur Local IO";
+            document.getElementById(`val-${name}`).innerText = "Erreur Format JSON";
         }
-        }
+    }
         }
         
         function parseJPLData(name, text) {
