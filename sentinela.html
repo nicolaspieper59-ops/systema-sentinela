@@ -94,18 +94,44 @@
         }
 
         async function interrogerJPL() {
-            let dateStr = new Date(baseTime + (performance.now() - refPerf)).toISOString().slice(0,16).replace("T", " ");
-            for (let name in ASTRES) {
-                // Requête directe vers l'API JPL Horizons incluant la position topocentrique de l'observateur (longitude, latitude, altitude en km)
-                let url = `https://ssd-api.jpl.nasa.gov/horizons.api?format=json&COMMAND='${ASTRES[name]}'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='OBSERVER'&CENTER='coord@399'&COORD_TYPE='GEODETIC'&SITE_COORD='${lastValidPos.lon},${lastValidPos.lat},${lastValidPos.alt/1000}'&START_TIME='${dateStr}'&STOP_TIME='${dateStr}'&STEP_SIZE='1m'&QUANTITIES='4'`;
-                try {
-                    let res = await fetch("https://corsproxy.io/?" + encodeURIComponent(url));
-                    if (res.ok) {
-                        let data = await res.json();
-                        parseJPLData(name, data.result);
-                    }
-                } catch (e) {}
+    let dateStr = new Date(baseTime + (performance.now() - refPerf)).toISOString().slice(0,16).replace("T", " ");
+    
+    for (let name in ASTRES) {
+        // Construction standardisée des paramètres de requêtes requis par la NASA
+        const parametresJPL = {
+            format: 'json',
+            COMMAND: `'${ASTRES[name]}'`,
+            OBJ_DATA: 'NO',
+            MAKE_EPHEM: 'YES',
+            EPHEM_TYPE: 'OBSERVER',
+            CENTER: 'coord@399',
+            COORD_TYPE: 'GEODETIC',
+            SITE_COORD: `'${lastValidPos.lon},${lastValidPos.lat},${lastValidPos.alt/1000}'`,
+            START_TIME: `'${dateStr}'`,
+            STOP_TIME: `'${dateStr}'`,
+            STEP_SIZE: '1m',
+            QUANTITIES: '4'
+        };
+
+        // Encodage automatique et sécurisé pour l'infrastructure réseau HTTPS
+        const chaineRequete = new URLSearchParams(parametresJPL).toString();
+        let urlOfficielleJPL = `https://ssd-api.jpl.nasa.gov/horizons.api?${chaineRequete}`;
+        
+        // Utilisation d'un point d'accès d'échappement CORS alternatif et stable
+        let urlSecurisee = `https://api.allorigins.win/get?url=${encodeURIComponent(urlOfficielleJPL)}`;
+
+        try {
+            let res = await fetch(urlSecurisee);
+            if (res.ok) {
+                let conteneur = await res.json();
+                // AllOrigins encapsule la réponse dans la propriété "contents"
+                let donneesNativesJPL = JSON.parse(conteneur.contents);
+                parseJPLData(name, donneesNativesJPL.result);
             }
+        } catch (e) {
+            console.error(`Erreur de liaison réseau pour l'astre ${name} :`, e);
+        }
+    }
         }
 
         function parseJPLData(name, text) {
