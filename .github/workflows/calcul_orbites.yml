@@ -5,7 +5,6 @@ on:
     - cron: '0 */6 * * *'
   workflow_dispatch:
 
-# CORRECTIF CRITIQUE : Donne explicitement les droits d'écriture au jeton d'action
 permissions:
   contents: write
 
@@ -15,6 +14,9 @@ jobs:
     steps:
       - name: Checkout du dépôt
         uses: actions/checkout@v4
+        with:
+          # Assure que le checkout utilise le jeton disposant des droits d'écriture
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configuration de Python
         uses: actions/setup-python@v5
@@ -25,9 +27,14 @@ jobs:
         run: python calculer_orbites.py
 
       - name: Déploiement de la nouvelle matrice
+        env:
+          # Injection du jeton directement dans les variables d'environnement de l'étape
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name "Sentinela-Automation"
           git config --global user.email "sentinela@auroramap.local"
           git add orbites.json
+          # Si aucune modification n'est détectée, le script s'arrête proprement sans erreur
           git commit -m "Compilateur Cinématique : Mise à jour de la matrice JPL [Marseille]" || exit 0
-          git push
+          # Utilisation explicite du jeton pour pousser sur la branche main
+          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git HEAD:main
