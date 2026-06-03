@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v6.14 — Horloge Atomique & Anti-AdBlock</title>
+    <title>SYSTEMA SENTINELA v6.16 — Horloge Atomique & Correcteur Android</title>
     <style>
         :root {
             --bg-main: #0a0e14;
@@ -122,8 +122,8 @@
     <div class="dashboard-container">
         <div class="main-panel">
             <div class="header-title">
-                <h1>Systema Sentinela v6.14</h1>
-                <span class="system-status-tag">PASSIF PUR — SYNC ATOMIQUE RATIFIÉE</span>
+                <h1>Systema Sentinela v6.16</h1>
+                <span class="system-status-tag">PASSIF PUR — TRANSLATION QUANTIQUE ACTIVE</span>
             </div>
 
             <svg id="radar" viewBox="0 0 400 400">
@@ -169,7 +169,6 @@
     let cachePlanetaireJPL = null;
     let deltaTempsAtomiqueMS = 0; 
     
-    // CORRECTION ORIGINE : Routage intelligent dynamique HTTPS (GitHub) vs HTTP (Localhost Termux)
     const URL_DONNEES_JPL = window.location.hostname.includes("github.io") 
         ? "manifest.json" 
         : `/manifest.json?v=${Date.now()}`;
@@ -224,8 +223,12 @@
             
             let donneesBrutes = await response.json();
             
-            if (donneesBrutes && (donneesBrutes.SOLEIL || donneesBrutes.Soleil)) {
-                cachePlanetaireJPL = donneesBrutes;
+            if (donneesBrutes && (donneesBrutes.SOLEIL || donneesBrutes.Soleil || donneesBrutes.soleil)) {
+                // Uniformisation casse insensible des clés d'astres
+                cachePlanetaireJPL = {};
+                for (let key in donneesBrutes) {
+                    cachePlanetaireJPL[key.toUpperCase()] = donneesBrutes[key];
+                }
                 document.getElementById('kpi-adblock').innerText = "LIVE_STREAM_OK";
                 document.getElementById('kpi-adblock').style.color = "var(--accent-green)";
                 ajouterLog("NET : Flux validé et verrouillé.");
@@ -243,89 +246,78 @@
         }
     }
 
-function boucleCalculSentinela() {
-    if (!cachePlanetaireJPL) return;
+    function boucleCalculSentinela() {
+        if (!cachePlanetaireJPL) return;
 
-    // 1. Récupération du temps matériel brut
-    let tempsDispositif = new Date();
-    
-    // 2. Alignement strict sur le temps Atomique Universel (UTC)
-    let millisecondesAtomiques = Date.now() + deltaTempsAtomiqueMS;
-    let tempsAtomiqueReel = new Date(millisecondesAtomiques);
+        // 1. Horloge Atomique Pure (Pour affichage du tableau de bord)
+        let millisecondesAtomiques = Date.now() + deltaTempsAtomiqueMS;
+        let tempsAtomiqueReel = new Date(millisecondesAtomiques);
+        document.getElementById('kpi-utc').innerText = tempsAtomiqueReel.toISOString().replace("T", " ").replace("Z", " UTC");
 
-    // Affichage de l'horloge atomique exacte
-    document.getElementById('kpi-utc').innerText = tempsAtomiqueReel.toISOString().replace("T", " ").replace("Z", " UTC");
+        // 2. Affichage de la désynchronisation
+        let offsetReelSecondes = deltaTempsAtomiqueMS / 1000;
+        document.getElementById('kpi-offset').innerText = `${offsetReelSecondes.toFixed(3)}s`;
 
-    // FORCE : Utilisation exclusive du temps atomique UTC pour trouver l'index de la minute
-    let minuteAxe = tempsAtomiqueReel.getUTCHours() * 60 + tempsAtomiqueReel.getUTCMinutes();
-    let fractionSeconde = tempsAtomiqueReel.getUTCSeconds() / 60.0;
+        // 3. CORRECTIF CRITIQUE : Alignement forcé de l'index sur la distorsion de l'appareil
+        // On utilise l'heure locale brute d'Android (qui correspond à la génération Termux) pour l'index du tableau
+        let tempsIndexation = new Date(); 
+        let minuteAxe = tempsIndexation.getUTCHours() * 60 + tempsIndexation.getUTCMinutes();
+        let fractionSeconde = tempsIndexation.getUTCSeconds() / 60.0;
 
-    // Calcul de la désynchronisation de l'appareil (Affichage pur de l'offset matériel)
-    let offsetReelSecondes = deltaTempsAtomiqueMS / 1000;
-    document.getElementById('kpi-offset').innerText = `${offsetReelSecondes.toFixed(3)}s`;
+        for (let nomAstre in cachePlanetaireJPL) {
+            try {
+                let dataset = cachePlanetaireJPL[nomAstre];
+                let altitudeFinale = 0;
+                let azimut = 0;
 
-    // 3. Extraction des trajectoires
-    for (let nomAstre in cachePlanetaireJPL) {
-        try {
-            let dataset = cachePlanetaireJPL[nomAstre];
-            let altitudeFinale = 0;
-            let azimut = 0;
+                if (Array.isArray(dataset) && dataset.length > 0) {
+                    let indexA = Math.abs(minuteAxe) % dataset.length;
+                    let indexB = (indexA + 1) % dataset.length;
+                    
+                    let pA = dataset[indexA];
+                    let pB = dataset[indexB];
+                    
+                    if (!pA || !pB) {
+                        pA = dataset[0];
+                        pB = dataset[dataset.length - 1];
+                    }
 
-            if (Array.isArray(dataset) && dataset.length > 0) {
-                // CORRECTION CRITIQUE : Sécurisation absolue de l'indice de la matrice
-                let indexA = Math.abs(minuteAxe) % dataset.length;
-                let indexB = (indexA + 1) % dataset.length;
-                
-                let pA = dataset[indexA];
-                let pB = dataset[indexB];
-                
-                // Si l'index échoue ou pointe le vide, on utilise les points d'ancrage par défaut
-                if (!pA || !pB) {
-                    pA = dataset[0];
-                    pB = dataset[dataset.length - 1] || pA;
+                    let altA = (pA.alt !== undefined) ? pA.alt : (pA.h !== undefined ? pA.h : 0);
+                    let altB = (pB.alt !== undefined) ? pB.alt : (pB.h !== undefined ? pB.h : 0);
+                    altitudeFinale = altA + (altB - altA) * fractionSeconde;
+
+                    let azA = (pA.az !== undefined) ? pA.az : (pA.Az !== undefined ? pA.Az : 0);
+                    let azB = (pB.az !== undefined) ? pB.az : (pB.Az !== undefined ? pB.Az : 0);
+                    
+                    let diffAz = azB - azA;
+                    if (diffAz > 180) diffAz -= 360;
+                    if (diffAz < -180) diffAz += 360;
+                    azimut = (azA + diffAz * fractionSeconde + 360) % 360;
                 }
 
-                let altA = (pA.alt !== undefined) ? pA.alt : (pA.h !== undefined ? pA.h : 0);
-                let altB = (pB.alt !== undefined) ? pB.alt : (pB.h !== undefined ? pB.h : 0);
-                altitudeFinale = altA + (altB - altA) * fractionSeconde;
-
-                let azA = (pA.az !== undefined) ? pA.az : (pA.Az !== undefined ? pA.Az : 0);
-                let azB = (pB.az !== undefined) ? pB.az : (pB.Az !== undefined ? pB.Az : 0);
-                
-                let diffAz = azB - azA;
-                if (diffAz > 180) diffAz -= 360;
-                if (diffAz < -180) diffAz += 360;
-                azimut = (azA + diffAz * fractionSeconde + 360) % 360;
-            } else if (dataset && typeof dataset === 'object') {
-                // Fallback pour les formats d'objets fixes (v6.8)
-                altitudeFinale = (dataset.alt !== undefined) ? dataset.alt : (dataset.h || 0);
-                azimut = (dataset.az !== undefined) ? dataset.az : (dataset.Az || 0);
-            }
-
-            // 4. Rendu graphique des pointeurs
-            const line = document.getElementById(`ptr-${nomAstre}`);
-            if (line) {
-                line.setAttribute("transform", `rotate(${azimut} 200 200)`);
-                if (altitudeFinale < 0) {
-                    line.style.opacity = "0.15"; 
-                    line.setAttribute("y2", "195"); 
-                } else {
-                    line.style.opacity = "1";
-                    let rayonRendu = ((90 - altitudeFinale) / 90) * 160;
-                    line.setAttribute("y2", (200 - rayonRendu).toString());
+                // 4. Actualisation Graphique
+                const line = document.getElementById(`ptr-${nomAstre}`);
+                if (line) {
+                    line.setAttribute("transform", `rotate(${azimut} 200 200)`);
+                    if (altitudeFinale < 0) {
+                        line.style.opacity = "0.15"; 
+                        line.setAttribute("y2", "195"); 
+                    } else {
+                        line.style.opacity = "1";
+                        let rayonRendu = ((90 - altitudeFinale) / 90) * 160;
+                        line.setAttribute("y2", (200 - rayonRendu).toString());
+                    }
                 }
+                
+                const valSpan = document.getElementById(`val-${nomAstre}`);
+                if (valSpan) {
+                    valSpan.innerHTML = `h: ${altitudeFinale.toFixed(2)}° | Az: ${azimut.toFixed(1)}° ${altitudeFinale < 0 ? '⧗' : '✦'}`;
+                }
+            } catch(e) {
+                console.error("Échec du rendu cinématique : " + nomAstre, e);
             }
-            
-            // 5. Rendu du panneau indicateur
-            const valSpan = document.getElementById(`val-${nomAstre}`);
-            if (valSpan) {
-                valSpan.innerHTML = `h: ${altitudeFinale.toFixed(2)}° | Az: ${azimut.toFixed(1)}° ${altitudeFinale < 0 ? '⧗' : '✦'}`;
-            }
-        } catch(e) {
-            console.error("Défaut de conversion sur l'axe : " + nomAstre, e);
         }
-        }
-        }
+    }
 
     function genererMatriceHorizonsSecours() {
         let matrice = {};
@@ -362,11 +354,11 @@ function boucleCalculSentinela() {
     }
 
     (async () => {
-        ajouterLog("SYS : Initialisation du Core v6.14.");
+        ajouterLog("SYS : Initialisation du Core v6.16.");
         await synchroniserHorlogeAtomique();
         setInterval(boucleCalculSentinela, 150);
         setTimeout(chargerDonneesJPL, 200);
     })();
     </script>
 </body>
-</html>
+                    </html>
