@@ -19,10 +19,13 @@ def obtenir_meteo_reelle():
         with urllib.request.urlopen(req) as response:
             donnees = json.loads(response.read().decode('utf-8'))
             if "current_weather" in donnees:
-                meteo["temperature"] = donnees["current_weather"]["temperature"]
-                # Extraction correcte de la pression de surface Open-Meteo
-                if "surface_pressure" in donnees["current_weather"]:
-                    meteo["pression"] = donnees["current_weather"]["surface_pressure"]
+                current = donnees["current_weather"]
+                if "temperature" in current:
+                    meteo["temperature"] = current["temperature"]
+                
+                # Récupération de la pression de surface au sol
+                if "surface_pressure" in current:
+                    meteo["pression"] = current["surface_pressure"]
                 elif "surface_pressure" in donnees.get("hourly", {}):
                     meteo["pression"] = donnees["hourly"]["surface_pressure"][0]
             print(f"[METEO CLOUD] Alignement validé : T={meteo['temperature']}°C | P={meteo['pression']}hPa")
@@ -32,7 +35,7 @@ def obtenir_meteo_reelle():
     return meteo
 
 def recuperer_jpl_nasa(id_astre):
-    """Télécharge la matrice géocentrique de la NASA"""
+    """Télécharge la matrice géocentrique de la NASA et extrait les coordonnées brutes"""
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     url = (
         "https://ssd-api.jpl.nasa.gov/horizons.api?"
@@ -64,13 +67,14 @@ def recuperer_jpl_nasa(id_astre):
             
             liste_points = []
             for ligne in lignes:
-                if not ligne.strip(): continue
+                if not ligne.strip(): 
+                    continue
                 elements = ligne.split()
                 if len(elements) >= 4:
                     try:
-                        # Nettoyage des caractères spéciaux d'état de visibilité de la NASA (*, t, m...)
-                        az_str = elements[2].replace('*','').replace('t','')
-                        alt_str = elements[3].replace('*','').replace('t','')
+                        # Nettoyage des marqueurs d'états d'observation de la NASA (*, t, m...)
+                        az_str = elements[2].replace('*','').replace('t','').replace('m','')
+                        alt_str = elements[3].replace('*','').replace('t','').replace('m','')
                         liste_points.append({"az": float(az_str), "alt": float(alt_str)})
                     except ValueError:
                         continue
@@ -80,16 +84,17 @@ def recuperer_jpl_nasa(id_astre):
         return []
 
 def corriger_refraction_thermique(alt_brute, pression, temp):
-    """Perturbation optique de l'atmosphère réelle de Marseille"""
-    if alt_brute < -0.5: return alt_brute
+    """Calcule la déviation optique induite par l'atmosphère locale à Marseille"""
+    if alt_brute < -0.5: 
+        return alt_brute
     alt_deg = max(0.0, alt_brute)
     
-    # Calcul de la cotangente de l'élévation apparente apparente corrigée
     denominateur = math.tan(math.radians(alt_deg + (7.31 / (alt_deg + 4.4))))
-    if abs(denominateur) < 1e-6: return alt_brute
+    if abs(denominateur) < 1e-6: 
+        return alt_brute
     cotangente = 1.0 / denominateur
     
-    # Facteur de densité moléculaire de l'air (Agitation Thermique vs Force Barométrique)
+    # Loi des gaz parfaits : ajustement de la densité de la couche d'air
     facteur_air = (pression / 1013.25) * (288.15 / (273.15 + temp))
     refraction = (cotangente / 60.0) * facteur_air
     return alt_brute + refraction
@@ -98,52 +103,48 @@ def main():
     print("[SYSTEM] Démarrage de la fusion cinématique Cloud...")
     meteo = obtenir_meteo_reelle()
     
-    print("[NASA] Téléchargement des matrices JPL...")
+    print("[NASA] Téléchargement des matrices JPL (Soleil, Lune, Jupiter)...")
     nasa_soleil = recuperer_jpl_nasa("10")
     nasa_lune = recuperer_jpl_nasa("301")
-    nasa_jupiter = recuperer_jpl_nasa("599") # Intégration de Jupiter manquante
+    nasa_jupiter = recuperer_jpl_nasa("599")
     
     if not nasa_soleil or not nasa_lune or not nasa_jupiter:
-        print("[CRITICAL] Annulation : Données de la NASA incomplètes ou indisponibles.")
+        print("[CRITICAL] Annulation : Vecteurs d'éphémérides de la NASA indisponibles.")
         return
 
-    # Structure d'index par minute compatible avec index.html
     manifeste_final = {"SOLEIL": {}, "LUNE": {}, "JUPITER": {}}
     
-    # Génération des clés de temps absolues pour les 1440 minutes de la journée
-    for i in range(min(1440, len(nasa_soleil), len(nasa_lune), len(nasa_jupiter))):
+    # Détermination de la longueur de sécurité commune pour couvrir les 1440 minutes
+    taille_commune = min(1440, len(nasa_soleil), len(nasa_lune), len(nasa_jupiter))
+    
+    for i in range(taille_commune):
         heures = i // 60
         minutes = i % 60
-        cle_minute = f"{str(heures).padStart(2, '0')}:{str(minutes).padStart(2, '0')}"
         
-        # Traitement Soleil
+        # Standardisation stricte de la chaîne d'indexation (ex: "18:20", "02:05")
+        cle_minute = f"{heures:02d}:{minutes:02d}"
+        
+        # Application du modèle de correction atmosphérique
         alt_sol = corriger_refraction_thermique(nasa_soleil[i]["alt"], meteo["pression"], meteo["temperature"])
         manifeste_final["SOLEIL"][cle_minute] = [round(nasa_soleil[i]["az"], 2), round(alt_sol, 2)]
         
-        # Traitement Lune
         alt_lun = corriger_refraction_thermique(nasa_lune[i]["alt"], meteo["pression"], meteo["temperature"])
         manifeste_final["LUNE"][cle_minute] = [round(nasa_lune[i]["az"], 2), round(alt_lun, 2)]
         
-        # Traitement Jupiter
         alt_jup = corriger_refraction_thermique(nasa_jupiter[i]["alt"], meteo["pression"], meteo["temperature"])
         manifeste_final["JUPITER"][cle_minute] = [round(nasa_jupiter[i]["az"], 2), round(alt_jup, 2)]
 
-# Fin du script calculer_orbites.py
-# Fin du script calculer_orbites.py
-    maintenant_utc = datetime.now(timezone.utc)
-    
-    # Structure finale enrichie
+    # Intégration du repère temporel de référence absolue (Timestamp Unix en ms)
     structure_production = {
-        "TIMESTAMP_REF": int(maintenant_utc.timestamp() * 1000),
+        "TIMESTAMP_REF": int(datetime.now(timezone.utc).timestamp() * 1000),
         "DONNEES": manifeste_final
     }
 
+    # Écriture physique sur l'espace disque du conteneur de build
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(structure_production, f, indent=2, ensure_ascii=False)
-    print("[SUCCESS] Matrice enrichie exportée dans orbites.json")
-
-if not hasattr(str, 'padStart'):
-    str.padStart = lambda self, width, fillchar=' ': self.rjust(width, fillchar)
+        
+    print(f"[SUCCESS] Télémétrie prête. {taille_commune} minutes indexées avec succès dans orbites.json.")
 
 if __name__ == "__main__":
     main()
