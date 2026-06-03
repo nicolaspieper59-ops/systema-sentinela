@@ -69,11 +69,14 @@
         const COULEURS = { "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "JUPITER": "#fb923c" };
 
         // Synchronisation et chargement de la base de données orbitale
+       // Synchronisation et chargement de la base de données orbitale
         async function initialiserComposantsReseau() {
             try {
                 const cacheBuster = Date.now();
                 let res = await fetch(`./orbites.json?v=${cacheBuster}`, { cache: 'no-store' });
+                
                 if (!res.ok) {
+                    console.warn("[SYSTEMA] orbites.json introuvable, tentative de repli...");
                     res = await fetch(`./manifest.json?v=${cacheBuster}`, { cache: 'no-store' });
                 }
 
@@ -82,20 +85,23 @@
                     let enteteDate = res.headers.get("Date");
                     let tempsServeurReel = enteteDate ? Date.parse(enteteDate) : Date.now();
                     decalageSystemeMS = tempsServeurReel - Date.now();
-                    horlogePrete = true;
 
                     // 2. Hydratation de la matrice mémoire
                     let enveloppe = await res.json();
                     matriceEpheremidesCachee = enveloppe.DONNEES ? enveloppe.DONNEES : enveloppe;
                     console.log("[SYSTEMA] Matrice chargée avec succès en mémoire vive.");
+                } else {
+                    console.error("[SYSTEMA] Fichiers introuvables (404). Utilisation du temps local standard.");
+                    decalageSystemeMS = 0;
                 }
             } catch (e) {
                 console.error("[CRITICAL] Échec de l'initialisation réseau :", e);
-                // Repli local en cas de coupure réseau
                 decalageSystemeMS = 0;
+            } finally {
+                // GARANTIE SÉCURITÉ : Quoi qu'il arrive (Succès, 404, ou Panne), on démarre l'horloge
                 horlogePrete = true;
             }
-        }
+                        }
 
         // Boucle d'affichage et de pointage ultra-rapide (100ms) - ZÉRO APPEL RÉSEAU
         setInterval(() => {
