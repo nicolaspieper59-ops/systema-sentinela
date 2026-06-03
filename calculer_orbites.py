@@ -129,10 +129,10 @@ def main():
         manifeste_final["JUPITER"][cle_minute] = [round(nasa_jupiter[i]["az"], 2), round(alt_jup, 2)]
 
     # Écriture dans manifest.json (ou un fichier orbites.json dédié pour isoler l'UI de la PWA)
-    with open("manifest.json", "w", encoding="utf-8") as f:
+# Remplacer la fin du script Python par ce bloc :
+    with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(manifeste_final, f, indent=2, ensure_ascii=False)
-    print("[SUCCESS] Le manifest.json hybride (NASA + Open-Meteo) a été synchronisé.")
-
+    print("[SUCCESS] Le fichier autonome orbites.json a été synchronisé.")
 # Émulation Python de padStart JavaScript pour assurer la compatibilité
 if not hasattr(str, 'padStart'):
     str.padStart = lambda self, width, fillchar=' ': self.rjust(width, fillchar)
