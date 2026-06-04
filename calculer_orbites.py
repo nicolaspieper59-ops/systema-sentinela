@@ -1,149 +1,197 @@
-import json
-import urllib.request
-import urllib.parse
-import math
-from datetime import datetime, timezone
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SYSTEMA SENTINELA v8.6 — Spatiale Autonome</title>
+    <style>
+        :root {
+            --bg-main: #0a0e14; --bg-card: #101520; --border-color: #262c36;
+            --text-primary: #e1e7ef; --text-secondary: #717f91;
+            --accent-blue: #38bdf8; --accent-green: #4ade80; --accent-orange: #fb923c;
+        }
+        body {
+            background-color: var(--bg-main); color: var(--text-primary);
+            font-family: monospace; margin: 0; padding: 20px;
+            display: flex; justify-content: center; min-height: 100vh; box-sizing: border-box;
+        }
+        .dashboard { display: grid; grid-template-columns: 1fr 400px; gap: 20px; max-width: 1100px; width: 100%; }
+        @media (max-width: 900px) { .dashboard { grid-template-columns: 1fr; } }
+        .panel { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        #radar { width: 100%; max-width: 340px; background: #05070c; border-radius: 50%; border: 1px solid var(--border-color); }
+        .grid-line { stroke: #1e293b; }
+        .radar-ring { fill: none; stroke: #0284c7; stroke-dasharray: 2 4; opacity: 0.5; }
+        .pointer { stroke-linecap: round; transition: transform 0.3s ease-out; }
+        .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; width: 100%; }
+        .kpi { background: var(--bg-card); border: 1px solid var(--border-color); padding: 12px; border-radius: 6px; }
+        .full { grid-column: span 2; }
+        .kpi-title { font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; }
+        .kpi-value { font-size: 0.85rem; font-weight: bold; display: block; margin-top: 4px; }
+        #legend { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+        .legend-item { background: var(--bg-card); border: 1px solid var(--border-color); padding: 8px; border-radius: 4px; font-size: 0.75rem; display: flex; justify-content: space-between; }
+    </style>
+</head>
+<body>
 
-# Coordonnées de la Station (Marseille)
-LATITUDE = "43.28"
-LONGITUDE = "5.36"
-ALTITUDE = "0.099" # Altitude en km pour le JPL Horizons
+    <div class="dashboard">
+        <div class="panel">
+            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SYSTEMA SENTINELA v8.6</h2>
+            <svg id="radar" viewBox="0 0 400 400">
+                <line x1="200" y1="20" x2="200" y2="380" class="grid-line" />
+                <line x1="20" y1="200" x2="380" y2="200" class="grid-line" />
+                <circle cx="200" cy="200" r="160" class="radar-ring" />
+                <circle cx="200" cy="200" r="100" class="radar-ring" />
+                <g id="pointers"></g>
+            </svg>
+        </div>
 
-def obtenir_meteo_reelle():
-    """Récupération des conditions atmosphériques locales via Open-Meteo"""
-    meteo = {"pression": 1013.25, "temperature": 15.0}
-    url = f"https://api.openmeteo.com/v1/forecast?latitude={LATITUDE}&longitude={LONGITUDE}&current_weather=true&surface_pressure=true"
-    try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as response:
-            donnees = json.loads(response.read().decode('utf-8'))
-            if "current_weather" in donnees:
-                current = donnees["current_weather"]
-                if "temperature" in current: meteo["temperature"] = current["temperature"]
-                if "surface_pressure" in current: meteo["pression"] = current["surface_pressure"]
-            print(f"[METEO] Synchronisée : T={meteo['temperature']}°C | P={meteo['pression']}hPa")
-    except Exception as e:
-        print(f"[WARNING] Erreur météo ({e}). Utilisation des constantes ISA.")
-    return meteo
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            <div class="kpi-grid">
+                <div class="kpi"><span class="kpi-title">Filtre Cinétique</span><span class="kpi-value" id="kpi-filtre" style="color: var(--accent-green);">STABLE</span></div>
+                <div class="kpi"><span class="kpi-title">Maille Géo (AuroraMap)</span><span class="kpi-value" id="kpi-pos">43.28N / 5.36E / 100m</span></div>
+                <div class="kpi full"><span class="kpi-title">Horloge Monotone Absolue (Ancrée NTP)</span><span class="kpi-value" id="kpi-time" style="color: var(--accent-blue);">Synchronisation...</span></div>
+            </div>
+            <div id="legend"></div>
+        </div>
+    </div>
 
-def nettoyer_flux_numerique(chaine_brute):
-    """Isole strictement les composants numériques pour neutraliser les flags dynamiques de la NASA (*, m, t, A, etc.)"""
-    return "".join([c for c in chaine_brute if c.isdigit() or c in ['.', '-', '+']])
+    <script>
+        let horlogePrete = false;
+        let decalageSystemeMS = 0; 
+        let matriceEpheremidesCachee = null;
 
-def recuperer_jpl_nasa(id_astre):
-    """Interroge l'API de la NASA de manière résiliente et sécurisée contre les malformations d'URL"""
-    aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    base_url = "https://ssd-api.jpl.nasa.gov/horizons.api"
-    
-    # Paramétrage strict de l'éphéméride d'observation géocentrique
-params = {
-        "format": "json",
-        "COMMAND": f"'{id_astre}'",
-        "OBJ_DATA": "NO",
-        "MAKE_EPHEM": "YES",
-        "EPHEM_TYPE": "OBSERVER",
-        "CENTER": "coord@399",
-        "SITE_COORD": f"'{LONGITUDE},{LATITUDE},{ALTITUDE}'",
-        
-        # NETTOYAGE : Suppression du suffixe " UT" qui bloquait l'API REST
-        "START_TIME": f"'{aujourdhui} 00:00'", 
-        "STOP_TIME": f"'{aujourdhui} 23:59'",  
-        
-        "STEP_SIZE": "1m",
-        "QUANTITIES": "4",
-        "REF_SYSTEM": "J2000",
-        "ANG_FORMAT": "DEG"
-}
-    dict_points = {}
-    try:
-        # CORRECTIF CRITIQUE : Encodage conforme RFC 3986 des paramètres et des espaces
-        url_securisee = f"{base_url}?{urllib.parse.urlencode(params)}"
-        req = urllib.request.Request(url_securisee, headers={'User-Agent': 'Mozilla/5.0'})
-        
-        with urllib.request.urlopen(req) as response:
-            donnees = json.loads(response.read().decode('utf-8'))
-            if 'result' not in donnees:
-                return {}
-            
-            raw_result = donnees['result']
-            if '$$SOE' not in raw_result or '$$EOE' not in raw_result: 
-                return {}
+        let lastValidPos = { lat: 43.28, lon: 5.36, alt: 100 };
+        const ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" };
+        const COULEURS = { "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "JUPITER": "#fb923c" };
+
+        async function initialiserComposantsReseau() {
+            try {
+                const cacheBuster = Date.now();
+                let res = await fetch(`./orbites.json?v=${cacheBuster}`, { cache: 'no-store' });
                 
-            lignes = raw_result.split('$$SOE')[1].split('$$EOE')[0].strip().split('\n')
+                if (!res.ok) {
+                    console.warn("[SYSTEMA] orbites.json introuvable, tentative de repli...");
+                    res = await fetch(`./manifest.json?v=${cacheBuster}`, { cache: 'no-store' });
+                }
+
+                if (res.ok) {
+                    let enteteDate = res.headers.get("Date");
+                    let tempsServeurReel = enteteDate ? Date.parse(enteteDate) : Date.now();
+                    decalageSystemeMS = tempsServeurReel - Date.now();
+
+                    let enveloppe = await res.json();
+                    matriceEpheremidesCachee = enveloppe.DONNEES ? enveloppe.DONNEES : enveloppe;
+                    console.log("[SYSTEMA] Matrice chargée en mémoire vive.");
+                } else {
+                    console.error("[SYSTEMA] Utilisation du temps local standard.");
+                    decalageSystemeMS = 0;
+                }
+            } catch (e) {
+                console.error("[CRITICAL] Panne d'acquisition réseau :", e);
+                decalageSystemeMS = 0;
+            } finally {
+                horlogePrete = true;
+            }
+        }
+
+        // Boucle cinématique adaptative haute fréquence
+        setInterval(() => {
+            if (!horlogePrete) return;
             
-            for ligne in lignes:
-                if not ligne.strip(): 
-                    continue
-                elements = ligne.split()
-                if len(elements) >= 4:
-                    try:
-                        cle_temps = elements[1] # Format HH:MM invariable en colonne 2
+            let millisecondesReelles = Date.now() + decalageSystemeMS;
+            let nowObj = new Date(millisecondesReelles);
+            
+            document.getElementById('kpi-time').innerText = nowObj.toISOString().replace("T"," ").replace("Z"," UTC");
+
+            let heureUTC = String(nowObj.getUTCHours()).padStart(2, '0');
+            let minuteUTC = String(nowObj.getUTCMinutes()).padStart(2, '0');
+            let cleMinute = `${heureUTC}:${minuteUTC}`;
+
+            if (matriceEpheremidesCachee) {
+                for (let name in ASTRES) {
+                    let idAstre = ASTRES[name];
+                    
+                    // Résilience d'indexation 1 : Résolution NOM ("SOLEIL") ou ID NASA ("10")
+                    let blocAstre = matriceEpheremidesCachee[name] || matriceEpheremidesCachee[idAstre];
+                    
+                    let donneesAstre = null;
+
+                    if (blocAstre) {
+                        // Résilience d'indexation 2 : Accès direct par clé brute de minute
+                        if (blocAstre[cleMinute]) {
+                            donneesAstre = blocAstre[cleMinute];
+                        } else {
+                            // Résilience d'indexation 3 : Balayage flou (regex/includes) pour clés complexes ("2026-06-04 05:54")
+                            for (let cléTemporelle in blocAstre) {
+                                if (cléTemporelle.includes(cleMinute)) {
+                                    donneesAstre = blocAstre[cléTemporelle];
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (donneesAstre) {
+                        let az = donneesAstre[0];
+                        let alt = donneesAstre[1];
+
+                        const ptr = document.getElementById(`ptr-${name}`);
+                        if (ptr) {
+                            ptr.setAttribute("transform", `rotate(${az} 200 200)`);
+                            ptr.style.opacity = alt < 0 ? "0.15" : "1";
+                        }
                         
-                        # Extraction par index inverse (Azimut et Altitude sont systématiquement les deux derniers éléments)
-                        az_str = nettoyer_flux_numerique(elements[-2])
-                        alt_str = nettoyer_flux_numerique(elements[-1])
-                        
-                        dict_points[cle_temps] = {"az": float(az_str), "alt": float(alt_str)}
-                    except (ValueError, IndexError):
-                        continue
-            return dict_points
-    except Exception as e:
-        print(f"[ERROR] Échec critique JPL lors de la récupération de l'astre {id_astre} : {e}")
-        return {}
+                        const txt = document.getElementById(`val-${name}`);
+                        if (txt) {
+                            txt.innerHTML = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}° ${alt < 0 ? "⧗ (Sous l'horizon)" : "✦ (Visible)"}`;
+                        }
+                    } else {
+                        document.getElementById(`val-${name}`).innerText = `Index UTC ${cleMinute} introuvable`;
+                    }
+                }
+            }
+        }, 100);
 
-def corriger_refraction_thermique(alt_brute, pression, temp):
-    """Calcul de la déviation optique induite par l'atmosphère locale"""
-    if alt_brute < -0.5: 
-        return alt_brute
-    alt_deg = max(0.0, alt_brute)
-    denom = math.tan(math.radians(alt_deg + (7.31 / (alt_deg + 4.4))))
-    if abs(denom) < 1e-6: 
-        return alt_brute
-    facteur_air = (pression / 1013.25) * (288.15 / (273.15 + temp))
-    return alt_brute + ((1.0 / denom) / 60.0) * facteur_air
+        function piloterGeolocalisation() {
+            if (!navigator.geolocation) return;
+            navigator.geolocation.watchPosition((p) => {
+                let speed = p.coords.speed || 0; 
+                if (speed > 40) {
+                    document.getElementById('kpi-filtre').innerText = "VERROUILLÉ (CINÉTIQUE)";
+                    document.getElementById('kpi-filtre').style.color = "var(--accent-orange)";
+                    return; 
+                }
+                lastValidPos.lat = Math.round(p.coords.latitude * 100) / 100;
+                lastValidPos.lon = Math.round(p.coords.longitude * 100) / 100;
+                lastValidPos.alt = Math.round(p.coords.altitude || 100);
 
-def main():
-    print(f"[INIT] Lancement de la compilation cinématique - SYSTEMA SENTINELA v8.6")
-    meteo = obtenir_meteo_reelle()
-    
-    jpl_soleil = recuperer_jpl_nasa("10")
-    jpl_lune = recuperer_jpl_nasa("301")
-    jpl_jupiter = recuperer_jpl_nasa("599")
-    
-    # Validation de l'intégrité minimale des sources de données
-    if not jpl_soleil or not jpl_lune or not jpl_jupiter:
-        print("[CRITICAL] Annulation du build : Éphémérides incomplètes ou inaccessibles.")
-        return
+                document.getElementById('kpi-filtre').innerText = "STABLE";
+                document.getElementById('kpi-filtre').style.color = "var(--accent-green)";
+                document.getElementById('kpi-pos').innerText = `${lastValidPos.lat}N / ${lastValidPos.lon}E / ${lastValidPos.alt}m`;
+            }, (err) => {
+                document.getElementById('kpi-pos').innerText = `${lastValidPos.lat}N / ${lastValidPos.lon}E / ${lastValidPos.alt}m`;
+            }, { enableHighAccuracy: true });
+        }
 
-    manifeste_final = {"SOLEIL": {}, "LUNE": {}, "JUPITER": {}}
-    
-    # Génération itérative et étanche de la matrice journalière (1440 minutes)
-    for i in range(1440):
-        heures = i // 60
-        minutes = i % 60
-        cle_minute = f"{heures:02d}:{minutes:02d}"
-        
-        if cle_minute in jpl_soleil and cle_minute in jpl_lune and cle_minute in jpl_jupiter:
-            alt_sol = corriger_refraction_thermique(jpl_soleil[cle_minute]["alt"], meteo["pression"], meteo["temperature"])
-            manifeste_final["SOLEIL"][cle_minute] = [round(jpl_soleil[cle_minute]["az"], 2), round(alt_sol, 2)]
-            
-            alt_lun = corriger_refraction_thermique(jpl_lune[cle_minute]["alt"], meteo["pression"], meteo["temperature"])
-            manifeste_final["LUNE"][cle_minute] = [round(jpl_lune[cle_minute]["az"], 2), round(alt_lun, 2)]
-            
-            alt_jup = corriger_refraction_thermique(jpl_jupiter[cle_minute]["alt"], meteo["pression"], meteo["temperature"])
-            manifeste_final["JUPITER"][cle_minute] = [round(jpl_jupiter[cle_minute]["az"], 2), round(alt_jup, 2)]
+        const g = document.getElementById('pointers'), leg = document.getElementById('legend');
+        for (let name in ASTRES) {
+            let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("id", `ptr-${name}`); 
+            line.setAttribute("x1", "200"); line.setAttribute("y1", "200");
+            line.setAttribute("x2", "200"); line.setAttribute("y2", "50");
+            line.setAttribute("stroke", COULEURS[name]); 
+            line.setAttribute("stroke-width", "3"); 
+            line.setAttribute("class", "pointer");
+            g.appendChild(line);
 
-    structure_production = {
-        "TIMESTAMP_REF": int(datetime.now(timezone.utc).timestamp() * 1000),
-        "DONNEES": manifeste_final
-    }
+            leg.innerHTML += `<div class="legend-item"><span style="color:${COULEURS[name]}">■ <strong>${name}</strong></span><span id="val-${name}">Calcul cinématique...</span></div>`;
+        }
 
-    with open("orbites.json", "w", encoding="utf-8") as f:
-        json.dump(structure_production, f, indent=2, ensure_ascii=False)
-    print("[SUCCESS] Matrice scellée. Réalignement cinématique total (1440 indexations valides).")
-    # Avant de sauvegarder le fichier JSON final, valider qu'il contient des données
-if not donnees_finales or len(donnees_finales.keys()) == 0:
-    raise RuntimeError("CRITICAL: La matrice générée est vide. Interruption du déploiement pour protéger la Sentinela.")
-
-if __name__ == "__main__":
-    main()
+        (async () => {
+            await initialiserComposantsReseau();
+            piloterGeolocalisation();
+            setInterval(initialiserComposantsReseau, 3600000);
+        })();
+    </script>
+</body>
+</html>
