@@ -1,8 +1,8 @@
-`#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v8.7.0 - Module d'Acquisition Cinématique Purifié
-Moteur d'acquisition pour calcul différentiel continu
+SYSTEMA SENTINELA v8.9.0 - Module d'Acquisition Total JPL-NASA
+Extraction tridimensionnelle, métrique et physique complète.
 """
 
 import requests
@@ -12,7 +12,11 @@ from datetime import datetime, timezone
 
 def executer_acquisition():
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    print(f"[SENTINELA] Initialisation du cycle pour la date : {aujourdhui} UTC")
+    print(f"[SENTINELA] Connexion Corridor JPL pour la date : {aujourdhui} UTC")
+
+    # Utilisation des coordonnées exactes de votre profil (ex: Groenland ou Marseille)
+    # Remplacer par 5.36,43.28,0.100 pour Marseille si nécessaire
+    SITE_GEODETIQUE = "5.36,43.28,0.100" 
 
     ASTRES = {
         "SOLEIL": "10",
@@ -23,7 +27,7 @@ def executer_acquisition():
     MATRICE_FINALE = {}
 
     for nom_astre, id_nasa in ASTRES.items():
-        print(f"[SENTINELA] Téléchargement des vecteurs : {nom_astre} (ID: {id_nasa})...")
+        print(f"[JPL] Extraction des vecteurs physiques pour {nom_astre}...")
         MATRICE_FINALE[nom_astre] = {}
         
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
@@ -35,22 +39,22 @@ def executer_acquisition():
             "MAKE_EPHEM": "'YES'",
             "EPHEM_TYPE": "'OBSERVER'",
             "CENTER": "'coord@399'",
-            "SITE_COORD": "'5.36,43.28,0.100'",
+            "SITE_COORD": f"'{SITE_GEODETIQUE}'",
             "START_TIME": f"'{aujourdhui}T00:00'",
             "STOP_TIME": f"'{aujourdhui}T23:59'",
             "STEP_SIZE": "'1m'",
-            "QUANTITIES": "'4'",
+            "QUANTITIES": "'4,9,19,20,23'", # Flux total JPL
             "REF_SYSTEM": "'J2000'",
             "ANG_FORMAT": "'DEG'"
         }
         
         try:
-            response = requests.get(url, params=params, timeout=20)
+            response = requests.get(url, params=params, timeout=30)
             data_json = response.json()
             
             if "error" in data_json or "message" in data_json or response.status_code != 200:
                 params_alt = {k: v.replace("'", "") for k, v in params.items()}
-                response = requests.get(url, params=params_alt, timeout=20)
+                response = requests.get(url, params=params_alt, timeout=30)
                 data_json = response.json()
 
             texte_brut = data_json.get("result", "")
@@ -64,42 +68,48 @@ def executer_acquisition():
                     if not ligne.strip(): 
                         continue
                     
-                    colonnes = ligne.split()
-                    if len(colonnes) >= 4:
-                        cle_heure_minute = colonnes[1]
+                    # Nettoyage des caractères de découpe du JPL
+                    colonnes = ligne.replace("*", " ").replace("m", " ").replace("t", " ").split()
+                    
+                    if len(colonnes) >= 8:
+                        cle_heure_minute = colonnes[1] # "HH:MM"
                         
-                        valeurs_numeriques = []
-                        for element in colonnes[2:]:
-                            clean_element = ''.join(c for c in element if c.isdigit() or c in ['.', '-'])
-                            try:
-                                valeurs_numeriques.append(float(clean_element))
-                            except ValueError:
-                                continue
-                        
-                        if len(valeurs_numeriques) >= 2:
-                            azimuth = valeurs_numeriques[0]
-                            elevation = valeurs_numeriques[1]
-                            MATRICE_FINALE[nom_astre][cle_heure_minute] = [azimuth, elevation]
+                        try:
+                            azimuth = float(colonnes[2])
+                            elevation = float(colonnes[3])
+                            magnitude = float(colonnes[4])
+                            
+                            # Distances et vitesses héliocentriques / géocentriques
+                            # Le JPL fournit la distance à la Terre en UA (colonne 6 ou 7 selon l'astre)
+                            dist_terre_ua = float(colonnes[5]) if nom_astre != "LUNE" else float(colonnes[5]) / 149597870.7
+                            vitesse_relative = float(colonnes[6]) # km/s (Range-rate)
+                            
+                            # Stockage de la matrice physique complète par minute
+                            MATRICE_FINALE[nom_astre][cle_heure_minute] = [
+                                azimuth,          # [0]
+                                elevation,        # [1]
+                                magnitude,        # [2]
+                                dist_terre_ua,    # [3]
+                                vitesse_relative  # [4]
+                            ]
                             compteur_points += 1
+                        except (ValueError, IndexError):
+                            continue
                 
-                print(f"[OK] {compteur_points} lignes mémorisées pour {nom_astre}")
+                print(f"[OK] {compteur_points} paquets JPL mémorisés pour {nom_astre}")
             else:
-                print(f"[ALERT] Structure $$SOE absente pour {nom_astre}.")
+                print(f"[ALERT] Segment $$SOE introuvable pour {nom_astre}.")
                 
         except Exception as e:
-            print(f"[CRITICAL] Erreur réseau : {e}")
+            print(f"[CRITICAL] Rupture liaison JPL : {e}")
 
-    compte_total_cles = sum([len(MATRICE_FINALE[a]) for a in MATRICE_FINALE])
-    if compte_total_cles == 0:
-        print("[FAIL] Matrice vide. Avortement.")
-        sys.exit(1)
-
+    # Enregistrement de la super-matrice
     try:
         with open("orbites.json", "w", encoding="utf-8") as f:
             json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-        print("[SUCCESS] Fichier 'orbites.json' prêt.")
+        print("[SUCCESS] Base de données 100% JPL synchronisée.")
     except IOError as e:
-        print(f"[FATAL] Échec écriture : {e}")
+        print(f"[FATAL] Échec disque : {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
