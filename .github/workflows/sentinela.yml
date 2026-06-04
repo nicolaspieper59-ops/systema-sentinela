@@ -2,49 +2,31 @@ name: SENTINELA - Horloge Atomique Calendaire
 
 on:
   schedule:
-    - cron: '5 0 * * *'
-  workflow_dispatch:
-
-permissions:
-  contents: write
+    - cron: '0 0 * * *' # S'exécute tous les jours à minuit
+  workflow_dispatch: # Permet le déclenchement manuel
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Récupération du code source
-      uses: actions/checkout@v4
-      with:
-        persist-credentials: true
+    - name: Récupération du dépôt
+      uses: actions/checkout@v3
 
-    - name: Configuration de l'environnement Python
-      uses: actions/setup-python@v5
+    - name: Configuration de Python
+      uses: actions/setup-python@v4
       with:
         python-version: '3.10'
 
-    - name: Installation des dépendances réseau
-      run: |
-        python -m pip install --upgrade pip
-        pip install requests
+    - name: Installation des dépendances
+      run: pip install requests
 
-    - name: Exécution du calcul orbital NASA
-      run: python calculer_orbites.py
+    - name: Extraction des données brutes JPL-NASA
+      run: python calculer_orbites.py  # <-- C'EST CETTE LIGNE QUI DOIT TOURNER
 
-    - name: Sauvegarde et Push de la matrice orbites.json
-      env:
-        HF_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Commit et Push des nouvelles orbites
       run: |
-        git config --global user.name "nicolaspieper59-ops"
-        git config --global user.email "nicolaspieper59-ops@users.noreply.github.com"
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
         git add orbites.json
-        
-        # Vérification s'il y a des changements à pousser
-        if ! git diff --cached --quiet; then
-          git commit -m "Mise à jour cinématique automatique [NASA UTC]"
-          # Forçage de l'authentification avec le jeton d'action pour le push
-          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
-          git push origin main
-        else
-          echo "Aucune modification détectée sur la matrice éphémérides."
-        fi
+        git commit -m "Update orbites.json [JPL-NASA v8.9.1]" || exit 0
+        git push
