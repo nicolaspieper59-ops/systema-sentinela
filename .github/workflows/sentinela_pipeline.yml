@@ -1,0 +1,37 @@
+name: SENTINELA - Synchronisation Orbitale Haute Fréquence
+
+on:
+  schedule:
+    - cron: '0 */3 * * *' # S'exécute toutes les 3 heures pour éviter les coupures
+  workflow_dispatch:      # Permet le déclenchement manuel en un clic
+
+permissions:
+  contents: write
+
+jobs:
+  acquisition:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code Checkout
+        uses: actions/checkout@v4
+
+      - name: Configuration Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Installation des Dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Exécution du Noyau de Calcul (v8.9.9)
+        run: python calculer_orbites.py
+
+      - name: Déploiement Atomique de la Matrice
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "SENTINELA v8.9.9 : Synchronisation vecteur JPL-NASA [Marseille]"
+          file_pattern: 'orbites.json'
+          commit_user_name: "Sentinela-Automation"
+          commit_user_email: "sentinela@auroramap.local"
