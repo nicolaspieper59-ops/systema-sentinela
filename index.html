@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.9.6 — Synchronisation Optique Continue</title>
+    <title>SYSTEMA SENTINELA v8.9.7 — Interface Optique Continue</title>
     <style>
         :root {
             --bg-main: #0a0e14; --bg-card: #101520; --border-color: #262c36;
@@ -24,7 +24,7 @@
         .astro-name { font-size: 0.9rem; font-weight: bold; margin-bottom: 6px; display: flex; justify-content: space-between; }
         .data-block { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; color: var(--text-secondary); }
         .data-block span strong { color: var(--text-primary); }
-        #status-banner { width: 100%; background: #1e293b; padding: 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; margin-bottom: 15px; border: 1px solid var(--border-color); }
+        #status-banner { width: 100%; background: #1e293b; padding: 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; margin-bottom: 15px; border: 1px solid var(--border-color); line-height: 1.4; }
         #clock-source { font-size: 0.65rem; color: var(--text-secondary); text-align: center; margin-top: 5px; }
     </style>
 </head>
@@ -32,8 +32,8 @@
 
     <div class="dashboard">
         <div class="panel">
-            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SENTINELA v8.9.6 — COUPLAGE ATOMIQUE PAR EN-TÊTE HTTP</h2>
-            <div id="status-banner" style="color: var(--accent-orange);">INITIALISATION DU COUPLAGE...</div>
+            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SENTINELA v8.9.7 — MONITEUR DE SÉCURITÉ VECTORIEL</h2>
+            <div id="status-banner" style="color: var(--accent-orange);">INITIALISATION DES COMPOSANTS FLUIDES...</div>
             <svg id="radar" viewBox="0 0 400 400">
                 <line x1="200" y1="20" x2="200" y2="380" class="grid-line" />
                 <line x1="20" y1="200" x2="380" y2="200" class="grid-line" />
@@ -46,8 +46,8 @@
         <div style="display: flex; flex-direction: column; gap: 15px;">
             <div id="legend"></div>
             <div>
-                <div id="clock-display" style="font-size:0.8rem; color:var(--accent-blue); text-align:center; font-weight:bold;">UTC REALTIME : ANALYSE DES FLUX...</div>
-                <div id="clock-source">SOURCE : CALCUL EN COURS</div>
+                <div id="clock-display" style="font-size:0.8rem; color:var(--accent-blue); text-align:center; font-weight:bold;">UTC REALTIME : FLUX EN COURS...</div>
+                <div id="clock-source">SOURCE : INITIALISATION TERMINALE</div>
             </div>
         </div>
     </div>
@@ -68,7 +68,6 @@
             const labelSrc = document.getElementById("clock-source");
             
             try {
-                // Acquisition simultanée des données et de l'heure atomique de l'infrastructure d'hébergement
                 let res = await fetch(`./orbites.json?v=${Date.now()}`, { cache: 'no-store' });
                 if (res.ok) {
                     matriceEpheremidesCachee = await res.json();
@@ -76,7 +75,6 @@
                     banner.innerText = "CONNEXION JPL-NASA ÉTABLIE [FLUX STABLE]";
                     banner.style.color = "var(--accent-green)";
 
-                    // Extraction du marqueur temporel réseau de l'en-tête (Immunisé contre le blocage CORS)
                     let serverDateStr = res.headers.get('Date');
                     if (serverDateStr) {
                         tempsAtomiqueInitialMS = Date.parse(serverDateStr);
@@ -84,20 +82,14 @@
                         labelSourceTemps = "HORLOGE ATOMIQUE VIA EN-TÊTE HTTP (STABLE)";
                         labelSrc.style.color = "var(--accent-green)";
                     } else {
-                        throw new Error("En-tête temporel HTTP inaccessible.");
+                        throw new Error("En-tête réseau inaccessible.");
                     }
                 } else {
-                    banner.innerText = `MATRICE EN PANNE : Code ${res.status}`;
+                    banner.innerText = `PANNE DE MATRICE : Code serveur HTTP ${res.status}`;
                     banner.style.color = "var(--accent-red)";
-                    throw new Error("Fichier absent.");
                 }
             } catch (e) {
-                console.warn("Bypass temporel activé.", e);
-                if (!horlogePrete) {
-                    banner.innerText = "ERREUR PHYSIQUE : VÉRIFIEZ LE FICHIER ORBITES.JSON";
-                    banner.style.color = "var(--accent-red)";
-                }
-                // Secours ultime par l'horloge locale Android
+                console.warn("Routage temporel de secours.", e);
                 tempsAtomiqueInitialMS = Date.now();
                 tempsMonotoniqueInitialMS = performance.now();
                 labelSourceTemps = "HORLOGE LOCAL ANDROID (SECOURS - RISQUE DE DRIFT)";
@@ -105,13 +97,12 @@
             }
         }
 
-        // Moteur cinétique temps réel
+        // Moteur de rendu cinétique continu
         setInterval(() => {
             if (tempsAtomiqueInitialMS === 0) return;
 
             let msEcouleesDepuisChargement = performance.now() - tempsMonotoniqueInitialMS;
             let tempsTrueUTCMS = tempsAtomiqueInitialMS + msEcouleesDepuisChargement;
-            
             let nowObj = new Date(tempsTrueUTCMS);
             
             document.getElementById("clock-display").innerText = "UTC REALTIME : " + nowObj.toISOString().replace("T"," ").replace("Z","");
@@ -119,12 +110,19 @@
 
             if (!horlogePrete || !matriceEpheremidesCachee) return;
             
-            let minutesDuJour = nowObj.getUTCHours() * 60 + nowObj.getUTCMinutes();
-            let ratio = (nowObj.getUTCSeconds() + nowObj.getUTCMilliseconds() / 1000) / 60;
+            let hours = nowObj.getUTCHours();
+            let minutes = nowObj.getUTCMinutes();
+            let seconds = nowObj.getUTCSeconds();
+            let milliseconds = nowObj.getUTCMilliseconds();
 
-            let cleCourante = `${String(nowObj.getUTCHours()).padStart(2,'0')}:${String(nowObj.getUTCMinutes()).padStart(2,'0')}`;
-            let minutesSuivantes = (minutesDuJour + 1) % 1440;
+            let cleCourante = `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}`;
+            
+            let minutesSuivantes = (hours * 60 + minutes + 1) % 1440;
             let cleSuivante = `${String(Math.floor(minutesSuivantes/60)).padStart(2,'0')}:${String(minutesSuivantes%60).padStart(2,'0')}`;
+            let ratio = (seconds + milliseconds / 1000) / 60;
+
+            const banner = document.getElementById("status-banner");
+            let unAstreFige = false;
 
             for (let name in ASTRES) {
                 let blocAstre = matriceEpheremidesCachee[name];
@@ -134,51 +132,64 @@
                 let ptB = blocAstre[cleSuivante];
 
                 if (ptA && Array.isArray(ptA)) {
-                    let az = parseFloat(ptA[0] || 0);
-                    let alt = parseFloat(ptA[1] || 0);
-                    let mag = ptA[2] !== undefined ? parseFloat(ptA[2]) : -99;
-                    let dist = ptA[3] !== undefined ? parseFloat(ptA[3]) : 0;
-                    let vit = ptA[4] !== undefined ? parseFloat(ptA[4]) : 0;
+                    let az = parseFloat(ptA[0]);
+                    let alt = parseFloat(ptA[1]);
+                    let mag = ptA[2] !== "n.a." ? parseFloat(ptA[2]) : NaN;
+                    let dist = parseFloat(ptA[3]);
+                    let vit = parseFloat(ptA[4]);
 
                     if (ptB && Array.isArray(ptB)) {
-                        let azB = parseFloat(ptB[0] || az), altB = parseFloat(ptB[1] || alt);
-                        let magB = ptB[2] !== undefined ? parseFloat(ptB[2]) : mag;
-                        let distB = ptB[3] !== undefined ? parseFloat(ptB[3]) : dist;
-                        let vitB = ptB[4] !== undefined ? parseFloat(ptB[4]) : vit;
+                        let azB = parseFloat(ptB[0]), altB = parseFloat(ptB[1]);
+                        let magB = ptB[2] !== "n.a." ? parseFloat(ptB[2]) : mag;
+                        let distB = parseFloat(ptB[3]), vitB = parseFloat(ptB[4]);
 
                         if (Math.abs(azB - az) > 180) { if (azB > az) az += 360; else azB += 360; }
                         
                         az = az + (azB - az) * ratio;
                         alt = alt + (altB - alt) * ratio;
-                        mag = mag + (magB - mag) * ratio;
+                        if (!isNaN(mag) && !isNaN(magB)) mag = mag + (magB - mag) * ratio;
                         dist = dist + (distB - dist) * ratio;
                         vit = vit + (vitB - vit) * ratio;
                         
                         if (az >= 360) az -= 360;
                     }
 
+                    // Actualisation géométrique du Radar SVG
                     const ptr = document.getElementById(`ptr-${name}`);
                     if (ptr) {
                         ptr.setAttribute("transform", `rotate(${az} 200 200)`);
-                        ptr.style.opacity = alt < 0 ? "0.15" : "1";
+                        ptr.style.opacity = alt < 0 ? "0.15" : "1"; // Opacité basse si l'astre est sous l'horizon
                     }
 
+                    // Injection textuelle dans le DOM
                     document.getElementById(`az-${name}`).innerText = az.toFixed(2) + "°";
                     document.getElementById(`alt-${name}`).innerText = alt.toFixed(2) + "°";
-                    document.getElementById(`mag-${name}`).innerText = mag !== -99 ? mag.toFixed(2) : "n.a.";
-                    document.getElementById(`vit-${name}`).innerText = vit !== 0 ? vit.toFixed(2) + " km/s" : "n.a.";
+                    document.getElementById(`mag-${name}`).innerText = !isNaN(mag) ? mag.toFixed(2) : "n.a.";
+                    document.getElementById(`vit-${name}`).innerText = !isNaN(vit) ? vit.toFixed(2) + " km/s" : "n.a.";
                     
-                    if (dist > 0) {
+                    if (!isNaN(dist) && dist > 0) {
                         let distKM = dist * 149597870.7;
                         document.getElementById(`dist-${name}`).innerText = distKM.toLocaleString('fr-FR', {maximumFractionDigits:0}) + " km";
                     } else {
                         document.getElementById(`dist-${name}`).innerText = "n.a.";
                     }
+                } else {
+                    unAstreFige = true;
                 }
             }
+
+            // Gestionnaire de Diagnostic Bandeau
+            if (unAstreFige) {
+                banner.innerText = `ANOMALIE DE RÉFÉRENTIEL : Clé UTC [${cleCourante}] manquante dans le fichier JSON.`;
+                banner.style.color = "var(--accent-red)";
+            } else {
+                banner.innerText = "CONNEXION JPL-NASA ÉTABLIE [FLUX STABLE]";
+                banner.style.color = "var(--accent-green)";
+            }
+
         }, 100);
 
-        // Assemblage des éléments vectoriels SVG
+        // Génération automatique de l'interface graphique
         const svgNS = "http://www.w3.org/2000/svg";
         const g = document.getElementById('pointers');
         const leg = document.getElementById('legend');
@@ -209,4 +220,4 @@
         initialiserSysteme();
     </script>
 </body>
-</html>
+    </html>
