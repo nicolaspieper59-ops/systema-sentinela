@@ -1,0 +1,39 @@
+name: SENTINELA - Horloge Atomique Calendaire
+
+on:
+  schedule:
+    # Se lance automatiquement toutes les nuits à 00:05 UTC
+    - cron: '5 0 * * *'
+  workflow_dispatch:
+    # Vous permet de lancer le calcul manuellement depuis votre téléphone
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Récupération du code source
+      uses: actions/checkout@v4
+
+    - name: Configuration de l'environnement Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Installation des dépendances réseau
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests
+
+    - name: Exécution du calcul orbital NASA
+      run: python calculer_orbites.py
+
+    - name: Sauvegarde et Push de la matrice orbites.json
+      run: |
+        git config --global user.name "Sentinela-Bot"
+        git config --global user.email "bot@sentinela.local"
+        git add orbites.json
+        git diff --quiet && git diff --staged --quiet || (git commit -m "Mise à jour cinématique automatique [NASA UTC]" && git push)
