@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.6.3 — Spatiale Autonome</title>
+    <title>SYSTEMA SENTINELA v8.7.0 — Spatiale Autonome</title>
     <style>
         :root {
             --bg-main: #0a0e14; --bg-card: #101520; --border-color: #262c36;
@@ -21,7 +21,7 @@
         #radar { width: 100%; max-width: 340px; background: #05070c; border-radius: 50%; border: 1px solid var(--border-color); }
         .grid-line { stroke: #1e293b; }
         .radar-ring { fill: none; stroke: #0284c7; stroke-dasharray: 2 4; opacity: 0.5; }
-        .pointer { stroke-linecap: round; transition: transform 0.3s ease-out; }
+        .pointer { stroke-linecap: round; transition: transform 0.1s linear; }
         .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; width: 100%; }
         .kpi { background: var(--bg-card); border: 1px solid var(--border-color); padding: 12px; border-radius: 6px; }
         .full { grid-column: span 2; }
@@ -35,7 +35,7 @@
 
     <div class="dashboard">
         <div class="panel">
-            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SYSTEMA SENTINELA v8.6.3</h2>
+            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SYSTEMA SENTINELA v8.7.0 (Moteur Fluide)</h2>
             <svg id="radar" viewBox="0 0 400 400">
                 <line x1="200" y1="20" x2="200" y2="380" class="grid-line" />
                 <line x1="20" y1="200" x2="380" y2="200" class="grid-line" />
@@ -59,7 +59,6 @@
         let horlogePrete = false;
         let decalageSystemeMS = 0; 
         let matriceEpheremidesCachee = null;
-        let statutReseau = "INITIALISATION";
 
         let lastValidPos = { lat: 43.28, lon: 5.36, alt: 100 };
         const ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" };
@@ -67,37 +66,29 @@
 
         async function initialiserComposantsReseau() {
             try {
-                statutReseau = "CONNEXION CORRIDOR...";
                 const cacheBuster = Date.now();
                 let res = await fetch(`./orbites.json?v=${cacheBuster}`, { cache: 'no-store' });
-                
-                if (!res.ok) {
-                    res = await fetch(`./manifest.json?v=${cacheBuster}`, { cache: 'no-store' });
-                }
-
                 if (res.ok) {
                     let enteteDate = res.headers.get("Date");
                     let tempsServeurReel = enteteDate ? Date.parse(enteteDate) : Date.now();
                     decalageSystemeMS = tempsServeurReel - Date.now();
-
-                    let enveloppe = await res.json();
-                    matriceEpheremidesCachee = enveloppe.DONNEES ? enveloppe.DONNEES : enveloppe;
-                    statutReseau = "MATRICE_OK";
-                    console.log("[SYSTEMA] Matrice injectée en mémoire.");
-                } else {
-                    decalageSystemeMS = 0;
-                    statutReseau = "FICHIER_INTROUVABLE";
+                    matriceEpheremidesCachee = await res.json();
                 }
             } catch (e) {
-                decalageSystemeMS = 0;
-                statutReseau = "ERREUR_LIAISON";
-                console.error("[SYSTEMA] Conflit réseau :", e);
+                console.error("Erreur liaison", e);
             } finally {
                 horlogePrete = true;
             }
         }
 
-        // Boucle cinématique adaptative v8.6.3
+        function obtenirMinutesAbsolues(cle, indexParDefaut) {
+            if (typeof cle === "string" && cle.includes(":")) {
+                let p = cle.split(":");
+                return parseInt(p[0], 10) * 60 + parseInt(p[1], 10);
+            }
+            return indexParDefaut;
+        }
+
         setInterval(() => {
             if (!horlogePrete) return;
             
@@ -106,111 +97,73 @@
             
             document.getElementById('kpi-time').innerText = nowObj.toISOString().replace("T"," ").replace("Z"," UTC");
 
-            let dateISO = nowObj.toISOString().split('T')[0]; 
-            let heureAvecZero = String(nowObj.getUTCHours()).padStart(2, '0');
-            let heureSansZero = String(nowObj.getUTCHours());
-            let minuteAvecZero = String(nowObj.getUTCMinutes()).padStart(2, '0');
-            
-            let cleFormat1 = `${heureAvecZero}:${minuteAvecZero}`; 
-            let cleFormat2 = `${heureSansZero}:${minuteAvecZero}`; 
-            let indexMinuteLineaire = nowObj.getUTCHours() * 60 + nowObj.getUTCMinutes(); 
+            let minutesDuJour = nowObj.getUTCHours() * 60 + nowObj.getUTCMinutes();
+            let secondesDeLaMinute = nowObj.getUTCSeconds() + (nowObj.getUTCMilliseconds() / 1000);
+            let ratioProgressionMinute = secondesDeLaMinute / 60;
+
+            let hAvecZero = String(nowObj.getUTCHours()).padStart(2, '0');
+            let mAvecZero = String(nowObj.getUTCMinutes()).padStart(2, '0');
+            let cleCourante = `${hAvecZero}:${mAvecZero}`;
+
+            let minutesSuivantes = (minutesDuJour + 1) % 1440;
+            let hSuivanteAvecZero = String(Math.floor(minutesSuivantes / 60)).padStart(2, '0');
+            let mSuivanteAvecZero = String(minutesSuivantes % 60).padStart(2, '0');
+            let cleSuivante = `${hSuivanteAvecZero}:${mSuivanteAvecZero}`;
 
             for (let name in ASTRES) {
                 const txt = document.getElementById(`val-${name}`);
                 const ptr = document.getElementById(`ptr-${name}`);
                 
-                if (!matriceEpheremidesCachee) {
-                    if (txt) txt.innerHTML = `<span style="color:var(--text-secondary)">[${statutReseau}] En attente...</span>`;
-                    continue;
-                }
+                if (!matriceEpheremidesCachee) continue;
 
-                let idAstre = ASTRES[name];
-                let blocAstre = matriceEpheremidesCachee[name] || matriceEpheremidesCachee[idAstre];
-                let donneesAstre = null;
-                let cleAffichee = cleFormat1;
-                let modeApproximation = false;
+                let blocAstre = matriceEpheremidesCachee[name];
 
                 if (blocAstre) {
-                    // 1. RECHERCHE STRICT MULTI-DIALECTE
-                    if (blocAstre[cleFormat1]) { 
-                        donneesAstre = blocAstre[cleFormat1]; 
-                    } else if (blocAstre[cleFormat2]) { 
-                        donneesAstre = blocAstre[cleFormat2]; 
-                    } else if (blocAstre[indexMinuteLineaire]) { 
-                        donneesAstre = blocAstre[indexMinuteLineaire]; 
-                    } else if (blocAstre[dateISO]) { 
-                        let sousBlocDate = blocAstre[dateISO];
-                        if (sousBlocDate[cleFormat1]) donneesAstre = sousBlocDate[cleFormat1];
-                        else if (sousBlocDate[cleFormat2]) donneesAstre = sousBlocDate[cleFormat2];
-                    } else {
-                        // 2. CORRESPONDANCE TEXTUELLE PAR BALAYAGE FLOU
-                        for (let k in blocAstre) {
-                            if (k.includes(cleFormat1) || k.includes(cleFormat2)) {
-                                donneesAstre = blocAstre[k];
-                                cleAffichee = k;
-                                break;
-                            }
-                        }
-                    }
+                    let ptA = blocAstre[cleCourante];
+                    let ptB = blocAstre[cleSuivante];
+                    let cleTrouveeA = cleCourante;
 
-                    // 3. CORRECTIF V8.6.3 : ALGORITHME D'INTERPOLATION PAR PROXIMITÉ TEMPORELLE
-                    if (!donneesAstre) {
-                        let clesDisponibles = Object.keys(blocAstre);
-                        if (clesDisponibles.length > 0 && clesDisponibles[0] !== "DONNEES") {
-                            let minDiff = Infinity;
-                            let meilleureCle = clesDisponibles[0];
-
-                            clesDisponibles.forEach(k => {
-                                let h = 0, m = 0;
-                                if (k.includes(':')) {
-                                    let fragments = k.split(':');
-                                    h = parseInt(fragments[0], 10);
-                                    m = parseInt(fragments[1], 10);
-                                } else if (!isNaN(k)) {
-                                    let valeurMinutes = parseInt(k, 10);
-                                    h = Math.floor(valeurMinutes / 60);
-                                    m = valeurMinutes % 60;
-                                } else return;
-
-                                let totalMinutesCle = h * 60 + m;
-                                let diff = Math.abs(totalMinutesCle - indexMinuteLineaire);
-                                if (diff < minDiff) {
-                                    minDiff = diff;
-                                    meilleureCle = k;
-                                }
-                            });
-
-                            donneesAstre = blocAstre[meilleureCle];
-                            cleAffichee = meilleureCle;
-                            modeApproximation = true;
-                        }
-                    }
-                }
-
-                // RENDU GRAPHIQUE ET TRANSMISSION DES DONNÉES SANS RUPTURE
-                if (donneesAstre && Array.isArray(donneesAstre)) {
-                    let az = parseFloat(donneesAstre[0]);
-                    let alt = parseFloat(donneesAstre[1]);
-
-                    if (ptr) {
-                        ptr.setAttribute("transform", `rotate(${az} 200 200)`);
-                        ptr.style.opacity = alt < 0 ? "0.15" : "1";
-                    }
-                    if (txt) {
-                        if (modeApproximation) {
-                            txt.innerHTML = `h: ${alt.toFixed(1)}° | Az: ${az.toFixed(1)}° <span style="color:var(--accent-orange)">⧗ (Synchro-Fixe "${cleAffichee}")</span>`;
-                        } else {
-                            txt.innerHTML = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}° ${alt < 0 ? "⧗ (Horizon-)" : "✦ (Visible)"}`;
-                            txt.style.color = "var(--text-primary)";
-                        }
-                    }
-                } else if (txt) {
-                    let cleTrouvee = "BASE_VIDE";
-                    if (blocAstre) {
+                    if (!ptA) {
                         let cles = Object.keys(blocAstre);
-                        if (cles.length > 0) cleTrouvee = cles[0];
+                        if (cles.length > 0) {
+                            let minDiff = Infinity;
+                            cles.forEach(k => {
+                                let mAbs = obtenirMinutesAbsolues(k, minutesDuJour);
+                                let diff = Math.abs(mAbs - minutesDuJour);
+                                if (diff < minDiff) { minDiff = diff; ptA = blocAstre[k]; cleTrouveeA = k; }
+                            });
+                        }
                     }
-                    txt.innerHTML = `<span style="color:var(--accent-orange)">Format invalide. Clé détectée : "${cleTrouvee}"</span>`;
+
+                    if (ptA && Array.isArray(ptA)) {
+                        let azFinal = parseFloat(ptA[0]);
+                        let altFinal = parseFloat(ptA[1]);
+                        let modeInterpolation = false;
+
+                        if (ptB && Array.isArray(ptB)) {
+                            modeInterpolation = true;
+                            let azA = parseFloat(ptA[0]), altA = parseFloat(ptA[1]);
+                            let azB = parseFloat(ptB[0]), altB = parseFloat(ptB[1]);
+
+                            if (Math.abs(azB - azA) > 180) {
+                                if (azB > azA) azA += 360; else azB += 360;
+                            }
+
+                            azFinal = azA + (azB - azA) * ratioProgressionMinute;
+                            altFinal = altA + (altB - altA) * ratioProgressionMinute;
+                            if (azFinal >= 360) azFinal -= 360;
+                        }
+
+                        if (ptr) {
+                            ptr.setAttribute("transform", `rotate(${azFinal} 200 200)`);
+                            ptr.style.opacity = altFinal < 0 ? "0.15" : "1";
+                        }
+                        if (txt) {
+                            let icone = altFinal < 0 ? "⧗ (Horizon-)" : "✦ (Visible)";
+                            let suffixe = modeInterpolation ? " [LIVE]" : ` (Synchro "${cleTrouveeA}")`;
+                            txt.innerHTML = `h: ${altFinal.toFixed(2)}° | Az: ${azFinal.toFixed(2)}° <span style="color:var(--accent-green)">${icone}${suffixe}</span>`;
+                        }
+                    }
                 }
             }
         }, 100);
@@ -254,4 +207,4 @@
         })();
     </script>
 </body>
-</html>
+                                          </html>
