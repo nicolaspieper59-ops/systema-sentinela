@@ -141,6 +141,9 @@ def main():
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(structure_production, f, indent=2, ensure_ascii=False)
     print("[SUCCESS] Matrice scellée. Réalignement cinématique total (1440 indexations valides).")
+    # Avant de sauvegarder le fichier JSON final, valider qu'il contient des données
+if not donnees_finales or len(donnees_finales.keys()) == 0:
+    raise RuntimeError("CRITICAL: La matrice générée est vide. Interruption du déploiement pour protéger la Sentinela.")
 
 if __name__ == "__main__":
     main()
