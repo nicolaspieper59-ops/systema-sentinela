@@ -1,82 +1,119 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+SYSTEMA SENTINELA v8.6.2 - Module d'Acquisition Cinématique
+Génération de la matrice d'éphémérides planétaires (JPL Horizons REST API)
+Maille Géo : Marseille (43.28N / 5.36E / 100m)
+"""
+
 import requests
 import json
+import sys
 from datetime import datetime, timezone
 
-# 1. Forcer la date du jour en UTC pur pour aligner l'horloge atomique
-aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+def executer_acquisition():
+    # 1. Alignement temporel sur l'horloge absolue (UTC)
+    aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    print(f"[SENTINELA] Initialisation du cycle pour le repère : {aujourdhui} UTC")
 
-ASTRES = {
-    "SOLEIL": "10",
-    "LUNE": "301",
-    "JUPITER": "599"
-}
-
-MATRICE_FINALE = {}
-
-for nom_astre, id_nasa in ASTRES.items():
-    print(f"[SENTINELA-BACKEND] Échantillonnage balistique : {nom_astre}...")
-    MATRICE_FINALE[nom_astre] = {}
-    
-    url = "https://ssd-api.jpl.nasa.gov/horizons.api"
-    params = {
-        "format": "json",
-        "COMMAND": f"'{id_nasa}'",
-        "OBJ_DATA": "NO",
-        "MAKE_EPHEM": "YES",
-        "EPHEM_TYPE": "OBSERVER",
-        "CENTER": "coord@399",
-        "SITE_COORD": "'5.36,43.28,0.100'", # Coordonnées de la station
-        
-        # FORCE : Demande explicite d'une courbe complète de 24h
-        "START_TIME": f"'{aujourdhui} 00:00'",
-        "STOP_TIME": f"'{aujourdhui} 23:59'",
-        
-        "STEP_SIZE": "'1m'", # Échantillonnage à la minute
-        "QUANTITIES": "'4'",
-        "REF_SYSTEM": "'J2000'",
-        "ANG_FORMAT": "'DEG'"
+    # Configuration des cibles de suivi
+    ASTRES = {
+        "SOLEIL": "10",
+        "LUNE": "301",
+        "JUPITER": "599"
     }
-    
-    try:
-        response = requests.get(url, params=params, timeout=10).json()
-        texte_brut = response.get("result", "")
+
+    MATRICE_FINALE = {}
+
+    for nom_astre, id_nasa in ASTRES.items():
+        print(f"[SENTINELA] Interrogations des vecteurs balistiques : {nom_astre} (ID: {id_nasa})...")
+        MATRICE_FINALE[nom_astre] = {}
         
-        if "$$SOE" in texte_brut and "$$EOE" in texte_brut:
-            # Isolation du bloc de données utile
-            bloc_donnees = texte_brut.split("$$SOE")[1].split("$$EOE")[0]
-            lignes = bloc_donnees.strip().split("\n")
+        url = "https://ssd-api.jpl.nasa.gov/horizons.api"
+        
+        # Paramétrage de la requête REST stricte
+        params = {
+            "format": "json",
+            "COMMAND": f"'{id_nasa}'",
+            "OBJ_DATA": "NO",
+            "MAKE_EPHEM": "YES",
+            "EPHEM_TYPE": "OBSERVER",
+            "CENTER": "coord@399",
+            "SITE_COORD": "'5.36,43.28,0.100'", # Longitude, Latitude, Altitude (km)
+            "START_TIME": f"'{aujourdhui} 00:00'",
+            "STOP_TIME": f"'{aujourdhui} 23:59'",
+            "STEP_SIZE": "'1m'",  # Résolution à la minute (1440 points par jour)
+            "QUANTITIES": "'4'",  # Quantité 4 : Azimut et Élévation apparents
+            "REF_SYSTEM": "'J2000'",
+            "ANG_FORMAT": "'DEG'"
+        }
+        
+        try:
+            response = requests.get(url, params=params, timeout=15)
             
-            for ligne in lignes:
-                if not ligne.strip(): 
-                    continue
+            if response.status_code != 200:
+                print(f"[ERREUR] HTTP {response.status_code} sur l'astre {nom_astre}")
+                continue
                 
-                colonnes = ligne.split()
-                # Format standard Horizons : YYYY-Mon-DD HH:MM Azimuth Elevation
-                # Exemple : ['2026-Jun-04', '06:00', '95.2341', '12.4567']
-                if len(colonnes) >= 4:
-                    cle_heure_minute = colonnes[1] # Extrait "HH:MM"
-                    
-                    try:
-                        azimuth = float(colonnes[2])
-                        elevation = float(colonnes[3])
-                        
-                        # Stockage indexé par la clé de minute pure
-                        MATRICE_FINALE[nom_astre][cle_heure_minute] = [azimuth, elevation]
-                    except ValueError:
-                        continue
-        else:
-            print(f"[ERREUR] Balises $$SOE absentes pour {nom_astre}")
+            data_json = response.json()
+            texte_brut = data_json.get("result", "")
             
-    except Exception as e:
-        print(f"[CRITICAL] Échec de la liaison JPL pour {nom_astre}: {e}")
+            # Isolation de la charge utile entre les balises de début (SOE) et de fin (EOE)
+            if "$$SOE" in texte_brut and "$$EOE" in texte_brut:
+                bloc_donnees = texte_brut.split("$$SOE")[1].split("$$EOE")[0]
+                lignes = bloc_donnees.strip().split("\n")
+                
+                compteur_points = 0
+                for ligne in lignes:
+                    if not ligne.strip(): 
+                        continue
+                    
+                    colonnes = ligne.split()
+                    if len(colonnes) >= 4:
+                        cle_heure_minute = colonnes[1] # Extraction de "HH:MM"
+                        
+                        # SÉCURITÉ CINETIQUE : Filtrage des marqueurs de transition visuelle de la NASA (*, m, A, etc.)
+                        # On extrait uniquement les valeurs convertibles en float après l'horodatage
+                        valeurs_numeriques = []
+                        for element in colonnes[2:]:
+                            try:
+                                valeurs_numeriques.append(float(element))
+                            except ValueError:
+                                # Ignore les drapeaux textuels de la NASA comme la présence de l'ombre lunaire ou solaire
+                                continue
+                        
+                        # Si nous avons extrait au moins l'Azimut et l'Élévation
+                        if len(valeurs_numeriques) >= 2:
+                            azimuth = valeurs_numeriques[0]
+                            elevation = valeurs_numeriques[1]
+                            
+                            # Injection dans la matrice indexée à la minute brute
+                            MATRICE_FINALE[nom_astre][cle_heure_minute] = [azimuth, elevation]
+                            compteur_points += 1
+                
+                print(f"[SUCCESS] {compteur_points} coordonnées cinématiques injectées pour {nom_astre}")
+            else:
+                print(f"[ERREUR] Balises de flux $$SOE/$$EOE introuvables pour {nom_astre}")
+                
+        except Exception as e:
+            print(f"[CRITICAL] Rupture de liaison avec l'API JPL pour {nom_astre}: {e}")
 
-# 2. Validation de sécurité : Interdire l'écriture si le dictionnaire est défaillant
-compte_cles = sum([len(MATRICE_FINALE[a]) for a in MATRICE_FINALE])
-if compte_cles == 0:
-    raise RuntimeError("Alerte critique : La matrice générée est vide. Déploiement avorté.")
+    # 2. Protocole de validation de l'intégrité de la matrice
+    compte_total_cles = sum([len(MATRICE_FINALE[a]) for a in MATRICE_FINALE])
+    print(f"[TELEMETRIE] Total des index générés : {compte_total_cles} points.")
 
-# 3. Sauvegarde finale (Vérifier que cette instruction est bien HORS de la boucle for)
-with open("orbites.json", "w", encoding="utf-8") as f:
-    json.dump(MATRICE_FINALE, f, indent=4)
+    if compte_total_cles == 0:
+        print("[CRITICAL] Échec global : La matrice finale ne contient aucune coordonnée. Avortement du cycle pour protéger l'intégrité de l'interface.")
+        sys.exit(1)
 
-print(f"[SUCCESS] Matrice mise à jour avec {compte_cles} coordonnées cinématiques.")
+    # 3. Écriture atomique sécurisée sur le disque
+    try:
+        with open("orbites.json", "w", encoding="utf-8") as f:
+            json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
+        print("[SUCCESS] Le fichier orbites.json a été mis à jour et structuré.")
+    except IOError as e:
+        print(f"[CRITICAL] Impossible d'écrire le fichier orbites.json : {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    executer_acquisition()
