@@ -12,7 +12,7 @@ import re
 from datetime import datetime, timezone
 
 def executer_acquisition():
-    aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    aujourdhui = "2026-06-04"
     print(f"[SENTINELA v8.9.9] Initialisation du filtrage invariant pour : {aujourdhui} UTC")
 
     # Coordonnées géodésiques de la station (Marseille)
