@@ -124,35 +124,55 @@
             const banner = document.getElementById("status-banner");
             let unAstreFige = false;
 
-            for (let name in ASTRES) {
-                let blocAstre = matriceEpheremidesCachee[name];
-                if (!blocAstre) continue;
+// EXTRAIT DU MOTEUR DE RENDU v8.9.8 (À remplacer dans index.html)
+for (let name in ASTRES) {
+    let blocAstre = matriceEpheremidesCachee[name];
+    if (!blocAstre) continue;
 
-                let ptA = blocAstre[cleCourante];
-                let ptB = blocAstre[cleSuivante];
+    let ptA = blocAstre[cleCourante];
+    
+    // SYSTÈME DE SECOURS VECTORIEL (V8.9.8)
+    if (!ptA) {
+        // Si la minute courante a été rejetée, on cherche la minute précédente dans le JSON
+        let minFormatees = nowObj.getUTCMinutes();
+        let heureFormatee = nowObj.getUTCHours();
+        let minutesTotales = heureFormatee * 60 + minFormatees;
+        
+        let tentative = 1;
+        while (!ptA && tentative < 15) { // Recherche jusqu'à 15 minutes en arrière
+            let minutesSecours = (minutesTotales - tentative + 1440) % 1440;
+            let cleSecours = `${String(Math.floor(minutesSecours/60)).padStart(2,'0')}:${String(minutesSecours%60).padStart(2,'0')}`;
+            ptA = blocAstre[cleSecours];
+            tentative++;
+        }
+        unAstreFige = true; // Déclenche l'affichage orange de diagnostic, mais préserve les chiffres
+    }
 
-                if (ptA && Array.isArray(ptA)) {
-                    let az = parseFloat(ptA[0]);
-                    let alt = parseFloat(ptA[1]);
-                    let mag = ptA[2] !== "n.a." ? parseFloat(ptA[2]) : NaN;
-                    let dist = parseFloat(ptA[3]);
-                    let vit = parseFloat(ptA[4]);
+    let ptB = blocAstre[cleSuivante] || ptA;
 
-                    if (ptB && Array.isArray(ptB)) {
-                        let azB = parseFloat(ptB[0]), altB = parseFloat(ptB[1]);
-                        let magB = ptB[2] !== "n.a." ? parseFloat(ptB[2]) : mag;
-                        let distB = parseFloat(ptB[3]), vitB = parseFloat(ptB[4]);
+    if (ptA && Array.isArray(ptA)) {
+        let az = parseFloat(ptA[0]);
+        let alt = parseFloat(ptA[1]);
+        let mag = ptA[2] !== "n.a." ? parseFloat(ptA[2]) : NaN;
+        let dist = parseFloat(ptA[3]);
+        let vit = parseFloat(ptA[4]);
 
-                        if (Math.abs(azB - az) > 180) { if (azB > az) az += 360; else azB += 360; }
-                        
-                        az = az + (azB - az) * ratio;
-                        alt = alt + (altB - alt) * ratio;
-                        if (!isNaN(mag) && !isNaN(magB)) mag = mag + (magB - mag) * ratio;
-                        dist = dist + (distB - dist) * ratio;
-                        vit = vit + (vitB - vit) * ratio;
-                        
-                        if (az >= 360) az -= 360;
-                    }
+        if (ptB && Array.isArray(ptB) && ptB !== ptA) {
+            let azB = parseFloat(ptB[0]), altB = parseFloat(ptB[1]);
+            let magB = ptB[2] !== "n.a." ? parseFloat(ptB[2]) : mag;
+            let distB = parseFloat(ptB[3]), vitB = parseFloat(ptB[4]);
+
+            if (Math.abs(azB - az) > 180) { if (azB > az) az += 360; else azB += 360; }
+            
+            az = az + (azB - az) * ratio;
+            alt = alt + (altB - alt) * ratio;
+            if (!isNaN(mag) && !isNaN(magB)) mag = mag + (magB - mag) * ratio;
+            dist = dist + (distB - dist) * ratio;
+            vit = vit + (vitB - vit) * ratio;
+            
+            if (az >= 360) az -= 360;
+        }
+// ... LE RESTE DU CODE DE RECOUVREMENT DE L'INTERFACE RESTE IDENTIQUE ...
 
                     // Actualisation géométrique du Radar SVG
                     const ptr = document.getElementById(`ptr-${name}`);
