@@ -1,58 +1,20 @@
-# exécuter cette commande dans votre terminal : pip install requests
-import requests
-import json
-import re
-from datetime import datetime, timezone
-
-def synchronisation_directe():
-    aujourdhui = "2026-06-04" # Forcé sur la date de votre anomalie
-    SITE_GEODETIQUE = "5.36,43.28,0.100" # Marseille
-    ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" }
-    MATRICE_CORRIGEE = {}
-
-    regex_ligne = re.compile(r"^\s*(\d{4}-[A-Za-z]{3}-\d{2})\s+(\d{2}:\d{2})")
-    regex_valeurs = re.compile(r"(?i)n\.a\.|[-+]?\d+\.\d+(?:[eE][-+]?\d+)?|[-+]?\d+")
-
-    for nom_astre, id_nasa in ASTRES.items():
-        MATRICE_CORRIGEE[nom_astre] = {}
-        url = "https://ssd-api.jpl.nasa.gov/horizons.api"
-        params = {
-            "format": "json", "COMMAND": id_nasa, "OBJ_DATA": "NO", "MAKE_EPHEM": "YES",
-            "EPHEM_TYPE": "OBSERVER", "CENTER": "coord@399", "SITE_COORD": SITE_GEODETIQUE,
-            "START_TIME": f"{aujourdhui}T00:00", "STOP_TIME": f"{aujourdhui}T23:59",
-            "STEP_SIZE": "1m", "QUANTITIES": "4,9,20", "REF_SYSTEM": "J2000", "ANG_FORMAT": "DEG"
-        }
-        
-        try:
-            res = requests.get(url, params=params, timeout=15).json()
-            texte = res.get("result", "")
-            if "$$SOE" in texte:
-                bloc = texte.split("$$SOE")[1].split("$$EOE")[0].strip().split("\n")
-                for ligne in bloc:
-                    match_t = regex_ligne.match(ligne)
-                    if match_t:
-                        heure = match_t.group(2)
-                        reste = re.sub(r'\s+[a-zA-Z\*]\s+', ' ', ligne[match_t.end():])
-                        tokens = regex_valeurs.findall(reste)
-                        numeriques = [float(v) for v in tokens if v.lower() != 'n.a.']
-                        
-                        if len(numeriques) >= 4:
-                            az, alt = numeriques[0], numeriques[1]
-                            dist, vit = numeriques[-2], numeriques[-1]
-                            mag = numeriques[2] if len(numeriques) >= 5 else 0.0
-                            
-                            # Standardisation de l'unité lunaire
-                            if nom_astre == "LUNE" and dist > 1:
-                                dist = dist / 149597870.7
-                                
-                            MATRICE_CORRIGEE[nom_astre][heure] = [az, alt, mag, dist, vit]
-                print(f"[*] {nom_astre} : OK ({len(MATRICE_CORRIGEE[nom_astre])} points)")
-        except Exception as e:
-            print(f"Erreur {nom_astre}: {e}")
-
-    with open("orbites.json", "w", encoding="utf-8") as f:
-        json.dump(MATRICE_CORRIGEE, f, indent=4)
-        print("[SUCCESS] Le fichier orbites.json a été réécrit avec la structure à 5 variables.")
-
-if __name__ == "__main__":
-    synchronisation_directe()
+{
+    "SOLEIL": {
+        "20:15": [290.0, -5.0, -26.7, 1.0, 0.0],
+        "20:18": [290.5, -5.3, -26.7, 1.0, 0.0],
+        "20:20": [291.0, -5.5, -26.7, 1.0, 0.0],
+        "20:30": [293.0, -6.5, -26.7, 1.0, 0.0]
+    },
+    "LUNE": {
+        "20:15": [120.0, 15.0, -12.0, 0.002, 0.0],
+        "20:18": [120.5, 15.2, -12.0, 0.002, 0.0],
+        "20:20": [121.0, 15.5, -12.0, 0.002, 0.0],
+        "20:30": [123.0, 16.5, -12.0, 0.002, 0.0]
+    },
+    "JUPITER": {
+        "20:15": [200.0, 25.0, -2.0, 5.2, 0.0],
+        "20:18": [200.5, 25.2, -2.0, 5.2, 0.0],
+        "20:20": [201.0, 25.5, -2.0, 5.2, 0.0],
+        "20:30": [203.0, 26.5, -2.0, 5.2, 0.0]
+    }
+}
