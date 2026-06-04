@@ -45,16 +45,15 @@ params = {
         "CENTER": "coord@399",
         "SITE_COORD": f"'{LONGITUDE},{LATITUDE},{ALTITUDE}'",
         
-        # CORRECTIF PROFESSIONNEL : Forçage du référentiel Universal Time (UT / UTC)
-        "START_TIME": f"'{aujourdhui} 00:00 UT'", 
-        "STOP_TIME": f"'{aujourdhui} 23:59 UT'",  
+        # NETTOYAGE : Suppression du suffixe " UT" qui bloquait l'API REST
+        "START_TIME": f"'{aujourdhui} 00:00'", 
+        "STOP_TIME": f"'{aujourdhui} 23:59'",  
         
         "STEP_SIZE": "1m",
         "QUANTITIES": "4",
         "REF_SYSTEM": "J2000",
         "ANG_FORMAT": "DEG"
 }
-    
     dict_points = {}
     try:
         # CORRECTIF CRITIQUE : Encodage conforme RFC 3986 des paramètres et des espaces
