@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.9.3 — Pure Donnée JPL NASA</title>
+    <title>SYSTEMA SENTINELA v8.9.5 — Autonomie Atomique</title>
     <style>
         :root {
             --bg-main: #0a0e14; --bg-card: #101520; --border-color: #262c36;
@@ -25,14 +25,15 @@
         .data-block { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; color: var(--text-secondary); }
         .data-block span strong { color: var(--text-primary); }
         #status-banner { width: 100%; background: #1e293b; padding: 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; margin-bottom: 15px; border: 1px solid var(--border-color); }
+        #clock-source { font-size: 0.65rem; color: var(--text-secondary); text-align: center; margin-top: 5px; }
     </style>
 </head>
 <body>
 
     <div class="dashboard">
         <div class="panel">
-            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SENTINELA v8.9.3 — SOURCE UNIQUE : NASA/JPL HORIZONS</h2>
-            <div id="status-banner" style="color: var(--accent-orange);">INITIALISATION DE LA LIAISON...</div>
+            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SENTINELA v8.9.5 — INJECTEUR TEMPOREL ISOLÉ</h2>
+            <div id="status-banner" style="color: var(--accent-orange);">INITIALISATION DES SYSTÈMES...</div>
             <svg id="radar" viewBox="0 0 400 400">
                 <line x1="200" y1="20" x2="200" y2="380" class="grid-line" />
                 <line x1="20" y1="200" x2="380" y2="200" class="grid-line" />
@@ -44,15 +45,50 @@
 
         <div style="display: flex; flex-direction: column; gap: 15px;">
             <div id="legend"></div>
-            <div id="clock-display" style="font-size:0.75rem; color:var(--accent-blue); text-align:center; font-weight:bold;">UTC : --:--:--</div>
+            <div>
+                <div id="clock-display" style="font-size:0.8rem; color:var(--accent-blue); text-align:center; font-weight:bold;">UTC : INTERROGATION RECHERCHE...</div>
+                <div id="clock-source">SOURCE : EN ATTENTE</div>
+            </div>
         </div>
     </div>
 
     <script>
         let horlogePrete = false;
         let matriceEpheremidesCachee = null;
+        
+        // VARIABLES DU NOYAU DE SYNCHRONISATION ATOMIQUE
+        let tempsAtomiqueInitialMS = 0;
+        let tempsMonotoniqueInitialMS = 0;
+        let labelSourceTemps = "DÉCONNECTÉ";
+
         const ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" };
         const COULEURS = { "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "JUPITER": "#fb923c" };
+
+        // ÉTAPE 1 : EXTRACTION DU TEMPS ABSOLU (Bypasse complètement Android)
+        async function synchroniserHorlogeAtomique() {
+            const labelSrc = document.getElementById("clock-source");
+            try {
+                // Interrogation du pool de serveurs de temps internationaux (NTP via HTTP REST)
+                let res = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', { cache: 'no-store' });
+                if (res.ok) {
+                    let data = await res.json();
+                    tempsAtomiqueInitialMS = data.unixtime * 1000; // Conversion Unix seconde vers milliseconde
+                    tempsMonotoniqueInitialMS = performance.now(); // Point zéro du processeur matériel
+                    labelSourceTemps = "HORLOGE ATOMIQUE PHYSIQUE (WORLDTIME SERVERS)";
+                    labelSrc.style.color = "var(--accent-green)";
+                    return true;
+                }
+            } catch (e) {
+                console.warn("Serveur de temps inaccessible. Mode de secours activé.", e);
+            }
+            
+            // Repli de secours uniquement si l'appareil est hors-ligne au démarrage
+            tempsAtomiqueInitialMS = Date.now();
+            tempsMonotoniqueInitialMS = performance.now();
+            labelSourceTemps = "HORLOGE ANDROID LOCAL (SECOURS - RISQUE DE DRIFT)";
+            labelSrc.style.color = "var(--accent-red)";
+            return false;
+        }
 
         async function chargerMatriceJPL() {
             const banner = document.getElementById("status-banner");
@@ -64,22 +100,29 @@
                     banner.innerText = "CONNEXION JPL-NASA ÉTABLIE [FLUX STABLE]";
                     banner.style.color = "var(--accent-green)";
                 } else {
-                    banner.innerText = `ERREUR SERVEUR : Code ${res.status} (orbites.json introuvable)`;
+                    banner.innerText = `ERREUR MATRICE : Code ${res.status}`;
                     banner.style.color = "var(--accent-red)";
                 }
             } catch (e) { 
-                console.error("Erreur JPL Sync", e); 
-                banner.innerText = "ERREUR DE SÉCURITÉ (Vérifiez l'accès CORS ou le fichier local)";
+                banner.innerText = "ERREUR DE SÉCURITÉ RESEAU (CORS/LOCAL)";
                 banner.style.color = "var(--accent-red)";
             }
         }
 
-        // Boucle cinématique temps réel
+        // ÉTAPE 2 : CALCULATEUR CINÉTIQUE CONTINU
         setInterval(() => {
-            let nowObj = new Date();
+            if (tempsAtomiqueInitialMS === 0) return;
+
+            // Calcul du temps écoulé depuis le démarrage via le timer matériel du processeur
+            let msEcouleesDepuisChargement = performance.now() - tempsMonotoniqueInitialMS;
+            let tempsTrueUTCMS = tempsAtomiqueInitialMS + msEcouleesDepuisChargement;
             
-            // Mise à jour continue de l'horloge système en UTC strict
+            // Objet Date construit sur le repère temps atomique pur
+            let nowObj = new Date(tempsTrueUTCMS);
+            
+            // Rafraîchissement visuel de l'interface
             document.getElementById("clock-display").innerText = "UTC REALTIME : " + nowObj.toISOString().replace("T"," ").replace("Z","");
+            document.getElementById("clock-source").innerText = "SOURCE : " + labelSourceTemps;
 
             if (!horlogePrete || !matriceEpheremidesCachee) return;
             
@@ -104,7 +147,6 @@
                     let dist = ptA[3] !== undefined ? parseFloat(ptA[3]) : 0;
                     let vit = ptA[4] !== undefined ? parseFloat(ptA[4]) : 0;
 
-                    // INTERPOLATION CINÉTIQUE FLUIDE
                     if (ptB && Array.isArray(ptB)) {
                         let azB = parseFloat(ptB[0] || az), altB = parseFloat(ptB[1] || alt);
                         let magB = ptB[2] !== undefined ? parseFloat(ptB[2]) : mag;
@@ -122,14 +164,12 @@
                         if (az >= 360) az -= 360;
                     }
 
-                    // RENDU SÉCURISÉ DES AIGUILLES VECTORIELLES
                     const ptr = document.getElementById(`ptr-${name}`);
                     if (ptr) {
                         ptr.setAttribute("transform", `rotate(${az} 200 200)`);
                         ptr.style.opacity = alt < 0 ? "0.15" : "1";
                     }
 
-                    // AFFICHAGE DES VALEURS PHYSIQUES INTERPOLÉES
                     document.getElementById(`az-${name}`).innerText = az.toFixed(2) + "°";
                     document.getElementById(`alt-${name}`).innerText = alt.toFixed(2) + "°";
                     document.getElementById(`mag-${name}`).innerText = mag !== -99 ? mag.toFixed(2) : "n.a.";
@@ -145,25 +185,21 @@
             }
         }, 100);
 
-        // GÉNÉRATION SÉCURISÉE DE L'INTERFACE (CONFORME AUX CODES DU SYSTÈME SVG)
+        // INITIALISATION DU GRAPHISME VECTORIEL SVG
         const svgNS = "http://www.w3.org/2000/svg";
         const g = document.getElementById('pointers');
         const leg = document.getElementById('legend');
         
         for (let name in ASTRES) {
-            // Création de la ligne avec l'espace de nommage requis pour le SVG
             let line = document.createElementNS(svgNS, "line");
             line.setAttribute("id", `ptr-${name}`);
-            line.setAttribute("x1", "200");
-            line.setAttribute("y1", "200");
-            line.setAttribute("x2", "200");
-            line.setAttribute("y2", "50");
+            line.setAttribute("x1", "200"); line.setAttribute("y1", "200");
+            line.setAttribute("x2", "200"); line.setAttribute("y2", "50");
             line.setAttribute("stroke", COULEURS[name]);
             line.setAttribute("stroke-width", "3");
             line.setAttribute("class", "pointer");
             g.appendChild(line);
 
-            // Création de la carte d'information HTML correspondante
             leg.innerHTML += `
                 <div class="legend-item">
                     <div class="astro-name" style="color:${COULEURS[name]}">■ ${name} <span style="font-size:0.65rem; color:var(--accent-green)">[LIVE JPL]</span></div>
@@ -177,8 +213,13 @@
                 </div>`;
         }
 
-        // Lancement immédiat de la liaison réseau
-        chargerMatriceJPL();
+        // CHAÎNAGE DE CHARGEMENT ASYNCHRONE
+        async function initialiserSysteme() {
+            await synchroniserHorlogeAtomique();
+            await chargerMatriceJPL();
+        }
+
+        initialiserSysteme();
     </script>
 </body>
-    </html>
+</html>
