@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+`#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v8.6.5 - Module d'Acquisition Cinématique Purifié
-Correction définitive de l'alignement des requêtes REST et gestion du fuseau horaire.
+SYSTEMA SENTINELA v8.7.0 - Module d'Acquisition Cinématique Purifié
+Moteur d'acquisition pour calcul différentiel continu
 """
 
 import requests
@@ -11,7 +11,6 @@ import sys
 from datetime import datetime, timezone
 
 def executer_acquisition():
-    # Définition de la date du jour UTC
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     print(f"[SENTINELA] Initialisation du cycle pour la date : {aujourdhui} UTC")
 
@@ -29,15 +28,14 @@ def executer_acquisition():
         
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
         
-        # PARAMÈTRES ISO : Utilisation du caractère 'T' pour éviter les espaces blancs non encodés
         params = {
             "format": "json",
-            "COMMAND": f"'{id_nasa}'", # Horizons exige parfois des guillemets simples internes sur l'API brute
+            "COMMAND": f"'{id_nasa}'",
             "OBJ_DATA": "'NO'",
             "MAKE_EPHEM": "'YES'",
             "EPHEM_TYPE": "'OBSERVER'",
             "CENTER": "'coord@399'",
-            "SITE_COORD": "'5.36,43.28,0.100'",  # Longitude, Latitude, Altitude (km)
+            "SITE_COORD": "'5.36,43.28,0.100'",
             "START_TIME": f"'{aujourdhui}T00:00'",
             "STOP_TIME": f"'{aujourdhui}T23:59'",
             "STEP_SIZE": "'1m'",
@@ -47,19 +45,10 @@ def executer_acquisition():
         }
         
         try:
-            # Envoi avec chaîne brute d'URL encodée
             response = requests.get(url, params=params, timeout=20)
-            
-            if response.status_code != 200:
-                print(f"[REJET] Code HTTP {response.status_code} reçu de la NASA.")
-                continue
-                
             data_json = response.json()
             
-            # Gestion des erreurs internes renvoyées par l'API NASA sous forme de JSON valide
-            if "error" in data_json or "message" in data_json:
-                print(f"[AFFICHEUR NASA] Diagnostic direct : {data_json.get('error', data_json.get('message'))}")
-                # Tentative secondaire sans guillemets si le serveur refuse la syntaxe stricte
+            if "error" in data_json or "message" in data_json or response.status_code != 200:
                 params_alt = {k: v.replace("'", "") for k, v in params.items()}
                 response = requests.get(url, params=params_alt, timeout=20)
                 data_json = response.json()
@@ -77,12 +66,10 @@ def executer_acquisition():
                     
                     colonnes = ligne.split()
                     if len(colonnes) >= 4:
-                        cle_heure_minute = colonnes[1]  # Format "HH:MM"
+                        cle_heure_minute = colonnes[1]
                         
-                        # Extraction robuste des coordonnées malgré les symboles NASA (*, m, t)
                         valeurs_numeriques = []
                         for element in colonnes[2:]:
-                            # Nettoie les caractères de transition visuelle (ex: "124.52*m" -> "124.52")
                             clean_element = ''.join(c for c in element if c.isdigit() or c in ['.', '-'])
                             try:
                                 valeurs_numeriques.append(float(clean_element))
@@ -97,26 +84,22 @@ def executer_acquisition():
                 
                 print(f"[OK] {compteur_points} lignes mémorisées pour {nom_astre}")
             else:
-                print(f"[ALERT] Structure $$SOE absente pour {nom_astre}. Vérifiez vos logs d'API.")
+                print(f"[ALERT] Structure $$SOE absente pour {nom_astre}.")
                 
         except Exception as e:
-            print(f"[CRITICAL] Erreur de communication réseau : {e}")
+            print(f"[CRITICAL] Erreur réseau : {e}")
 
-    # Contrôle global de la matrice avant écrasement
     compte_total_cles = sum([len(MATRICE_FINALE[a]) for a in MATRICE_FINALE])
-    print(f"[BILAN] {compte_total_cles} coordonnées physiques totales calculées.")
-
     if compte_total_cles == 0:
-        print("[FAIL] Matrice vide. Sauvegarde annulée pour préserver l'ancien état.")
+        print("[FAIL] Matrice vide. Avortement.")
         sys.exit(1)
 
-    # Enregistrement du fichier final
     try:
         with open("orbites.json", "w", encoding="utf-8") as f:
             json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-        print("[SUCCESS] Le fichier 'orbites.json' est prêt à être publié.")
+        print("[SUCCESS] Fichier 'orbites.json' prêt.")
     except IOError as e:
-        print(f"[FATAL] Impossible d'écrire sur le disque : {e}")
+        print(f"[FATAL] Échec écriture : {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
