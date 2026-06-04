@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.6 — Spatiale Autonome</title>
+    <title>SYSTEMA SENTINELA v8.6.1 — Spatiale Autonome</title>
     <style>
         :root {
             --bg-main: #0a0e14; --bg-card: #101520; --border-color: #262c36;
@@ -28,14 +28,14 @@
         .kpi-title { font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; }
         .kpi-value { font-size: 0.85rem; font-weight: bold; display: block; margin-top: 4px; }
         #legend { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-        .legend-item { background: var(--bg-card); border: 1px solid var(--border-color); padding: 8px; border-radius: 4px; font-size: 0.75rem; display: flex; justify-content: space-between; }
+        .legend-item { background: var(--bg-card); border: 1px solid var(--border-color); padding: 8px; border-radius: 4px; font-size: 0.75rem; display: flex; justify-content: space-between; gap: 10px; }
     </style>
 </head>
 <body>
 
     <div class="dashboard">
         <div class="panel">
-            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SYSTEMA SENTINELA v8.6</h2>
+            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SYSTEMA SENTINELA v8.6.1</h2>
             <svg id="radar" viewBox="0 0 400 400">
                 <line x1="200" y1="20" x2="200" y2="380" class="grid-line" />
                 <line x1="20" y1="200" x2="380" y2="200" class="grid-line" />
@@ -56,11 +56,8 @@
     </div>
 
     <script>
-        let baseTempsAtomiqueMS = 0;
-        let referencePerformanceMS = 0;
         let horlogePrete = false;
         let decalageSystemeMS = 0; 
-
         let matriceEpheremidesCachee = null;
 
         let lastValidPos = { lat: 43.28, lon: 5.36, alt: 100 };
@@ -73,7 +70,6 @@
                 let res = await fetch(`./orbites.json?v=${cacheBuster}`, { cache: 'no-store' });
                 
                 if (!res.ok) {
-                    console.warn("[SYSTEMA] orbites.json introuvable, tentative de repli...");
                     res = await fetch(`./manifest.json?v=${cacheBuster}`, { cache: 'no-store' });
                 }
 
@@ -84,20 +80,18 @@
 
                     let enveloppe = await res.json();
                     matriceEpheremidesCachee = enveloppe.DONNEES ? enveloppe.DONNEES : enveloppe;
-                    console.log("[SYSTEMA] Matrice chargée en mémoire vive.");
+                    console.log("[SYSTEMA] Matrice injectée en mémoire.");
                 } else {
-                    console.error("[SYSTEMA] Erreur 404. Utilisation du temps local standard.");
                     decalageSystemeMS = 0;
                 }
             } catch (e) {
-                console.error("[CRITICAL] Panne réseau :", e);
                 decalageSystemeMS = 0;
             } finally {
                 horlogePrete = true;
             }
         }
 
-        // Boucle de rendu de haute précision (100ms)
+        // Boucle cinématique adaptative v8.6.1
         setInterval(() => {
             if (!horlogePrete) return;
             
@@ -106,14 +100,47 @@
             
             document.getElementById('kpi-time').innerText = nowObj.toISOString().replace("T"," ").replace("Z"," UTC");
 
-            let heureUTC = String(nowObj.getUTCHours()).padStart(2, '0');
-            let minuteUTC = String(nowObj.getUTCMinutes()).padStart(2, '0');
-            let cleMinute = `${heureUTC}:${minuteUTC}`;
+            // Génération des différentes variantes d'indexation possibles
+            let dateISO = nowObj.toISOString().split('T')[0]; // "2026-06-04"
+            let heureAvecZero = String(nowObj.getUTCHours()).padStart(2, '0');
+            let heureSansZero = String(nowObj.getUTCHours());
+            let minuteAvecZero = String(nowObj.getUTCMinutes()).padStart(2, '0');
+            
+            let cleFormat1 = `${heureAvecZero}:${minuteAvecZero}`; // "05:57"
+            let cleFormat2 = `${heureSansZero}:${minuteAvecZero}`; // "5:57"
+            let indexMinuteLineaire = nowObj.getUTCHours() * 60 + nowObj.getUTCMinutes(); // 357
 
             if (matriceEpheremidesCachee) {
                 for (let name in ASTRES) {
-                    if (matriceEpheremidesCachee[name] && matriceEpheremidesCachee[name][cleMinute]) {
-                        let donneesAstre = matriceEpheremidesCachee[name][cleMinute]; 
+                    let idAstre = ASTRES[name];
+                    let blocAstre = matriceEpheremidesCachee[name] || matriceEpheremidesCachee[idAstre];
+                    let donneesAstre = null;
+
+                    if (blocAstre) {
+                        // RECHERCHE MULTI-DIALECTE HORIZONS
+                        if (blocAstre[cleFormat1]) { 
+                            donneesAstre = blocAstre[cleFormat1]; 
+                        } else if (blocAstre[cleFormat2]) { 
+                            donneesAstre = blocAstre[cleFormat2]; 
+                        } else if (blocAstre[indexMinuteLineaire]) { 
+                            donneesAstre = blocAstre[indexMinuteLineaire]; 
+                        } else if (blocAstre[dateISO]) { // Structure imbriquée par date
+                            let sousBlocDate = blocAstre[dateISO];
+                            if (sousBlocDate[cleFormat1]) donneesAstre = sousBlocDate[cleFormat1];
+                            else if (sousBlocDate[cleFormat2]) donneesAstre = sousBlocDate[cleFormat2];
+                        } else {
+                            // Balayage flou par correspondance textuelle partielle
+                            for (let k in blocAstre) {
+                                if (k.includes(cleFormat1) || k.includes(cleFormat2)) {
+                                    donneesAstre = blocAstre[k];
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    const txt = document.getElementById(`val-${name}`);
+                    if (donneesAstre && Array.isArray(donneesAstre)) {
                         let az = donneesAstre[0];
                         let alt = donneesAstre[1];
 
@@ -122,14 +149,18 @@
                             ptr.setAttribute("transform", `rotate(${az} 200 200)`);
                             ptr.style.opacity = alt < 0 ? "0.15" : "1";
                         }
-                        
-                        const txt = document.getElementById(`val-${name}`);
                         if (txt) {
-                            // CORRECTIF APOS : Chaînes sécurisées par guillemets doubles
-                            txt.innerHTML = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}° ${alt < 0 ? "⧗ (Sous l'horizon)" : "✦ (Visible)"}`;
+                            txt.innerHTML = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}° ${alt < 0 ? "⧗ (Horizon-)" : "✦ (Visible)"}`;
+                            txt.style.color = "var(--text-primary)";
                         }
-                    } else {
-                        document.getElementById(`val-${name}`).innerText = `Clé UTC ${cleMinute} absente`;
+                    } else if (txt) {
+                        // SONDE DE TÉLÉMÉTRIE : Extraction d'un échantillon de clé existante pour diagnostic
+                        let cleTrouvee = "BASE_VIDE";
+                        if (blocAstre) {
+                            let cles = Object.keys(blocAstre);
+                            if (cles.length > 0) cleTrouvee = cles[0];
+                        }
+                        txt.innerHTML = `<span style="color:var(--accent-orange)">Format invalide. Clé détectée : "${cleTrouvee}"</span>`;
                     }
                 }
             }
@@ -137,7 +168,6 @@
 
         function piloterGeolocalisation() {
             if (!navigator.geolocation) return;
-
             navigator.geolocation.watchPosition((p) => {
                 let speed = p.coords.speed || 0; 
                 if (speed > 40) {
@@ -148,13 +178,10 @@
                 lastValidPos.lat = Math.round(p.coords.latitude * 100) / 100;
                 lastValidPos.lon = Math.round(p.coords.longitude * 100) / 100;
                 lastValidPos.alt = Math.round(p.coords.altitude || 100);
-
                 document.getElementById('kpi-filtre').innerText = "STABLE";
                 document.getElementById('kpi-filtre').style.color = "var(--accent-green)";
                 document.getElementById('kpi-pos').innerText = `${lastValidPos.lat}N / ${lastValidPos.lon}E / ${lastValidPos.alt}m`;
-            }, (err) => {
-                document.getElementById('kpi-pos').innerText = `${lastValidPos.lat}N / ${lastValidPos.lon}E / ${lastValidPos.alt}m`;
-            }, { enableHighAccuracy: true });
+            }, null, { enableHighAccuracy: true });
         }
 
         const g = document.getElementById('pointers'), leg = document.getElementById('legend');
@@ -168,7 +195,7 @@
             line.setAttribute("class", "pointer");
             g.appendChild(line);
 
-            leg.innerHTML += `<div class="legend-item"><span style="color:${COULEURS[name]}">■ <strong>${name}</strong></span><span id="val-${name}">Calcul cinématique...</span></div>`;
+            leg.innerHTML += `<div class="legend-item"><span style="color:${COULEURS[name]}">■ <strong>${name}</strong></span><span id="val-${name}">Calcul...</span></div>`;
         }
 
         (async () => {
