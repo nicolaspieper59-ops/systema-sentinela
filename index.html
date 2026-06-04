@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.9.0 — Pure Donnée JPL NASA</title>
+    <title>SYSTEMA SENTINELA v8.9.3 — Pure Donnée JPL NASA</title>
     <style>
         :root {
             --bg-main: #0a0e14; --bg-card: #101520; --border-color: #262c36;
             --text-primary: #e1e7ef; --text-secondary: #717f91;
             --accent-blue: #38bdf8; --accent-green: #4ade80; --accent-orange: #fb923c;
+            --accent-red: #ef4444;
         }
         body { background-color: var(--bg-main); color: var(--text-primary); font-family: monospace; margin: 0; padding: 20px; display: flex; justify-content: center; }
         .dashboard { display: grid; grid-template-columns: 1fr 450px; gap: 20px; max-width: 1200px; width: 100%; }
@@ -17,19 +18,21 @@
         #radar { width: 100%; max-width: 340px; background: #05070c; border-radius: 50%; border: 1px solid var(--border-color); }
         .grid-line { stroke: #1e293b; }
         .radar-ring { fill: none; stroke: #0284c7; stroke-dasharray: 2 4; opacity: 0.5; }
-        .pointer { stroke-linecap: round; transition: transform 0.1s linear; }
+        .pointer { stroke-linecap: round; transform-origin: 200px 200px; transition: transform 0.1s linear; }
         #legend { display: flex; flex-direction: column; gap: 10px; width: 100%; }
         .legend-item { background: var(--bg-card); border: 1px solid var(--border-color); padding: 12px; border-radius: 6px; font-size: 0.8rem; }
         .astro-name { font-size: 0.9rem; font-weight: bold; margin-bottom: 6px; display: flex; justify-content: space-between; }
         .data-block { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; color: var(--text-secondary); }
         .data-block span strong { color: var(--text-primary); }
+        #status-banner { width: 100%; background: #1e293b; padding: 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; margin-bottom: 15px; border: 1px solid var(--border-color); }
     </style>
 </head>
 <body>
 
     <div class="dashboard">
         <div class="panel">
-            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SENTINELA v8.9.0 — SOURCE UNIQUE : NASA/JPL HORIZONS</h2>
+            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SENTINELA v8.9.3 — SOURCE UNIQUE : NASA/JPL HORIZONS</h2>
+            <div id="status-banner" style="color: var(--accent-orange);">INITIALISATION DE LA LIAISON...</div>
             <svg id="radar" viewBox="0 0 400 400">
                 <line x1="200" y1="20" x2="200" y2="380" class="grid-line" />
                 <line x1="20" y1="200" x2="380" y2="200" class="grid-line" />
@@ -41,7 +44,7 @@
 
         <div style="display: flex; flex-direction: column; gap: 15px;">
             <div id="legend"></div>
-            <div style="font-size:0.7rem; color:var(--text-secondary); text-align:center;">Horloge Synchrone UTC Absolue ( getUTCHours )</div>
+            <div id="clock-display" style="font-size:0.75rem; color:var(--accent-blue); text-align:center; font-weight:bold;">UTC : --:--:--</div>
         </div>
     </div>
 
@@ -52,86 +55,115 @@
         const COULEURS = { "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "JUPITER": "#fb923c" };
 
         async function chargerMatriceJPL() {
+            const banner = document.getElementById("status-banner");
             try {
                 let res = await fetch(`./orbites.json?v=${Date.now()}`, { cache: 'no-store' });
-                if (res.ok) matriceEpheremidesCachee = await res.json();
-            } catch (e) { console.error("Erreur JPL Sync", e); }
-            finally { horlogePrete = true; }
-        }
-
-// REMPLACEZ UNIQUEMENT LA BOUCLE INTERNE DE VOTRE INDEX.HTML PAR CELLE-CI
-setInterval(() => {
-    if (!horlogePrete || !matriceEpheremidesCachee) return;
-    
-    let nowObj = new Date();
-    let minutesDuJour = nowObj.getUTCHours() * 60 + nowObj.getUTCMinutes();
-    let ratio = (nowObj.getUTCSeconds() + nowObj.getUTCMilliseconds() / 1000) / 60;
-
-    let cleCourante = `${String(nowObj.getUTCHours()).padStart(2,'0')}:${String(nowObj.getUTCMinutes()).padStart(2,'0')}`;
-    let minutesSuivantes = (minutesDuJour + 1) % 1440;
-    let cleSuivante = `${String(Math.floor(minutesSuivantes/60)).padStart(2,'0')}:${String(minutesSuivantes%60).padStart(2,'0')}`;
-
-    for (let name in ASTRES) {
-        let blocAstre = matriceEpheremidesCachee[name];
-        if (!blocAstre) continue;
-
-        let ptA = blocAstre[cleCourante];
-        let ptB = blocAstre[cleSuivante];
-
-        if (ptA && Array.isArray(ptA)) {
-            // SÉCURITÉ : Attribution de valeurs par défaut si le JSON est l'ancienne version
-            let az = parseFloat(ptA[0] || 0);
-            let alt = parseFloat(ptA[1] || 0);
-            let mag = ptA[2] !== undefined ? parseFloat(ptA[2]) : -99;
-            let dist = ptA[3] !== undefined ? parseFloat(ptA[3]) : 0;
-            let vit = ptA[4] !== undefined ? parseFloat(ptA[4]) : 0;
-
-            // INTERPOLATION CINÉTIQUE FLUIDE
-            if (ptB && Array.isArray(ptB)) {
-                let azB = parseFloat(ptB[0] || az), altB = parseFloat(ptB[1] || alt);
-                let magB = ptB[2] !== undefined ? parseFloat(ptB[2]) : mag;
-                let distB = ptB[3] !== undefined ? parseFloat(ptB[3]) : dist;
-                let vitB = ptB[4] !== undefined ? parseFloat(ptB[4]) : vit;
-
-                if (Math.abs(azB - az) > 180) { if (azB > az) az += 360; else azB += 360; }
-                
-                az = az + (azB - az) * ratio;
-                alt = alt + (altB - alt) * ratio;
-                mag = mag + (magB - mag) * ratio;
-                dist = dist + (distB - dist) * ratio;
-                vit = vit + (vitB - vit) * ratio;
-                
-                if (az >= 360) az -= 360;
-            }
-
-            // RENDU DES AIGUILLES (FONCTIONNE MÊME SI LE JSON EST ANCIEN)
-            const ptr = document.getElementById(`ptr-${name}`);
-            if (ptr) {
-                ptr.setAttribute("transform", `rotate(${az} 200 200)`);
-                ptr.style.opacity = alt < 0 ? "0.15" : "1";
-            }
-
-            // INJECTION SÉCURISÉE DES TEXTES
-            document.getElementById(`az-${name}`).innerText = az.toFixed(2) + "°";
-            document.getElementById(`alt-${name}`).innerText = alt.toFixed(2) + "°";
-            
-            document.getElementById(`mag-${name}`).innerText = mag !== -99 ? mag.toFixed(2) : "n.a.";
-            document.getElementById(`vit-${name}`).innerText = vit !== 0 ? vit.toFixed(2) + " km/s" : "n.a.";
-            
-            if (dist > 0) {
-                let distKM = dist * 149597870.7;
-                document.getElementById(`dist-${name}`).innerText = distKM.toLocaleString('fr-FR', {maximumFractionDigits:0}) + " km";
-            } else {
-                document.getElementById(`dist-${name}`).innerText = "n.a.";
+                if (res.ok) {
+                    matriceEpheremidesCachee = await res.json();
+                    horlogePrete = true;
+                    banner.innerText = "CONNEXION JPL-NASA ÉTABLIE [FLUX STABLE]";
+                    banner.style.color = "var(--accent-green)";
+                } else {
+                    banner.innerText = `ERREUR SERVEUR : Code ${res.status} (orbites.json introuvable)`;
+                    banner.style.color = "var(--accent-red)";
+                }
+            } catch (e) { 
+                console.error("Erreur JPL Sync", e); 
+                banner.innerText = "ERREUR DE SÉCURITÉ (Vérifiez l'accès CORS ou le fichier local)";
+                banner.style.color = "var(--accent-red)";
             }
         }
-    }
-}, 100);
 
-        // Génération dynamique de l'interface
-        const g = document.getElementById('pointers'), leg = document.getElementById('legend');
+        // Boucle cinématique temps réel
+        setInterval(() => {
+            let nowObj = new Date();
+            
+            // Mise à jour continue de l'horloge système en UTC strict
+            document.getElementById("clock-display").innerText = "UTC REALTIME : " + nowObj.toISOString().replace("T"," ").replace("Z","");
+
+            if (!horlogePrete || !matriceEpheremidesCachee) return;
+            
+            let minutesDuJour = nowObj.getUTCHours() * 60 + nowObj.getUTCMinutes();
+            let ratio = (nowObj.getUTCSeconds() + nowObj.getUTCMilliseconds() / 1000) / 60;
+
+            let cleCourante = `${String(nowObj.getUTCHours()).padStart(2,'0')}:${String(nowObj.getUTCMinutes()).padStart(2,'0')}`;
+            let minutesSuivantes = (minutesDuJour + 1) % 1440;
+            let cleSuivante = `${String(Math.floor(minutesSuivantes/60)).padStart(2,'0')}:${String(minutesSuivantes%60).padStart(2,'0')}`;
+
+            for (let name in ASTRES) {
+                let blocAstre = matriceEpheremidesCachee[name];
+                if (!blocAstre) continue;
+
+                let ptA = blocAstre[cleCourante];
+                let ptB = blocAstre[cleSuivante];
+
+                if (ptA && Array.isArray(ptA)) {
+                    let az = parseFloat(ptA[0] || 0);
+                    let alt = parseFloat(ptA[1] || 0);
+                    let mag = ptA[2] !== undefined ? parseFloat(ptA[2]) : -99;
+                    let dist = ptA[3] !== undefined ? parseFloat(ptA[3]) : 0;
+                    let vit = ptA[4] !== undefined ? parseFloat(ptA[4]) : 0;
+
+                    // INTERPOLATION CINÉTIQUE FLUIDE
+                    if (ptB && Array.isArray(ptB)) {
+                        let azB = parseFloat(ptB[0] || az), altB = parseFloat(ptB[1] || alt);
+                        let magB = ptB[2] !== undefined ? parseFloat(ptB[2]) : mag;
+                        let distB = ptB[3] !== undefined ? parseFloat(ptB[3]) : dist;
+                        let vitB = ptB[4] !== undefined ? parseFloat(ptB[4]) : vit;
+
+                        if (Math.abs(azB - az) > 180) { if (azB > az) az += 360; else azB += 360; }
+                        
+                        az = az + (azB - az) * ratio;
+                        alt = alt + (altB - alt) * ratio;
+                        mag = mag + (magB - mag) * ratio;
+                        dist = dist + (distB - dist) * ratio;
+                        vit = vit + (vitB - vit) * ratio;
+                        
+                        if (az >= 360) az -= 360;
+                    }
+
+                    // RENDU SÉCURISÉ DES AIGUILLES VECTORIELLES
+                    const ptr = document.getElementById(`ptr-${name}`);
+                    if (ptr) {
+                        ptr.setAttribute("transform", `rotate(${az} 200 200)`);
+                        ptr.style.opacity = alt < 0 ? "0.15" : "1";
+                    }
+
+                    // AFFICHAGE DES VALEURS PHYSIQUES INTERPOLÉES
+                    document.getElementById(`az-${name}`).innerText = az.toFixed(2) + "°";
+                    document.getElementById(`alt-${name}`).innerText = alt.toFixed(2) + "°";
+                    document.getElementById(`mag-${name}`).innerText = mag !== -99 ? mag.toFixed(2) : "n.a.";
+                    document.getElementById(`vit-${name}`).innerText = vit !== 0 ? vit.toFixed(2) + " km/s" : "n.a.";
+                    
+                    if (dist > 0) {
+                        let distKM = dist * 149597870.7;
+                        document.getElementById(`dist-${name}`).innerText = distKM.toLocaleString('fr-FR', {maximumFractionDigits:0}) + " km";
+                    } else {
+                        document.getElementById(`dist-${name}`).innerText = "n.a.";
+                    }
+                }
+            }
+        }, 100);
+
+        // GÉNÉRATION SÉCURISÉE DE L'INTERFACE (CONFORME AUX CODES DU SYSTÈME SVG)
+        const svgNS = "http://www.w3.org/2000/svg";
+        const g = document.getElementById('pointers');
+        const leg = document.getElementById('legend');
+        
         for (let name in ASTRES) {
-            g.innerHTML += `<line id="ptr-${name}" x1="200" y1="200" x2="200" y2="50" stroke="${COULEURS[name]}" stroke-width="3" class="pointer"/>`;
+            // Création de la ligne avec l'espace de nommage requis pour le SVG
+            let line = document.createElementNS(svgNS, "line");
+            line.setAttribute("id", `ptr-${name}`);
+            line.setAttribute("x1", "200");
+            line.setAttribute("y1", "200");
+            line.setAttribute("x2", "200");
+            line.setAttribute("y2", "50");
+            line.setAttribute("stroke", COULEURS[name]);
+            line.setAttribute("stroke-width", "3");
+            line.setAttribute("class", "pointer");
+            g.appendChild(line);
+
+            // Création de la carte d'information HTML correspondante
             leg.innerHTML += `
                 <div class="legend-item">
                     <div class="astro-name" style="color:${COULEURS[name]}">■ ${name} <span style="font-size:0.65rem; color:var(--accent-green)">[LIVE JPL]</span></div>
@@ -145,7 +177,8 @@ setInterval(() => {
                 </div>`;
         }
 
+        // Lancement immédiat de la liaison réseau
         chargerMatriceJPL();
     </script>
 </body>
-</html>
+    </html>
