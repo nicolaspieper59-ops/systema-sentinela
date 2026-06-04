@@ -1,25 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v8.9.6 - Module d'Acquisition Filtré JPL-NASA
-Correction de l'alignement des index physiques (Quantités 4,9,20) et nettoyage des syntaxes d'API.
+SYSTEMA SENTINELA v8.9.7 - Module de Filtrage par Capture Vectorielle
+Correction définitive des décalages d'indices induits par les marqueurs de la NASA.
 """
 
 import requests
 import json
 import sys
+import re
 from datetime import datetime, timezone
 
 def executer_acquisition():
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    print(f"[SENTINELA v8.9.6] Lancement de l'acquisition pour : {aujourdhui} UTC")
+    print(f"[SENTINELA v8.9.7] Lancement du filtrage géodésique pour : {aujourdhui} UTC")
 
     SITE_GEODETIQUE = "5.36,43.28,0.100" 
     ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" }
     MATRICE_FINALE = {}
 
+    # RegEx de découpage : Capture la date (G1) et l'heure HH:MM (G2)
+    regex_ligne_temps = re.compile(r"^\s*(\d{4}-[A-Za-z]{3}-\d{2})\s+(\d{2}:\d{2})")
+    # RegEx d'extraction physique : Capture uniquement les flottants signés/scientifiques ou les 'n.a.'
+    regex_valeurs_physiques = re.compile(r"(?i)n\.a\.|[-+]?\d+\.\d+(?:[eE][-+]?\d+)?|[-+]?\d+")
+
     for nom_astre, id_nasa in ASTRES.items():
-        print(f"[JPL] Extraction de l'astre : {nom_astre}...")
+        print(f"[JPL-NASA] Interrogation de l'axe : {nom_astre}...")
         MATRICE_FINALE[nom_astre] = {}
         
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
@@ -50,25 +56,25 @@ def executer_acquisition():
                 
                 compteur_points = 0
                 for ligne in lignes:
-                    tokens = ligne.strip().split()
-                    if len(tokens) < 4:
+                    match_temps = regex_ligne_temps.match(ligne)
+                    if not match_temps:
                         continue
                     
-                    token_temps = tokens[1]
-                    cle_heure_minute = "".join([c for c in token_temps if c.isdigit() or c == ':'])
+                    cle_heure_minute = match_temps.group(2) # Extrait strictement "HH:MM"
                     
+                    # Extraction des données physiques dans le reste de la ligne
+                    reste_de_la_ligne = ligne[match_temps.end():]
+                    tokens_physiques = regex_valeurs_physiques.findall(reste_de_la_ligne)
+                    
+                    # Conversion typée de la ligne de données
                     numeriques = []
-                    for t in tokens[2:]:
-                        if t.lower() == 'n.a.':
+                    for val in tokens_physiques:
+                        if val.lower() == 'n.a.':
                             numeriques.append('n.a.')
-                            continue
-                        composants_valides = "".join([c for c in t if c.isdigit() or c in '.-+eE'])
-                        try:
-                            numeriques.append(float(composants_valides))
-                        except ValueError:
-                            continue # Ignore les indicateurs textuels de la NASA (*m, *t, C, A)
+                        else:
+                            numeriques.append(float(val))
 
-                    # Validation du set complet de données pour les quantités 4, 9, 20 (6 colonnes requises)
+                    # Validation stricte du set d'éphémérides (6 valeurs requises pour les qtés 4,9,20)
                     if len(numeriques) >= 6:
                         azimuth = numeriques[0]
                         elevation = numeriques[1]
@@ -80,7 +86,8 @@ def executer_acquisition():
                         dist_terre_ua = numeriques[4]    # Index 4 : True Distance (Delta)
                         vitesse_relative = numeriques[5] # Index 5 : True Range-rate (Del-Dot)
                         
-                        if nom_astre == "LUNE" and isinstance(dist_terre_ua, (int, float)) and dist_terre_ua > 1:
+                        # Normalisation de l'unité de distance lunaire (UA en kilomètres)
+                        if nom_astre == "LUNE" and dist_terre_ua > 1:
                             dist_terre_ua = dist_terre_ua / 149597870.7
 
                         MATRICE_FINALE[nom_astre][cle_heure_minute] = [
@@ -92,21 +99,21 @@ def executer_acquisition():
                         ]
                         compteur_points += 1
                 
-                print(f"[OK] {compteur_points} paquets valides pour {nom_astre}")
+                print(f"[OK] {compteur_points} paquets vectorisés pour {nom_astre}")
             else:
-                print(f"[FAIL] Réponse Horizons invalide pour {nom_astre} (Vérifiez les paramètres)")
+                print(f"[FAIL] Balises de flux absentes pour {nom_astre}")
                 
         except Exception as e:
-            print(f"[ERREUR] Échec de traitement de l'axe : {e}")
+            print(f"[ERREUR] Rupture cinétique de l'axe {nom_astre} : {e}")
 
     total_points = sum([len(MATRICE_FINALE[a]) for a in MATRICE_FINALE])
     if total_points == 0:
-        print("[CRITICAL] Aucun point généré. Annulation de la mise à jour.")
+        print("[CRITICAL] Matrice vide. Annulation de l'écriture disque.")
         sys.exit(1)
 
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print(f"[SUCCESS] Super-matrice synchronisée.")
+    print(f"[SUCCESS] Base de données éphémérides mise à jour.")
 
 if __name__ == "__main__":
     executer_acquisition()
