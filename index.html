@@ -59,55 +59,74 @@
             finally { horlogePrete = true; }
         }
 
-        setInterval(() => {
-            if (!horlogePrete || !matriceEpheremidesCachee) return;
-            
-            let nowObj = new Date();
-            let minutesDuJour = nowObj.getUTCHours() * 60 + nowObj.getUTCMinutes();
-            let ratio = (nowObj.getUTCSeconds() + nowObj.getUTCMilliseconds() / 1000) / 60;
+// REMPLACEZ UNIQUEMENT LA BOUCLE INTERNE DE VOTRE INDEX.HTML PAR CELLE-CI
+setInterval(() => {
+    if (!horlogePrete || !matriceEpheremidesCachee) return;
+    
+    let nowObj = new Date();
+    let minutesDuJour = nowObj.getUTCHours() * 60 + nowObj.getUTCMinutes();
+    let ratio = (nowObj.getUTCSeconds() + nowObj.getUTCMilliseconds() / 1000) / 60;
 
-            let cleCourante = `${String(nowObj.getUTCHours()).padStart(2,'0')}:${String(nowObj.getUTCMinutes()).padStart(2,'0')}`;
-            let minutesSuivantes = (minutesDuJour + 1) % 1440;
-            let cleSuivante = `${String(Math.floor(minutesSuivantes/60)).padStart(2,'0')}:${String(minutesSuivantes%60).padStart(2,'0')}`;
+    let cleCourante = `${String(nowObj.getUTCHours()).padStart(2,'0')}:${String(nowObj.getUTCMinutes()).padStart(2,'0')}`;
+    let minutesSuivantes = (minutesDuJour + 1) % 1440;
+    let cleSuivante = `${String(Math.floor(minutesSuivantes/60)).padStart(2,'0')}:${String(minutesSuivantes%60).padStart(2,'0')}`;
 
-            for (let name in ASTRES) {
-                let blocAstre = matriceEpheremidesCachee[name];
-                if (!blocAstre) continue;
+    for (let name in ASTRES) {
+        let blocAstre = matriceEpheremidesCachee[name];
+        if (!blocAstre) continue;
 
-                let ptA = blocAstre[cleCourante];
-                let ptB = blocAstre[cleSuivante];
+        let ptA = blocAstre[cleCourante];
+        let ptB = blocAstre[cleSuivante];
 
-                if (ptA && Array.isArray(ptA)) {
-                    let az = parseFloat(ptA[0]), alt = parseFloat(ptA[1]), mag = parseFloat(ptA[2]), dist = parseFloat(ptA[3]), vit = parseFloat(ptA[4]);
+        if (ptA && Array.isArray(ptA)) {
+            // SÉCURITÉ : Attribution de valeurs par défaut si le JSON est l'ancienne version
+            let az = parseFloat(ptA[0] || 0);
+            let alt = parseFloat(ptA[1] || 0);
+            let mag = ptA[2] !== undefined ? parseFloat(ptA[2]) : -99;
+            let dist = ptA[3] !== undefined ? parseFloat(ptA[3]) : 0;
+            let vit = ptA[4] !== undefined ? parseFloat(ptA[4]) : 0;
 
-                    // INTERPOLATION MULTI-VARIABLE FLUIDE (STELLARIUM-STYLE) FROM JPL
-                    if (ptB && Array.isArray(ptB)) {
-                        let azB = parseFloat(ptB[0]), altB = parseFloat(ptB[1]), magB = parseFloat(ptB[2]), distB = parseFloat(ptB[3]), vitB = parseFloat(ptB[4]);
-                        if (Math.abs(azB - az) > 180) { if (azB > az) az += 360; else azB += 360; }
-                        
-                        az = az + (azB - az) * ratio;
-                        alt = alt + (altB - alt) * ratio;
-                        mag = mag + (magB - mag) * ratio;
-                        dist = dist + (distB - dist) * ratio;
-                        vit = vit + (vitB - vit) * ratio;
-                        
-                        if (az >= 360) az -= 360;
-                    }
+            // INTERPOLATION CINÉTIQUE FLUIDE
+            if (ptB && Array.isArray(ptB)) {
+                let azB = parseFloat(ptB[0] || az), altB = parseFloat(ptB[1] || alt);
+                let magB = ptB[2] !== undefined ? parseFloat(ptB[2]) : mag;
+                let distB = ptB[3] !== undefined ? parseFloat(ptB[3]) : dist;
+                let vitB = ptB[4] !== undefined ? parseFloat(ptB[4]) : vit;
 
-                    // Rendu graphique
-                    document.getElementById(`ptr-${name}`).setAttribute("transform", `rotate(${az} 200 200)`);
-                    document.getElementById(`ptr-${name}`).style.opacity = alt < 0 ? "0.15" : "1";
-
-                    // Injection des données 100% JPL à l'écran
-                    let distKM = dist * 149597870.7;
-                    document.getElementById(`az-${name}`).innerText = az.toFixed(2) + "°";
-                    document.getElementById(`alt-${name}`).innerText = alt.toFixed(2) + "°";
-                    document.getElementById(`mag-${name}`).innerText = mag.toFixed(2);
-                    document.getElementById(`dist-${name}`).innerText = distKM.toLocaleString('fr-FR', {maximumFractionDigits:0}) + " km";
-                    document.getElementById(`vit-${name}`).innerText = vit.toFixed(2) + " km/s";
-                }
+                if (Math.abs(azB - az) > 180) { if (azB > az) az += 360; else azB += 360; }
+                
+                az = az + (azB - az) * ratio;
+                alt = alt + (altB - alt) * ratio;
+                mag = mag + (magB - mag) * ratio;
+                dist = dist + (distB - dist) * ratio;
+                vit = vit + (vitB - vit) * ratio;
+                
+                if (az >= 360) az -= 360;
             }
-        }, 100);
+
+            // RENDU DES AIGUILLES (FONCTIONNE MÊME SI LE JSON EST ANCIEN)
+            const ptr = document.getElementById(`ptr-${name}`);
+            if (ptr) {
+                ptr.setAttribute("transform", `rotate(${az} 200 200)`);
+                ptr.style.opacity = alt < 0 ? "0.15" : "1";
+            }
+
+            // INJECTION SÉCURISÉE DES TEXTES
+            document.getElementById(`az-${name}`).innerText = az.toFixed(2) + "°";
+            document.getElementById(`alt-${name}`).innerText = alt.toFixed(2) + "°";
+            
+            document.getElementById(`mag-${name}`).innerText = mag !== -99 ? mag.toFixed(2) : "n.a.";
+            document.getElementById(`vit-${name}`).innerText = vit !== 0 ? vit.toFixed(2) + " km/s" : "n.a.";
+            
+            if (dist > 0) {
+                let distKM = dist * 149597870.7;
+                document.getElementById(`dist-${name}`).innerText = distKM.toLocaleString('fr-FR', {maximumFractionDigits:0}) + " km";
+            } else {
+                document.getElementById(`dist-${name}`).innerText = "n.a.";
+            }
+        }
+    }
+}, 100);
 
         // Génération dynamique de l'interface
         const g = document.getElementById('pointers'), leg = document.getElementById('legend');
