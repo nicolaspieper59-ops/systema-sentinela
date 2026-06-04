@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v8.9.1 - Module d'Acquisition Robuste JPL-NASA
-Nettoyage chirurgical des lignes asymétriques du JPL Horizons.
+SYSTEMA SENTINELA v8.9.4 - Module d'Acquisition Filtré JPL-NASA
+Filtre numérique sélectif pour parer le conflit des noms de mois (Jun/Mar/May).
 """
 
 import requests
 import json
 import sys
-import re
 from datetime import datetime, timezone
 
 def executer_acquisition():
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    print(f"[SENTINELA v8.9.1] Initialisation du flux pour : {aujourdhui} UTC")
+    print(f"[SENTINELA v8.9.4] Lancement de l'acquisition pour : {aujourdhui} UTC")
 
-    # Coordonnées géodésiques de test (Marseille)
+    # Coordonnées géodésiques terrestres (Ajustables)
     SITE_GEODETIQUE = "5.36,43.28,0.100" 
 
     ASTRES = {
@@ -42,7 +41,7 @@ def executer_acquisition():
             "START_TIME": f"'{aujourdhui}T00:00'",
             "STOP_TIME": f"'{aujourdhui}T23:59'",
             "STEP_SIZE": "'1m'",
-            "QUANTITIES": "'4,9,20'", # 4=Az/Alt, 9=Mag, 20=Distance & Vitesse relative
+            "QUANTITIES": "'4,9,20'", 
             "REF_SYSTEM": "'J2000'",
             "ANG_FORMAT": "'DEG'"
         }
@@ -58,57 +57,65 @@ def executer_acquisition():
                 
                 compteur_points = 0
                 for ligne in lignes:
-                    if not ligne.strip(): 
+                    tokens = ligne.strip().split()
+                    if len(tokens) < 4:
                         continue
                     
-                    # Nettoyage absolu des marqueurs visuels de la NASA (*, n, t, m)
-                    ligne_nettoyee = re.sub(re.compile(r'[*ntm]'), ' ', ligne)
-                    colonnes = ligne_nettoyee.split()
+                    # 1. Extraction propre de l'horloge en ignorant les drapeaux collés (*m, *t)
+                    token_temps = tokens[1]
+                    cle_heure_minute = "".join([c for c in token_temps if c.isdigit() or c == ':'])
                     
-                    if len(colonnes) >= 7:
-                        # Format attendu : [Date, Heure, Az, Alt, Mag, Distance, Vitesse]
-                        cle_heure_minute = colonnes[1] # "HH:MM"
-                        
-                        try:
-                            azimuth = float(colonnes[2])
-                            elevation = float(colonnes[3])
-                            
-                            # Sécurité d'extraction pour la Magnitude (le Soleil ou la Lune saturent parfois les colonnes)
-                            mag = float(colonnes[4]) if colonnes[4] != 'n.a.' else ( -26.74 if nom_astre == "SOLEIL" else -12.0 )
-                            
-                            dist_terre_ua = float(colonnes[5])
-                            vitesse_relative = float(colonnes[6])
-                            
-                            if nom_astre == "LUNE":
-                                # La lune renvoie sa distance en UA ou en unités directes du JPL, standardisation en UA
-                                if dist_terre_ua > 1: dist_terre_ua = dist_terre_ua / 149597870.7
+                    # 2. Extraction sélective des valeurs numériques associées
+                    numeriques = []
+                    for t in tokens[2:]:
+                        # On préserve uniquement les caractères mathématiques ou l'indicateur n.a.
+                        composants_valides = "".join([c for c in t if c.isdigit() or c in '.-+eEna'])
+                        if composants_valides == 'n.a.':
+                            numeriques.append('n.a.')
+                        else:
+                            try:
+                                numeriques.append(float(composants_valides))
+                            except ValueError:
+                                continue # Ignore les résidus de drapeaux de la NASA (m, n, t, *)
 
-                            MATRICE_FINALE[nom_astre][cle_heure_minute] = [
-                                azimuth,          # [0]
-                                elevation,        # [1]
-                                mag,              # [2]
-                                dist_terre_ua,    # [3]
-                                vitesse_relative  # [4]
-                            ]
-                            compteur_points += 1
-                        except Exception:
-                            continue
+                    # Vérification de la présence du set minimal de données (Az, Alt, Mag, Dist, Vit)
+                    if len(numeriques) >= 5:
+                        azimuth = numeriques[0]
+                        elevation = numeriques[1]
+                        
+                        # Traitement des exceptions de magnitude pour le Soleil/Lune
+                        mag = numeriques[2] if numeriques[2] != 'n.a.' else (-26.74 if nom_astre == "SOLEIL" else -12.0)
+                        dist_terre_ua = numeriques[3]
+                        vitesse_relative = numeriques[4]
+                        
+                        if nom_astre == "LUNE" and dist_terre_ua > 1:
+                            dist_terre_ua = dist_terre_ua / 149597870.7
+
+                        MATRICE_FINALE[nom_astre][cle_heure_minute] = [
+                            azimuth,          # [0]
+                            elevation,        # [1]
+                            mag,              # [2]
+                            dist_terre_ua,    # [3]
+                            vitesse_relative  # [4]
+                        ]
+                        compteur_points += 1
                 
-                print(f"[OK] {compteur_points} paquets valides pour {nom_astre}")
+                print(f"[OK] {compteur_points} paquets valides générés pour {nom_astre}")
             else:
-                print(f"[FAIL] Balises manquantes pour {nom_astre}")
+                print(f"[FAIL] Balises de flux absentes pour {nom_astre}")
                 
         except Exception as e:
-            print(f"[ERREUR] Interruption de liaison : {e}")
+            print(f"[ERREUR] Rupture physique de la liaison : {e}")
 
-    # Sauvegarde finale sécurisée
-    if sum([len(MATRICE_FINALE[a]) for a in MATRICE_FINALE]) == 0:
-        print("[CRITICAL] Aucun astre n'a pu être extrait. Avortement pour préserver l'ancienne base.")
+    # Sécurité anti-écrasement
+    total_points = sum([len(MATRICE_FINALE[a]) for a in MATRICE_FINALE])
+    if total_points == 0:
+        print("[CRITICAL] Base de données vide détectée. Interdiction d'écriture.")
         sys.exit(1)
 
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print("[SUCCESS] Nouveau fichier 'orbites.json' écrit avec succès.")
+    print(f"[SUCCESS] Super-matrice mise à jour avec {total_points} positions temporelles.")
 
 if __name__ == "__main__":
     executer_acquisition()
