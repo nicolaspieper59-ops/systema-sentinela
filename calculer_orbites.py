@@ -1,197 +1,82 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.6 — Spatiale Autonome</title>
-    <style>
-        :root {
-            --bg-main: #0a0e14; --bg-card: #101520; --border-color: #262c36;
-            --text-primary: #e1e7ef; --text-secondary: #717f91;
-            --accent-blue: #38bdf8; --accent-green: #4ade80; --accent-orange: #fb923c;
-        }
-        body {
-            background-color: var(--bg-main); color: var(--text-primary);
-            font-family: monospace; margin: 0; padding: 20px;
-            display: flex; justify-content: center; min-height: 100vh; box-sizing: border-box;
-        }
-        .dashboard { display: grid; grid-template-columns: 1fr 400px; gap: 20px; max-width: 1100px; width: 100%; }
-        @media (max-width: 900px) { .dashboard { grid-template-columns: 1fr; } }
-        .panel { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        #radar { width: 100%; max-width: 340px; background: #05070c; border-radius: 50%; border: 1px solid var(--border-color); }
-        .grid-line { stroke: #1e293b; }
-        .radar-ring { fill: none; stroke: #0284c7; stroke-dasharray: 2 4; opacity: 0.5; }
-        .pointer { stroke-linecap: round; transition: transform 0.3s ease-out; }
-        .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; width: 100%; }
-        .kpi { background: var(--bg-card); border: 1px solid var(--border-color); padding: 12px; border-radius: 6px; }
-        .full { grid-column: span 2; }
-        .kpi-title { font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; }
-        .kpi-value { font-size: 0.85rem; font-weight: bold; display: block; margin-top: 4px; }
-        #legend { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-        .legend-item { background: var(--bg-card); border: 1px solid var(--border-color); padding: 8px; border-radius: 4px; font-size: 0.75rem; display: flex; justify-content: space-between; }
-    </style>
-</head>
-<body>
+import requests
+import json
+from datetime import datetime, timezone
 
-    <div class="dashboard">
-        <div class="panel">
-            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SYSTEMA SENTINELA v8.6</h2>
-            <svg id="radar" viewBox="0 0 400 400">
-                <line x1="200" y1="20" x2="200" y2="380" class="grid-line" />
-                <line x1="20" y1="200" x2="380" y2="200" class="grid-line" />
-                <circle cx="200" cy="200" r="160" class="radar-ring" />
-                <circle cx="200" cy="200" r="100" class="radar-ring" />
-                <g id="pointers"></g>
-            </svg>
-        </div>
+# 1. Forcer la date du jour en UTC pur pour aligner l'horloge atomique
+aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
-        <div style="display: flex; flex-direction: column; gap: 15px;">
-            <div class="kpi-grid">
-                <div class="kpi"><span class="kpi-title">Filtre Cinétique</span><span class="kpi-value" id="kpi-filtre" style="color: var(--accent-green);">STABLE</span></div>
-                <div class="kpi"><span class="kpi-title">Maille Géo (AuroraMap)</span><span class="kpi-value" id="kpi-pos">43.28N / 5.36E / 100m</span></div>
-                <div class="kpi full"><span class="kpi-title">Horloge Monotone Absolue (Ancrée NTP)</span><span class="kpi-value" id="kpi-time" style="color: var(--accent-blue);">Synchronisation...</span></div>
-            </div>
-            <div id="legend"></div>
-        </div>
-    </div>
+ASTRES = {
+    "SOLEIL": "10",
+    "LUNE": "301",
+    "JUPITER": "599"
+}
 
-    <script>
-        let horlogePrete = false;
-        let decalageSystemeMS = 0; 
-        let matriceEpheremidesCachee = null;
+MATRICE_FINALE = {}
 
-        let lastValidPos = { lat: 43.28, lon: 5.36, alt: 100 };
-        const ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" };
-        const COULEURS = { "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "JUPITER": "#fb923c" };
-
-        async function initialiserComposantsReseau() {
-            try {
-                const cacheBuster = Date.now();
-                let res = await fetch(`./orbites.json?v=${cacheBuster}`, { cache: 'no-store' });
+for nom_astre, id_nasa in ASTRES.items():
+    print(f"[SENTINELA-BACKEND] Échantillonnage balistique : {nom_astre}...")
+    MATRICE_FINALE[nom_astre] = {}
+    
+    url = "https://ssd-api.jpl.nasa.gov/horizons.api"
+    params = {
+        "format": "json",
+        "COMMAND": f"'{id_nasa}'",
+        "OBJ_DATA": "NO",
+        "MAKE_EPHEM": "YES",
+        "EPHEM_TYPE": "OBSERVER",
+        "CENTER": "coord@399",
+        "SITE_COORD": "'5.36,43.28,0.100'", # Coordonnées de la station
+        
+        # FORCE : Demande explicite d'une courbe complète de 24h
+        "START_TIME": f"'{aujourdhui} 00:00'",
+        "STOP_TIME": f"'{aujourdhui} 23:59'",
+        
+        "STEP_SIZE": "'1m'", # Échantillonnage à la minute
+        "QUANTITIES": "'4'",
+        "REF_SYSTEM": "'J2000'",
+        "ANG_FORMAT": "'DEG'"
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=10).json()
+        texte_brut = response.get("result", "")
+        
+        if "$$SOE" in texte_brut and "$$EOE" in texte_brut:
+            # Isolation du bloc de données utile
+            bloc_donnees = texte_brut.split("$$SOE")[1].split("$$EOE")[0]
+            lignes = bloc_donnees.strip().split("\n")
+            
+            for ligne in lignes:
+                if not ligne.strip(): 
+                    continue
                 
-                if (!res.ok) {
-                    console.warn("[SYSTEMA] orbites.json introuvable, tentative de repli...");
-                    res = await fetch(`./manifest.json?v=${cacheBuster}`, { cache: 'no-store' });
-                }
-
-                if (res.ok) {
-                    let enteteDate = res.headers.get("Date");
-                    let tempsServeurReel = enteteDate ? Date.parse(enteteDate) : Date.now();
-                    decalageSystemeMS = tempsServeurReel - Date.now();
-
-                    let enveloppe = await res.json();
-                    matriceEpheremidesCachee = enveloppe.DONNEES ? enveloppe.DONNEES : enveloppe;
-                    console.log("[SYSTEMA] Matrice chargée en mémoire vive.");
-                } else {
-                    console.error("[SYSTEMA] Utilisation du temps local standard.");
-                    decalageSystemeMS = 0;
-                }
-            } catch (e) {
-                console.error("[CRITICAL] Panne d'acquisition réseau :", e);
-                decalageSystemeMS = 0;
-            } finally {
-                horlogePrete = true;
-            }
-        }
-
-        // Boucle cinématique adaptative haute fréquence
-        setInterval(() => {
-            if (!horlogePrete) return;
-            
-            let millisecondesReelles = Date.now() + decalageSystemeMS;
-            let nowObj = new Date(millisecondesReelles);
-            
-            document.getElementById('kpi-time').innerText = nowObj.toISOString().replace("T"," ").replace("Z"," UTC");
-
-            let heureUTC = String(nowObj.getUTCHours()).padStart(2, '0');
-            let minuteUTC = String(nowObj.getUTCMinutes()).padStart(2, '0');
-            let cleMinute = `${heureUTC}:${minuteUTC}`;
-
-            if (matriceEpheremidesCachee) {
-                for (let name in ASTRES) {
-                    let idAstre = ASTRES[name];
+                colonnes = ligne.split()
+                # Format standard Horizons : YYYY-Mon-DD HH:MM Azimuth Elevation
+                # Exemple : ['2026-Jun-04', '06:00', '95.2341', '12.4567']
+                if len(colonnes) >= 4:
+                    cle_heure_minute = colonnes[1] # Extrait "HH:MM"
                     
-                    // Résilience d'indexation 1 : Résolution NOM ("SOLEIL") ou ID NASA ("10")
-                    let blocAstre = matriceEpheremidesCachee[name] || matriceEpheremidesCachee[idAstre];
-                    
-                    let donneesAstre = null;
-
-                    if (blocAstre) {
-                        // Résilience d'indexation 2 : Accès direct par clé brute de minute
-                        if (blocAstre[cleMinute]) {
-                            donneesAstre = blocAstre[cleMinute];
-                        } else {
-                            // Résilience d'indexation 3 : Balayage flou (regex/includes) pour clés complexes ("2026-06-04 05:54")
-                            for (let cléTemporelle in blocAstre) {
-                                if (cléTemporelle.includes(cleMinute)) {
-                                    donneesAstre = blocAstre[cléTemporelle];
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    if (donneesAstre) {
-                        let az = donneesAstre[0];
-                        let alt = donneesAstre[1];
-
-                        const ptr = document.getElementById(`ptr-${name}`);
-                        if (ptr) {
-                            ptr.setAttribute("transform", `rotate(${az} 200 200)`);
-                            ptr.style.opacity = alt < 0 ? "0.15" : "1";
-                        }
+                    try:
+                        azimuth = float(colonnes[2])
+                        elevation = float(colonnes[3])
                         
-                        const txt = document.getElementById(`val-${name}`);
-                        if (txt) {
-                            txt.innerHTML = `h: ${alt.toFixed(2)}° | Az: ${az.toFixed(2)}° ${alt < 0 ? "⧗ (Sous l'horizon)" : "✦ (Visible)"}`;
-                        }
-                    } else {
-                        document.getElementById(`val-${name}`).innerText = `Index UTC ${cleMinute} introuvable`;
-                    }
-                }
-            }
-        }, 100);
+                        # Stockage indexé par la clé de minute pure
+                        MATRICE_FINALE[nom_astre][cle_heure_minute] = [azimuth, elevation]
+                    except ValueError:
+                        continue
+        else:
+            print(f"[ERREUR] Balises $$SOE absentes pour {nom_astre}")
+            
+    except Exception as e:
+        print(f"[CRITICAL] Échec de la liaison JPL pour {nom_astre}: {e}")
 
-        function piloterGeolocalisation() {
-            if (!navigator.geolocation) return;
-            navigator.geolocation.watchPosition((p) => {
-                let speed = p.coords.speed || 0; 
-                if (speed > 40) {
-                    document.getElementById('kpi-filtre').innerText = "VERROUILLÉ (CINÉTIQUE)";
-                    document.getElementById('kpi-filtre').style.color = "var(--accent-orange)";
-                    return; 
-                }
-                lastValidPos.lat = Math.round(p.coords.latitude * 100) / 100;
-                lastValidPos.lon = Math.round(p.coords.longitude * 100) / 100;
-                lastValidPos.alt = Math.round(p.coords.altitude || 100);
+# 2. Validation de sécurité : Interdire l'écriture si le dictionnaire est défaillant
+compte_cles = sum([len(MATRICE_FINALE[a]) for a in MATRICE_FINALE])
+if compte_cles == 0:
+    raise RuntimeError("Alerte critique : La matrice générée est vide. Déploiement avorté.")
 
-                document.getElementById('kpi-filtre').innerText = "STABLE";
-                document.getElementById('kpi-filtre').style.color = "var(--accent-green)";
-                document.getElementById('kpi-pos').innerText = `${lastValidPos.lat}N / ${lastValidPos.lon}E / ${lastValidPos.alt}m`;
-            }, (err) => {
-                document.getElementById('kpi-pos').innerText = `${lastValidPos.lat}N / ${lastValidPos.lon}E / ${lastValidPos.alt}m`;
-            }, { enableHighAccuracy: true });
-        }
+# 3. Sauvegarde finale (Vérifier que cette instruction est bien HORS de la boucle for)
+with open("orbites.json", "w", encoding="utf-8") as f:
+    json.dump(MATRICE_FINALE, f, indent=4)
 
-        const g = document.getElementById('pointers'), leg = document.getElementById('legend');
-        for (let name in ASTRES) {
-            let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            line.setAttribute("id", `ptr-${name}`); 
-            line.setAttribute("x1", "200"); line.setAttribute("y1", "200");
-            line.setAttribute("x2", "200"); line.setAttribute("y2", "50");
-            line.setAttribute("stroke", COULEURS[name]); 
-            line.setAttribute("stroke-width", "3"); 
-            line.setAttribute("class", "pointer");
-            g.appendChild(line);
-
-            leg.innerHTML += `<div class="legend-item"><span style="color:${COULEURS[name]}">■ <strong>${name}</strong></span><span id="val-${name}">Calcul cinématique...</span></div>`;
-        }
-
-        (async () => {
-            await initialiserComposantsReseau();
-            piloterGeolocalisation();
-            setInterval(initialiserComposantsReseau, 3600000);
-        })();
-    </script>
-</body>
-</html>
+print(f"[SUCCESS] Matrice mise à jour avec {compte_cles} coordonnées cinématiques.")
