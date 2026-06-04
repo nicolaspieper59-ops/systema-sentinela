@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v8.9.7 - Module de Filtrage par Capture Vectorielle
-Correction définitive des décalages d'indices induits par les marqueurs de la NASA.
+SYSTEMA SENTINELA v8.9.8 - Correctif de Tolérance Géodésique
+Élimination absolue des marqueurs de transition de la NASA (*, m, t, p, A)
 """
 
 import requests
@@ -13,19 +13,19 @@ from datetime import datetime, timezone
 
 def executer_acquisition():
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    print(f"[SENTINELA v8.9.7] Lancement du filtrage géodésique pour : {aujourdhui} UTC")
+    print(f"[SENTINELA v8.9.8] Initialisation du filtrage robuste pour : {aujourdhui} UTC")
 
     SITE_GEODETIQUE = "5.36,43.28,0.100" 
     ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" }
     MATRICE_FINALE = {}
 
-    # RegEx de découpage : Capture la date (G1) et l'heure HH:MM (G2)
+    # Extraction initiale de la date et de l'heure
     regex_ligne_temps = re.compile(r"^\s*(\d{4}-[A-Za-z]{3}-\d{2})\s+(\d{2}:\d{2})")
-    # RegEx d'extraction physique : Capture uniquement les flottants signés/scientifiques ou les 'n.a.'
+    # Capture des blocs numériques isolés (supporte les flottants signés et n.a.)
     regex_valeurs_physiques = re.compile(r"(?i)n\.a\.|[-+]?\d+\.\d+(?:[eE][-+]?\d+)?|[-+]?\d+")
 
     for nom_astre, id_nasa in ASTRES.items():
-        print(f"[JPL-NASA] Interrogation de l'axe : {nom_astre}...")
+        print(f"[JPL-NASA] Téléchargement du vecteur de cible : {nom_astre}...")
         MATRICE_FINALE[nom_astre] = {}
         
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
@@ -60,60 +60,67 @@ def executer_acquisition():
                     if not match_temps:
                         continue
                     
-                    cle_heure_minute = match_temps.group(2) # Extrait strictement "HH:MM"
+                    cle_heure_minute = match_temps.group(2)
                     
-                    # Extraction des données physiques dans le reste de la ligne
-                    reste_de_la_ligne = ligne[match_temps.end():]
-                    tokens_physiques = regex_valeurs_physiques.findall(reste_de_la_ligne)
+                    # CORRECTION V8.9.8 : Nettoyage drastique du reste de la ligne. 
+                    # Supprime les caractères de transition isolés qui cassent le découpage.
+                    reste = ligne[match_temps.end():]
+                    reste_nettoye = re.sub(r'\s+[a-zA-Z\*]\s+', ' ', reste)
+                    reste_nettoye = re.sub(r'([0-9])([a-zA-Z\*]+)(\s+|$)', r'\1 ', reste_nettoye)
                     
-                    # Conversion typée de la ligne de données
+                    tokens_physiques = regex_valeurs_physiques.findall(reste_nettoye)
+                    
                     numeriques = []
                     for val in tokens_physiques:
                         if val.lower() == 'n.a.':
                             numeriques.append('n.a.')
                         else:
-                            numeriques.append(float(val))
+                            try:
+                                numeriques.append(float(val))
+                            except ValueError:
+                                continue
 
-                    # Validation stricte du set d'éphémérides (6 valeurs requises pour les qtés 4,9,20)
-                    if len(numeriques) >= 6:
+                    # Sécurité : Si le nettoyage a fonctionné, nous devons avoir entre 5 et 6 valeurs.
+                    if len(numeriques) >= 5:
                         azimuth = numeriques[0]
                         elevation = numeriques[1]
                         
-                        mag = numeriques[2]
-                        if mag == 'n.a.':
+                        # Si la magnitude manque à cause de la transition, allocation d'une valeur par défaut
+                        if len(numeriques) == 5:
+                            # La magnitude est manquante (décalage de colonne), on décale les indices de distance
                             mag = -26.74 if nom_astre == "SOLEIL" else (-12.0 if nom_astre == "LUNE" else 0.0)
+                            dist_terre_ua = numeriques[3]
+                            vitesse_relative = numeriques[4]
+                        else:
+                            mag = numeriques[2]
+                            if mag == 'n.a.':
+                                mag = -26.74 if nom_astre == "SOLEIL" else (-12.0 if nom_astre == "LUNE" else 0.0)
+                            dist_terre_ua = numeriques[4]
+                            vitesse_relative = numeriques[5]
                         
-                        dist_terre_ua = numeriques[4]    # Index 4 : True Distance (Delta)
-                        vitesse_relative = numeriques[5] # Index 5 : True Range-rate (Del-Dot)
-                        
-                        # Normalisation de l'unité de distance lunaire (UA en kilomètres)
+                        # Normalisation lunaire
                         if nom_astre == "LUNE" and dist_terre_ua > 1:
                             dist_terre_ua = dist_terre_ua / 149597870.7
 
                         MATRICE_FINALE[nom_astre][cle_heure_minute] = [
-                            azimuth,          # [0]
-                            elevation,        # [1]
-                            mag,              # [2]
-                            dist_terre_ua,    # [3]
-                            vitesse_relative  # [4]
+                            azimuth, alt_corrigee := elevation, mag, dist_terre_ua, vitesse_relative
                         ]
                         compteur_points += 1
                 
-                print(f"[OK] {compteur_points} paquets vectorisés pour {nom_astre}")
+                print(f"[OK] {compteur_points} paquets indexés pour {nom_astre}")
             else:
-                print(f"[FAIL] Balises de flux absentes pour {nom_astre}")
+                print(f"[FAIL] Balises éphémérides introuvables pour {nom_astre}")
                 
         except Exception as e:
-            print(f"[ERREUR] Rupture cinétique de l'axe {nom_astre} : {e}")
+            print(f"[ERREUR] Échec critique axe {nom_astre} : {e}")
 
-    total_points = sum([len(MATRICE_FINALE[a]) for a in MATRICE_FINALE])
-    if total_points == 0:
-        print("[CRITICAL] Matrice vide. Annulation de l'écriture disque.")
+    if sum([len(MATRICE_FINALE[a]) for a in MATRICE_FINALE]) == 0:
+        print("[CRITICAL] Erreur structurelle globale. Fichier non sauvegardé.")
         sys.exit(1)
 
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print(f"[SUCCESS] Base de données éphémérides mise à jour.")
+    print(f"[SUCCESS] Base de données éphémérides v8.9.8 stabilisée.")
 
 if __name__ == "__main__":
     executer_acquisition()
