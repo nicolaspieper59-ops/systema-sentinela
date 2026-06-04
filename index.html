@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.9.5 — Autonomie Atomique</title>
+    <title>SYSTEMA SENTINELA v8.9.6 — Synchronisation Optique Continue</title>
     <style>
         :root {
             --bg-main: #0a0e14; --bg-card: #101520; --border-color: #262c36;
@@ -32,8 +32,8 @@
 
     <div class="dashboard">
         <div class="panel">
-            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SENTINELA v8.9.5 — INJECTEUR TEMPOREL ISOLÉ</h2>
-            <div id="status-banner" style="color: var(--accent-orange);">INITIALISATION DES SYSTÈMES...</div>
+            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SENTINELA v8.9.6 — COUPLAGE ATOMIQUE PAR EN-TÊTE HTTP</h2>
+            <div id="status-banner" style="color: var(--accent-orange);">INITIALISATION DU COUPLAGE...</div>
             <svg id="radar" viewBox="0 0 400 400">
                 <line x1="200" y1="20" x2="200" y2="380" class="grid-line" />
                 <line x1="20" y1="200" x2="380" y2="200" class="grid-line" />
@@ -46,8 +46,8 @@
         <div style="display: flex; flex-direction: column; gap: 15px;">
             <div id="legend"></div>
             <div>
-                <div id="clock-display" style="font-size:0.8rem; color:var(--accent-blue); text-align:center; font-weight:bold;">UTC : INTERROGATION RECHERCHE...</div>
-                <div id="clock-source">SOURCE : EN ATTENTE</div>
+                <div id="clock-display" style="font-size:0.8rem; color:var(--accent-blue); text-align:center; font-weight:bold;">UTC REALTIME : ANALYSE DES FLUX...</div>
+                <div id="clock-source">SOURCE : CALCUL EN COURS</div>
             </div>
         </div>
     </div>
@@ -56,7 +56,6 @@
         let horlogePrete = false;
         let matriceEpheremidesCachee = null;
         
-        // VARIABLES DU NOYAU DE SYNCHRONISATION ATOMIQUE
         let tempsAtomiqueInitialMS = 0;
         let tempsMonotoniqueInitialMS = 0;
         let labelSourceTemps = "DÉCONNECTÉ";
@@ -64,63 +63,57 @@
         const ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" };
         const COULEURS = { "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "JUPITER": "#fb923c" };
 
-        // ÉTAPE 1 : EXTRACTION DU TEMPS ABSOLU (Bypasse complètement Android)
-        async function synchroniserHorlogeAtomique() {
-            const labelSrc = document.getElementById("clock-source");
-            try {
-                // Interrogation du pool de serveurs de temps internationaux (NTP via HTTP REST)
-                let res = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', { cache: 'no-store' });
-                if (res.ok) {
-                    let data = await res.json();
-                    tempsAtomiqueInitialMS = data.unixtime * 1000; // Conversion Unix seconde vers milliseconde
-                    tempsMonotoniqueInitialMS = performance.now(); // Point zéro du processeur matériel
-                    labelSourceTemps = "HORLOGE ATOMIQUE PHYSIQUE (WORLDTIME SERVERS)";
-                    labelSrc.style.color = "var(--accent-green)";
-                    return true;
-                }
-            } catch (e) {
-                console.warn("Serveur de temps inaccessible. Mode de secours activé.", e);
-            }
-            
-            // Repli de secours uniquement si l'appareil est hors-ligne au démarrage
-            tempsAtomiqueInitialMS = Date.now();
-            tempsMonotoniqueInitialMS = performance.now();
-            labelSourceTemps = "HORLOGE ANDROID LOCAL (SECOURS - RISQUE DE DRIFT)";
-            labelSrc.style.color = "var(--accent-red)";
-            return false;
-        }
-
-        async function chargerMatriceJPL() {
+        async function initialiserSysteme() {
             const banner = document.getElementById("status-banner");
+            const labelSrc = document.getElementById("clock-source");
+            
             try {
+                // Acquisition simultanée des données et de l'heure atomique de l'infrastructure d'hébergement
                 let res = await fetch(`./orbites.json?v=${Date.now()}`, { cache: 'no-store' });
                 if (res.ok) {
                     matriceEpheremidesCachee = await res.json();
                     horlogePrete = true;
                     banner.innerText = "CONNEXION JPL-NASA ÉTABLIE [FLUX STABLE]";
                     banner.style.color = "var(--accent-green)";
+
+                    // Extraction du marqueur temporel réseau de l'en-tête (Immunisé contre le blocage CORS)
+                    let serverDateStr = res.headers.get('Date');
+                    if (serverDateStr) {
+                        tempsAtomiqueInitialMS = Date.parse(serverDateStr);
+                        tempsMonotoniqueInitialMS = performance.now();
+                        labelSourceTemps = "HORLOGE ATOMIQUE VIA EN-TÊTE HTTP (STABLE)";
+                        labelSrc.style.color = "var(--accent-green)";
+                    } else {
+                        throw new Error("En-tête temporel HTTP inaccessible.");
+                    }
                 } else {
-                    banner.innerText = `ERREUR MATRICE : Code ${res.status}`;
+                    banner.innerText = `MATRICE EN PANNE : Code ${res.status}`;
+                    banner.style.color = "var(--accent-red)";
+                    throw new Error("Fichier absent.");
+                }
+            } catch (e) {
+                console.warn("Bypass temporel activé.", e);
+                if (!horlogePrete) {
+                    banner.innerText = "ERREUR PHYSIQUE : VÉRIFIEZ LE FICHIER ORBITES.JSON";
                     banner.style.color = "var(--accent-red)";
                 }
-            } catch (e) { 
-                banner.innerText = "ERREUR DE SÉCURITÉ RESEAU (CORS/LOCAL)";
-                banner.style.color = "var(--accent-red)";
+                // Secours ultime par l'horloge locale Android
+                tempsAtomiqueInitialMS = Date.now();
+                tempsMonotoniqueInitialMS = performance.now();
+                labelSourceTemps = "HORLOGE LOCAL ANDROID (SECOURS - RISQUE DE DRIFT)";
+                labelSrc.style.color = "var(--accent-orange)";
             }
         }
 
-        // ÉTAPE 2 : CALCULATEUR CINÉTIQUE CONTINU
+        // Moteur cinétique temps réel
         setInterval(() => {
             if (tempsAtomiqueInitialMS === 0) return;
 
-            // Calcul du temps écoulé depuis le démarrage via le timer matériel du processeur
             let msEcouleesDepuisChargement = performance.now() - tempsMonotoniqueInitialMS;
             let tempsTrueUTCMS = tempsAtomiqueInitialMS + msEcouleesDepuisChargement;
             
-            // Objet Date construit sur le repère temps atomique pur
             let nowObj = new Date(tempsTrueUTCMS);
             
-            // Rafraîchissement visuel de l'interface
             document.getElementById("clock-display").innerText = "UTC REALTIME : " + nowObj.toISOString().replace("T"," ").replace("Z","");
             document.getElementById("clock-source").innerText = "SOURCE : " + labelSourceTemps;
 
@@ -185,7 +178,7 @@
             }
         }, 100);
 
-        // INITIALISATION DU GRAPHISME VECTORIEL SVG
+        // Assemblage des éléments vectoriels SVG
         const svgNS = "http://www.w3.org/2000/svg";
         const g = document.getElementById('pointers');
         const leg = document.getElementById('legend');
@@ -211,12 +204,6 @@
                         <span style="grid-column: span 2">Distance: <strong id="dist-${name}">...</strong></span>
                     </div>
                 </div>`;
-        }
-
-        // CHAÎNAGE DE CHARGEMENT ASYNCHRONE
-        async function initialiserSysteme() {
-            await synchroniserHorlogeAtomique();
-            await chargerMatriceJPL();
         }
 
         initialiserSysteme();
