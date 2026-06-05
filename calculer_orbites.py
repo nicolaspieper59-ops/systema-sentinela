@@ -4,8 +4,6 @@ import requests
 import json
 import re
 import math
-import os
-import shutil
 from datetime import datetime, timezone
 
 def calculer_refraction_dynamique(altitude_brute_deg, altitude_observateur_m):
@@ -28,9 +26,8 @@ def appliquer_parallaxe_lune(altitude_apparente_deg, altitude_observateur_m):
     return altitude_apparente_deg - (correction_parallaxe * 180.0 / math.pi)
 
 def executer_acquisition():
-    # Détermination temporelle UTC automatique du jour
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    print(f"[INFO] Alignement SENTINELA - Acquisition JPL du jour : {aujourdhui}")
+    print(f"[INFO] Alignement SENTINELA - Acquisition JPL : {aujourdhui}")
     
     LONGITUDE = 5.36
     LATITUDE = 43.28
@@ -44,7 +41,6 @@ def executer_acquisition():
         MATRICE_FINALE[nom_astre] = {}
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
         
-        # Structure de requêtage stricte
         params = {
             "format": "json",
             "COMMAND": f"'{id_nasa}'",
@@ -64,6 +60,7 @@ def executer_acquisition():
         try:
             response = requests.get(url, params=params, timeout=20)
             if response.status_code != 200:
+                print(f"[ERREUR] NASA HTTP {response.status_code} pour {nom_astre}")
                 continue
                 
             data_json = response.json()
@@ -78,9 +75,7 @@ def executer_acquisition():
                     if not ligne_nettoye:
                         continue
                         
-                    # Découpage robuste par blocs d'espaces consécutifs
                     elements = ligne_nettoye.split()
-                    
                     index_heure = -1
                     for idx, elem in enumerate(elements):
                         if ":" in elem and len(elem) == 5:
@@ -95,7 +90,6 @@ def executer_acquisition():
                     
                     numeriques = []
                     for token in donnees_apres_heure:
-                        # Nettoie les lettres d'état et astérisques de la NASA accolés aux chiffres
                         token_propre = re.sub(r'[^\d\.\+\-eEnNaA\/]', '', token)
                         if not token_propre or token_propre.lower() == 'n.a.':
                             numeriques.append(0.0)
@@ -119,28 +113,19 @@ def executer_acquisition():
                         MATRICE_FINALE[nom_astre][cle_heure_minute] = [
                             azimuth, elevation_corrigee, mag, dist_terre_ua, vitesse_relative
                         ]
-                        
-                print(f"[SUCCÈS] {nom_astre} : {len(MATRICE_FINALE[nom_astre])} vecteurs d'éphémérides synchronisés.")
+                print(f"[SUCCÈS] {nom_astre} synchronisé.")
             else:
-                print(f"[ATTENTION] Réponse brute illisible pour {nom_astre}.")
+                print(f"[ATTENTION] Structure vide pour {nom_astre}")
         except Exception as e:
-            print(f"[ERREUR] Échec de l'acquisition sur {nom_astre} : {e}")
+            print(f"[ERREUR] Extraction impossible sur {nom_astre} : {e}")
 
-    # Résolution du blocage d'infrastructure GitHub Pages par isolation /dist
+    # Enregistrement direct sécurisé à la racine
     if MATRICE_FINALE.get("SOLEIL") and len(MATRICE_FINALE["SOLEIL"]) > 0:
-        os.makedirs("dist", exist_ok=True)
-        
-        # Écriture du JSON dans la zone isolée
-        with open("dist/orbites.json", "w", encoding="utf-8") as f:
+        with open("orbites.json", "w", encoding="utf-8") as f:
             json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-            
-        # Duplication de l'interface graphique
-        if os.path.exists("index.html"):
-            shutil.copy("index.html", "dist/index.html")
-            
-        print("[ALIGNEMENT COMPLET] Les fichiers de production ont été isolés dans ./dist/")
+        print("[SUCCÈS] Fichier 'orbites.json' mis à jour à la racine.")
     else:
-        print("[ERREUR CONFIGURATION] Matrice vide. Processus interrompu pour protéger le radar.")
+        print("[ERREUR] Matrice vide. Opération annulée.")
 
 if __name__ == "__main__":
     executer_acquisition()
