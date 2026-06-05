@@ -32,17 +32,23 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Installation du module Requests
-        run: pip install requests
+      - name: Installation des dépendances Astronomiques
+        run: pip install requests skyfield
+
+      # Téléchargement manuel du noyau d'éphémérides DE421 du JPL depuis un miroir stable
+      - name: Pré-chargement des éphémérides JPL NASA (DE421)
+        run: |
+          curl -sL https://raw.githubusercontent.com/skyfielders/python-skyfield/master/ci/de421.bsp -o de421.bsp
+          ls -lh de421.bsp
 
       - name: Calcul des éphémérides (Execution Script)
         run: python calculer_orbites.py
 
-      # Isolation des fichiers web pour contourner le blocage de sécurité de GitHub
+      # Isolation des fichiers web pour le déploiement
       - name: Preparation du deploiement
         run: |
           mkdir _site
-          rsync -av --exclude='.git*' --exclude='_site' ./ _site/
+          rsync -av --exclude='.git*' --exclude='_site' --exclude='de421.bsp' ./ _site/
 
       - name: Configurer l'artefact Pages
         uses: actions/upload-pages-artifact@v3
