@@ -1,1 +1,9 @@
- 
+{
+  "short_name": "SENTINELA",
+  "name": "SENTINELA - Moniteur de Sécurité Vectoriel",
+  "icons": [],
+  "start_url": ".",
+  "background_color": "#0a0f0d",
+  "theme_color": "#33ff99",
+  "display": "standalone"
+}
