@@ -1,9 +1,14 @@
 name: SENTINELA - RECONSTRUCTION FORCEE
+
 on:
-  workflow_dispatch: # Permet le déclenchement manuel sur mobile
+  schedule:
+    - cron: '5 0 * * *' # Déclenchement automatique chaque jour à 00h05 UTC
+  workflow_dispatch: # Maintien du bouton manuel pour le contrôle sur mobile
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   build:
@@ -26,5 +31,5 @@ jobs:
       - name: Commiter la matrice
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "SENTINELA : Régénération de la matrice 5D"
+          commit_message: "SENTINELA : Régénération de la matrice 5D [Automatique]"
           file_pattern: 'orbites.json'
