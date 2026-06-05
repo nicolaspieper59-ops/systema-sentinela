@@ -116,7 +116,6 @@
             document.getElementById('utc-clock').innerText = maintenant.toISOString().replace('T', ' ').substring(0, 23);
 
             try {
-                // CORRECTIF RESEAU : Suppression de la variable temporelle agressive (?v=Date.now()) qui déclenchait AdBlock/AdGuard
                 let reponse = await fetch('./orbites.json', { cache: 'no-cache' });
                 if (!reponse.ok) throw new Error("Fichier de données absent");
                 
@@ -126,13 +125,39 @@
                 let mm = String(maintenant.getUTCMinutes()).padStart(2, '0');
                 let cle_temps = `${hh}:${mm}`;
 
-                document.getElementById('status-banner').innerHTML = `FLUX SYNCHRONISÉ VIA JPL [UTC TARGET: ${cle_temps}]`;
+                // CORRECTIF ANTI-DÉCALAGE ANDROID :
+                // Si la clé exacte (ex: 15:47) n'existe pas, on cherche la clé la plus proche disponible dans la matrice
+                let cle_valide = cle_temps;
+                if (matrice["SOLEIL"] && !matrice["SOLEIL"][cle_temps]) {
+                    const cles_disponibles = Object.keys(matrice["SOLEIL"]);
+                    if (cles_disponibles.length > 0) {
+                        // On récupère la dernière clé générée pour éviter le vide si Android est en avance
+                        cle_valide = cles_disponibles[cles_disponibles.length - 1];
+                        
+                        // Si l'heure courante d'Android est dans la plage mais légèrement décalée (ex: décalage de -1 ou +1 min)
+                        // On cherche s'il y a une clé proche
+                        const cible_minutes = maintenant.getUTCHours() * 60 + maintenant.getUTCMinutes();
+                        let min_diff = Infinity;
+                        
+                        for (let c of cles_disponibles) {
+                            let [h_c, m_c] = c.split(':').map(Number);
+                            let total_c = h_c * 60 + m_c;
+                            let diff = Math.abs(cible_minutes - total_c);
+                            if (diff < min_diff && diff <= 15) { // Tolérance de 15 minutes de décalage Android
+                                min_diff = diff;
+                                cle_valide = c;
+                            }
+                        }
+                    }
+                }
+
+                document.getElementById('status-banner').innerHTML = `FLUX SYNCHRONISÉ [UTC EFFECTIF: ${cle_valide}] (AUTO-CLOCK DISCORDANCE ACTIVE)`;
                 document.getElementById('status-banner').style.backgroundColor = "#1a3325";
                 document.getElementById('status-banner').style.color = "#33ff99";
 
-                mettreA_JourAstre("SOLEIL", matrice, cle_temps, "sol");
-                mettreA_JourAstre("LUNE", matrice, cle_temps, "lun");
-                mettreA_JourAstre("JUPITER", matrice, cle_temps, "jup");
+                mettreA_JourAstre("SOLEIL", matrice, cle_valide, "sol");
+                mettreA_JourAstre("LUNE", matrice, cle_valide, "lun");
+                mettreA_JourAstre("JUPITER", matrice, cle_valide, "jup");
 
             } catch (erreur) {
                 document.getElementById('status-banner').innerHTML = `RÉALIGNEMENT DES FLUX VECTORIELS [-0 MIN] (ALERTE INTERCEPTION FLUX)`;
