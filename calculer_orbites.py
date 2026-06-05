@@ -4,9 +4,12 @@ import requests
 import json
 import re
 
+from datetime import datetime, timezone
+
 def executer_acquisition():
-    # Fixation temporelle absolue pour la journée du bug
-    aujourdhui = "2026-06-04"
+    # Génère dynamiquement la date du jour actuel au format AA-MM-JJ
+    aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    # ... (le reste de votre script de traitement des requêtes Horizons)
     SITE_GEODETIQUE = "5.36,43.28,0.100" # Marseille
     ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" }
     MATRICE_FINALE = {}
