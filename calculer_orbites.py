@@ -40,7 +40,7 @@ def executer_acquisition():
     for nom_astre, id_nasa in ASTRES.items():
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
         
-        # CORRECTIF CRITIQUE : Paramètres épurés sans guillemets simples internes conformes aux spécifications du JPL
+        # CORRECTIF DÉFINITIF : Paramètres épurés sans aucun guillemet simple interne (Zéro encodage parasite %27)
         params = {
             "format": "json",
             "COMMAND": id_nasa,
@@ -85,14 +85,12 @@ def executer_acquisition():
                         cle_heure_minute = elements[index_heure].strip()
                         donnees_apres_heure = elements[index_heure + 1:]
                         
-                        # CORRECTIF DU PARSER : Élimination stricte des marqueurs d'interférence (*, m) sans décaler les colonnes
                         numeriques = []
                         for token in donnees_apres_heure:
                             token_propre = re.sub(r'[^\d\.\+\-eEnNaA\/]', '', token)
                             try:
                                 numeriques.append(float(token_propre))
                             except ValueError:
-                                # On ignore silencieusement les jetons non-numériques (indicateurs de jour/nuit)
                                 continue
 
                         if len(numeriques) >= 2:
@@ -109,18 +107,19 @@ def executer_acquisition():
                             MATRICE_FINALE[nom_astre][cle_heure_minute] = [
                                 azimuth, elevation_corrigee, mag, dist_terre_ua, vitesse_relative
                             ]
-                    print(f"[SUCCÈS] {nom_astre} synchronisé : {len(MATRICE_FINALE[nom_astre])} vecteurs extraits.")
+                    print(f"[SUCCÈS] {nom_astre} synchronisé : {len(MATRICE_FINALE[nom_astre])} points extraits.")
                 else:
-                    print(f"[REJET] Erreur de parsing de la trame de la NASA pour {nom_astre}")
+                    print(f"[REJET NASA] Structure de trame manquante pour {nom_astre}.")
+                    print(f"[DEBUG LOG] Extrait du retour de la NASA :\n{texte_brut[:600]}")
             else:
                 print(f"[ERREUR HTTP] Code {response.status_code} sur {nom_astre}")
         except Exception as e:
-            print(f"[EXCEPTION] Incident sur {nom_astre} : {e}")
+            print(f"[EXCEPTION] Problème de liaison sur {nom_astre} : {e}")
 
-    # Écriture finale de la matrice de données
+    # Sauvegarde de la matrice propre à la racine du dépôt
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print("[FLUX OK] Fichier 'orbites.json' écrit avec succès.")
+    print("[MIGRATION FLUX COMPLET] 'orbites.json' mis à jour à la racine.")
 
 if __name__ == "__main__":
     executer_acquisition()
