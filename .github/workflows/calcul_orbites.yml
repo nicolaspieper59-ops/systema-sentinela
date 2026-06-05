@@ -2,11 +2,13 @@ name: SENTINELA - RECONSTRUCTION FORCEE
 
 on:
   schedule:
-    - cron: '5 0 * * *' # S'exécute AUTOMATIQUEMENT toutes les nuits à 00h05 UTC (02h05 heure française en été)
-  workflow_dispatch: # Conserve l'option du bouton manuel sur votre écran mobile pour parer à toute urgence
+    - cron: '5 0 * * *' # Exécution automatique à 00h05 UTC chaque jour
+  workflow_dispatch: # Permet le déclenchement manuel sur mobile
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   build:
@@ -26,8 +28,16 @@ jobs:
       - name: Calcul des éphémérides (Execution Script)
         run: python calculer_orbites.py
 
-      - name: Commiter et pousser la nouvelle matrice
+      - name: Commiter la nouvelle matrice
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "SENTINELA : Régénération de la matrice 5D [Automatique]"
           file_pattern: 'orbites.json'
+
+      - name: Configurer l'artefact Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Déploiement Flash GitHub Pages
+        uses: actions/deploy-pages@v4
