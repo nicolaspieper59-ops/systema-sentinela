@@ -40,21 +40,21 @@ def executer_acquisition():
     for nom_astre, id_nasa in ASTRES.items():
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
         
-        # RESTAURATION DES GUILLEMETS SIMPLES EXIGÉS PAR LES SPÉCIFICATIONS DU JPL NASA
+        # CORRECTIF CRITIQUE : Paramètres épurés sans guillemets simples internes conformes aux spécifications du JPL
         params = {
             "format": "json",
-            "COMMAND": f"'{id_nasa}'",
-            "OBJ_DATA": "'NO'",
-            "MAKE_EPHEM": "'YES'",
-            "EPHEM_TYPE": "'OBSERVER'",
-            "CENTER": "'coord@399'",
-            "SITE_COORD": f"'{LONGITUDE},{LATITUDE},{ALTITUDE_KM}'",
-            "START_TIME": f"'{aujourdhui} 00:00'",
-            "STOP_TIME": f"'{aujourdhui} 23:59'",
-            "STEP_SIZE": "'1m'",
-            "QUANTITIES": "'4,9,20'",
-            "REF_SYSTEM": "'J2000'",
-            "ANG_FORMAT": "'DEG'"
+            "COMMAND": id_nasa,
+            "OBJ_DATA": "NO",
+            "MAKE_EPHEM": "YES",
+            "EPHEM_TYPE": "OBSERVER",
+            "CENTER": "coord@399",
+            "SITE_COORD": f"{LONGITUDE},{LATITUDE},{ALTITUDE_KM}",
+            "START_TIME": f"{aujourdhui} 00:00",
+            "STOP_TIME": f"{aujourdhui} 23:59",
+            "STEP_SIZE": "1m",
+            "QUANTITIES": "4,9,20",
+            "REF_SYSTEM": "J2000",
+            "ANG_FORMAT": "DEG"
         }
         
         try:
@@ -85,16 +85,15 @@ def executer_acquisition():
                         cle_heure_minute = elements[index_heure].strip()
                         donnees_apres_heure = elements[index_heure + 1:]
                         
+                        # CORRECTIF DU PARSER : Élimination stricte des marqueurs d'interférence (*, m) sans décaler les colonnes
                         numeriques = []
                         for token in donnees_apres_heure:
                             token_propre = re.sub(r'[^\d\.\+\-eEnNaA\/]', '', token)
-                            if not token_propre or token_propre.lower() == 'n.a.':
-                                numeriques.append(0.0)
-                            else:
-                                try:
-                                    numeriques.append(float(token_propre))
-                                except ValueError:
-                                    continue
+                            try:
+                                numeriques.append(float(token_propre))
+                            except ValueError:
+                                # On ignore silencieusement les jetons non-numériques (indicateurs de jour/nuit)
+                                continue
 
                         if len(numeriques) >= 2:
                             azimuth = numeriques[0]
@@ -110,18 +109,18 @@ def executer_acquisition():
                             MATRICE_FINALE[nom_astre][cle_heure_minute] = [
                                 azimuth, elevation_corrigee, mag, dist_terre_ua, vitesse_relative
                             ]
-                    print(f"[SUCCÈS] {nom_astre} synchronisé : {len(MATRICE_FINALE[nom_astre])} points injectés.")
+                    print(f"[SUCCÈS] {nom_astre} synchronisé : {len(MATRICE_FINALE[nom_astre])} vecteurs extraits.")
                 else:
-                    print(f"[REJET NASA] Structure de trame vide pour {nom_astre}. Vérifier les signatures de requêtes.")
+                    print(f"[REJET] Erreur de parsing de la trame de la NASA pour {nom_astre}")
             else:
                 print(f"[ERREUR HTTP] Code {response.status_code} sur {nom_astre}")
         except Exception as e:
-            print(f"[CRITICAL INTERCEPT] Incident de calcul sur {nom_astre} : {e}")
+            print(f"[EXCEPTION] Incident sur {nom_astre} : {e}")
 
-    # Écriture de la matrice de données synchronisée à la racine du workspace
+    # Écriture finale de la matrice de données
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print("[FLUX INSÉRÉ] Le fichier 'orbites.json' a été restructuré avec succès.")
+    print("[FLUX OK] Fichier 'orbites.json' écrit avec succès.")
 
 if __name__ == "__main__":
     executer_acquisition()
