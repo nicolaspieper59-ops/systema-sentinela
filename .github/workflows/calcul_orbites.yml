@@ -32,10 +32,11 @@ jobs:
       - name: Installation du module Requests
         run: pip install requests
 
+      # Exécution stricte à la racine
       - name: Calcul des éphémérides (Execution Script)
         run: python calculer_orbites.py
 
-      # Déploiement direct depuis la racine racine du projet
+      # Archivage complet de la racine
       - name: Configurer l'artefact Pages
         uses: actions/upload-pages-artifact@v3
         with:
