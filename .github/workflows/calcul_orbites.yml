@@ -35,10 +35,12 @@ jobs:
       - name: Calcul des éphémérides (Execution Script)
         run: python calculer_orbites.py
 
+      # CORRECTIF MAJEUR : Forcer l'archivage physique du fichier généré pour le dossier de déploiement
       - name: Configurer l'artefact Pages
         uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
+          Retention-days: 1
 
       - name: Déploiement Flash GitHub Pages
         id: deployment
