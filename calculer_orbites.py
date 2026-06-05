@@ -3,8 +3,8 @@
 import requests
 import json
 import re
-import math
 import sys
+import math
 from datetime import datetime, timezone
 
 def calculer_refraction_dynamique(altitude_brute_deg, altitude_observateur_m):
@@ -26,40 +26,10 @@ def appliquer_parallaxe_lune(altitude_apparente_deg, altitude_observateur_m):
     correction_parallaxe = pi_parallaxe * math.cos(altitude_rad) * (rayon_local / RAYON_TERRE_KM)
     return altitude_apparente_deg - (correction_parallaxe * 180.0 / math.pi)
 
-def generer_vecteurs_secours(nom_astre, altitude_metres):
-    """Génère une matrice locale réaliste et distincte par astre pour Marseille."""
-    matrice_secours = {}
-    params_astres = {
-        "SOLEIL": {"phase": 6.2, "amp": 46.5, "mag": -26.74, "dist": 1.0148},
-        "LUNE": {"phase": 13.8, "amp": 37.2, "mag": -12.15, "dist": 0.00257},
-        "JUPITER": {"phase": 1.5, "amp": 22.8, "mag": -2.45, "dist": 4.3180}
-    }
-    p = params_astres[nom_astre]
-    
-    for h in range(24):
-        for m in range(60):
-            cle_heure_minute = f"{h:02d}:{m:02d}"
-            temps_decimal = h + m / 60.0
-            
-            # Simulation d'une trajectoire standard Est -> Ouest
-            faux_azimuth = (temps_decimal * 14.98 + 88.5) % 360.0
-            fausse_elevation = p["amp"] * math.sin((temps_decimal - p["phase"]) * math.pi / 12.0)
-            
-            if fausse_elevation > 0:
-                fausse_elevation = calculer_refraction_dynamique(fausse_elevation, altitude_metres)
-                
-            matrice_secours[cle_heure_minute] = [
-                round(faux_azimuth, 4), 
-                round(fausse_elevation, 4), 
-                p["mag"], 
-                p["dist"], 
-                0.003 if nom_astre == "LUNE" else 0.0
-            ]
-    return matrice_secours
-
 def executer_acquisition():
+    # Détermination de la date du jour au format ISO
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    print(f"[INFO] SENTINELA - Calibrage GET de précision (Date : {aujourdhui})")
+    print(f"[INFO] SENTINELA - Extraction Native JPL NASA (Date : {aujourdhui})")
     
     LONGITUDE = 5.36
     LATITUDE = 43.28
@@ -69,12 +39,13 @@ def executer_acquisition():
     ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" }
     MATRICE_FINALE = {}
 
+    # En-tête standard pour l'authentification de la requête auprès du serveur web du JPL
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
 
     for nom_astre, id_nasa in ASTRES.items():
-        # Formulation de l'URL brute avec encodage manuel strict de l'espace (%20)
+        # Construction manuelle de l'URL pour respecter la syntaxe Fortran de l'API Horizons
         url_brute = (
             f"https://ssd-api.jpl.nasa.gov/horizons.api?format=json"
             f"&COMMAND='{id_nasa}'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='OBSERVER'"
@@ -84,62 +55,68 @@ def executer_acquisition():
         )
         
         try:
-            print(f"[REQUÊTE GET] Alignement JPL pour {nom_astre}...")
-            response = requests.get(url_brute, headers=headers, timeout=15)
+            print(f"[REQUÊTE JPL] Téléchargement du flux brut pour {nom_astre}...")
+            response = requests.get(url_brute, headers=headers, timeout=20)
             
-            if response.status_code == 200:
-                data_json = response.json()
-                texte_brut = data_json.get("result", "")
+            if response.status_code != 200:
+                print(f"[ERREUR CRITIQUE] Serveur JPL inaccessible (Code HTTP {response.status_code}).")
+                sys.exit(1)
                 
-                if "$$SOE" in texte_brut and "$$EOE" in texte_brut:
-                    MATRICE_FINALE[nom_astre] = {}
-                    bloc_donnees = texte_brut.split("$$SOE")[1].split("$$EOE")[0]
-                    lignes = bloc_donnees.strip().split("\n")
+            data_json = response.json()
+            texte_brut = data_json.get("result", "")
+            
+            # Vérification de la présence des balises de données spécifiques à Horizons
+            if "$$SOE" not in texte_brut or "$$EOE" not in texte_brut:
+                print(f"[ECHEC INTERNE] L'API JPL a renvoyé un message d'erreur ou un format incompatible pour {nom_astre}.")
+                print("Détails du rejet de l'API :")
+                print(texte_brut[:500] if texte_brut else "Aucune donnée textuelle reçue.")
+                sys.exit(1)
+                
+            MATRICE_FINALE[nom_astre] = {}
+            bloc_donnees = texte_brut.split("$$SOE")[1].split("$$EOE")[0]
+            lignes = bloc_donnees.strip().split("\n")
+            
+            for ligne in lignes:
+                if not ligne.strip():
+                    continue
+                
+                # Extraction de l'horodatage (HH:MM)
+                match_heure = re.search(r'(\d{2}:\d{2})', ligne)
+                if not match_heure:
+                    continue
                     
-                    for ligne in lignes:
-                        if not ligne.strip():
-                            continue
-                        
-                        match_heure = re.search(r'(\d{2}:\d{2})', ligne)
-                        if not match_heure:
-                            continue
-                            
-                        cle_heure_minute = match_heure.group(1)
-                        reste_de_la_ligne = ligne[match_heure.end():]
-                        
-                        numeriques = [float(val) for val in re.findall(r'[-+]?\d*\.\d+|\d+', reste_de_la_ligne)]
-                        
-                        if len(numeriques) >= 2:
-                            azimuth = numeriques[0]
-                            elevation_brute = numeriques[1]
-                            mag = numeriques[2] if len(numeriques) >= 3 else 0.0
-                            dist_terre_ua = numeriques[3] if len(numeriques) >= 4 else 1.0
-                            vitesse_relative = numeriques[4] if len(numeriques) >= 5 else 0.0
-                            
-                            elevation_corrigee = calculer_refraction_dynamique(elevation_brute, ALTITUDE_METRES)
-                            if nom_astre == "LUNE":
-                                elevation_corrigee = appliquer_parallaxe_lune(elevation_corrigee, ALTITUDE_METRES)
+                cle_heure_minute = match_heure.group(1)
+                reste_de_la_ligne = ligne[match_heure.end():]
+                
+                # Extraction de toutes les valeurs numériques de la ligne d'éphéméride
+                numeriques = [float(val) for val in re.findall(r'[-+]?\d*\.\d+|\d+', reste_de_la_ligne)]
+                
+                if len(numeriques) >= 2:
+                    azimuth = numeriques[0]
+                    elevation_brute = numeriques[1]
+                    mag = numeriques[2] if len(numeriques) >= 3 else 0.0
+                    dist_terre_ua = numeriques[3] if len(numeriques) >= 4 else 1.0
+                    vitesse_relative = numeriques[4] if len(numeriques) >= 5 else 0.0
+                    
+                    # Application des corrections physiques d'observation locale
+                    elevation_corrigee = calculer_refraction_dynamique(elevation_brute, ALTITUDE_METRES)
+                    if nom_astre == "LUNE":
+                        elevation_corrigee = appliquer_parallaxe_lune(elevation_corrigee, ALTITUDE_METRES)
 
-                            MATRICE_FINALE[nom_astre][cle_heure_minute] = [
-                                azimuth, elevation_corrigee, mag, dist_terre_ua, vitesse_relative
-                            ]
-                    print(f"[LIVE JPL] {nom_astre} synchronisé : {len(MATRICE_FINALE[nom_astre])} points.")
-                else:
-                    print(f"[RÉSEAU BANNED] Format invalide reçu pour {nom_astre}, bascule immédiate.")
-            else:
-                print(f"[RÉSEAU ERROR] Code HTTP {response.status_code} pour {nom_astre}.")
+                    MATRICE_FINALE[nom_astre][cle_heure_minute] = [
+                        azimuth, elevation_corrigee, mag, dist_terre_ua, vitesse_relative
+                    ]
+                    
+            print(f"[SUCCÈS] {nom_astre} synchronisé : {len(MATRICE_FINALE[nom_astre])} points natifs JPL.")
+            
         except Exception as e:
-            print(f"[RÉSEAU TIMEOUT] Échec sur {nom_astre} : {e}")
+            print(f"[EXCEPTION] Erreur réseau ou parsing sur {nom_astre} : {e}")
+            sys.exit(1)
 
-        # Sécurité absolue : Si la clé n'existe pas ou est vide, on génère le secours dédié
-        if nom_astre not in MATRICE_FINALE or not MATRICE_FINALE[nom_astre]:
-            print(f"[LOCAL BACKUP] Génération des vecteurs autonomes pour {nom_astre}.")
-            MATRICE_FINALE[nom_astre] = generer_vecteurs_secours(nom_astre, ALTITUDE_METRES)
-
-    # Écriture définitive sans faille possible
+    # Écriture finale stricte
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print("[MIGRATION EFFECTUÉE] Fichier de trajectoire stabilisé à 100%.")
+    print("[MIGRATION EFFECTUÉE] Le fichier 'orbites.json' contient exclusivement les données du JPL.")
 
 if __name__ == "__main__":
     executer_acquisition()
