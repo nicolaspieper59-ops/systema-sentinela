@@ -26,16 +26,14 @@ def appliquer_parallaxe_lune(altitude_apparente_deg, altitude_observateur_m):
     return altitude_apparente_deg - (correction_parallaxe * 180.0 / math.pi)
 
 def executer_acquisition():
-    # Force le format de date universel strict attendu par la NASA (AAAA-MM-JJ)
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    print(f"[INFO] Initialisation de la matrice SENTINELA pour la date : {aujourdhui}")
+    print(f"[INFO] Alignement SENTINELA - Date d'acquisition : {aujourdhui}")
     
     LONGITUDE = 5.36
     LATITUDE = 43.28
     ALTITUDE_KM = 0.100  
     ALTITUDE_METRES = ALTITUDE_KM * 1000.0
     
-    SITE_GEODETIQUE = f"'{LONGITUDE},{LATITUDE},{ALTITUDE_KM}'"
     ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" }
     MATRICE_FINALE = {}
 
@@ -46,20 +44,21 @@ def executer_acquisition():
         MATRICE_FINALE[nom_astre] = {}
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
         
+        # Paramètres avec guillemets stricts alignés sur tester_nasa.py
         params = {
-            "format": "json",
+            "format": "'json'",
             "COMMAND": f"'{id_nasa}'",
-            "OBJ_DATA": "NO",
-            "MAKE_EPHEM": "YES",
-            "EPHEM_TYPE": "OBSERVER",
-            "CENTER": "coord@399",
-            "SITE_COORD": SITE_GEODETIQUE,
+            "OBJ_DATA": "'NO'",
+            "MAKE_EPHEM": "'YES'",
+            "EPHEM_TYPE": "'OBSERVER'",
+            "CENTER": "'coord@399'",
+            "SITE_COORD": f"'{LONGITUDE},{LATITUDE},{ALTITUDE_KM}'",
             "START_TIME": f"'{aujourdhui} 00:00'",
             "STOP_TIME": f"'{aujourdhui} 23:59'",
-            "STEP_SIZE": "1m",
-            "QUANTITIES": "4,9,20",
-            "REF_SYSTEM": "J2000",
-            "ANG_FORMAT": "DEG"
+            "STEP_SIZE": "'1m'",
+            "QUANTITIES": "'4,9,20'",
+            "REF_SYSTEM": "'J2000'",
+            "ANG_FORMAT": "'DEG'"
         }
         
         try:
@@ -102,20 +101,21 @@ def executer_acquisition():
                         if nom_astre == "LUNE":
                             elevation_corrigee = appliquer_parallaxe_lune(elevation_corrigee, ALTITUDE_METRES)
 
-                        # Génère des clés d'heure propres sans espaces parasites
                         MATRICE_FINALE[nom_astre][cle_heure_minute] = [
                             azimuth, elevation_corrigee, mag, dist_terre_ua, vitesse_relative
                         ]
             else:
-                # Si la NASA renvoie une erreur textuelle, on l'affiche dans les logs pour diagnostic
-                print(f"[ATTENTION] Erreur API Horizons pour {nom_astre}. Réponse tronquée : {texte_brut[:300]}")
-
+                print(f"[ATTENTION] Erreur de parsing NASA pour {nom_astre}")
         except Exception as e:
             print(f"[ERREUR] Échec de communication pour {nom_astre} : {e}")
 
-    with open("orbites.json", "w", encoding="utf-8") as f:
-        json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print(f"[SUCCÈS] Fin de traitement. Contenu généré.")
+    # Sécurité fondamentale : n'écrire le fichier que si l'acquisition a fonctionné
+    if MATRICE_FINALE.get("SOLEIL") and len(MATRICE_FINALE["SOLEIL"]) > 0:
+        with open("orbites.json", "w", encoding="utf-8") as f:
+            json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
+        print(f"[SUCCÈS] Matrice 5D sauvegardée.")
+    else:
+        print("[ERREUR CRITIQUE] Données vides. Écriture annulée pour protéger le radar.")
 
 if __name__ == "__main__":
     executer_acquisition()
