@@ -6,15 +6,16 @@ import re
 from datetime import datetime, timezone
 
 def executer_acquisition():
-    # CALCUL DYNAMIQUE AUTOMATIQUE : Récupère la date exacte du jour
+    # CALCUL DYNAMIQUE AUTOMATIQUE : Récupère la date exacte du jour (Ex: "2026-06-05")
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     print(f"[INFO] Initialisation de la matrice SENTINELA pour la date : {aujourdhui}")
     
-    SITE_GEODETIQUE = "5.36,43.28,0.100" # Marseille
+    SITE_GEODETIQUE = "5.36,43.28,0.100" # Marseille (Longitude, Latitude, Altitude)
     ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" }
     MATRICE_FINALE = {}
 
-    regex_ligne_temps = re.compile(r"^\s*(\d{4}-[A-Za-z]{3}-\d{2})\s+(\d{2}:\d{2})")
+    # CORRECTIF CRITIQUE : Support du rembourrage par espace de la NASA pour les jours à un chiffre (ex: "Jun- 5")
+    regex_ligne_temps = re.compile(r"^\s*(\d{4}-[A-Za-z]{3}-\s*\d+)\s+(\d{2}:\d{2})")
     regex_valeurs_physiques = re.compile(r"(?i)n\.a\.|[-+]?\d+\.\d+(?:[eE][-+]?\d+)?|[-+]?\d+")
 
     for nom_astre, id_nasa in ASTRES.items():
@@ -82,8 +83,6 @@ def executer_acquisition():
 
         except Exception as e:
             print(f"[ERREUR] Échec critique d'acquisition pour {nom_astre} : {e}")
-
-        # LE BLOC DE SECOURS FICTIF A ÉTÉ ENTIÈREMENT SUPPRIMÉ ICI
 
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
