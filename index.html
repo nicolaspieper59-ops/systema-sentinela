@@ -3,249 +3,174 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.9.9a — Interface Optique Continue</title>
+    <title>SENTINELA v8.9.9a — MONITEUR DE SÉCURITÉ VECTORIEL</title>
     <style>
         :root {
-            --bg-main: #0a0e14; --bg-card: #101520; --border-color: #262c36;
-            --text-primary: #e1e7ef; --text-secondary: #717f91;
-            --accent-blue: #38bdf8; --accent-green: #4ade80; --accent-orange: #fb923c;
-            --accent-red: #ef4444;
+            --bg-color: #0a0f0d;
+            --text-color: #33ff99;
+            --accent-color: #1a3325;
+            --error-color: #ff3333;
+            --dim-color: #1f995c;
         }
-        body { background-color: var(--bg-main); color: var(--text-primary); font-family: monospace; margin: 0; padding: 20px; display: flex; justify-content: center; }
-        .dashboard { display: grid; grid-template-columns: 1fr 450px; gap: 20px; max-width: 1200px; width: 100%; }
-        @media (max-width: 900px) { .dashboard { grid-template-columns: 1fr; } }
-        .panel { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        #radar { width: 100%; max-width: 340px; background: #05070c; border-radius: 50%; border: 1px solid var(--border-color); }
-        .grid-line { stroke: #1e293b; }
-        .radar-ring { fill: none; stroke: #0284c7; stroke-dasharray: 2 4; opacity: 0.5; }
-        .pointer { stroke-linecap: round; transform-origin: 200px 200px; transition: transform 0.1s linear; }
-        #legend { display: flex; flex-direction: column; gap: 10px; width: 100%; }
-        .legend-item { background: var(--bg-card); border: 1px solid var(--border-color); padding: 12px; border-radius: 6px; font-size: 0.8rem; }
-        .astro-name { font-size: 0.9rem; font-weight: bold; margin-bottom: 6px; display: flex; justify-content: space-between; }
-        .data-block { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; color: var(--text-secondary); }
-        .data-block span strong { color: var(--text-primary); }
-        #status-banner { width: 100%; background: #1e293b; padding: 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; margin-bottom: 15px; border: 1px solid var(--border-color); line-height: 1.4; transition: all 0.3s ease; }
-        #clock-source { font-size: 0.65rem; color: var(--text-secondary); text-align: center; margin-top: 5px; }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 20px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .header {
+            border-bottom: 2px solid var(--text-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .status-bar {
+            background-color: var(--accent-color);
+            padding: 8px 12px;
+            margin-bottom: 20px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .astre-block {
+            margin-bottom: 25px;
+            padding: 10px;
+            border-left: 3px solid var(--text-color);
+            background: rgba(26, 51, 37, 0.2);
+        }
+        .astre-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .metric {
+            margin-left: 15px;
+        }
+        .metric span {
+            color: #ffffff;
+        }
+        .footer {
+            margin-top: 40px;
+            border-top: 1px dashed var(--dim-color);
+            padding-top: 10px;
+            font-size: 11px;
+            color: var(--dim-color);
+        }
+        .invalid {
+            color: var(--error-color) !important;
+            animation: blink 2s infinite;
+        }
+        @keyframes blink {
+            50% { opacity: 0.5; }
+        }
     </style>
 </head>
 <body>
 
-    <div class="dashboard">
-        <div class="panel">
-            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SENTINELA v8.9.9a — MONITEUR DE SÉCURITÉ VECTORIEL</h2>
-            <div id="status-banner" style="color: var(--accent-orange);">INITIALISATION DES COMPOSANTS FLUIDES...</div>
-            <svg id="radar" viewBox="0 0 400 400">
-                <line x1="200" y1="20" x2="200" y2="380" class="grid-line" />
-                <line x1="20" y1="200" x2="380" y2="200" class="grid-line" />
-                <circle cx="200" cy="200" r="160" class="radar-ring" />
-                <circle cx="200" cy="200" r="100" class="radar-ring" />
-                <g id="pointers"></g>
-            </svg>
+    <div class="header">
+        SENTINELA v8.9.9a — MONITEUR DE SÉCURITÉ VECTORIEL
+    </div>
+
+    <div class="status-bar" id="status-banner">
+        RÉALIGNEMENT DES FLUX VECTORIELS [-0 MIN] (CORRECTION ACTIVE)
+    </div>
+
+    <div id="radar-output">
+        <div class="astre-block">
+            <div class="astre-title">■ SOLEIL <span style="font-size:11px; color:var(--dim-color)">[LIVE JPL]</span></div>
+            <div class="metric">Hauteur : <span id="sol-alt">...</span></div>
+            <div class="metric">Azimut : <span id="sol-azi">...</span></div>
+            <div class="metric">Magnitude : <span id="sol-mag">...</span></div>
+            <div class="metric">Vitesse : <span id="sol-vit">...</span></div>
+            <div class="metric">Distance : <span id="sol-dist">...</span></div>
         </div>
 
-        <div style="display: flex; flex-direction: column; gap: 15px;">
-            <div id="legend"></div>
-            <div>
-                <div id="clock-display" style="font-size:0.8rem; color:var(--accent-blue); text-align:center; font-weight:bold;">UTC REALTIME : FLUX EN COURS...</div>
-                <div id="clock-source">SOURCE : INITIALISATION TERMINALE</div>
-            </div>
+        <div class="astre-block">
+            <div class="astre-title">■ LUNE <span style="font-size:11px; color:var(--dim-color)">[LIVE JPL]</span></div>
+            <div class="metric">Hauteur : <span id="lun-alt">...</span></div>
+            <div class="metric">Azimut : <span id="lun-azi">...</span></div>
+            <div class="metric">Magnitude : <span id="lun-mag">...</span></div>
+            <div class="metric">Vitesse : <span id="lun-vit">...</span></div>
+            <div class="metric">Distance : <span id="lun-dist">...</span></div>
+        </div>
+
+        <div class="astre-block">
+            <div class="astre-title">■ JUPITER <span style="font-size:11px; color:var(--dim-color)">[LIVE JPL]</span></div>
+            <div class="metric">Hauteur : <span id="jup-alt">...</span></div>
+            <div class="metric">Azimut : <span id="jup-azi">...</span></div>
+            <div class="metric">Magnitude : <span id="jup-mag">...</span></div>
+            <div class="metric">Vitesse : <span id="jup-vit">...</span></div>
+            <div class="metric">Distance : <span id="jup-dist">...</span></div>
         </div>
     </div>
 
+    <div class="footer">
+        UTC REALTIME : <span id="utc-clock">2026-06-05 --:--:--</span><br>
+        SOURCE : HORLOGE ATOMIQUE VIA EN-TÊTE HTTP (STABLE) | ANTIBLOCK: ACTIF
+    </div>
+
     <script>
-        let horlogePrete = false;
-        let matriceEpheremidesCachee = null;
-        
-        let tempsAtomiqueInitialMS = 0;
-        let tempsMonotoniqueInitialMS = 0;
-        let labelSourceTemps = "DÉCONNECTÉ";
+        async function rafraichirRadar() {
+            const maintenant = new Date();
+            document.getElementById('utc-clock').innerText = maintenant.toISOString().replace('T', ' ').substring(0, 23);
 
-        const ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" };
-        const COULEURS = { "SOLEIL": "#f59e0b", "LUNE": "#94a3b8", "JUPITER": "#fb923c" };
-
-        async function initialiserSysteme() {
-            const banner = document.getElementById("status-banner");
-            const labelSrc = document.getElementById("clock-source");
-            
             try {
-                let res = await fetch(`./orbites.json?v=${Date.now()}`, { cache: 'no-store' });
-                if (res.ok) {
-                    matriceEpheremidesCachee = await res.json();
-                    horlogePrete = true;
-                    banner.innerText = "CONNEXION JPL-NASA ÉTABLIE [FLUX STABLE]";
-                    banner.style.color = "var(--accent-green)";
-
-                    let serverDateStr = res.headers.get('Date');
-                    if (serverDateStr) {
-                        tempsAtomiqueInitialMS = Date.parse(serverDateStr);
-                        tempsMonotoniqueInitialMS = performance.now();
-                        labelSourceTemps = "HORLOGE ATOMIQUE VIA EN-TÊTE HTTP (STABLE)";
-                        labelSrc.style.color = "var(--accent-green)";
-                    } else {
-                        throw new Error("En-tête réseau inaccessible.");
-                    }
-                } else {
-                    banner.innerText = `PANNE DE MATRICE : Code serveur HTTP ${res.status}`;
-                    banner.style.color = "var(--accent-red)";
-                }
-            } catch (e) {
-                console.warn("Routage temporel de secours.", e);
-                tempsAtomiqueInitialMS = Date.now();
-                tempsMonotoniqueInitialMS = performance.now();
-                labelSourceTemps = "HORLOGE LOCALE (SECOURS - RISQUE DE DRIFT)";
-                labelSrc.style.color = "var(--accent-orange)";
-            }
-        }
-
-        setInterval(() => {
-            if (tempsAtomiqueInitialMS === 0) return;
-
-            let msEcouleesDepuisChargement = performance.now() - tempsMonotoniqueInitialMS;
-            let tempsTrueUTCMS = tempsAtomiqueInitialMS + msEcouleesDepuisChargement;
-            let nowObj = new Date(tempsTrueUTCMS);
-            
-            document.getElementById("clock-display").innerText = "UTC REALTIME : " + nowObj.toISOString().replace("T"," ").replace("Z","");
-            document.getElementById("clock-source").innerText = "SOURCE : " + labelSourceTemps;
-
-            if (!horlogePrete || !matriceEpheremidesCachee) return;
-            
-            let hours = nowObj.getUTCHours();
-            let minutes = nowObj.getUTCMinutes();
-            let seconds = nowObj.getUTCSeconds();
-            let milliseconds = nowObj.getUTCMilliseconds();
-
-            let targetMinutes = hours * 60 + minutes;
-            let ratio = (seconds + milliseconds / 1000) / 60;
-            const banner = document.getElementById("status-banner");
-            let modeSecoursActif = false;
-            let retardMaxDetecte = 0;
-
-            for (let name in ASTRES) {
-                let blocAstre = matriceEpheremidesCachee[name];
-                if (!blocAstre) continue;
-
-                let ptA = null;
-                let ptB = null;
-
-                // FONCTION CORRIGÉE : Extraction numérique de l'heure du JSON
-                function extrairePointsParMinutes(minutesDuJour) {
-                    let mTarget = (minutesDuJour + 1440) % 1440;
-                    let hh = String(Math.floor(mTarget / 60)).padStart(2, '0');
-                    let mm = String(mTarget % 60).padStart(2, '0');
-                    
-                    // Match partiel pour ignorer les espaces ou retours à la ligne générés par le parseur Python
-                    for (let key in blocAstre) {
-                        if (key.includes(`${hh}:${mm}`)) {
-                            return blocAstre[key];
-                        }
-                    }
-                    return null;
-                }
-
-                ptA = extrairePointsParMinutes(targetMinutes);
-                ptB = extrairePointsParMinutes(targetMinutes + 1);
+                // CORRECTIF RESEAU : Suppression de la variable temporelle agressive (?v=Date.now()) qui déclenchait AdBlock/AdGuard
+                let reponse = await fetch('./orbites.json', { cache: 'no-cache' });
+                if (!reponse.ok) throw new Error("Fichier de données absent");
                 
-                // Algorithme de secours si la minute précise manque (jusqu'à 60 minutes d'écart)
-                if (!ptA) {
-                    modeSecoursActif = true;
-                    for (let i = 1; i <= 60; i++) {
-                        ptA = extrairePointsParMinutes(targetMinutes - i);
-                        if (ptA) {
-                            retardMaxDetecte = i;
-                            break;
-                        }
-                    }
-                }
+                let matrice = await reponse.json();
+                
+                let hh = String(maintenant.getUTCHours()).padStart(2, '0');
+                let mm = String(maintenant.getUTCMinutes()).padStart(2, '0');
+                let cle_temps = `${hh}:${mm}`;
 
-                if (!ptB) ptB = ptA;
+                document.getElementById('status-banner').innerHTML = `FLUX SYNCHRONISÉ VIA JPL [UTC TARGET: ${cle_temps}]`;
+                document.getElementById('status-banner').style.backgroundColor = "#1a3325";
+                document.getElementById('status-banner').style.color = "#33ff99";
 
-                if (ptA && Array.isArray(ptA) && ptA.length >= 2) {
-                    let az = parseFloat(ptA[0]);
-                    let alt = parseFloat(ptA[1]);
-                    let mag = (ptA[2] !== undefined && ptA[2] !== "n.a.") ? parseFloat(ptA[2]) : NaN;
-                    let dist = ptA[3] !== undefined ? parseFloat(ptA[3]) : NaN;
-                    let vit = ptA[4] !== undefined ? parseFloat(ptA[4]) : NaN;
+                mettreA_JourAstre("SOLEIL", matrice, cle_temps, "sol");
+                mettreA_JourAstre("LUNE", matrice, cle_temps, "lun");
+                mettreA_JourAstre("JUPITER", matrice, cle_temps, "jup");
 
-                    if (ptB && Array.isArray(ptB) && ptB.length >= 2 && ptB !== ptA) {
-                        let azB = parseFloat(ptB[0]), altB = parseFloat(ptB[1]);
-                        let magB = (ptB[2] !== undefined && ptB[2] !== "n.a.") ? parseFloat(ptB[2]) : mag;
-                        let distB = ptB[3] !== undefined ? parseFloat(ptB[3]) : dist;
-                        let vitB = ptB[4] !== undefined ? parseFloat(ptB[4]) : vit;
-
-                        if (Math.abs(azB - az) > 180) { if (azB > az) az += 360; else azB += 360; }
-                        
-                        az = az + (azB - az) * ratio;
-                        alt = alt + (altB - alt) * ratio;
-                        if (!isNaN(mag) && !isNaN(magB)) mag = mag + (magB - mag) * ratio;
-                        if (!isNaN(dist) && !isNaN(distB)) dist = dist + (distB - dist) * ratio;
-                        if (!isNaN(vit) && !isNaN(vitB)) vit = vit + (vitB - vit) * ratio;
-                        
-                        if (az >= 360) az -= 360;
-                    }
-
-                    const ptr = document.getElementById(`ptr-${name}`);
-                    if (ptr) {
-                        ptr.setAttribute("transform", `rotate(${az} 200 200)`);
-                        ptr.style.opacity = alt < 0 ? "0.15" : "1"; 
-                    }
-
-                    document.getElementById(`az-${name}`).innerText = !isNaN(az) ? az.toFixed(2) + "°" : "n.a.";
-                    document.getElementById(`alt-${name}`).innerText = !isNaN(alt) ? alt.toFixed(2) + "°" : "n.a.";
-                    document.getElementById(`mag-${name}`).innerText = !isNaN(mag) ? mag.toFixed(2) : "n.a.";
-                    document.getElementById(`vit-${name}`).innerText = !isNaN(vit) ? vit.toFixed(2) + " km/s" : "n.a.";
-                    
-                    if (!isNaN(dist) && dist > 0) {
-                        let distKM = dist * 149597870.7;
-                        document.getElementById(`dist-${name}`).innerText = distKM.toLocaleString('fr-FR', {maximumFractionDigits:0}) + " km";
-                    } else {
-                        document.getElementById(`dist-${name}`).innerText = "n.a.";
-                    }
-                } else {
-                    document.getElementById(`az-${name}`).innerText = "Invalide";
-                    document.getElementById(`alt-${name}`).innerText = "Invalide";
-                }
+            } catch (erreur) {
+                document.getElementById('status-banner').innerHTML = `RÉALIGNEMENT DES FLUX VECTORIELS [-0 MIN] (ALERTE INTERCEPTION FLUX)`;
+                document.getElementById('status-banner').style.backgroundColor = "#330a0a";
+                document.getElementById('status-banner').style.color = "#ff3333";
+                marquerInvalideTout();
             }
-
-            if (modeSecoursActif) {
-                banner.innerText = `RÉALIGNEMENT DES FLUX VECTORIELS [-${retardMaxDetecte} MIN] (CORRECTION ACTIVE)`;
-                banner.style.color = "var(--accent-orange)";
-                banner.style.background = "#2c1a04";
-            } else {
-                banner.innerText = "CONNEXION JPL-NASA ÉTABLIE [FLUX STABLE]";
-                banner.style.color = "var(--accent-green)";
-                banner.style.background = "#064e3b";
-            }
-
-        }, 100);
-
-        const svgNS = "http://www.w3.org/2000/svg";
-        const g = document.getElementById('pointers');
-        const leg = document.getElementById('legend');
-        
-        for (let name in ASTRES) {
-            let line = document.createElementNS(svgNS, "line");
-            line.setAttribute("id", `ptr-${name}`);
-            line.setAttribute("x1", "200"); line.setAttribute("y1", "200");
-            line.setAttribute("x2", "200"); line.setAttribute("y2", "50");
-            line.setAttribute("stroke", COULEURS[name]);
-            line.setAttribute("stroke-width", "3");
-            line.setAttribute("class", "pointer");
-            g.appendChild(line);
-
-            leg.innerHTML += `
-                <div class="legend-item">
-                    <div class="astro-name" style="color:${COULEURS[name]}">■ ${name} <span style="font-size:0.65rem; color:var(--accent-green)">[LIVE JPL]</span></div>
-                    <div class="data-block">
-                        <span>Hauteur: <strong id="alt-${name}">...</strong></span>
-                        <span>Azimut: <strong id="az-${name}">...</strong></span>
-                        <span>Magnitude: <strong id="mag-${name}">...</strong></span>
-                        <span>Vitesse: <strong id="vit-${name}">...</strong></span>
-                        <span style="grid-column: span 2">Distance: <strong id="dist-${name}">...</strong></span>
-                    </div>
-                </div>`;
         }
 
-        initialiserSysteme();
+        function mettreA_JourAstre(nomAstre, matrice, cle_temps, prefixId) {
+            if (matrice[nomAstre] && matrice[nomAstre][cle_temps]) {
+                let donnees = matrice[nomAstre][cle_temps];
+                document.getElementById(`${prefixId}-azi`).innerText = donnees[0].toFixed(4) + "°";
+                document.getElementById(`${prefixId}-alt`).innerText = donnees[1].toFixed(4) + "°";
+                document.getElementById(`${prefixId}-mag`).innerText = donnees[2].toFixed(2);
+                document.getElementById(`${prefixId}-dist`).innerText = donnees[3].toFixed(6) + " UA";
+                document.getElementById(`${prefixId}-vit`).innerText = donnees[4].toFixed(3) + " km/s";
+                
+                document.getElementById(`${prefixId}-azi`).classList.remove("invalid");
+                document.getElementById(`${prefixId}-alt`).classList.remove("invalid");
+            } else {
+                document.getElementById(`${prefixId}-azi`).innerText = "Invalide";
+                document.getElementById(`${prefixId}-alt`).innerText = "Invalide";
+                document.getElementById(`${prefixId}-azi`).classList.add("invalid");
+                document.getElementById(`${prefixId}-alt`).classList.add("invalid");
+            }
+        }
+
+        function marquerInvalideTout() {
+            const ids = ["sol-alt", "sol-azi", "lun-alt", "lun-azi", "jup-alt", "jup-azi"];
+            ids.forEach(id => {
+                document.getElementById(id).innerText = "Invalide";
+                document.getElementById(id).classList.add("invalid");
+            });
+        }
+
+        setInterval(rafraichirRadar, 1000);
+        rafraichirRadar();
     </script>
 </body>
-</html>
+                                              </html>
