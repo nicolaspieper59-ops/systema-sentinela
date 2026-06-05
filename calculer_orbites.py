@@ -5,32 +5,38 @@ import math
 import sys
 import os
 import time
+from datetime import datetime, timezone
 from skyfield.api import Topos, load
 
+def calculer_refraction_dynamique(altitude_brute_deg, altitude_observateur_m):
+    if altitude_brute_deg < -0.5: 
+        return altitude_brute_deg
+    pression_hpa = 1013.25 * math.pow(1.0 - (0.0065 * altitude_observateur_m) / 288.15, 5.255)
+    temperature_kelvin = 288.15 - (0.0065 * altitude_observateur_m)
+    angle_rad = (altitude_brute_deg + 7.31 / (altitude_brute_deg + 4.4)) * (math.pi / 180.0)
+    cotangente = 1.0 / math.tan(angle_rad)
+    correction_arcmin = (cotangente / 60.0) * (pression_hpa / 1013.25) * (288.15 / temperature_kelvin)
+    return altitude_brute_deg + correction_arcmin
+
 def executer_acquisition():
-    print("[INFO] SENTINELA - Alignement Temporel Atomique Terrestre (0 Politique)")
+    print("[INFO] SENTINELA - Initialisation du Noyau Éphémérides Terrestres")
     
-    # Validation du noyau de calcul physique de la NASA
     if not os.path.exists('de421.bsp'):
-        print("[ERREUR CRITIQUE] Le fichier de421.bsp est manquant dans l'espace de build.")
+        print("[ERREUR CRITIQUE] Fichier de421.bsp absent ou corrompu.")
         sys.exit(1)
         
     eph = load('de421.bsp')
     ts = load.timescale()
     
-    # 1. Capture du temps POSIX absolu (Horloge atomique NTP du serveur de calcul GitHub)
-    # Ce timestamp est exprimé en secondes pures depuis le 1er Janvier 1970 à 00:00:00 UTC.
-    # Il ignore totalement les configurations locales, les fuseaux gouvernementaux et les bugs d'appareils clients (Android).
-    timestamp_unix_pur = time.time()
+    # Extraction temporelle via le standard UTC absolu (indépendant de tout paramètre OS)
+    maintenant = datetime.now(timezone.utc)
+    annee = maintenant.year
+    mois = maintenant.month
+    jour = maintenant.day
     
-    # Conversion directe dans l'échelle de temps astronomique de la NASA
-    # Skyfield applique automatiquement les corrections de secondes intercalaires (Delta T / Leap Seconds)
-    moment_spatial = ts.from_unix(timestamp_unix_pur)
-    annee, mois, jour, _, _, _ = moment_spatial.utc
+    print(f"[REPERE TEMPOREL] Grille Astronomique Universelle : {annee}-{mois:02d}-{jour:02d}")
     
-    print(f"[REPERE TEMPOREL] Alignement sur la grille astronomique UTC : {int(annee)}-{int(mois):02d}-{int(jour):02d}")
-    
-    # 2. Coordonnées tridimensionnelles de l'antenne SENTINELA (Marseille)
+    # Positionnement Topocentrique de l'antenne (Marseille)
     LATITUDE = 43.28
     LONGITUDE = 5.36
     ALTITUDE_M = 100.0
@@ -48,36 +54,27 @@ def executer_acquisition():
 
     for nom_astre, objet_jpl in ASTRES.items():
         MATRICE_FINALE[nom_astre] = {}
+        print(f"[MUTATION VECTORIELLE] Traitement natif pour {nom_astre}...")
         
-        # Génération de la matrice complète des éphémérides de la journée sur une grille UTC pure
         for h in range(24):
             for m in range(60):
                 cle_heure_minute = f"{h:02d}:{m:02d}"
                 
-                # Injection du temps universel (0 fuseau horaire politique, 0 heure d'été/hiver)
-                moment_calcul = ts.utc(int(annee), int(mois), int(jour), h, m)
+                # Alignement temporel sur l'échelle de temps de précision de la NASA
+                moment_calcul = ts.utc(annee, mois, jour, h, m)
                 
-                # Interception des coordonnées vectorielles réelles du JPL
+                # Interception des coordonnées horizontales topocentriques réelles
                 observation = marseille.at(moment_calcul).observe(objet_jpl)
                 alt, az, distance = observation.apparent().altaz()
                 
-                # Calcul de la vitesse radiale relative instantanée (km/s)
-                moment_calcul_plus_1s = ts.utc(int(annee), int(mois), int(jour), h, m, 1)
+                # Calcul de la vitesse radiale relative instantanée par dérivation à +1s
+                moment_calcul_plus_1s = ts.utc(annee, mois, jour, h, m, 1)
                 dist_plus_1s_km = marseille.at(moment_calcul_plus_1s).observe(objet_jpl).apparent().altaz()[2].km
                 vitesse_kms = dist_plus_1s_km - distance.km
                 
-                # Correction de la courbure lumineuse de l'enveloppe atmosphérique locale
-                if alt.degrees > -0.5:
-                    pression_hpa = 1013.25 * math.pow(1.0 - (0.0065 * ALTITUDE_M) / 288.15, 5.255)
-                    temperature_kelvin = 288.15 - (0.0065 * ALTITUDE_M)
-                    angle_rad = (alt.degrees + 7.31 / (alt.degrees + 4.4)) * (math.pi / 180.0)
-                    cotangente = 1.0 / math.tan(angle_rad)
-                    correction_arcmin = (cotangente / 60.0) * (pression_hpa / 1013.25) * (288.15 / temperature_kelvin)
-                    elevation_corrigee = alt.degrees + correction_arcmin
-                else:
-                    elevation_corrigee = alt.degrees
+                # Correction de réfraction
+                elevation_corrigee = calculer_refraction_dynamique(alt.degrees, ALTITUDE_M)
                 
-                # Compilation des données vectorielles
                 MATRICE_FINALE[nom_astre][cle_heure_minute] = [
                     round(az.degrees, 4),
                     round(elevation_corrigee, 4),
@@ -86,13 +83,13 @@ def executer_acquisition():
                     round(vitesse_kms, 3)
                 ]
 
-    # Écriture forcée et sécurisée de la matrice
+    # Écriture finale
     try:
         with open("orbites.json", "w", encoding="utf-8") as f:
             json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-        print("[MIGRATION EFFECTUÉE] Fichier 'orbites.json' verrouillé en UTC pur.")
+        print("[SUCCÈS METRIC] Fichier 'orbites.json' mis à jour (0% simulation, 100% JPL).")
     except Exception as e:
-        print(f"[ERREUR COMPILATION] Impossible d'écrire le fichier : {e}")
+        print(f"[CRASH] Échec d'écriture : {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
