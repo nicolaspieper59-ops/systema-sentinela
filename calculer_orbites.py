@@ -4,7 +4,8 @@ import requests
 import json
 import re
 import math
-import sys
+import os
+import shutil
 from datetime import datetime, timezone
 
 def calculer_refraction_dynamique(altitude_brute_deg, altitude_observateur_m):
@@ -27,9 +28,8 @@ def appliquer_parallaxe_lune(altitude_apparente_deg, altitude_observateur_m):
     return altitude_apparente_deg - (correction_parallaxe * 180.0 / math.pi)
 
 def executer_acquisition():
-    # Détermination temporelle automatique du jour en UTC
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    print(f"[INFO] Alignement SENTINELA - Acquisition JPL : {aujourdhui}")
+    print(f"[INFO] SENTINELA - Alignement des flux temporels avec le JPL : {aujourdhui}")
     
     LONGITUDE = 5.36
     LATITUDE = 43.28
@@ -43,7 +43,6 @@ def executer_acquisition():
         MATRICE_FINALE[nom_astre] = {}
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
         
-        # CORRECTIF CRITIQUE : Suppression des guillemets simples imbriqués superflus
         params = {
             "format": "json",
             "COMMAND": id_nasa,
@@ -63,7 +62,7 @@ def executer_acquisition():
         try:
             response = requests.get(url, params=params, timeout=20)
             if response.status_code != 200:
-                print(f"[ERREUR] NASA HTTP {response.status_code} pour {nom_astre}")
+                print(f"[ERREUR] Échec de la liaison HTTP {response.status_code} - {nom_astre}")
                 continue
                 
             data_json = response.json()
@@ -116,20 +115,29 @@ def executer_acquisition():
                         MATRICE_FINALE[nom_astre][cle_heure_minute] = [
                             azimuth, elevation_corrigee, mag, dist_terre_ua, vitesse_relative
                         ]
-                print(f"[SUCCÈS] {nom_astre} synchronisé.")
+                print(f"[SUCCÈS] {nom_astre} synchronisé (Points : {len(MATRICE_FINALE[nom_astre])}).")
             else:
-                print(f"[ATTENTION] Structure vide ou erreur retournée par la NASA pour {nom_astre}")
+                print(f"[ATTENTION] Trame rejetée par la NASA pour l'astre : {nom_astre}")
         except Exception as e:
-            print(f"[ERREUR] Extraction impossible sur {nom_astre} : {e}")
+            print(f"[ERREUR D'ANALYSE] Conflit sur {nom_astre} : {e}")
 
-    # Enregistrement direct sécurisé à la racine
+    # Préparation et isolation de la zone de production web
     if MATRICE_FINALE.get("SOLEIL") and len(MATRICE_FINALE["SOLEIL"]) > 0:
-        with open("orbites.json", "w", encoding="utf-8") as f:
+        os.makedirs("public", exist_ok=True)
+        
+        # Enregistrement du fichier de données épuré
+        with open("public/orbites.json", "w", encoding="utf-8") as f:
             json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-        print("[SUCCÈS] Fichier 'orbites.json' mis à jour à la racine.")
+            
+        # Duplication automatique sécurisée des fichiers de l'interface
+        if os.path.exists("index.html"):
+            shutil.copy("index.html", "public/index.html")
+        if os.path.exists("manifest.json"):
+            shutil.copy("manifest.json", "public/manifest.json")
+            
+        print("[SUCCÈS VECTORIEL] Tous les artefacts web ont été migrés vers le dossier ./public/")
     else:
-        print("[ERREUR] Matrice vide. Opération annulée pour protéger le radar.")
-        sys.exit(2)
+        print("[CRITIQUE] Les flux de données de la NASA sont invalides. Déploiement suspendu.")
 
 if __name__ == "__main__":
     executer_acquisition()
