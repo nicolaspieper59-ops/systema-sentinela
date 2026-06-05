@@ -2,8 +2,8 @@ name: SENTINELA - RECONSTRUCTION FORCEE
 
 on:
   schedule:
-    - cron: '5 * * * *'  # S'exécute automatiquement à la 5ème minute de chaque heure
-  workflow_dispatch:     # Permet un allumage/déclenchement forcé manuel via l'interface GitHub
+    - cron: '5 * * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -35,11 +35,11 @@ jobs:
       - name: Calcul des éphémérides (Execution Script)
         run: python calculer_orbites.py
 
-      # CORRECTIF MAJEUR : On dit à GitHub de déployer le dossier isolé /dist créé par Python
+      # Déploiement direct depuis la racine racine du projet
       - name: Configurer l'artefact Pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist'
+          path: '.'
 
       - name: Déploiement Flash GitHub Pages
         id: deployment
