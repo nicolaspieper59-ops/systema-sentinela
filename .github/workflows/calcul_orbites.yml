@@ -2,7 +2,6 @@ name: SENTINELA - RECONSTRUCTION FORCEE
 
 on:
   schedule:
-    # RECONSTRUCTION TOUTES LES HEURES À LA MINUTE 5 (Ex: 10:05, 11:05, 12:05...)
     - cron: '5 * * * *'
   workflow_dispatch:
 
@@ -10,6 +9,10 @@ permissions:
   contents: read
   pages: write
   id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -31,8 +34,6 @@ jobs:
 
       - name: Calcul des éphémérides (Execution Script)
         run: python calculer_orbites.py
-
-      # ÉTAPE DE COMMIT SUPPRIMÉE POUR ÉVITER LES CONFLITS ET LES ERREURS DE DROITS
 
       - name: Configurer l'artefact Pages
         uses: actions/upload-pages-artifact@v3
