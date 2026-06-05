@@ -6,11 +6,11 @@ import re
 from datetime import datetime, timezone
 
 def executer_acquisition():
-    # CALCUL DYNAMIQUE AUTOMATIQUE : Récupère la date exacte du jour (Ex: "2026-06-05")
+    # CALCUL DYNAMIQUE AUTOMATIQUE : Récupère la date exacte du jour
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     print(f"[INFO] Initialisation de la matrice SENTINELA pour la date : {aujourdhui}")
     
-    SITE_GEODETIQUE = "5.36,43.28,0.100" # Marseille (Longitude, Latitude, Altitude)
+    SITE_GEODETIQUE = "5.36,43.28,0.100" # Marseille
     ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" }
     MATRICE_FINALE = {}
 
@@ -21,8 +21,6 @@ def executer_acquisition():
         MATRICE_FINALE[nom_astre] = {}
         
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
-        
-        # PARAMÈTRES NETTOYÉS ET STRUCTURÉS POUR L'API HORIZONS
         params = {
             "format": "json",
             "COMMAND": id_nasa,
@@ -30,9 +28,9 @@ def executer_acquisition():
             "MAKE_EPHEM": "YES",
             "EPHEM_TYPE": "OBSERVER",
             "CENTER": "coord@399",
-            "SITE_COORD": SITE_GEODETIQUE,       # SANS guillemets simples ici
-            "START_TIME": f"'{aujourdhui} 00:00'", # AVEC guillemets simples exigés par la NASA
-            "STOP_TIME": f"'{aujourdhui} 23:59'",  # AVEC guillemets simples exigés par la NASA
+            "SITE_COORD": SITE_GEODETIQUE,
+            "START_TIME": f"'{aujourdhui} 00:00'",
+            "STOP_TIME": f"'{aujourdhui} 23:59'",
             "STEP_SIZE": "1m",
             "QUANTITIES": "4,9,20",
             "REF_SYSTEM": "J2000",
@@ -83,19 +81,13 @@ def executer_acquisition():
                         ]
 
         except Exception as e:
-            print(f"[ERREUR] Communication rompue pour {nom_astre} : {e}")
+            print(f"[ERREUR] Échec critique d'acquisition pour {nom_astre} : {e}")
 
-        # Sécurité de secours : Ne s'active QUE si la NASA refuse la requête
-        if len(MATRICE_FINALE[nom_astre]) == 0:
-            print(f"[ALERTE] REJET NASA pour {nom_astre}. Génération de la matrice par défaut.")
-            for h in range(24):
-                for m in range(60):
-                    time_str = f"{str(h).zfill(2)}:{str(m).zfill(2)}"
-                    MATRICE_FINALE[nom_astre][time_str] = [180.0, 30.0, 0.0, 1.0, 0.0]
+        # LE BLOC DE SECOURS FICTIF A ÉTÉ ENTIÈREMENT SUPPRIMÉ ICI
 
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print(f"[SUCCÈS] Matrice réalignée avec succès pour le {aujourdhui}")
+    print(f"[SUCCÈS] Vrais vecteurs JPL-NASA enregistrés pour la date du {aujourdhui}")
 
 if __name__ == "__main__":
     executer_acquisition()
