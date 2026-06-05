@@ -26,6 +26,7 @@ def appliquer_parallaxe_lune(altitude_apparente_deg, altitude_observateur_m):
     return altitude_apparente_deg - (correction_parallaxe * 180.0 / math.pi)
 
 def executer_acquisition():
+    # Détermination de la date UTC actuelle (Format standardisé : 2026-06-05)
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     print(f"[INFO] Alignement SENTINELA - Date d'acquisition : {aujourdhui}")
     
@@ -37,6 +38,7 @@ def executer_acquisition():
     ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" }
     MATRICE_FINALE = {}
 
+    # Expression régulière robuste adaptée aux tableaux d'éphémérides de la NASA
     regex_ligne_temps = re.compile(r"^\s*(\d{4}-[A-Za-z]{3}-\s*\d+)\s+(\d{2}:\d{2})")
     regex_valeurs_physiques = re.compile(r"(?i)n\.a\.|[-+]?\d+\.\d+(?:[eE][-+]?\d+)?|[-+]?\d+")
 
@@ -44,9 +46,9 @@ def executer_acquisition():
         MATRICE_FINALE[nom_astre] = {}
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
         
-        # Paramètres avec guillemets stricts alignés sur tester_nasa.py
+        # Structure de paramètres validée par l'API Horizons
         params = {
-            "format": "'json'",
+            "format": "json",
             "COMMAND": f"'{id_nasa}'",
             "OBJ_DATA": "'NO'",
             "MAKE_EPHEM": "'YES'",
@@ -104,18 +106,19 @@ def executer_acquisition():
                         MATRICE_FINALE[nom_astre][cle_heure_minute] = [
                             azimuth, elevation_corrigee, mag, dist_terre_ua, vitesse_relative
                         ]
+                print(f"[SUCCÈS] Données acquises pour {nom_astre} ({len(MATRICE_FINALE[nom_astre])} points)")
             else:
-                print(f"[ATTENTION] Erreur de parsing NASA pour {nom_astre}")
+                print(f"[ATTENTION] Réponse invalide de la NASA pour {nom_astre}. Vérifier les en-têtes.")
         except Exception as e:
-            print(f"[ERREUR] Échec de communication pour {nom_astre} : {e}")
+            print(f"[ERREUR] Échec réseau sur {nom_astre} : {e}")
 
-    # Sécurité fondamentale : n'écrire le fichier que si l'acquisition a fonctionné
+    # Enregistrement de la matrice globale
     if MATRICE_FINALE.get("SOLEIL") and len(MATRICE_FINALE["SOLEIL"]) > 0:
         with open("orbites.json", "w", encoding="utf-8") as f:
             json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-        print(f"[SUCCÈS] Matrice 5D sauvegardée.")
+        print(f"[SUCCÈS] Matrice 5D sauvegardée avec succès.")
     else:
-        print("[ERREUR CRITIQUE] Données vides. Écriture annulée pour protéger le radar.")
+        print("[ERREUR CRITIQUE] Données absentes. Sauvegarde annulée pour préserver l'intégrité.")
 
 if __name__ == "__main__":
     executer_acquisition()
