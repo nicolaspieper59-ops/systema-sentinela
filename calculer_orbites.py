@@ -6,51 +6,36 @@ import re
 import math
 from datetime import datetime, timezone
 
-# ==============================================================================
-# NOYAU DE CALCUL PHYSIQUE (INTÉGRATION DE ASTRONOMICALCORE.CPP)
-# ==============================================================================
 def calculer_refraction_dynamique(altitude_brute_deg, altitude_observateur_m):
     if altitude_brute_deg < -0.5: 
-        return altitude_brute_deg # L'astre est trop bas sous l'horizon
-    
-    # Équation de nivellement barométrique standard
+        return altitude_brute_deg
     pression_hpa = 1013.25 * math.pow(1.0 - (0.0065 * altitude_observateur_m) / 288.15, 5.255)
     temperature_kelvin = 288.15 - (0.0065 * altitude_observateur_m)
-
-    # Formule de Bennett pour la réfraction
     angle_rad = (altitude_brute_deg + 7.31 / (altitude_brute_deg + 4.4)) * (math.pi / 180.0)
     cotangente = 1.0 / math.tan(angle_rad)
     correction_arcmin = (cotangente / 60.0) * (pression_hpa / 1013.25) * (288.15 / temperature_kelvin)
-
     return altitude_brute_deg + correction_arcmin
 
 def appliquer_parallaxe_lune(altitude_apparente_deg, altitude_observateur_m):
     RAYON_TERRE_KM = 6378.137
     DISTANCE_LUNE_KM = 384400.0
-    
     rayon_local = RAYON_TERRE_KM + (altitude_observateur_m / 1000.0)
     pi_parallaxe = math.asin(RAYON_TERRE_KM / DISTANCE_LUNE_KM)
-    
     altitude_rad = altitude_apparente_deg * math.pi / 180.0
     correction_parallaxe = pi_parallaxe * math.cos(altitude_rad) * (rayon_local / RAYON_TERRE_KM)
-    
     return altitude_apparente_deg - (correction_parallaxe * 180.0 / math.pi)
 
-
-# ==============================================================================
-# ACQUISITION DES FLUX JPL NASA HORIZONS
-# ==============================================================================
 def executer_acquisition():
+    # Force le format de date universel strict attendu par la NASA (AAAA-MM-JJ)
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     print(f"[INFO] Initialisation de la matrice SENTINELA pour la date : {aujourdhui}")
     
-    # Configuration des coordonnées de Marseille
     LONGITUDE = 5.36
     LATITUDE = 43.28
-    ALTITUDE_KM = 0.100  # 100 mètres d'altitude
+    ALTITUDE_KM = 0.100  
     ALTITUDE_METRES = ALTITUDE_KM * 1000.0
     
-    SITE_GEODETIQUE = f"{LONGITUDE},{LATITUDE},{ALTITUDE_KM}"
+    SITE_GEODETIQUE = f"'{LONGITUDE},{LATITUDE},{ALTITUDE_KM}'"
     ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" }
     MATRICE_FINALE = {}
 
@@ -61,7 +46,6 @@ def executer_acquisition():
         MATRICE_FINALE[nom_astre] = {}
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
         
-        # Correction des guillemets : uniquement sur les chaînes de texte complexes
         params = {
             "format": "json",
             "COMMAND": f"'{id_nasa}'",
@@ -69,7 +53,7 @@ def executer_acquisition():
             "MAKE_EPHEM": "YES",
             "EPHEM_TYPE": "OBSERVER",
             "CENTER": "coord@399",
-            "SITE_COORD": f"'{SITE_GEODETIQUE}'",
+            "SITE_COORD": SITE_GEODETIQUE,
             "START_TIME": f"'{aujourdhui} 00:00'",
             "STOP_TIME": f"'{aujourdhui} 23:59'",
             "STEP_SIZE": "1m",
@@ -92,7 +76,7 @@ def executer_acquisition():
                     if not match_temps:
                         continue
                     
-                    cle_heure_minute = match_temps.group(2)
+                    cle_heure_minute = match_temps.group(2).strip()
                     reste = ligne[match_temps.end():]
                     reste_nettoye = re.sub(r'\s+[a-zA-Z\*]\s+', ' ', reste)
                     tokens_physiques = regex_valeurs_physiques.findall(reste_nettoye)
@@ -114,24 +98,24 @@ def executer_acquisition():
                         dist_terre_ua = numeriques[3] if len(numeriques) >= 4 else 1.0
                         vitesse_relative = numeriques[4] if len(numeriques) >= 5 else 0.0
                         
-                        # Application des filtres de calculs d'altitude (Marseille)
                         elevation_corrigee = calculer_refraction_dynamique(elevation_brute, ALTITUDE_METRES)
-                        
                         if nom_astre == "LUNE":
                             elevation_corrigee = appliquer_parallaxe_lune(elevation_corrigee, ALTITUDE_METRES)
 
+                        # Génère des clés d'heure propres sans espaces parasites
                         MATRICE_FINALE[nom_astre][cle_heure_minute] = [
                             azimuth, elevation_corrigee, mag, dist_terre_ua, vitesse_relative
                         ]
             else:
-                print(f"[ATTENTION] Réponse NASA invalide pour {nom_astre}.")
+                # Si la NASA renvoie une erreur textuelle, on l'affiche dans les logs pour diagnostic
+                print(f"[ATTENTION] Erreur API Horizons pour {nom_astre}. Réponse tronquée : {texte_brut[:300]}")
 
         except Exception as e:
-            print(f"[ERREUR] Erreur de flux pour {nom_astre} : {e}")
+            print(f"[ERREUR] Échec de communication pour {nom_astre} : {e}")
 
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print(f"[SUCCÈS] Matrice 5D générée avec succès pour la date du {aujourdhui}")
+    print(f"[SUCCÈS] Fin de traitement. Contenu généré.")
 
 if __name__ == "__main__":
     executer_acquisition()
