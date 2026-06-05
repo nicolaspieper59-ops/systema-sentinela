@@ -6,15 +6,15 @@ import re
 from datetime import datetime, timezone
 
 def executer_acquisition():
-    # CALCUL DYNAMIQUE AUTOMATIQUE : Récupère la date exacte du jour (Ex: "2026-06-05")
+    # CALCUL DYNAMIQUE AUTOMATIQUE : Récupère la date du jour (Ex: "2026-06-05")
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     print(f"[INFO] Initialisation de la matrice SENTINELA pour la date : {aujourdhui}")
     
-    SITE_GEODETIQUE = "5.36,43.28,0.100" # Marseille (Longitude, Latitude, Altitude)
+    SITE_GEODETIQUE = "5.36,43.28,0.100" # Marseille (Longitude, Latitude, Altitude en km)
     ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" }
     MATRICE_FINALE = {}
 
-    # CORRECTIF CRITIQUE : Support du rembourrage par espace de la NASA pour les jours à un chiffre (ex: "Jun- 5")
+    # Support du rembourrage par espace de la NASA pour les jours à un chiffre (ex: "Jun- 5")
     regex_ligne_temps = re.compile(r"^\s*(\d{4}-[A-Za-z]{3}-\s*\d+)\s+(\d{2}:\d{2})")
     regex_valeurs_physiques = re.compile(r"(?i)n\.a\.|[-+]?\d+\.\d+(?:[eE][-+]?\d+)?|[-+]?\d+")
 
@@ -22,20 +22,22 @@ def executer_acquisition():
         MATRICE_FINALE[nom_astre] = {}
         
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
+        
+        # CORRECTIF CRITIQUE : Encapsulation stricte de CHAQUE paramètre dans des guillemets simples requis par le JPL
         params = {
             "format": "json",
-            "COMMAND": id_nasa,
-            "OBJ_DATA": "NO",
-            "MAKE_EPHEM": "YES",
-            "EPHEM_TYPE": "OBSERVER",
-            "CENTER": "coord@399",
-            "SITE_COORD": SITE_GEODETIQUE,
+            "COMMAND": f"'{id_nasa}'",
+            "OBJ_DATA": "'NO'",
+            "MAKE_EPHEM": "'YES'",
+            "EPHEM_TYPE": "'OBSERVER'",
+            "CENTER": "'coord@399'",
+            "SITE_COORD": f"'{SITE_GEODETIQUE}'",
             "START_TIME": f"'{aujourdhui} 00:00'",
             "STOP_TIME": f"'{aujourdhui} 23:59'",
-            "STEP_SIZE": "1m",
-            "QUANTITIES": "4,9,20",
-            "REF_SYSTEM": "J2000",
-            "ANG_FORMAT": "DEG"
+            "STEP_SIZE": "'1m'",
+            "QUANTITIES": "'4,9,20'",
+            "REF_SYSTEM": "'J2000'",
+            "ANG_FORMAT": "'DEG'"
         }
         
         try:
@@ -74,19 +76,23 @@ def executer_acquisition():
                         dist_terre_ua = numeriques[3] if len(numeriques) >= 4 else 1.0
                         vitesse_relative = numeriques[4] if len(numeriques) >= 5 else 0.0
                         
+                        # Conversion de distance pour la Lune (UA vers km si nécessaire)
                         if nom_astre == "LUNE" and dist_terre_ua > 1:
                             dist_terre_ua = dist_terre_ua / 149597870.7
 
                         MATRICE_FINALE[nom_astre][cle_heure_minute] = [
                             azimuth, elevation, mag, dist_terre_ua, vitesse_relative
                         ]
+            else:
+                # Log de diagnostic en cas de rejet par la NASA
+                print(f"[ATTENTION] Balises $$SOE/$$EOE introuvables pour {nom_astre}. Extrait de la réponse : {texte_brut[:300]}")
 
         except Exception as e:
-            print(f"[ERREUR] Échec critique d'acquisition pour {nom_astre} : {e}")
+            print(f"[ERREUR] Échec d'acquisition réseau pour {nom_astre} : {e}")
 
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print(f"[SUCCÈS] Vrais vecteurs JPL-NASA enregistrés pour la date du {aujourdhui}")
+    print(f"[SUCCÈS] Matrice SENTINELA synchronisée pour la date du {aujourdhui}")
 
 if __name__ == "__main__":
     executer_acquisition()
