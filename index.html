@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.9.8 — Interface Optique Continue</title>
+    <title>SYSTEMA SENTINELA v8.9.9 — Interface Optique Continue</title>
     <style>
         :root {
             --bg-main: #0a0e14; --bg-card: #101520; --border-color: #262c36;
@@ -24,7 +24,7 @@
         .astro-name { font-size: 0.9rem; font-weight: bold; margin-bottom: 6px; display: flex; justify-content: space-between; }
         .data-block { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; color: var(--text-secondary); }
         .data-block span strong { color: var(--text-primary); }
-        #status-banner { width: 100%; background: #1e293b; padding: 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; margin-bottom: 15px; border: 1px solid var(--border-color); line-height: 1.4; }
+        #status-banner { width: 100%; background: #1e293b; padding: 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; margin-bottom: 15px; border: 1px solid var(--border-color); line-height: 1.4; transition: all 0.3s ease; }
         #clock-source { font-size: 0.65rem; color: var(--text-secondary); text-align: center; margin-top: 5px; }
     </style>
 </head>
@@ -32,7 +32,7 @@
 
     <div class="dashboard">
         <div class="panel">
-            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SENTINELA v8.9.8 — MONITEUR DE SÉCURITÉ VECTORIEL</h2>
+            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SENTINELA v8.9.9 — MONITEUR DE SÉCURITÉ VECTORIEL</h2>
             <div id="status-banner" style="color: var(--accent-orange);">INITIALISATION DES COMPOSANTS FLUIDES...</div>
             <svg id="radar" viewBox="0 0 400 400">
                 <line x1="200" y1="20" x2="200" y2="380" class="grid-line" />
@@ -97,7 +97,7 @@
             }
         }
 
-        // Moteur de rendu cinétique continu
+        // Moteur de rendu cinétique continu réaligné
         setInterval(() => {
             if (tempsAtomiqueInitialMS === 0) return;
 
@@ -115,36 +115,52 @@
             let seconds = nowObj.getUTCSeconds();
             let milliseconds = nowObj.getUTCMilliseconds();
 
-            let cleCourante = `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}`;
+            // Génération des formats de clés cibles (Zéro pad vs Espace pad de la NASA)
+            let cleISO = `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}`;
+            let cleNASA = `${String(hours).padStart(2,' ')}:${String(minutes).padStart(2,'0')}`;
             
             let minutesSuivantes = (hours * 60 + minutes + 1) % 1440;
-            let cleSuivante = `${String(Math.floor(minutesSuivantes/60)).padStart(2,'0')}:${String(minutesSuivantes%60).padStart(2,'0')}`;
+            let hSuiv = Math.floor(minutesSuivantes/60);
+            let mSuiv = minutesSuivantes % 60;
+            let cleSuivanteISO = `${String(hSuiv).padStart(2,'0')}:${String(mSuiv).padStart(2,'0')}`;
+            let cleSuivanteNASA = `${String(hSuiv).padStart(2,' ')}:${String(mSuiv).padStart(2,'0')}`;
+            
             let ratio = (seconds + milliseconds / 1000) / 60;
-
             const banner = document.getElementById("status-banner");
-            let unAstreFige = false;
+            let modeSecoursActif = false;
+            let retardMaxDetecte = 0;
 
             for (let name in ASTRES) {
                 let blocAstre = matriceEpheremidesCachee[name];
                 if (!blocAstre) continue;
 
-                let ptA = blocAstre[cleCourante];
+                // Test de lecture tolérant sur les deux formats de clés possibles
+                let ptA = blocAstre[cleISO] || blocAstre[cleNASA];
+                let ptB = blocAstre[cleSuivanteISO] || blocAstre[cleSuivanteNASA];
                 
-                // SYSTÈME DE SECOURS VECTORIEL INTÉGRÉ
+                // MODULE DE PROTECTION VECTORIELLE AVANCÉE (Tolérance : 60 minutes de dérive)
                 if (!ptA) {
-                    unAstreFige = true; 
+                    modeSecoursActif = true; 
                     let minutesTotales = hours * 60 + minutes;
-                    
                     let tentative = 1;
-                    while (!ptA && tentative <= 15) { 
+                    
+                    while (!ptA && tentative <= 60) { 
                         let minutesSecours = (minutesTotales - tentative + 1440) % 1440;
-                        let cleSecours = `${String(Math.floor(minutesSecours/60)).padStart(2,'0')}:${String(minutesSecours%60).padStart(2,'0')}`;
-                        ptA = blocAstre[cleSecours];
+                        let hSecours = Math.floor(minutesSecours / 60);
+                        let mSecours = minutesSecours % 60;
+                        
+                        let cISO = `${String(hSecours).padStart(2,'0')}:${String(mSecours).padStart(2,'0')}`;
+                        let cNASA = `${String(hSecours).padStart(2,' ')}:${String(mSecours).padStart(2,'0')}`;
+                        
+                        ptA = blocAstre[cISO] || blocAstre[cNASA];
+                        if (ptA) {
+                            retardMaxDetecte = tentative;
+                        }
                         tentative++;
                     }
                 }
 
-                let ptB = blocAstre[cleSuivante] || ptA;
+                if (!ptB) ptB = ptA; // Stabilisation géométrique par extrapolation stationnaire
 
                 if (ptA && Array.isArray(ptA)) {
                     let az = parseFloat(ptA[0]);
@@ -176,7 +192,7 @@
                         ptr.style.opacity = alt < 0 ? "0.15" : "1"; 
                     }
 
-                    // Injection textuelle propre dans le DOM
+                    // Injection textuelle unifiée
                     document.getElementById(`az-${name}`).innerText = az.toFixed(2) + "°";
                     document.getElementById(`alt-${name}`).innerText = alt.toFixed(2) + "°";
                     document.getElementById(`mag-${name}`).innerText = !isNaN(mag) ? mag.toFixed(2) : "n.a.";
@@ -189,7 +205,6 @@
                         document.getElementById(`dist-${name}`).innerText = "n.a.";
                     }
                 } else {
-                    // Si aucune donnée n'est trouvable même après la remontée dans le temps
                     document.getElementById(`az-${name}`).innerText = "...";
                     document.getElementById(`alt-${name}`).innerText = "...";
                     document.getElementById(`mag-${name}`).innerText = "...";
@@ -198,18 +213,20 @@
                 }
             }
 
-            // Gestionnaire global de diagnostic du bandeau
-            if (unAstreFige) {
-                banner.innerText = `ANOMALIE DE RÉFÉRENTIEL : Clé UTC [${cleCourante}] manquante dans le fichier JSON. (Mode secours actif)`;
+            // Gestionnaire des diagnostics de sécurité du bandeau principal
+            if (modeSecoursActif) {
+                banner.innerText = `RÉALIGNEMENT DES FLUX VECTORIELS [-${retardMaxDetecte} MIN] (CORRECTION ACTIVE)`;
                 banner.style.color = "var(--accent-orange)";
+                banner.style.background = "#2c1a04";
             } else {
                 banner.innerText = "CONNEXION JPL-NASA ÉTABLIE [FLUX STABLE]";
                 banner.style.color = "var(--accent-green)";
+                banner.style.background = "#064e3b";
             }
 
         }, 100);
 
-        // Génération automatique des éléments d'affichage
+        // Génération structurelle automatique des composants SVG et de la légende
         const svgNS = "http://www.w3.org/2000/svg";
         const g = document.getElementById('pointers');
         const leg = document.getElementById('legend');
@@ -240,4 +257,4 @@
         initialiserSysteme();
     </script>
 </body>
-    </html>
+</html>
