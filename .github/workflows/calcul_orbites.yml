@@ -2,18 +2,18 @@ name: SENTINELA - RECONSTRUCTION FORCEE
 
 on:
   schedule:
-    - cron: '5 0 * * *'
+    # RECONSTRUCTION TOUTES LES HEURES À LA MINUTE 5 (Ex: 10:05, 11:05, 12:05...)
+    - cron: '5 * * * *'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    # AJOUT DE L'ENVIRONNEMENT CRITIQUE DEMANDÉ PAR GITHUB
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -32,11 +32,7 @@ jobs:
       - name: Calcul des éphémérides (Execution Script)
         run: python calculer_orbites.py
 
-      - name: Commiter la nouvelle matrice
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "SENTINELA : Régénération de la matrice 5D [Automatique]"
-          file_pattern: 'orbites.json'
+      # ÉTAPE DE COMMIT SUPPRIMÉE POUR ÉVITER LES CONFLITS ET LES ERREURS DE DROITS
 
       - name: Configurer l'artefact Pages
         uses: actions/upload-pages-artifact@v3
