@@ -4,6 +4,7 @@ import requests
 import json
 import re
 import math
+import sys
 from datetime import datetime, timezone
 
 def calculer_refraction_dynamique(altitude_brute_deg, altitude_observateur_m):
@@ -26,6 +27,7 @@ def appliquer_parallaxe_lune(altitude_apparente_deg, altitude_observateur_m):
     return altitude_apparente_deg - (correction_parallaxe * 180.0 / math.pi)
 
 def executer_acquisition():
+    # Détermination temporelle automatique du jour en UTC
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     print(f"[INFO] Alignement SENTINELA - Acquisition JPL : {aujourdhui}")
     
@@ -41,20 +43,21 @@ def executer_acquisition():
         MATRICE_FINALE[nom_astre] = {}
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
         
+        # CORRECTIF CRITIQUE : Suppression des guillemets simples imbriqués superflus
         params = {
             "format": "json",
-            "COMMAND": f"'{id_nasa}'",
-            "OBJ_DATA": "'NO'",
-            "MAKE_EPHEM": "'YES'",
-            "EPHEM_TYPE": "'OBSERVER'",
-            "CENTER": "'coord@399'",
-            "SITE_COORD": f"'{LONGITUDE},{LATITUDE},{ALTITUDE_KM}'",
-            "START_TIME": f"'{aujourdhui} 00:00'",
-            "STOP_TIME": f"'{aujourdhui} 23:59'",
-            "STEP_SIZE": "'1m'",
-            "QUANTITIES": "'4,9,20'",
-            "REF_SYSTEM": "'J2000'",
-            "ANG_FORMAT": "'DEG'"
+            "COMMAND": id_nasa,
+            "OBJ_DATA": "NO",
+            "MAKE_EPHEM": "YES",
+            "EPHEM_TYPE": "OBSERVER",
+            "CENTER": "coord@399",
+            "SITE_COORD": f"{LONGITUDE},{LATITUDE},{ALTITUDE_KM}",
+            "START_TIME": f"{aujourdhui} 00:00",
+            "STOP_TIME": f"{aujourdhui} 23:59",
+            "STEP_SIZE": "1m",
+            "QUANTITIES": "4,9,20",
+            "REF_SYSTEM": "J2000",
+            "ANG_FORMAT": "DEG"
         }
         
         try:
@@ -115,7 +118,7 @@ def executer_acquisition():
                         ]
                 print(f"[SUCCÈS] {nom_astre} synchronisé.")
             else:
-                print(f"[ATTENTION] Structure vide pour {nom_astre}")
+                print(f"[ATTENTION] Structure vide ou erreur retournée par la NASA pour {nom_astre}")
         except Exception as e:
             print(f"[ERREUR] Extraction impossible sur {nom_astre} : {e}")
 
@@ -125,7 +128,8 @@ def executer_acquisition():
             json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
         print("[SUCCÈS] Fichier 'orbites.json' mis à jour à la racine.")
     else:
-        print("[ERREUR] Matrice vide. Opération annulée.")
+        print("[ERREUR] Matrice vide. Opération annulée pour protéger le radar.")
+        sys.exit(2)
 
 if __name__ == "__main__":
     executer_acquisition()
