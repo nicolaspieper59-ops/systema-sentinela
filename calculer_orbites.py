@@ -40,17 +40,17 @@ def executer_acquisition():
     for nom_astre, id_nasa in ASTRES.items():
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
         
-        # CORRECTIF DÉFINITIF : Paramètres épurés sans aucun guillemet simple interne (Zéro encodage parasite %27)
+        # SOLUTION TECHNIQUE WEB : Combinaison stricte de paramètres bruts et de chaînes protégées par guillemets simples
         params = {
             "format": "json",
-            "COMMAND": id_nasa,
+            "COMMAND": id_nasa,                      # Brut (Sans guillemet)
             "OBJ_DATA": "NO",
             "MAKE_EPHEM": "YES",
             "EPHEM_TYPE": "OBSERVER",
-            "CENTER": "coord@399",
-            "SITE_COORD": f"{LONGITUDE},{LATITUDE},{ALTITUDE_KM}",
-            "START_TIME": f"{aujourdhui} 00:00",
-            "STOP_TIME": f"{aujourdhui} 23:59",
+            "CENTER": "coord@399",                   # Brut (Sans guillemet)
+            "SITE_COORD": f"'{LONGITUDE},{LATITUDE},{ALTITUDE_KM}'", # OBLIGATOIRE : Avec guillemets simples internes
+            "START_TIME": f"'{aujourdhui} 00:00'",                  # OBLIGATOIRE : Avec guillemets simples internes
+            "STOP_TIME": f"'{aujourdhui} 23:59'",                   # OBLIGATOIRE : Avec guillemets simples internes
             "STEP_SIZE": "1m",
             "QUANTITIES": "4,9,20",
             "REF_SYSTEM": "J2000",
@@ -109,17 +109,16 @@ def executer_acquisition():
                             ]
                     print(f"[SUCCÈS] {nom_astre} synchronisé : {len(MATRICE_FINALE[nom_astre])} points extraits.")
                 else:
-                    print(f"[REJET NASA] Structure de trame manquante pour {nom_astre}.")
-                    print(f"[DEBUG LOG] Extrait du retour de la NASA :\n{texte_brut[:600]}")
+                    print(f"[REJET NASA] Erreur de syntaxe interne ou données absentes pour {nom_astre}.")
+                    print(f"[DEBUG LOG] Réponse brute du serveur :\n{texte_brut[:800]}")
             else:
-                print(f"[ERREUR HTTP] Code {response.status_code} sur {nom_astre}")
+                print(f"[ERREUR HTTP] Status {response.status_code} sur {nom_astre}")
         except Exception as e:
-            print(f"[EXCEPTION] Problème de liaison sur {nom_astre} : {e}")
+            print(f"[EXCEPTION] Rupture de flux sur {nom_astre} : {e}")
 
-    # Sauvegarde de la matrice propre à la racine du dépôt
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print("[MIGRATION FLUX COMPLET] 'orbites.json' mis à jour à la racine.")
+    print("[MIGRATION REUSSIE] Le fichier 'orbites.json' contient désormais la télémétrie.")
 
 if __name__ == "__main__":
     executer_acquisition()
