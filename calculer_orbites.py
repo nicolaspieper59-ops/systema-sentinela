@@ -35,89 +35,50 @@ def executer_acquisition():
     ALTITUDE_KM = 0.100  
     ALTITUDE_METRES = ALTITUDE_KM * 1000.0
     
-    ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" }
+    ASTRES = { "SOLEIL": "10" } # Test unique sur le Soleil pour obtenir le diagnostic
     MATRICE_FINALE = {}
 
     for nom_astre, id_nasa in ASTRES.items():
-        # RECONSTRUCTION BRUTE : Injection directe sans encodage URL nuisible
-        url_brute = (
-            f"https://ssd-api.jpl.nasa.gov/horizons.api?format=json"
-            f"&COMMAND='{id_nasa}'"
-            f"&OBJ_DATA='NO'"
-            f"&MAKE_EPHEM='YES'"
-            f"&EPHEM_TYPE='OBSERVER'"
-            f"&CENTER='coord@399'"
-            f"&SITE_COORD='{LONGITUDE},{LATITUDE},{ALTITUDE_KM}'"
-            f"&START_TIME='{aujourdhui} 00:00'"
-            f"&STOP_TIME='{aujourdhui} 23:59'"
-            f"&STEP_SIZE='1m'"
-            f"&QUANTITIES='4,9,20'"
-            f"&REF_SYSTEM='J2000'"
-            f"&ANG_FORMAT='DEG'"
-        )
+        # Utilisation de paramètres standards nettoyés de tout guillemet parasite
+        url = "https://ssd-api.jpl.nasa.gov/horizons.api"
+        params = {
+            "format": "json",
+            "COMMAND": id_nasa,
+            "OBJ_DATA": "NO",
+            "MAKE_EPHEM": "YES",
+            "EPHEM_TYPE": "OBSERVER",
+            "CENTER": "coord@399",
+            "SITE_COORD": f"{LONGITUDE},{LATITUDE},{ALTITUDE_KM}",
+            "START_TIME": f"{aujourdhui} 00:00",
+            "STOP_TIME": f"{aujourdhui} 23:59",
+            "STEP_SIZE": "1m",
+            "QUANTITIES": "4,9,20",
+            "REF_SYSTEM": "J2000",
+            "ANG_FORMAT": "DEG"
+        }
         
-        texte_brut = ""
         try:
-            print(f"[REQUÊTE] Synchro brute pour {nom_astre}...")
-            response = requests.get(url_brute, timeout=20)
+            print(f"[REQUÊTE DIAGNOSTIC] Envoi des paramètres standardisés pour {nom_astre}...")
+            response = requests.get(url, params=params, timeout=20)
+            data_json = response.json()
+            texte_brut = data_json.get("result", "")
             
-            if response.status_code == 200:
-                data_json = response.json()
-                texte_brut = data_json.get("result", "")
+            # Affichage forcé de la réponse de la NASA dans les logs GitHub pour voir l'erreur exacte
+            print("\n======================= STRIP LOGS DE LA NASA =======================")
+            if texte_brut:
+                print(texte_brut[:2000])
             else:
-                print(f"[ERREUR HTTP] Code : {response.status_code}")
-                sys.exit(1)
+                print(json.dumps(data_json, indent=2))
+            print("=====================================================================\n")
+            
+            if "$$SOE" not in texte_brut:
+                sys.exit(1) # Provoque le rouge volontaire après avoir écrit les logs
                 
         except Exception as e:
-            print(f"[EXCEPTION] Échec réseau sur {nom_astre} : {e}")
+            print(f"[EXCEPTION] Erreur brute : {e}")
+            if 'response' in locals() and hasattr(response, 'text'):
+                print(response.text[:1000])
             sys.exit(1)
-            
-        # VERIFICATION DU PAQUET DATA
-        if "$$SOE" not in texte_brut or "$$EOE" not in texte_brut:
-            print(f"\n[ECHEC CRITIQUE] La NASA a refusé l'accès brute pour l'astre {nom_astre} !")
-            print("===================== BLOC DE DIAGNOSTIC DE LA NASA =====================")
-            print(texte_brut[:1500] if texte_brut else "Aucune réponse textuelle.")
-            print("==========================================================================")
-            sys.exit(1)
-            
-        MATRICE_FINALE[nom_astre] = {}
-        bloc_donnees = texte_brut.split("$$SOE")[1].split("$$EOE")[0]
-        lignes = bloc_donnees.strip().split("\n")
-        
-        for ligne in lignes:
-            if not ligne.strip():
-                continue
-                
-            match_heure = re.search(r'(\d{2}:\d{2})', ligne)
-            if not match_heure:
-                continue
-                
-            cle_heure_minute = match_heure.group(1)
-            reste_de_la_ligne = ligne[match_heure.end():]
-            
-            # Extraction Regex insensible aux caractères parasites (*, m, etc.)
-            numeriques = [float(val) for val in re.findall(r'[-+]?\d*\.\d+|\d+', reste_de_la_ligne)]
-            
-            if len(numeriques) >= 2:
-                azimuth = numeriques[0]
-                elevation_brute = numeriques[1]
-                mag = numeriques[2] if len(numeriques) >= 3 else 0.0
-                dist_terre_ua = numeriques[3] if len(numeriques) >= 4 else 1.0
-                vitesse_relative = numeriques[4] if len(numeriques) >= 5 else 0.0
-                
-                elevation_corrigee = calculer_refraction_dynamique(elevation_brute, ALTITUDE_METRES)
-                if nom_astre == "LUNE":
-                    elevation_corrigee = appliquer_parallaxe_lune(elevation_corrigee, ALTITUDE_METRES)
-
-                MATRICE_FINALE[nom_astre][cle_heure_minute] = [
-                    azimuth, elevation_corrigee, mag, dist_terre_ua, vitesse_relative
-                ]
-        print(f"[SUCCÈS] {nom_astre} synchronisé : {len(MATRICE_FINALE[nom_astre])} vecteurs.")
-
-    # Écriture forcée de la matrice propre
-    with open("orbites.json", "w", encoding="utf-8") as f:
-        json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print("[MIGRATION EFFECTUÉE] Le fichier 'orbites.json' a été correctement généré.")
 
 if __name__ == "__main__":
     executer_acquisition()
