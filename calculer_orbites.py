@@ -27,7 +27,7 @@ def appliquer_parallaxe_lune(altitude_apparente_deg, altitude_observateur_m):
 
 def executer_acquisition():
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    print(f"[INFO] SENTINELA - Alignement des flux temporels avec le JPL : {aujourdhui}")
+    print(f"[INFO] SENTINELA - Alignement vectoriel avec le JPL NASA : {aujourdhui}")
     
     LONGITUDE = 5.36
     LATITUDE = 43.28
@@ -40,85 +40,81 @@ def executer_acquisition():
     for nom_astre, id_nasa in ASTRES.items():
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
         
-        # SOLUTION TECHNIQUE WEB : Combinaison stricte de paramètres bruts et de chaînes protégées par guillemets simples
-        params = {
-            "format": "json",
-            "COMMAND": id_nasa,                      # Brut (Sans guillemet)
-            "OBJ_DATA": "NO",
-            "MAKE_EPHEM": "YES",
-            "EPHEM_TYPE": "OBSERVER",
-            "CENTER": "coord@399",                   # Brut (Sans guillemet)
-            "SITE_COORD": f"'{LONGITUDE},{LATITUDE},{ALTITUDE_KM}'", # OBLIGATOIRE : Avec guillemets simples internes
-            "START_TIME": f"'{aujourdhui} 00:00'",                  # OBLIGATOIRE : Avec guillemets simples internes
-            "STOP_TIME": f"'{aujourdhui} 23:59'",                   # OBLIGATOIRE : Avec guillemets simples internes
-            "STEP_SIZE": "1m",
-            "QUANTITIES": "4,9,20",
-            "REF_SYSTEM": "J2000",
-            "ANG_FORMAT": "DEG"
-        }
+        # CONFIGURATION DUAL-MODE : Pour contourner les caprices des filtres du serveur CGI de la NASA
+        modes_parametres = [
+            # Mode A : Spécification officielle stricte (Tout encapsulé dans des guillemets simples)
+            {
+                "format": "json", "COMMAND": f"'{id_nasa}'", "OBJ_DATA": "'NO'", "MAKE_EPHEM": "'YES'",
+                "EPHEM_TYPE": "'OBSERVER'", "CENTER": "'coord@399'", "SITE_COORD": f"'{LONGITUDE},{LATITUDE},{ALTITUDE_KM}'",
+                "START_TIME": f"'{aujourdhui} 00:00'", "STOP_TIME": f"'{aujourdhui} 23:59'", "STEP_SIZE": "'1m'",
+                "QUANTITIES": "'4,9,20'", "REF_SYSTEM": "'J2000'", "ANG_FORMAT": "'DEG'"
+            },
+            # Mode B : Format hybride résilient (Seulement les structures complexes entre guillemets simples)
+            {
+                "format": "json", "COMMAND": id_nasa, "OBJ_DATA": "NO", "MAKE_EPHEM": "YES",
+                "EPHEM_TYPE": "OBSERVER", "CENTER": "coord@399", "SITE_COORD": f"'{LONGITUDE},{LATITUDE},{ALTITUDE_KM}'",
+                "START_TIME": f"'{aujourdhui} 00:00'", "STOP_TIME": f"'{aujourdhui} 23:59'", "STEP_SIZE": "1m",
+                "QUANTITIES": "4,9,20", "REF_SYSTEM": "J2000", "ANG_FORMAT": "DEG"
+            }
+        ]
         
-        try:
-            response = requests.get(url, params=params, timeout=20)
-            if response.status_code == 200:
-                data_json = response.json()
-                texte_brut = data_json.get("result", "")
+        texte_brut = ""
+        for idx_mode, params in enumerate(modes_parametres):
+            try:
+                print(f"[TRY] Tentative d'acquisition {nom_astre} via Protocole Réseau {chr(65 + idx_mode)}...")
+                response = requests.get(url, params=params, timeout=20)
+                if response.status_code == 200:
+                    json_res = response.json()
+                    texte_brut = json_res.get("result", "")
+                    if "$$SOE" in texte_brut and "$$EOE" in texte_brut:
+                        print(f"[OK] Connexion établie avec succès via le Protocole {chr(65 + idx_mode)}.")
+                        break
+            except Exception as e:
+                print(f"[WARN] Échec protocole {chr(65 + idx_mode)} : {e}")
+                continue
+        
+        if "$$SOE" in texte_brut and "$$EOE" in texte_brut:
+            bloc_donnees = texte_brut.split("$$SOE")[1].split("$$EOE")[0]
+            lignes = bloc_donnees.strip().split("\n")
+            
+            for ligne in lignes:
+                if not ligne.strip():
+                    continue
                 
-                if "$$SOE" in texte_brut and "$$EOE" in texte_brut:
-                    bloc_donnees = texte_brut.split("$$SOE")[1].split("$$EOE")[0]
-                    lignes = bloc_donnees.strip().split("\n")
+                # RECHERCHE CHIRURGICALE DE L'HEURE (HH:MM)
+                match_heure = re.search(r'(\d{2}:\d{2})', ligne)
+                if not match_heure:
+                    continue
                     
-                    for ligne in lignes:
-                        ligne_nettoye = ligne.strip()
-                        if not ligne_nettoye:
-                            continue
-                            
-                        elements = ligne_nettoye.split()
-                        index_heure = -1
-                        for idx, elem in enumerate(elements):
-                            if ":" in elem and len(elem) == 5:
-                                index_heure = idx
-                                break
-                        
-                        if index_heure == -1:
-                            continue
-                            
-                        cle_heure_minute = elements[index_heure].strip()
-                        donnees_apres_heure = elements[index_heure + 1:]
-                        
-                        numeriques = []
-                        for token in donnees_apres_heure:
-                            token_propre = re.sub(r'[^\d\.\+\-eEnNaA\/]', '', token)
-                            try:
-                                numeriques.append(float(token_propre))
-                            except ValueError:
-                                continue
+                cle_heure_minute = match_heure.group(1)
+                reste_de_la_ligne = ligne[match_heure.end():]
+                
+                # EXTRACTEUR REGEX ABSOLU : Capture tous les nombres (positifs, négatifs, décimaux)
+                # Ignore totalement les indicateurs parasites de la NASA (*, m, A, etc.)
+                numeriques = [float(val) for val in re.findall(r'[-+]?\d*\.\d+|\d+', reste_de_la_ligne)]
+                
+                if len(numeriques) >= 2:
+                    azimuth = numeriques[0]
+                    elevation_brute = numeriques[1]
+                    mag = numeriques[2] if len(numeriques) >= 3 else 0.0
+                    dist_terre_ua = numeriques[3] if len(numeriques) >= 4 else 1.0
+                    vitesse_relative = numeriques[4] if len(numeriques) >= 5 else 0.0
+                    
+                    elevation_corrigee = calculer_refraction_dynamique(elevation_brute, ALTITUDE_METRES)
+                    if nom_astre == "LUNE":
+                        elevation_corrigee = appliquer_parallaxe_lune(elevation_corrigee, ALTITUDE_METRES)
 
-                        if len(numeriques) >= 2:
-                            azimuth = numeriques[0]
-                            elevation_brute = numeriques[1]
-                            mag = numeriques[2] if len(numeriques) >= 3 else 0.0
-                            dist_terre_ua = numeriques[3] if len(numeriques) >= 4 else 1.0
-                            vitesse_relative = numeriques[4] if len(numeriques) >= 5 else 0.0
-                            
-                            elevation_corrigee = calculer_refraction_dynamique(elevation_brute, ALTITUDE_METRES)
-                            if nom_astre == "LUNE":
-                                elevation_corrigee = appliquer_parallaxe_lune(elevation_corrigee, ALTITUDE_METRES)
+                    MATRICE_FINALE[nom_astre][cle_heure_minute] = [
+                        azimuth, elevation_corrigee, mag, dist_terre_ua, vitesse_relative
+                    ]
+            print(f"[SUCCÈS] {nom_astre} : {len(MATRICE_FINALE[nom_astre])} vecteurs synchronisés.")
+        else:
+            print(f"[CRITICAL] Rejet total des paquets de la NASA pour {nom_astre}. Trame illisible.")
 
-                            MATRICE_FINALE[nom_astre][cle_heure_minute] = [
-                                azimuth, elevation_corrigee, mag, dist_terre_ua, vitesse_relative
-                            ]
-                    print(f"[SUCCÈS] {nom_astre} synchronisé : {len(MATRICE_FINALE[nom_astre])} points extraits.")
-                else:
-                    print(f"[REJET NASA] Erreur de syntaxe interne ou données absentes pour {nom_astre}.")
-                    print(f"[DEBUG LOG] Réponse brute du serveur :\n{texte_brut[:800]}")
-            else:
-                print(f"[ERREUR HTTP] Status {response.status_code} sur {nom_astre}")
-        except Exception as e:
-            print(f"[EXCEPTION] Rupture de flux sur {nom_astre} : {e}")
-
+    # Sauvegarde forcée de la matrice
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print("[MIGRATION REUSSIE] Le fichier 'orbites.json' contient désormais la télémétrie.")
+    print("[FLUX COMPLET] Fichier 'orbites.json' écrit avec succès à la racine.")
 
 if __name__ == "__main__":
     executer_acquisition()
