@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.9.9 — Interface Optique Continue</title>
+    <title>SYSTEMA SENTINELA v8.9.9a — Interface Optique Continue</title>
     <style>
         :root {
             --bg-main: #0a0e14; --bg-card: #101520; --border-color: #262c36;
@@ -32,7 +32,7 @@
 
     <div class="dashboard">
         <div class="panel">
-            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SENTINELA v8.9.9 — MONITEUR DE SÉCURITÉ VECTORIEL</h2>
+            <h2 style="color: var(--accent-blue); margin: 0 0 15px 0; font-size: 1rem;">SENTINELA v8.9.9a — MONITEUR DE SÉCURITÉ VECTORIEL</h2>
             <div id="status-banner" style="color: var(--accent-orange);">INITIALISATION DES COMPOSANTS FLUIDES...</div>
             <svg id="radar" viewBox="0 0 400 400">
                 <line x1="200" y1="20" x2="200" y2="380" class="grid-line" />
@@ -115,15 +115,13 @@
             let seconds = nowObj.getUTCSeconds();
             let milliseconds = nowObj.getUTCMilliseconds();
 
-            // Génération des formats de clés cibles (Zéro pad vs Espace pad de la NASA)
-            let cleISO = `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}`;
-            let cleNASA = `${String(hours).padStart(2,' ')}:${String(minutes).padStart(2,'0')}`;
+            // Construction des cibles de comparaison normalisées (sans espaces)
+            let cibleCourante = `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}`;
             
             let minutesSuivantes = (hours * 60 + minutes + 1) % 1440;
             let hSuiv = Math.floor(minutesSuivantes/60);
             let mSuiv = minutesSuivantes % 60;
-            let cleSuivanteISO = `${String(hSuiv).padStart(2,'0')}:${String(mSuiv).padStart(2,'0')}`;
-            let cleSuivanteNASA = `${String(hSuiv).padStart(2,' ')}:${String(mSuiv).padStart(2,'0')}`;
+            let cibleSuivante = `${String(hSuiv).padStart(2,'0')}:${String(mSuiv).padStart(2,'0')}`;
             
             let ratio = (seconds + milliseconds / 1000) / 60;
             const banner = document.getElementById("status-banner");
@@ -134,11 +132,21 @@
                 let blocAstre = matriceEpheremidesCachee[name];
                 if (!blocAstre) continue;
 
-                // Test de lecture tolérant sur les deux formats de clés possibles
-                let ptA = blocAstre[cleISO] || blocAstre[cleNASA];
-                let ptB = blocAstre[cleSuivanteISO] || blocAstre[cleSuivanteNASA];
+                let ptA = null;
+                let ptB = null;
+
+                // BALAYAGE TOLÉRANT : Comparaison après normalisation .trim()
+                for (let cleJson in blocAstre) {
+                    let cleNormalisee = cleJson.replace(/\s+/g, '').padStart(5, '0');
+                    if (cleNormalisee === cibleCourante) {
+                        ptA = blocAstre[cleJson];
+                    }
+                    if (cleNormalisee === cibleSuivante) {
+                        ptB = blocAstre[cleJson];
+                    }
+                }
                 
-                // MODULE DE PROTECTION VECTORIELLE AVANCÉE (Tolérance : 60 minutes de dérive)
+                // CRITÈRE DE REMONTÉE TEMPORELLE EN CAS DE CLÉ MANQUANTE
                 if (!ptA) {
                     modeSecoursActif = true; 
                     let minutesTotales = hours * 60 + minutes;
@@ -148,39 +156,42 @@
                         let minutesSecours = (minutesTotales - tentative + 1440) % 1440;
                         let hSecours = Math.floor(minutesSecours / 60);
                         let mSecours = minutesSecours % 60;
+                        let cibleHistorique = `${String(hSecours).padStart(2,'0')}:${String(mSecours).padStart(2,'0')}`;
                         
-                        let cISO = `${String(hSecours).padStart(2,'0')}:${String(mSecours).padStart(2,'0')}`;
-                        let cNASA = `${String(hSecours).padStart(2,' ')}:${String(mSecours).padStart(2,'0')}`;
-                        
-                        ptA = blocAstre[cISO] || blocAstre[cNASA];
-                        if (ptA) {
-                            retardMaxDetecte = tentative;
+                        for (let cleJson in blocAstre) {
+                            let cleNormalisee = cleJson.replace(/\s+/g, '').padStart(5, '0');
+                            if (cleNormalisee === cibleHistorique) {
+                                ptA = blocAstre[cleJson];
+                                retardMaxDetecte = tentative;
+                                break;
+                            }
                         }
                         tentative++;
                     }
                 }
 
-                if (!ptB) ptB = ptA; // Stabilisation géométrique par extrapolation stationnaire
+                if (!ptB) ptB = ptA;
 
-                if (ptA && Array.isArray(ptA)) {
+                if (ptA && Array.isArray(ptA) && ptA.length >= 2) {
                     let az = parseFloat(ptA[0]);
                     let alt = parseFloat(ptA[1]);
-                    let mag = ptA[2] !== "n.a." ? parseFloat(ptA[2]) : NaN;
-                    let dist = parseFloat(ptA[3]);
-                    let vit = parseFloat(ptA[4]);
+                    let mag = (ptA[2] !== undefined && ptA[2] !== "n.a.") ? parseFloat(ptA[2]) : NaN;
+                    let dist = ptA[3] !== undefined ? parseFloat(ptA[3]) : NaN;
+                    let vit = ptA[4] !== undefined ? parseFloat(ptA[4]) : NaN;
 
-                    if (ptB && Array.isArray(ptB) && ptB !== ptA) {
+                    if (ptB && Array.isArray(ptB) && ptB.length >= 2 && ptB !== ptA) {
                         let azB = parseFloat(ptB[0]), altB = parseFloat(ptB[1]);
-                        let magB = ptB[2] !== "n.a." ? parseFloat(ptB[2]) : mag;
-                        let distB = parseFloat(ptB[3]), vitB = parseFloat(ptB[4]);
+                        let magB = (ptB[2] !== undefined && ptB[2] !== "n.a.") ? parseFloat(ptB[2]) : mag;
+                        let distB = ptB[3] !== undefined ? parseFloat(ptB[3]) : dist;
+                        let vitB = ptB[4] !== undefined ? parseFloat(ptB[4]) : vit;
 
                         if (Math.abs(azB - az) > 180) { if (azB > az) az += 360; else azB += 360; }
                         
                         az = az + (azB - az) * ratio;
                         alt = alt + (altB - alt) * ratio;
                         if (!isNaN(mag) && !isNaN(magB)) mag = mag + (magB - mag) * ratio;
-                        dist = dist + (distB - dist) * ratio;
-                        vit = vit + (vitB - vit) * ratio;
+                        if (!isNaN(dist) && !isNaN(distB)) dist = dist + (distB - dist) * ratio;
+                        if (!isNaN(vit) && !isNaN(vitB)) vit = vit + (vitB - vit) * ratio;
                         
                         if (az >= 360) az -= 360;
                     }
@@ -192,9 +203,9 @@
                         ptr.style.opacity = alt < 0 ? "0.15" : "1"; 
                     }
 
-                    // Injection textuelle unifiée
-                    document.getElementById(`az-${name}`).innerText = az.toFixed(2) + "°";
-                    document.getElementById(`alt-${name}`).innerText = alt.toFixed(2) + "°";
+                    // Injection textuelle sécurisée dans le DOM
+                    document.getElementById(`az-${name}`).innerText = !isNaN(az) ? az.toFixed(2) + "°" : "n.a.";
+                    document.getElementById(`alt-${name}`).innerText = !isNaN(alt) ? alt.toFixed(2) + "°" : "n.a.";
                     document.getElementById(`mag-${name}`).innerText = !isNaN(mag) ? mag.toFixed(2) : "n.a.";
                     document.getElementById(`vit-${name}`).innerText = !isNaN(vit) ? vit.toFixed(2) + " km/s" : "n.a.";
                     
@@ -205,11 +216,8 @@
                         document.getElementById(`dist-${name}`).innerText = "n.a.";
                     }
                 } else {
-                    document.getElementById(`az-${name}`).innerText = "...";
-                    document.getElementById(`alt-${name}`).innerText = "...";
-                    document.getElementById(`mag-${name}`).innerText = "...";
-                    document.getElementById(`vit-${name}`).innerText = "...";
-                    document.getElementById(`dist-${name}`).innerText = "...";
+                    document.getElementById(`az-${name}`).innerText = "Invalide";
+                    document.getElementById(`alt-${name}`).innerText = "Invalide";
                 }
             }
 
@@ -257,4 +265,4 @@
         initialiserSysteme();
     </script>
 </body>
-                    </html>
+    </html>
