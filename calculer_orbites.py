@@ -3,14 +3,14 @@
 import requests
 import json
 import re
-
 from datetime import datetime, timezone
 
 def executer_acquisition():
-    # Génère dynamiquement la date du jour actuel au format AA-MM-JJ
+    # CALCUL DYNAMIQUE : Récupère la date exacte du jour (Ex: "2026-06-05")
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    # ... (le reste de votre script de traitement des requêtes Horizons)
-    SITE_GEODETIQUE = "5.36,43.28,0.100" # Marseille
+    print(f"[INFO] Initialisation de la matrice SENTINELA pour la date : {aujourdhui}")
+    
+    SITE_GEODETIQUE = "5.36,43.28,0.100" # Coordonnées de Marseille
     ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" }
     MATRICE_FINALE = {}
 
@@ -72,20 +72,19 @@ def executer_acquisition():
                         ]
 
         except Exception as e:
-            print(f"Erreur de requete pour {nom_astre}")
+            print(f"[ERREUR] Échec de communication avec le serveur NASA pour l'astre {nom_astre} : {e}")
 
-        # BLOC DE SECOURS ABSOLU : Si l'API refuse de répondre, on injecte une matrice par défaut
+        # Sécurité de secours : remplit la structure si la requete a échoué
         if len(MATRICE_FINALE[nom_astre]) == 0:
+            print(f"[ALERTE] Remplissage de secours par défaut appliqué pour {nom_astre}")
             for h in range(24):
                 for m in range(60):
                     time_str = f"{str(h).zfill(2)}:{str(m).zfill(2)}"
-                    # Valeurs neutres physiques pour éviter le crash de index.html
                     MATRICE_FINALE[nom_astre][time_str] = [180.0, 30.0, 0.0, 1.0, 0.0]
 
-    # Écriture finale garantie
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print("[SUCCESS] Matrice validee.")
+    print(f"[SUCCÈS] Fichier 'orbites.json' écrit pour la date du {aujourdhui}")
 
 if __name__ == "__main__":
     executer_acquisition()
