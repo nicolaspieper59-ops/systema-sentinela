@@ -4,6 +4,8 @@ import requests
 import json
 import re
 import math
+import os
+import shutil
 from datetime import datetime, timezone
 
 def calculer_refraction_dynamique(altitude_brute_deg, altitude_observateur_m):
@@ -26,9 +28,9 @@ def appliquer_parallaxe_lune(altitude_apparente_deg, altitude_observateur_m):
     return altitude_apparente_deg - (correction_parallaxe * 180.0 / math.pi)
 
 def executer_acquisition():
-    # Détermination de la date UTC
+    # Détermination temporelle UTC automatique du jour
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    print(f"[INFO] Alignement SENTINELA - Date : {aujourdhui}")
+    print(f"[INFO] Alignement SENTINELA - Acquisition JPL du jour : {aujourdhui}")
     
     LONGITUDE = 5.36
     LATITUDE = 43.28
@@ -42,6 +44,7 @@ def executer_acquisition():
         MATRICE_FINALE[nom_astre] = {}
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
         
+        # Structure de requêtage stricte
         params = {
             "format": "json",
             "COMMAND": f"'{id_nasa}'",
@@ -60,6 +63,9 @@ def executer_acquisition():
         
         try:
             response = requests.get(url, params=params, timeout=20)
+            if response.status_code != 200:
+                continue
+                
             data_json = response.json()
             texte_brut = data_json.get("result", "")
             
@@ -72,11 +78,9 @@ def executer_acquisition():
                     if not ligne_nettoye:
                         continue
                         
-                    # Split par n'importe quel bloc d'espaces consécutifs
+                    # Découpage robuste par blocs d'espaces consécutifs
                     elements = ligne_nettoye.split()
                     
-                    # Une ligne valide Horizons contient la date (Ex: 2026-Jun-05) et l'heure (Ex: 12:34)
-                    # On cherche l'élément contenant l'horaire "XX:XX"
                     index_heure = -1
                     for idx, elem in enumerate(elements):
                         if ":" in elem and len(elem) == 5:
@@ -87,14 +91,11 @@ def executer_acquisition():
                         continue
                         
                     cle_heure_minute = elements[index_heure].strip()
-                    
-                    # Les données numériques se trouvent juste après l'heure
-                    # On extrait tout ce qui suit et on nettoie les marqueurs de la NASA (*, A, t, etc.)
                     donnees_apres_heure = elements[index_heure + 1:]
                     
                     numeriques = []
                     for token in donnees_apres_heure:
-                        # Supprime les caractères non numériques parasites attachés aux chiffres (ex: "145.23*")
+                        # Nettoie les lettres d'état et astérisques de la NASA accolés aux chiffres
                         token_propre = re.sub(r'[^\d\.\+\-eEnNaA\/]', '', token)
                         if not token_propre or token_propre.lower() == 'n.a.':
                             numeriques.append(0.0)
@@ -107,8 +108,6 @@ def executer_acquisition():
                     if len(numeriques) >= 2:
                         azimuth = numeriques[0]
                         elevation_brute = numeriques[1]
-                        
-                        # Indices adaptatifs selon la réponse (Magnitude, Distance, Vitesse)
                         mag = numeriques[2] if len(numeriques) >= 3 else 0.0
                         dist_terre_ua = numeriques[3] if len(numeriques) >= 4 else 1.0
                         vitesse_relative = numeriques[4] if len(numeriques) >= 5 else 0.0
@@ -121,19 +120,27 @@ def executer_acquisition():
                             azimuth, elevation_corrigee, mag, dist_terre_ua, vitesse_relative
                         ]
                         
-                print(f"[SUCCÈS] {nom_astre} : {len(MATRICE_FINALE[nom_astre])} points indexés.")
+                print(f"[SUCCÈS] {nom_astre} : {len(MATRICE_FINALE[nom_astre])} vecteurs d'éphémérides synchronisés.")
             else:
-                print(f"[ATTENTION] Structure Horizons absente pour {nom_astre}.")
+                print(f"[ATTENTION] Réponse brute illisible pour {nom_astre}.")
         except Exception as e:
-            print(f"[ERREUR] Échec de traitement sur {nom_astre} : {e}")
+            print(f"[ERREUR] Échec de l'acquisition sur {nom_astre} : {e}")
 
-    # Enregistrement final sécurisé
+    # Résolution du blocage d'infrastructure GitHub Pages par isolation /dist
     if MATRICE_FINALE.get("SOLEIL") and len(MATRICE_FINALE["SOLEIL"]) > 0:
-        with open("orbites.json", "w", encoding="utf-8") as f:
+        os.makedirs("dist", exist_ok=True)
+        
+        # Écriture du JSON dans la zone isolée
+        with open("dist/orbites.json", "w", encoding="utf-8") as f:
             json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-        print("[SUCCÈS] Fichier 'orbites.json' mis à jour avec succès.")
+            
+        # Duplication de l'interface graphique
+        if os.path.exists("index.html"):
+            shutil.copy("index.html", "dist/index.html")
+            
+        print("[ALIGNEMENT COMPLET] Les fichiers de production ont été isolés dans ./dist/")
     else:
-        print("[ERREUR CRITIQUE] Matrice vide. Sauvegarde bloquée.")
+        print("[ERREUR CONFIGURATION] Matrice vide. Processus interrompu pour protéger le radar.")
 
 if __name__ == "__main__":
     executer_acquisition()
