@@ -27,7 +27,7 @@ def appliquer_parallaxe_lune(altitude_apparente_deg, altitude_observateur_m):
 
 def executer_acquisition():
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    print(f"[INFO] SENTINELA - Alignement JPL : {aujourdhui}")
+    print(f"[INFO] SENTINELA - Alignement des flux temporels avec le JPL : {aujourdhui}")
     
     LONGITUDE = 5.36
     LATITUDE = 43.28
@@ -39,24 +39,26 @@ def executer_acquisition():
 
     for nom_astre, id_nasa in ASTRES.items():
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
+        
+        # RESTAURATION DES GUILLEMETS SIMPLES EXIGÉS PAR LES SPÉCIFICATIONS DU JPL NASA
         params = {
             "format": "json",
-            "COMMAND": id_nasa,
-            "OBJ_DATA": "NO",
-            "MAKE_EPHEM": "YES",
-            "EPHEM_TYPE": "OBSERVER",
-            "CENTER": "coord@399",
-            "SITE_COORD": f"{LONGITUDE},{LATITUDE},{ALTITUDE_KM}",
-            "START_TIME": f"{aujourdhui} 00:00",
-            "STOP_TIME": f"{aujourdhui} 23:59",
-            "STEP_SIZE": "1m",
-            "QUANTITIES": "4,9,20",
-            "REF_SYSTEM": "J2000",
-            "ANG_FORMAT": "DEG"
+            "COMMAND": f"'{id_nasa}'",
+            "OBJ_DATA": "'NO'",
+            "MAKE_EPHEM": "'YES'",
+            "EPHEM_TYPE": "'OBSERVER'",
+            "CENTER": "'coord@399'",
+            "SITE_COORD": f"'{LONGITUDE},{LATITUDE},{ALTITUDE_KM}'",
+            "START_TIME": f"'{aujourdhui} 00:00'",
+            "STOP_TIME": f"'{aujourdhui} 23:59'",
+            "STEP_SIZE": "'1m'",
+            "QUANTITIES": "'4,9,20'",
+            "REF_SYSTEM": "'J2000'",
+            "ANG_FORMAT": "'DEG'"
         }
         
         try:
-            response = requests.get(url, params=params, timeout=15)
+            response = requests.get(url, params=params, timeout=20)
             if response.status_code == 200:
                 data_json = response.json()
                 texte_brut = data_json.get("result", "")
@@ -66,7 +68,11 @@ def executer_acquisition():
                     lignes = bloc_donnees.strip().split("\n")
                     
                     for ligne in lignes:
-                        elements = ligne.strip().split()
+                        ligne_nettoye = ligne.strip()
+                        if not ligne_nettoye:
+                            continue
+                            
+                        elements = ligne_nettoye.split()
                         index_heure = -1
                         for idx, elem in enumerate(elements):
                             if ":" in elem and len(elem) == 5:
@@ -104,16 +110,18 @@ def executer_acquisition():
                             MATRICE_FINALE[nom_astre][cle_heure_minute] = [
                                 azimuth, elevation_corrigee, mag, dist_terre_ua, vitesse_relative
                             ]
-                    print(f"[OK] {nom_astre} synchronisé.")
+                    print(f"[SUCCÈS] {nom_astre} synchronisé : {len(MATRICE_FINALE[nom_astre])} points injectés.")
+                else:
+                    print(f"[REJET NASA] Structure de trame vide pour {nom_astre}. Vérifier les signatures de requêtes.")
             else:
-                print(f"[HTTP {response.status_code}] Échec pour {nom_astre}")
+                print(f"[ERREUR HTTP] Code {response.status_code} sur {nom_astre}")
         except Exception as e:
-            print(f"[SKIP] Erreur sur {nom_astre}: {e}")
+            print(f"[CRITICAL INTERCEPT] Incident de calcul sur {nom_astre} : {e}")
 
-    # Écriture directe à la racine sans fioritures
+    # Écriture de la matrice de données synchronisée à la racine du workspace
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print("[SUCCÈS] Fichier 'orbites.json' mis à jour.")
+    print("[FLUX INSÉRÉ] Le fichier 'orbites.json' a été restructuré avec succès.")
 
 if __name__ == "__main__":
     executer_acquisition()
