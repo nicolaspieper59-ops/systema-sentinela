@@ -26,9 +26,9 @@ def appliquer_parallaxe_lune(altitude_apparente_deg, altitude_observateur_m):
     return altitude_apparente_deg - (correction_parallaxe * 180.0 / math.pi)
 
 def executer_acquisition():
-    # Détermination de la date UTC actuelle (Format standardisé : 2026-06-05)
+    # Détermination de la date UTC
     aujourdhui = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    print(f"[INFO] Alignement SENTINELA - Date d'acquisition : {aujourdhui}")
+    print(f"[INFO] Alignement SENTINELA - Date : {aujourdhui}")
     
     LONGITUDE = 5.36
     LATITUDE = 43.28
@@ -38,15 +38,10 @@ def executer_acquisition():
     ASTRES = { "SOLEIL": "10", "LUNE": "301", "JUPITER": "599" }
     MATRICE_FINALE = {}
 
-    # Expression régulière robuste adaptée aux tableaux d'éphémérides de la NASA
-    regex_ligne_temps = re.compile(r"^\s*(\d{4}-[A-Za-z]{3}-\s*\d+)\s+(\d{2}:\d{2})")
-    regex_valeurs_physiques = re.compile(r"(?i)n\.a\.|[-+]?\d+\.\d+(?:[eE][-+]?\d+)?|[-+]?\d+")
-
     for nom_astre, id_nasa in ASTRES.items():
         MATRICE_FINALE[nom_astre] = {}
         url = "https://ssd-api.jpl.nasa.gov/horizons.api"
         
-        # Structure de paramètres validée par l'API Horizons
         params = {
             "format": "json",
             "COMMAND": f"'{id_nasa}'",
@@ -73,28 +68,47 @@ def executer_acquisition():
                 lignes = bloc_donnees.strip().split("\n")
                 
                 for ligne in lignes:
-                    match_temps = regex_ligne_temps.match(ligne)
-                    if not match_temps:
+                    ligne_nettoye = ligne.strip()
+                    if not ligne_nettoye:
                         continue
+                        
+                    # Split par n'importe quel bloc d'espaces consécutifs
+                    elements = ligne_nettoye.split()
                     
-                    cle_heure_minute = match_temps.group(2).strip()
-                    reste = ligne[match_temps.end():]
-                    reste_nettoye = re.sub(r'\s+[a-zA-Z\*]\s+', ' ', reste)
-                    tokens_physiques = regex_valeurs_physiques.findall(reste_nettoye)
+                    # Une ligne valide Horizons contient la date (Ex: 2026-Jun-05) et l'heure (Ex: 12:34)
+                    # On cherche l'élément contenant l'horaire "XX:XX"
+                    index_heure = -1
+                    for idx, elem in enumerate(elements):
+                        if ":" in elem and len(elem) == 5:
+                            index_heure = idx
+                            break
+                    
+                    if index_heure == -1:
+                        continue
+                        
+                    cle_heure_minute = elements[index_heure].strip()
+                    
+                    # Les données numériques se trouvent juste après l'heure
+                    # On extrait tout ce qui suit et on nettoie les marqueurs de la NASA (*, A, t, etc.)
+                    donnees_apres_heure = elements[index_heure + 1:]
                     
                     numeriques = []
-                    for val in tokens_physiques:
-                        if val.lower() == 'n.a.':
+                    for token in donnees_apres_heure:
+                        # Supprime les caractères non numériques parasites attachés aux chiffres (ex: "145.23*")
+                        token_propre = re.sub(r'[^\d\.\+\-eEnNaA\/]', '', token)
+                        if not token_propre or token_propre.lower() == 'n.a.':
                             numeriques.append(0.0)
                         else:
                             try:
-                                numeriques.append(float(val))
+                                numeriques.append(float(token_propre))
                             except ValueError:
                                 continue
 
                     if len(numeriques) >= 2:
                         azimuth = numeriques[0]
                         elevation_brute = numeriques[1]
+                        
+                        # Indices adaptatifs selon la réponse (Magnitude, Distance, Vitesse)
                         mag = numeriques[2] if len(numeriques) >= 3 else 0.0
                         dist_terre_ua = numeriques[3] if len(numeriques) >= 4 else 1.0
                         vitesse_relative = numeriques[4] if len(numeriques) >= 5 else 0.0
@@ -106,19 +120,20 @@ def executer_acquisition():
                         MATRICE_FINALE[nom_astre][cle_heure_minute] = [
                             azimuth, elevation_corrigee, mag, dist_terre_ua, vitesse_relative
                         ]
-                print(f"[SUCCÈS] Données acquises pour {nom_astre} ({len(MATRICE_FINALE[nom_astre])} points)")
+                        
+                print(f"[SUCCÈS] {nom_astre} : {len(MATRICE_FINALE[nom_astre])} points indexés.")
             else:
-                print(f"[ATTENTION] Réponse invalide de la NASA pour {nom_astre}. Vérifier les en-têtes.")
+                print(f"[ATTENTION] Structure Horizons absente pour {nom_astre}.")
         except Exception as e:
-            print(f"[ERREUR] Échec réseau sur {nom_astre} : {e}")
+            print(f"[ERREUR] Échec de traitement sur {nom_astre} : {e}")
 
-    # Enregistrement de la matrice globale
+    # Enregistrement final sécurisé
     if MATRICE_FINALE.get("SOLEIL") and len(MATRICE_FINALE["SOLEIL"]) > 0:
         with open("orbites.json", "w", encoding="utf-8") as f:
             json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-        print(f"[SUCCÈS] Matrice 5D sauvegardée avec succès.")
+        print("[SUCCÈS] Fichier 'orbites.json' mis à jour avec succès.")
     else:
-        print("[ERREUR CRITIQUE] Données absentes. Sauvegarde annulée pour préserver l'intégrité.")
+        print("[ERREUR CRITIQUE] Matrice vide. Sauvegarde bloquée.")
 
 if __name__ == "__main__":
     executer_acquisition()
