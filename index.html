@@ -97,7 +97,6 @@
             }
         }
 
-        // Moteur de rendu cinétique continu réaligné
         setInterval(() => {
             if (tempsAtomiqueInitialMS === 0) return;
 
@@ -115,14 +114,7 @@
             let seconds = nowObj.getUTCSeconds();
             let milliseconds = nowObj.getUTCMilliseconds();
 
-            // Construction des cibles de comparaison normalisées (sans espaces)
-            let cibleCourante = `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}`;
-            
-            let minutesSuivantes = (hours * 60 + minutes + 1) % 1440;
-            let hSuiv = Math.floor(minutesSuivantes/60);
-            let mSuiv = minutesSuivantes % 60;
-            let cibleSuivante = `${String(hSuiv).padStart(2,'0')}:${String(mSuiv).padStart(2,'0')}`;
-            
+            let targetMinutes = hours * 60 + minutes;
             let ratio = (seconds + milliseconds / 1000) / 60;
             const banner = document.getElementById("status-banner");
             let modeSecoursActif = false;
@@ -135,38 +127,33 @@
                 let ptA = null;
                 let ptB = null;
 
-                // BALAYAGE TOLÉRANT : Comparaison après normalisation .trim()
-                for (let cleJson in blocAstre) {
-                    let cleNormalisee = cleJson.replace(/\s+/g, '').padStart(5, '0');
-                    if (cleNormalisee === cibleCourante) {
-                        ptA = blocAstre[cleJson];
-                    }
-                    if (cleNormalisee === cibleSuivante) {
-                        ptB = blocAstre[cleJson];
-                    }
-                }
-                
-                // CRITÈRE DE REMONTÉE TEMPORELLE EN CAS DE CLÉ MANQUANTE
-                if (!ptA) {
-                    modeSecoursActif = true; 
-                    let minutesTotales = hours * 60 + minutes;
-                    let tentative = 1;
+                // FONCTION CORRIGÉE : Extraction numérique de l'heure du JSON
+                function extrairePointsParMinutes(minutesDuJour) {
+                    let mTarget = (minutesDuJour + 1440) % 1440;
+                    let hh = String(Math.floor(mTarget / 60)).padStart(2, '0');
+                    let mm = String(mTarget % 60).padStart(2, '0');
                     
-                    while (!ptA && tentative <= 60) { 
-                        let minutesSecours = (minutesTotales - tentative + 1440) % 1440;
-                        let hSecours = Math.floor(minutesSecours / 60);
-                        let mSecours = minutesSecours % 60;
-                        let cibleHistorique = `${String(hSecours).padStart(2,'0')}:${String(mSecours).padStart(2,'0')}`;
-                        
-                        for (let cleJson in blocAstre) {
-                            let cleNormalisee = cleJson.replace(/\s+/g, '').padStart(5, '0');
-                            if (cleNormalisee === cibleHistorique) {
-                                ptA = blocAstre[cleJson];
-                                retardMaxDetecte = tentative;
-                                break;
-                            }
+                    // Match partiel pour ignorer les espaces ou retours à la ligne générés par le parseur Python
+                    for (let key in blocAstre) {
+                        if (key.includes(`${hh}:${mm}`)) {
+                            return blocAstre[key];
                         }
-                        tentative++;
+                    }
+                    return null;
+                }
+
+                ptA = extrairePointsParMinutes(targetMinutes);
+                ptB = extrairePointsParMinutes(targetMinutes + 1);
+                
+                // Algorithme de secours si la minute précise manque (jusqu'à 60 minutes d'écart)
+                if (!ptA) {
+                    modeSecoursActif = true;
+                    for (let i = 1; i <= 60; i++) {
+                        ptA = extrairePointsParMinutes(targetMinutes - i);
+                        if (ptA) {
+                            retardMaxDetecte = i;
+                            break;
+                        }
                     }
                 }
 
@@ -196,14 +183,12 @@
                         if (az >= 360) az -= 360;
                     }
 
-                    // Actualisation géométrique du Radar SVG
                     const ptr = document.getElementById(`ptr-${name}`);
                     if (ptr) {
                         ptr.setAttribute("transform", `rotate(${az} 200 200)`);
                         ptr.style.opacity = alt < 0 ? "0.15" : "1"; 
                     }
 
-                    // Injection textuelle sécurisée dans le DOM
                     document.getElementById(`az-${name}`).innerText = !isNaN(az) ? az.toFixed(2) + "°" : "n.a.";
                     document.getElementById(`alt-${name}`).innerText = !isNaN(alt) ? alt.toFixed(2) + "°" : "n.a.";
                     document.getElementById(`mag-${name}`).innerText = !isNaN(mag) ? mag.toFixed(2) : "n.a.";
@@ -221,7 +206,6 @@
                 }
             }
 
-            // Gestionnaire des diagnostics de sécurité du bandeau principal
             if (modeSecoursActif) {
                 banner.innerText = `RÉALIGNEMENT DES FLUX VECTORIELS [-${retardMaxDetecte} MIN] (CORRECTION ACTIVE)`;
                 banner.style.color = "var(--accent-orange)";
@@ -234,7 +218,6 @@
 
         }, 100);
 
-        // Génération structurelle automatique des composants SVG et de la légende
         const svgNS = "http://www.w3.org/2000/svg";
         const g = document.getElementById('pointers');
         const leg = document.getElementById('legend');
@@ -265,4 +248,4 @@
         initialiserSysteme();
     </script>
 </body>
-    </html>
+</html>
