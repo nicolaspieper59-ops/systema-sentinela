@@ -2,8 +2,8 @@ name: SENTINELA - RECONSTRUCTION FORCEE
 
 on:
   schedule:
-    - cron: '5 0 * * *' # Exécution automatique à 00h05 UTC chaque jour
-  workflow_dispatch: # Permet le déclenchement manuel sur mobile
+    - cron: '5 0 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -13,6 +13,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # AJOUT DE L'ENVIRONNEMENT CRITIQUE DEMANDÉ PAR GITHUB
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Code Checkout
         uses: actions/checkout@v4
@@ -40,4 +44,5 @@ jobs:
           path: '.'
 
       - name: Déploiement Flash GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
