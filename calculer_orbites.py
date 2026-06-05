@@ -39,65 +39,44 @@ def executer_acquisition():
     MATRICE_FINALE = {}
 
     for nom_astre, id_nasa in ASTRES.items():
-        url = "https://ssd-api.jpl.nasa.gov/horizons.api"
-        
-        # BOUCLE DE SECOURS : Tente les deux formats avec l'identifiant Terre '@399' correct
-        variantes_parametres = [
-            {
-                "format": "json",
-                "COMMAND": f"'{id_nasa}'",
-                "OBJ_DATA": "'NO'",
-                "MAKE_EPHEM": "'YES'",
-                "EPHEM_TYPE": "'OBSERVER'",
-                "CENTER": "'coord@399'",
-                "SITE_COORD": f"'{LONGITUDE},{LATITUDE},{ALTITUDE_KM}'",
-                "START_TIME": f"'{aujourdhui} 00:00'",
-                "STOP_TIME": f"'{aujourdhui} 23:59'",
-                "STEP_SIZE": "'1m'",
-                "QUANTITIES": "'4,9,20'",
-                "REF_SYSTEM": "'J2000'",
-                "ANG_FORMAT": "'DEG'"
-            },
-            {
-                "format": "json",
-                "COMMAND": id_nasa,
-                "OBJ_DATA": "NO",
-                "MAKE_EPHEM": "YES",
-                "EPHEM_TYPE": "OBSERVER",
-                "CENTER": "coord@399",
-                "SITE_COORD": f"{LONGITUDE},{LATITUDE},{ALTITUDE_KM}",
-                "START_TIME": f"{aujourdhui} 00:00",
-                "STOP_TIME": f"{aujourdhui} 23:59",
-                "STEP_SIZE": "1m",
-                "QUANTITIES": "4,9,20",
-                "REF_SYSTEM": "J2000",
-                "ANG_FORMAT": "DEG"
-            }
-        ]
+        # RECONSTRUCTION BRUTE : Injection directe sans encodage URL nuisible
+        url_brute = (
+            f"https://ssd-api.jpl.nasa.gov/horizons.api?format=json"
+            f"&COMMAND='{id_nasa}'"
+            f"&OBJ_DATA='NO'"
+            f"&MAKE_EPHEM='YES'"
+            f"&EPHEM_TYPE='OBSERVER'"
+            f"&CENTER='coord@399'"
+            f"&SITE_COORD='{LONGITUDE},{LATITUDE},{ALTITUDE_KM}'"
+            f"&START_TIME='{aujourdhui} 00:00'"
+            f"&STOP_TIME='{aujourdhui} 23:59'"
+            f"&STEP_SIZE='1m'"
+            f"&QUANTITIES='4,9,20'"
+            f"&REF_SYSTEM='J2000'"
+            f"&ANG_FORMAT='DEG'"
+        )
         
         texte_brut = ""
-        succes_requete = False
-        
-        for idx, params in enumerate(variantes_parametres):
-            try:
-                print(f"[REQUÊTE] Synchro {nom_astre} (Format de secours n°{idx+1})...")
-                response = requests.get(url, params=params, timeout=20)
-                if response.status_code == 200:
-                    data_json = response.json()
-                    texte_brut = data_json.get("result", "")
-                    if "$$SOE" in texte_brut and "$$EOE" in texte_brut:
-                        succes_requete = True
-                        print(f"[OK] Flux accroché avec succès via le format n°{idx+1}.")
-                        break
-            except Exception as e:
-                print(f"[ATTENTION] Échec sur le format n°{idx+1} : {e}")
-                continue
+        try:
+            print(f"[REQUÊTE] Synchro brute pour {nom_astre}...")
+            response = requests.get(url_brute, timeout=20)
+            
+            if response.status_code == 200:
+                data_json = response.json()
+                texte_brut = data_json.get("result", "")
+            else:
+                print(f"[ERREUR HTTP] Code : {response.status_code}")
+                sys.exit(1)
                 
-        # FAIL-SAFE : Si aucune des deux variantes ne passe, blocage volontaire du pipeline
-        if not succes_requete:
-            print(f"\n[ECHEC CRITIQUE] Rejet absolu par la NASA pour l'astre {nom_astre} !")
-            print("===================== DIAGNOSTIC EXTRÉMAL DE LA NASA =====================")
-            print(texte_brut[:1500] if texte_brut else "Aucune réponse exploitable reçue de l'API.")
+        except Exception as e:
+            print(f"[EXCEPTION] Échec réseau sur {nom_astre} : {e}")
+            sys.exit(1)
+            
+        # VERIFICATION DU PAQUET DATA
+        if "$$SOE" not in texte_brut or "$$EOE" not in texte_brut:
+            print(f"\n[ECHEC CRITIQUE] La NASA a refusé l'accès brute pour l'astre {nom_astre} !")
+            print("===================== BLOC DE DIAGNOSTIC DE LA NASA =====================")
+            print(texte_brut[:1500] if texte_brut else "Aucune réponse textuelle.")
             print("==========================================================================")
             sys.exit(1)
             
@@ -116,6 +95,7 @@ def executer_acquisition():
             cle_heure_minute = match_heure.group(1)
             reste_de_la_ligne = ligne[match_heure.end():]
             
+            # Extraction Regex insensible aux caractères parasites (*, m, etc.)
             numeriques = [float(val) for val in re.findall(r'[-+]?\d*\.\d+|\d+', reste_de_la_ligne)]
             
             if len(numeriques) >= 2:
@@ -134,10 +114,10 @@ def executer_acquisition():
                 ]
         print(f"[SUCCÈS] {nom_astre} synchronisé : {len(MATRICE_FINALE[nom_astre])} vecteurs.")
 
-    # Écriture forcée sur l'espace de stockage
+    # Écriture forcée de la matrice propre
     with open("orbites.json", "w", encoding="utf-8") as f:
         json.dump(MATRICE_FINALE, f, indent=4, ensure_ascii=False)
-    print("[MIGRATION EFFECTUÉE] Fichier 'orbites.json' mis à jour et validé.")
+    print("[MIGRATION EFFECTUÉE] Le fichier 'orbites.json' a été correctement généré.")
 
 if __name__ == "__main__":
     executer_acquisition()
