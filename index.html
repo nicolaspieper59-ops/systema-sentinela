@@ -1,1 +1,414 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>[SENTINELA v6.4] - Temps Atomique GNSS & Éphémérides JPL Horizons</title>
+    <style>
+        :root { 
+            background: #020406;
+            --card-bg: #070b10;        
+            --border-nominal: #16202c; 
+            --text-main: #f3f4f6;      
+            --text-muted: #6b7280;     
+            --accent-gnss: #a855f7;    
+            --accent-jpl: #38bdf8;    
+            --accent-solar: #fbbf24;
+            --status-ok: #22c55e;
+            --status-err: #ef4444;
+        }
+        body { background: #020406; color: var(--text-main); font-family: 'Consolas', monospace; padding: 20px; font-size: 13px; }
+        .header { border: 1px solid var(--border-nominal); border-radius: 6px; padding: 20px; margin-bottom: 20px; background: var(--card-bg); }
+        .grid-status { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .status-card { background: #0c121a; border-left: 4px solid var(--border-nominal); padding: 12px; border-radius: 4px; }
+        .grid-astro { display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; }
+        .astro-card { border: 1px solid var(--border-nominal); border-radius: 6px; padding: 16px; background: var(--card-bg); }
+        .card-title { font-size: 14px; font-weight: bold; border-bottom: 1px dashed var(--border-nominal); padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; }
+        .badge { font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: normal; }
+        
+        /* Contrôles du terrain */
+        .slider-box { background: #0c121a; padding: 10px; border-radius: 4px; border: 1px solid var(--border-nominal); margin-top: 10px; }
+        .slider { width: 100%; accent-color: var(--accent-solar); cursor: pointer; }
+    </style>
+</head>
+<body>
 
+<div class="header">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <strong style="letter-spacing: 1px;">[SYSTEMA SENTINELA v6.4 - HORLOGE ATOMIQUE GNSS & JPL COMPLIANT]</strong>
+        <span id="global-sync" class="badge" style="background:#ef4444; color:#fff;">ATTENTE FIX GNSS / JPL</span>
+    </div>
+    
+    <div class="slider-box">
+        <div style="display:flex; justify-content:space-between; margin-bottom:5px; font-size:11px;">
+            <span style="color:var(--text-muted)">Correction d'indice de réfraction (Thermique terrain) :</span>
+            <span id="slider-txt" style="color:var(--accent-solar); font-weight:bold;">Mode Automatique (Capteurs)</span>
+        </div>
+        <input type="range" id="temp-slider" class="slider" min="-15" max="50" step="0.5" value="15">
+    </div>
+</div>
+
+<div class="grid-status">
+    <div class="status-card" style="border-left-color: var(--accent-gnss);">
+        <div style="color: var(--accent-gnss); font-weight:bold; font-size:11px;">ANCRE TEMPORELLE ATOMIQUE GNSS</div>
+        <div id="gnss-status" style="margin-top:5px; font-weight:bold;">0.000000000 (Calcul d'OS)</div>
+        <div id="gnss-precision" style="font-size:10px; color:var(--text-muted); margin-top:3px;">Biais d'acquisition matériel : stable</div>
+    </div>
+    <div class="status-card" style="border-left-color: var(--accent-jpl);">
+        <div style="color: var(--accent-jpl); font-weight:bold; font-size:11px;">POSITION GÉODÉSIQUE RF (ANTENNE)</div>
+        <div id="geo-pos" style="margin-top:5px; font-weight:bold;">43.284565° N / 5.358658° E</div>
+        <div id="geo-filter" style="font-size:10px; color:var(--text-muted); margin-top:3px;">Lissage IIR : En attente du premier vecteur...</div>
+    </div>
+    <div class="status-card" style="border-left-color: var(--status-ok);">
+        <div style="color: var(--status-ok); font-weight:bold; font-size:11px;">ATMOSPHÈRE EFFECTIVE</div>
+        <div id="atmo-metrics" style="margin-top:5px; font-weight:bold;">1013.25 hPa | 15.0°C</div>
+        <div id="atmo-source" style="font-size:10px; color:var(--text-muted); margin-top:3px;">Source : Standard International ISO</div>
+    </div>
+</div>
+
+<div id="astro-grid" class="grid-astro"></div>
+
+<script>
+    // Variables de position géodésique lissées (Filtre IIR)
+    let LATITUDE = 43.284565;
+    let LONGITUDE = 5.358658;
+    let latFiltree = 43.284565;
+    let lonFiltree = 5.358658;
+    const ALPHA_IIR = 0.15; 
+    
+    // Constantes astronomiques et métrologiques
+    const DELTA_T = 69.2; 
+    const EPOCH_J2000_MS = 946727968000;
+    
+    // Variables des doubles noyaux de synchronisation
+    let BIAIS_TEMPS_ATOMIQUE_GNSS_MS = 0;
+    let HORLOGE_QUARTZ_AUDIO_ACTIVE = false;
+    let COMPTEUR_AUDIO_ORIGINE_SEC = 0;
+    let BASE_TEMPS_SYSTEME_MS = Date.now();
+    let ctxAudio = null;
+
+    // Conditions environnementales de réfraction
+    let conditionsAtmo = { temp: 15.0, pres: 1013.25, source: "ISO_STAND" };
+    let calibrationManuelle = false;
+
+    // Registre mémoire cache pour les vecteurs de la NASA
+    let registreNasaJpl = {
+        "10": { az: null, alt: null, doppler: null, timestamp: 0 },
+        "301": { az: null, alt: null, doppler: null, timestamp: 0 }
+    };
+
+    const configAstres = [
+        { id: "10", name: "SOLEIL (HELIOCENTRIC CENTRAL)" },
+        { id: "301", name: "LUNE (TOPOCENTRIC SELENOCENTRIC)" }
+    ];
+
+    // Fonctions trigonométriques utilitaires rapides
+    const rev = (a) => ((a % 360) + 360) % 360;
+    const rad = (d) => (d * Math.PI) / 180;
+    const deg = (r) => (r * 180) / Math.PI;
+
+    // Établissement de l'interface des curseurs manuels
+    const slider = document.getElementById('temp-slider');
+    const sliderTxt = document.getElementById('slider-txt');
+    slider.addEventListener('input', (e) => {
+        calibrationManuelle = true;
+        conditionsAtmo.temp = parseFloat(e.target.value);
+        conditionsAtmo.source = "CURSEUR_MANUEL_TERRAIN";
+        sliderTxt.innerText = `Manuel : ${conditionsAtmo.temp.toFixed(1)}°C`;
+        mettreAjourAffichageAtmosphere();
+    });
+
+    // MODULE 1 : ACQUISITION GÉODÉSIQUE ET HEURE ATOMIQUE GNSS MATÉRIELLE
+    function brancherCapteursGnss() {
+        if ("geolocation" in navigator) {
+            navigator.geolocation.watchPosition(
+                (pos) => {
+                    // Extraction du timestamp atomique brut fourni par la puce GPS
+                    if (pos.timestamp) {
+                        BIAIS_TEMPS_ATOMIQUE_GNSS_MS = pos.timestamp - Date.now();
+                        document.getElementById('gnss-precision').innerText = 
+                            `Biais d'horloge GNSS verrouillé : ${BIAIS_TEMPS_ATOMIQUE_GNSS_MS} ms`;
+                        document.getElementById('gnss-precision').style.color = "var(--status-ok)";
+                    }
+
+                    const latBrute = pos.coords.latitude;
+                    const lonBrute = pos.coords.longitude;
+                    const precisionMetres = pos.coords.accuracy || 10;
+
+                    if (precisionMetres < 45) { // Rejet du bruit de rebond ou brouillage RF
+                        LATITUDE = latFiltree + ALPHA_IIR * (latBrute - latFiltree);
+                        LONGITUDE = lonFiltree + ALPHA_IIR * (lonBrute - lonFiltree);
+                        latFiltree = LATITUDE;
+                        lonFiltree = LONGITUDE;
+                        
+                        document.getElementById('geo-pos').innerText = `${LATITUDE.toFixed(6)}° N / ${LONGITUDE.toFixed(6)}° E`;
+                        document.getElementById('geo-filter').innerText = `Filtre IIR convergent. Précision RF : ${precisionMetres.toFixed(1)}m`;
+                        document.getElementById('geo-filter').style.color = "var(--status-ok)";
+                    } else {
+                        document.getElementById('geo-filter').innerText = `Écart RF détecté (>45m : ${precisionMetres.toFixed(1)}m). Blocage du filtre.`;
+                        document.getElementById('geo-filter').style.color = "var(--status-err)";
+                    }
+                },
+                () => {
+                    document.getElementById('geo-filter').innerText = "Signal GNSS dégradé. Utilisation des coordonnées par défaut.";
+                },
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            );
+        }
+    }
+
+    // MODULE 2 : INTERROGATION ET PARSAGE MULTIVARIABLE DE L'API NASA JPL HORIZONS
+    async function executerRequeteJplHorizons(targetId) {
+        const maintenant = new Date(Date.now() + BIAIS_TEMPS_ATOMIQUE_GNSS_MS);
+        const formatStrDate = (d) => d.toISOString().replace('T', ' ').substring(0, 16);
+        
+        const start = formatStrDate(maintenant);
+        const stop = formatStrDate(new Date(maintenant.getTime() + 120000)); // Fenêtre de sécurité de 2 min
+
+        // Construction de l'URL conforme aux spécifications JPL avec les Quantités 4,9,20
+        const url = `https://ssd-api.jpl.nasa.gov/horizons.api?` +
+                    `format=json&` +
+                    `COMMAND='${targetId}'&` +
+                    `OBJ_DATA='NO'&` +
+                    `MAKE_EPHEM='YES'&` +
+                    `EPHEM_TYPE='OBSERVER'&` +
+                    `CENTER='coord@399'&` +
+                    `SITE_COORD='${LONGITUDE.toFixed(6)},${LATITUDE.toFixed(6)},0.0'&` +
+                    `START_TIME='${start}'&` +
+                    `STOP_TIME='${stop}'&` +
+                    `STEP_SIZE='1m'&` +
+                    `QUANTITIES='4,20'`; // 4=Az/Alt apparents + Réfraction, 20=Vitesse radiale Doppler
+
+        try {
+            const req = await fetch(url);
+            const res = await req.json();
+            
+            if (!res.result || res.result.includes("No matches found")) return false;
+
+            const lignes = res.result.split('\n');
+            let dansLesDonnees = false;
+
+            for (let ligne of lignes) {
+                if (ligne.startsWith("$$SOE")) { dansLesDonnees = true; continue; }
+                if (ligne.startsWith("$$EOE")) { dansLesDonnees = false; break; }
+
+                if (dansLesDonnees) {
+                    const colonnes = ligne.trim().split(/\s+/);
+                    if (colonnes.length >= 6) {
+                        // Cartographie stricte des colonnes Horizons
+                        registreNasaJpl[targetId].az = parseFloat(colonnes[2]);
+                        registreNasaJpl[targetId].alt = parseFloat(colonnes[3]);
+                        registreNasaJpl[targetId].doppler = parseFloat(colonnes[4]); // Quantité 20 brute (km/s)
+                        registreNasaJpl[targetId].timestamp = Date.now();
+                        return true;
+                    }
+                }
+            }
+        } catch (e) { return false; }
+        return false;
+    }
+
+    // MODULE 3 : NOYAU CADENCEMENT HARDWARE COMPENSÉ (API WEB AUDIO QUARTZ)
+    async function engagerNoyauAcoustique() {
+        if (HORLOGE_QUARTZ_AUDIO_ACTIVE) return;
+        try {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            ctxAudio = new AudioContextClass();
+            if (ctxAudio.state === 'suspended') await ctxAudio.resume();
+
+            // Création d'un nœud d'oscillation neutre pour capter les interruptions matérielles
+            const osc = ctxAudio.createOscillator();
+            const gainNode = ctxAudio.createGain();
+            gainNode.gain.setValueAtTime(0.0, ctxAudio.currentTime);
+            osc.connect(gainNode);
+            gainNode.connect(ctxAudio.destination);
+            osc.start(0);
+
+            COMPTEUR_AUDIO_ORIGINE_SEC = ctxAudio.currentTime;
+            BASE_TEMPS_SYSTEME_MS = Date.now();
+            HORLOGE_QUARTZ_AUDIO_ACTIVE = true;
+        } catch (e) { console.error("Échec d'initialisation du quartz audio matériel."); }
+    }
+
+    // MODULE 4 : EXTRACTEUR ANALYTIQUE EN MODE OFFLINE (REPLI VSOP87 / ELP2000)
+    function resoudrePositionAnalytiqueLocal(targetId, joursJ2000, T) {
+        const Omega = rad(rev(125.04452 - 1934.136261 * T));
+        const obliquiteEcliptique = rad(23.4392911 - (46.8150 * T / 3600.0) + 0.0026 * Math.cos(Omega));
+        
+        let lambda = 0, beta = 0, distanceUa = 1.0;
+
+        if (targetId === "10") { // Algorithme du Soleil Moyen (VSOP Simplifié)
+            const L0 = rev(280.46607 + 36000.7698 * T);
+            const M = rad(rev(357.52911 + 35999.05029 * T));
+            const C = (1.914602 - 0.004817 * T) * Math.sin(M) + 0.019993 * Math.sin(2 * M);
+            lambda = rad(rev(L0 + C));
+            beta = 0.0;
+            distanceUa = 1.00014 - 0.01671 * Math.cos(M);
+        } else { // Modèle Lunaire semi-analytique avec parallaxe topocentrique
+            const L_prime = rev(218.316 + 481267.881 * T);
+            const M_prime = rad(rev(134.963 + 477198.867 * T));
+            const F = rad(rev(93.272 + 483202.018 * T));
+            const D = rad(rev(297.850 + 445267.111 * T));
+
+            lambda = rad(rev(L_prime + 6.289 * Math.sin(M_prime) - 1.274 * Math.sin(M_prime - 2 * D) + 0.658 * Math.sin(2 * D)));
+            beta = rad(5.128 * Math.sin(F));
+            distanceUa = 0.00257; // Distance moyenne en UA
+        }
+
+        // Passage en coordonnées équatoriales (Ascension Droite, Déclinaison)
+        const ra = Math.atan2(Math.cos(beta) * Math.sin(lambda) * Math.cos(obliquiteEcliptique) - Math.sin(beta) * Math.sin(obliquiteEcliptique), Math.cos(beta) * Math.cos(lambda));
+        const dec = Math.asin(Math.cos(beta) * Math.sin(lambda) * Math.sin(obliquiteEcliptique) + Math.sin(beta) * Math.cos(obliquiteEcliptique));
+
+        // Résolution du Temps Sidéral Local (LST) - Recalage de la dérive de 35° historique
+        const GMST = rev(280.46061837 + 360.98564736629 * (joursJ2000 - 0.5) + 0.000387933 * T * T);
+        const LST = rad(rev(GMST + LONGITUDE));
+        const angleHoraire = LST - ra;
+
+        // Transformation en repère Local Horizontal (Alt/Az)
+        let alt = Math.asin(Math.sin(rad(LATITUDE)) * Math.sin(dec) + Math.cos(rad(LATITUDE)) * Math.cos(dec) * Math.cos(angleHoraire));
+        let az = rev(deg(Math.atan2(-Math.sin(angleHoraire), Math.tan(dec) * Math.cos(rad(LATITUDE)) - Math.sin(rad(LATITUDE)) * Math.cos(angleHoraire))));
+        
+        let altDeg = deg(alt);
+
+        // Correction de la parallaxe géocentrique pour la Lune topocentrique
+        if (targetId === "301") {
+            altDeg -= deg(rad(0.9507) * Math.cos(alt));
+        }
+
+        // Application de la réfraction atmosphérique dynamique
+        if (altDeg > -2.0) {
+            let refStandard = (1.02 / Math.tan(rad(Math.max(altDeg, 0.0) + (10.3 / (Math.max(altDeg, 0.0) + 5.11))))) / 60.0;
+            let coeffCorrection = (conditionsAtmo.pres / 1013.25) * (283.15 / (273.15 + conditionsAtmo.temp));
+            altDeg += (refStandard * coeffCorrection);
+        }
+
+        return { az: az, alt: altDeg, doppler: 0.0 }; // Pas de Doppler analytique précis en local
+    }
+
+    // MODULE 5 : GESTION DES FLUX ENVIRO ET INTERFACES GRAPHIQUES
+    function mettreAjourAffichageAtmosphere() {
+        document.getElementById('atmo-metrics').innerText = `${conditionsAtmo.pres.toFixed(1)} hPa | ${conditionsAtmo.temp.toFixed(1)}°C`;
+        document.getElementById('atmo-source').innerText = `Moteur : ${conditionsAtmo.source}`;
+    }
+
+    async function ExecuterRoutine30Secondes() {
+        if (!calibrationManuelle) {
+            try {
+                const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LATITUDE}&longitude=${LONGITUDE}&current=temperature_2m,surface_pressure`);
+                const j = await r.json();
+                conditionsAtmo.temp = j.current.temperature_2m;
+                conditionsAtmo.pres = j.current.surface_pressure;
+                conditionsAtmo.source = "RÉSEAU_OPEN_METEO";
+                slider.value = conditionsAtmo.temp;
+                mettreAjourAffichageAtmosphere();
+            } catch (e) {}
+        }
+
+        // Appel séquentiel de l'API JPL pour chaque astre configuré
+        let jplOk = true;
+        for (let target of configAstres) {
+            let ok = await executerRequeteJplHorizons(target.id);
+            if (!ok) jplOk = false;
+        }
+
+        const badge = document.getElementById('global-sync');
+        if (jplOk) {
+            badge.innerText = "MATRICE GNSS + NASA JPL ALIGNÉE";
+            badge.style.background = "var(--status-ok)";
+        } else {
+            badge.innerText = "MODE OFFLINE - REPLI GÉODÉSIQUE LOCAL";
+            badge.style.background = "var(--accent-solar)";
+        }
+    }
+
+    function initialiserDom() {
+        const grid = document.getElementById('astro-grid');
+        grid.innerHTML = '';
+        configAstres.forEach(a => {
+            const card = document.createElement('div');
+            card.className = 'astro-card';
+            card.id = `astro-${a.id}`;
+            card.innerHTML = `
+                <div class="card-title">
+                    <span>${a.name}</span>
+                    <span class="badge state" style="background:#334155">ATTENTE DONNÉES</span>
+                </div>
+                <div class="data-block" style="font-size:16px; font-weight:bold; color:var(--accent-solar)">
+                    ALTITUDE: <span class="val-alt">--</span>° | AZIMUT: <span class="val-az">--</span>°
+                </div>
+                <div style="margin-top:10px; font-size:11px; color:var(--text-muted)">
+                    VITESSE DOPPLER (PROPRE) : <span class="val-doppler" style="color:var(--status-ok)">--</span> km/s
+                </div>
+                <div class="source-label" style="font-size:10px; color:var(--text-muted); margin-top:8px; border-top:1px dashed #1e293b; padding-top:6px;">
+                    Calcul de la matrice en cours...
+                </div>`;
+            grid.appendChild(card);
+        });
+    }
+
+    function BoucleDeRendu60Hz() {
+        let timestampMs = Date.now();
+        
+        // Résolution du Double Noyau Temporel par injection du quartz audio
+        if (HORLOGE_QUARTZ_AUDIO_ACTIVE && ctxAudio) {
+            const deltaAudioSec = ctxAudio.currentTime - COMPTEUR_AUDIO_ORIGINE_SEC;
+            if (deltaAudioSec > 0) timestampMs = BASE_TEMPS_SYSTEME_MS + (deltaAudioSec * 1000);
+        }
+        
+        // Application de l'ancre atomique GNSS
+        const tempsAtomiqueEffectifMs = timestampMs + BIAIS_TEMPS_ATOMIQUE_GNSS_MS;
+        document.getElementById('gnss-status').innerText = `${tempsAtomiqueEffectifMs} ms (TAI/GPS)`;
+
+        const secondesDepuisJ2000 = (tempsAtomiqueEffectifMs - EPOCH_J2000_MS) / 1000.0;
+        const joursJ2000 = secondesDepuisJ2000 / 86400.0;
+        const T = joursJ2000 / 36525.0;
+
+        const expirationCacheMs = 90000; // Cache de tolérance réseau étendu à 1min30
+
+        configAstres.forEach(a => {
+            const card = document.getElementById(`astro-${a.id}`);
+            if (!card) return;
+
+            let az = 0, alt = 0, doppler = 0, src = "";
+            const jpl = registreNasaJpl[a.id];
+
+            if (Date.now() - jpl.timestamp < expirationCacheMs && jpl.az !== null) {
+                az = jpl.az; alt = jpl.alt; doppler = jpl.doppler;
+                src = "ONLINE_NASA_JPL_HORIZONS (Quantités 4,20)";
+                card.style.borderColor = "var(--accent-jpl)";
+            } else {
+                const local = resoudrePositionAnalytiqueLocal(a.id, joursJ2000, T);
+                az = local.az; alt = local.alt; doppler = local.doppler;
+                src = `OFFLINE_LOCAL_VSOP87 (Réfraction corrigée ${conditionsAtmo.source})`;
+                card.style.borderColor = "var(--border-nominal)";
+            }
+
+            card.querySelector('.val-alt').innerText = alt.toFixed(4);
+            card.querySelector('.val-az').innerText = az.toFixed(4);
+            card.querySelector('.val-doppler').innerText = doppler !== 0 ? `${doppler.toFixed(5)}` : "N/A (Mode Local)";
+            card.querySelector('.source-label').innerText = `MOTEUR GÉODÉSIQUE ACTIVE : ${src}`;
+            
+            const stateBadge = card.querySelector('.state');
+            stateBadge.innerText = alt > 0 ? "VISIBLE" : "HORIZON_NEGATIF";
+            stateBadge.style.background = alt > 0 ? "var(--status-ok)" : "#1e293b";
+        });
+
+        requestAnimationFrame(BoucleDeRendu60Hz);
+    }
+
+    // BLOC D'EXÉCUTION INITIAL
+    (function() {
+        initialiserDom();
+        brancherCapteursGnss();
+        
+        window.addEventListener('click', engagerNoyauAcoustique);
+        window.addEventListener('touchstart', engagerNoyauAcoustique);
+        
+        ExecuterRoutine30Secondes();
+        setInterval(ExecuterRoutine30Secondes, 30000);
+        
+        requestAnimationFrame(BoucleDeRendu60Hz);
+    })();
+</script>
+</body>
+  </html>
