@@ -374,4 +374,33 @@
     function ConstruireInterfaceGraphique() {
         const grid = document.getElementById('astro-grid');
         grid.innerHTML = '';
-        astres.forEach(a
+        astres.forEach(a => {
+            const card = document.createElement('div');
+            card.className = 'astro-card';
+            card.id = `astro-${a.id}`;
+            card.innerHTML = `
+                <div class="card-title"><span>${a.name}</span><span class="badge state" style="background:#1e293b">PARSING...</span></div>
+                <div style="font-size:16px; font-weight:bold; color:var(--accent-solar)">
+                    ALT: <span class="val-alt">--</span>° | AZI: <span class="val-az">--</span>°
+                </div>
+                <div style="margin-top:10px; font-size:11px; color:var(--text-muted)">
+                    V_RADIALE (DOPPLER BRUT HORIZONS) : <span class="val-doppler" style="color:var(--accent-jpl)">--</span> km/s
+                </div>
+                <div style="font-size:10px; color:var(--text-muted); margin-top:8px; border-top:1px dashed #141e2b; padding-top:6px;">MODÈLE : Matrice discrète interpolée seconde/seconde | Réfraction dynamique active</div>`;
+            grid.appendChild(card);
+        });
+    }
+
+    // Point d'entrée de l'application
+    (function() {
+        ConstruireInterfaceGraphique();
+        initCapteursS10e();
+        InitialiserToutesLesMatrices();
+        
+        // Rafraîchissement asynchrone discret de l'heure réseau toutes les minutes
+        setInterval(synchroniserBaseTempsRéseau, 60000);
+        requestAnimationFrame(LancerBoucleCinématiqueRendu);
+    })();
+</script>
+</body>
+</html>
