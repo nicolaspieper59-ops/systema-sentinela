@@ -1,1 +1,449 @@
- 
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>[SENTINELA v6.3] - Étalonnage Thermique & Double Noyau Réaligné</title>
+    <style>
+        :root { 
+            background: #030508;
+            --card-bg: #090d13;        
+            --border-nominal: #1c2430; 
+            --text-main: #f3f4f6;      
+            --text-muted: #6b7280;     
+            --accent-acoustique: #c084fc;    
+            --accent-neon: #38bdf8;    
+            --accent-solar: #fbbf24;
+            --status-ok: #4ade80;
+        }
+        body { background: #030508; color: var(--text-main); font-family: 'Consolas', monospace; padding: 24px; font-size: 13px; }
+        .header { border: 1px solid var(--border-nominal); border-radius: 6px; padding: 20px; margin-bottom: 24px; background: var(--card-bg); }
+        .hybrid-panel { background: #0f172a; border: 1px solid var(--border-nominal); border-radius: 6px; padding: 15px; margin-bottom: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .control-box { border-left: 3px solid var(--accent-neon); padding-left: 15px; }
+        .solar-matrix { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-top: 15px; border-top: 1px dashed var(--border-nominal); padding-top: 15px; }
+        .solar-tile { background: #0f141c; padding: 12px; border-radius: 4px; border: 1px solid #263143; }
+        .solar-tile span { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+        .solar-tile strong { font-size: 15px; color: var(--accent-solar); }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; }
+        .astro-container { border: 1px solid var(--border-nominal); border-radius: 6px; padding: 16px; background: var(--card-bg); transition: border-color 0.3s ease; }
+        .title { font-size: 14px; font-weight: bold; border-bottom: 2px solid var(--border-nominal); padding-bottom: 6px; margin-bottom: 12px; display: flex; justify-content: space-between; }
+        
+        /* Style du potentiomètre thermique */
+        .thermal-slider-container { margin-top: 10px; background: #131c2e; padding: 10px; border-radius: 4px; border: 1px solid #1e293b; }
+        .thermal-slider { width: 100%; accent-color: var(--accent-solar); cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <strong>[SYSTEMA SENTINELA v6.3 - THERMO-RÉGULATION ATMOSPHÉRIQUE MULTI-NOYAUX]</strong>
+    <span id="sync-status" style="font-size:11px; padding:4px 8px; border-radius:4px; margin-left:15px; border:1px solid #ef4444; color:#ef4444;">INITIALISATION_RESEAU</span>
+    
+    <div class="row-info" style="margin-top:10px; color:var(--text-muted)">COORDONNÉES RELEVÉES : <span id="gps-coordinates" style="color:var(--accent-solar)">Analyse de la matrice RF...</span></div>
+    <div class="row-info" style="color:var(--text-muted)">COUCHE HORLOGE : <span id="sample-counter" style="color:var(--accent-neon)">Attente interaction tactile (Requis par l'OS)...</span></div>
+    <div class="row-info" style="color:var(--text-muted)">MATRICE FLUX : <span id="weather-status" style="color:var(--accent-solar)">Interrogation atmosphérique automatique...</span></div>
+
+    <div class="hybrid-panel" style="margin-top:15px;">
+        <div class="control-box" style="border-left-color: var(--accent-acoustique);">
+            <span style="color:var(--accent-acoustique); font-weight:bold;">STATUT SYNC QUARTZ HARDWARE</span><br>
+            <span id="quartz-state" style="color:var(--text-muted); font-size:11px;">Touchez l'écran pour engager le résonateur audio de l'appareil.</span>
+        </div>
+        <div class="control-box" style="border-left-color: var(--status-ok);">
+            <span style="color:var(--status-ok); font-weight:bold;">PARAMÈTRES ATMOSPHÈRE EFFECTIVE</span><br>
+            <span id="weather-metrics" style="color:var(--text-muted); font-size:11px;">T°: -- | Pression: --</span>
+            
+            <div class="thermal-slider-container">
+                <span style="color:var(--text-main); font-size:10px; font-weight:bold;">Ajustement manuel de l'environnement réel :</span>
+                <input type="range" id="temp-slider" class="thermal-slider" min="-10" max="45" step="0.5" value="15">
+                <div style="display:flex; justify-content:space-between; font-size:9px; color:var(--accent-solar); margin-top:3px;">
+                    <span>-10°C</span>
+                    <span id="slider-val-display" style="font-weight:bold;">Manuel : 15.0°C</span>
+                    <span>45°C</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="solar-matrix">
+        <div class="solar-tile"><span>TIMESTAMP SÉCURISÉ (MS)</span><strong id="clock-unix-raw" style="color: var(--text-main);">0</strong></div>
+        <div class="solar-tile"><span>HEURE CIVIL UT1</span><strong id="clock-civil">--:--:--</strong></div>
+        <div class="solar-tile"><span>HEURE SOLAIRE VRAIE (LAT)</span><strong id="clock-lat" style="color: #f59e0b;">--:--:--</strong></div>
+        <div class="solar-tile"><span>RÉFRACTION DYNAMIQUE</span><strong id="val-refraction" style="color: var(--accent-acoustique);">-- °</strong></div>
+    </div>
+</div>
+
+<div id="planet-container" class="grid"></div>
+
+<script>
+    let LATITUDE = 43.284565;
+    let LONGITUDE = 5.358658; 
+    
+    let derniereLatValide = 43.284565;
+    let derniereLonValide = 5.358658;
+    const FACTEUR_LISSAGE = 0.15; 
+
+    const DELTA_T = 69.2; 
+    const epochJ2000UTC = 946727968000;
+    
+    let BASE_TEMPS_RESEAU_MS = Date.now(); 
+    let COMPTEUR_AUDIO_ORIGINE_SEC = 0;
+    let utilisationQuartzAudioPure = false;
+    let ctxAudio = null;
+
+    let meteoLocale = { temperature: 15.0, pression: 1013.25, source: "STANDARD_ISO" };
+    let capteurBarometriqueDisponible = false;
+    let calibrationThermiqueManuelleActive = false;
+
+    let cacheDonneesNasa = { "10": null, "301": null, dernierUpdate: 0 };
+
+    const targets = [
+        { id: "10", name: "SOLEIL" },
+        { id: "301", name: "LUNE (CORRIGÉE TOPOCENTRIQUE)" }
+    ];
+
+    const rev = (angle) => ((angle % 360) + 360) % 360;
+    const rad = (deg) => (deg * Math.PI) / 180;
+    const deg = (radian) => (radian * 180) / Math.PI;
+
+    const sliderTemp = document.getElementById('temp-slider');
+    const displaySliderVal = document.getElementById('slider-val-display');
+
+    sliderTemp.addEventListener('input', (e) => {
+        calibrationThermiqueManuelleActive = true;
+        meteoLocale.temperature = parseFloat(e.target.value);
+        meteoLocale.source = "CALIBRATION_MANUELLE_TERRAIN";
+        
+        displaySliderVal.innerText = `Manuel : ${meteoLocale.temperature.toFixed(1)}°C`;
+        displaySliderVal.style.color = "var(--status-ok)";
+        
+        document.getElementById('weather-status').innerText = `Régulation atmosphérique : ${meteoLocale.source}`;
+        document.getElementById('weather-metrics').innerText = `T°: ${meteoLocale.temperature.toFixed(1)}°C | Pression: ${meteoLocale.pression.toFixed(1)} hPa`;
+    });
+
+    function activerSuiviGpsDynamique() {
+        if ("geolocation" in navigator) {
+            navigator.geolocation.watchPosition(
+                (position) => {
+                    const latBrute = position.coords.latitude;
+                    const lonBrute = position.coords.longitude;
+                    const precisionOndesMetres = position.coords.accuracy || 10;
+
+                    if (precisionOndesMetres < 50) {
+                        LATITUDE = derniereLatValide + FACTEUR_LISSAGE * (latBrute - derniereLatValide);
+                        LONGITUDE = derniereLonValide + FACTEUR_LISSAGE * (lonBrute - derniereLonValide);
+                        
+                        derniereLatValide = LATITUDE;
+                        derniereLonValide = LONGITUDE;
+                        
+                        document.getElementById('gps-coordinates').innerText = 
+                            `${LATITUDE.toFixed(6)}° N / ${LONGITUDE.toFixed(6)}° E (FLUX STABILISÉ PAR MATRICE RF)`;
+                        document.getElementById('gps-coordinates').style.color = "var(--status-ok)";
+                    } else {
+                        document.getElementById('gps-coordinates').innerText = 
+                            `${LATITUDE.toFixed(6)}° N / ${LONGITUDE.toFixed(6)}° E (BLINDAGE ANTI-SAUT DIRECT ACTIF)`;
+                        document.getElementById('gps-coordinates').style.color = "var(--accent-acoustique)";
+                    }
+                },
+                (erreur) => {
+                    document.getElementById('gps-coordinates').innerText = 
+                        `${LATITUDE.toFixed(6)}° N / ${LONGITUDE.toFixed(6)}° E (REPLI RECHERCHE INTERNE)`;
+                    document.getElementById('gps-coordinates').style.color = "var(--accent-solar)";
+                },
+                { enableHighAccuracy: true, timeout: 4000, maximumAge: 1000 }
+            );
+        }
+    }
+
+    function activerCapteurPressionMateriel() {
+        if ('PressureSensor' in window) {
+            try {
+                const barometre = new PressureSensor({ frequency: 1 });
+                barometre.addEventListener('reading', () => {
+                    meteoLocale.pression = barometre.value / 100;
+                    capteurBarometriqueDisponible = true;
+                    if(meteoLocale.source !== "CALIBRATION_MANUELLE_TERRAIN") {
+                        meteoLocale.source = "CAPTEUR_BARO_PHYSIQUE + SAT_TEMP";
+                    }
+                    document.getElementById('weather-status').innerText = `Régulation atmosphérique : ${meteoLocale.source}`;
+                    document.getElementById('weather-metrics').innerText = `T°: ${meteoLocale.temperature.toFixed(1)}°C | Pression: ${meteoLocale.pression.toFixed(1)} hPa`;
+                });
+                barometre.start();
+            } catch (e) {
+                console.warn("Accès baromètre restreint.", e);
+            }
+        }
+    }
+
+    async function interrogerNasaJplHorizons(targetId) {
+        const maintenant = new Date();
+        const debutStr = maintenant.toISOString().replace('T', ' ').substring(0, 19);
+        const finStr = new Date(maintenant.getTime() + 60000).toISOString().replace('T', ' ').substring(0, 19);
+
+        const urlJpl = `https://ssd-api.jpl.nasa.gov/horizons.api?` +
+                       `format=json&` +
+                       `COMMAND='${targetId}'&` +
+                       `OBJ_DATA='NO'&` +
+                       `MAKE_EPHEM='YES'&` +
+                       `EPHEM_TYPE='OBSERVER'&` +
+                       `CENTER='coord@399'&` + 
+                       `SITE_COORD='${LONGITUDE.toFixed(6)},${LATITUDE.toFixed(6)},0.055'&` + 
+                       `START_TIME='${debutStr}'&` +
+                       `STOP_TIME='${finStr}'&` +
+                       `STEP_SIZE='1m'&` +
+                       `QUANTITIES='4'`;
+
+        try {
+            const reponse = await fetch(urlJpl);
+            const data = await reponse.json();
+            const lignes = data.result.split('\n');
+            let sectionDonnees = false;
+            
+            for (let ligne of lignes) {
+                if (ligne.startsWith('$$SOE')) { sectionDonnees = true; continue; }
+                if (ligne.startsWith('$$EOE')) { sectionDonnees = false; break; }
+                
+                if (sectionDonnees) {
+                    const colonnes = ligne.trim().split(/\s+/);
+                    return { az: parseFloat(colonnes[2]), alt: parseFloat(colonnes[3]) };
+                }
+            }
+        } catch (e) { return null; }
+        return null;
+    }
+
+    async function declencherAutoQuartz() {
+        if (utilisationQuartzAudioPure) return;
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            ctxAudio = new AudioContext();
+            if (ctxAudio.state === 'suspended') await ctxAudio.resume();
+
+            const oscillateurPilote = ctxAudio.createOscillator();
+            const controleGain = ctxAudio.createGain();
+            controleGain.gain.setValueAtTime(0.0, ctxAudio.currentTime); 
+            oscillateurPilote.connect(controleGain);
+            controleGain.connect(ctxAudio.destination);
+            oscillateurPilote.start(0);
+
+            COMPTEUR_AUDIO_ORIGINE_SEC = ctxAudio.currentTime;
+            BASE_TEMPS_RESEAU_MS = Date.now(); 
+            utilisationQuartzAudioPure = true;
+            
+            document.getElementById('quartz-state').innerText = "RÉSONATEUR MATÉRIEL ENGAGÉ. Dérive Android compensée.";
+            document.getElementById('quartz-state').style.color = "var(--status-ok)";
+        } catch (e) {}
+    }
+
+    async function executerRoutineSynchronisationAutomatique() {
+        try {
+            const reponse = await fetch(window.location.href, { method: 'HEAD', cache: 'no-store' });
+            const dateServeurStr = reponse.headers.get('Date');
+            if (dateServeurStr) {
+                BASE_TEMPS_RESEAU_MS = Date.parse(dateServeurStr);
+                if (ctxAudio) COMPTEUR_AUDIO_ORIGINE_SEC = ctxAudio.currentTime;
+                document.getElementById('sync-status').innerText = "ANCRE_TEMPS_OK";
+                document.getElementById('sync-status').style.color = "var(--status-ok)";
+            }
+        } catch (e) {
+            document.getElementById('sync-status').innerText = "REPLI_HORLOGE_AUTONOME";
+        }
+
+        if (!calibrationThermiqueManuelleActive) {
+            try {
+                const urlMeteo = `https://api.open-meteo.com/v1/forecast?latitude=${LATITUDE}&longitude=${LONGITUDE}&current=temperature_2m,surface_pressure`;
+                const reponseMeteo = await fetch(urlMeteo, { cache: 'no-store' });
+                const data = await reponseMeteo.json();
+                
+                meteoLocale.temperature = data.current.temperature_2m;
+                sliderTemp.value = meteoLocale.temperature;
+                displaySliderVal.innerText = `Réseau (OpenMeteo) : ${meteoLocale.temperature.toFixed(1)}°C`;
+                displaySliderVal.style.color = "var(--text-muted)";
+                
+                if (!capteurBarometriqueDisponible) {
+                    meteoLocale.pression = data.current.surface_pressure;
+                    meteoLocale.source = "FLUX_SATELLITE_REEL";
+                }
+            } catch (e) {
+                if (!capteurBarometriqueDisponible) {
+                    meteoLocale.temperature = 15.0; 
+                    meteoLocale.pression = 1013.25;
+                    meteoLocale.source = "MODE_REPLI_ATMOSPHÈRE";
+                }
+            }
+        }
+        
+        if (navigator.onLine) {
+            const dataSoleilNasa = await interrogerNasaJplHorizons("10");
+            const dataLuneNasa = await interrogerNasaJplHorizons("301");
+            if (dataSoleilNasa && dataLuneNasa) {
+                cacheDonneesNasa["10"] = dataSoleilNasa;
+                cacheDonneesNasa["301"] = dataLuneNasa;
+                cacheDonneesNasa.dernierUpdate = Date.now();
+            }
+        }
+        
+        document.getElementById('weather-status').innerText = `Régulation atmosphérique : ${meteoLocale.source}`;
+        document.getElementById('weather-metrics').innerText = `T°: ${meteoLocale.temperature.toFixed(1)}°C | Pression: ${meteoLocale.pression.toFixed(1)} hPa`;
+    }
+
+    function cycleRenduGraphique() {
+        let timestampCalculéMs = Date.now();
+        if (utilisationQuartzAudioPure && ctxAudio && ctxAudio.state === 'running') {
+            const deltaAudioSec = ctxAudio.currentTime - COMPTEUR_AUDIO_ORIGINE_SEC;
+            if (deltaAudioSec > 0) timestampCalculéMs = BASE_TEMPS_RESEAU_MS + (deltaAudioSec * 1000);
+            document.getElementById('sample-counter').innerText = `${ctxAudio.currentTime.toFixed(4)}s stables (Quartz Hardware)`;
+        } else {
+            document.getElementById('sample-counter').innerText = "Horloge Système Standard (Attente Écran Tactile)";
+        }
+        
+        document.getElementById('clock-unix-raw').innerText = Math.floor(timestampCalculéMs);
+        const secondesDepuisJ2000 = (timestampCalculéMs - epochJ2000UTC) / 1000.0;
+        calculerEtAfficherMetriques(secondesDepuisJ2000, timestampCalculéMs);
+        requestAnimationFrame(cycleRenduGraphique);
+    }
+
+    function calculerEtAfficherMetriques(secondesDepuisJ2000, timestampCalculéMs) {
+        const dateAcoustique = new Date(timestampCalculéMs);
+        const pad = (num) => String(Math.floor(num)).padStart(2, '0');
+        
+        document.getElementById('clock-civil').innerText = 
+            `${pad(dateAcoustique.getUTCHours())}:${pad(dateAcoustique.getUTCMinutes())}:${pad(dateAcoustique.getUTCSeconds())}`;
+
+        const lmtOffsetMs = LONGITUDE * 4 * 60 * 1000;
+        const lmtDate = new Date(dateAcoustique.getTime() + lmtOffsetMs);
+
+        const t_ut = secondesDepuisJ2000 / 86400.0;             
+        const t_tt = (secondesDepuisJ2000 + DELTA_T) / 86400.0;  
+        const T = t_tt / 36525.0;
+
+        const L0 = rev(280.46607 + 36000.7698 * T); 
+        const M = rad(rev(357.52911 + 35999.05029 * T)); 
+        const C = (1.914602 - 0.004817 * T) * Math.sin(M) + 0.019993 * Math.sin(2 * M);
+        const lambdaSoleil = rad(rev(L0 + C)); 
+
+        const y = Math.pow(Math.tan(rad(23.4392911 - 0.0130042 * T) / 2), 2);
+        const eotMinutes = (y * Math.sin(2 * rad(L0)) - 2 * 0.016708 * Math.sin(M) + 4 * 0.016708 * y * Math.sin(M) * Math.cos(2 * rad(L0))) * (720 / Math.PI);
+        const latDate = new Date(lmtDate.getTime() + (eotMinutes * 60 * 1000));
+        
+        document.getElementById('clock-lat').innerText = 
+            `${pad(latDate.getUTCHours())}:${pad(latDate.getUTCMinutes())}:${pad(latDate.getUTCSeconds())}`;
+
+        renouvelerAffichagePlanetes(t_ut, T, lambdaSoleil, M);
+    }
+
+    function extraireVecteursVSOP(targetId, t_ut, T, lambdaSoleil, anomalySoleil) {
+        const Omega = rad(rev(125.04452 - 1934.136261 * T)); 
+        const eps = rad(23.4392911 - (46.8150 * T / 3600.0) + 0.0026 * Math.cos(Omega)); 
+        
+        let lambda = 0, beta = 0;
+
+        if (targetId === "10") { 
+            lambda = lambdaSoleil; beta = 0.0; 
+        } else {
+            const L_prime = rev(218.316 + 481267.881 * T);     
+            const M_prime = rad(rev(134.963 + 477198.867 * T)); 
+            const F = rad(rev(93.272 + 483202.018 * T));       
+            const D = rad(rev(297.850 + 445267.111 * T));       
+            
+            lambda = rad(rev(L_prime 
+                + 6.289 * Math.sin(M_prime) 
+                - 1.274 * Math.sin(M_prime - 2 * D)
+                + 0.658 * Math.sin(2 * D)
+                + 0.214 * Math.sin(2 * M_prime)
+            ));
+            beta = rad(5.128 * Math.sin(F) + 0.280 * Math.sin(F + M_prime) + 0.277 * Math.sin(F - 2 * D));
+        }
+
+        const ra = Math.atan2(Math.cos(beta) * Math.sin(lambda) * Math.cos(eps) - Math.sin(beta) * Math.sin(eps), Math.cos(beta) * Math.cos(lambda));
+        const dec = Math.asin(Math.cos(beta) * Math.sin(lambda) * Math.sin(eps) + Math.sin(beta) * Math.cos(eps));
+        
+        const joursJ2000_Midi = t_ut - 0.5; 
+        const gmstDegres = rev(280.46061837 + 360.98564736629 * joursJ2000_Midi + 0.000387933 * T * T);
+        const lst = rad(rev(gmstDegres + LONGITUDE));
+        
+        const ha = lst - ra;
+
+        let alt = Math.asin(Math.sin(rad(LATITUDE)) * Math.sin(dec) + Math.cos(rad(LATITUDE)) * Math.cos(dec) * Math.cos(ha));
+        let az = rev(deg(Math.atan2(-Math.sin(ha), Math.tan(dec) * Math.cos(rad(LATITUDE)) - Math.sin(rad(LATITUDE)) * Math.cos(ha))));
+
+        let altDeg = deg(alt);
+
+        if (targetId === "301") {
+            altDeg -= deg(rad(0.9507) * Math.cos(alt));
+        }
+
+        if (altDeg > -2.0) {
+            let refractionStandard = (1.02 / Math.tan(rad(Math.max(altDeg, 0.0) + (10.3 / (Math.max(altDeg, 0.0) + 5.11))))) / 60.0;
+            let correctionBarometrique = (meteoLocale.pression / 1013.25) * (283.15 / (273.15 + meteoLocale.temperature));
+            let refractionCorrigee = refractionStandard * correctionBarometrique;
+            altDeg += refractionCorrigee;
+
+            if (targetId === "10") {
+                document.getElementById('val-refraction').innerText = `+${refractionCorrigee.toFixed(4)}°`;
+            }
+        }
+
+        return { az: az, alt: altDeg };
+    }
+
+    function initialiserComposants() {
+        const container = document.getElementById('planet-container');
+        container.innerHTML = '';
+        targets.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'astro-container'; div.id = `target-${t.id}`;
+            div.innerHTML = `<div class="title"><span class="name">[ ${t.name} ]</span><span class="status">INITIALISATION</span></div><div class="metrics">ALTITUDE: -- | AZIMUT: --</div>`;
+            container.appendChild(div);
+        });
+    }
+
+    function renouvelerAffichagePlanetes(t_ut, T, lambdaSoleil, anomalySoleil) {
+        const expirationCacheNasa = 45000; 
+        const maintenant = Date.now();
+        const jplValide = (maintenant - cacheDonneesNasa.dernierUpdate < expirationCacheNasa);
+
+        targets.forEach(target => {
+            const element = document.getElementById(`target-${target.id}`);
+            if (!element) return;
+            
+            let sourceLabel = "";
+            let finalAz = 0; let finalAlt = 0;
+
+            if (navigator.onLine && jplValide && cacheDonneesNasa[target.id]) {
+                finalAz = cacheDonneesNasa[target.id].az;
+                finalAlt = cacheDonneesNasa[target.id].alt;
+                sourceLabel = "ONLINE_NASA_JPL_HORIZONS";
+                element.style.borderColor = "var(--accent-neon)";
+            } else {
+                const donneesLocales = extraireVecteursVSOP(target.id, t_ut, T, lambdaSoleil, anomalySoleil);
+                finalAz = donneesLocales.az;
+                finalAlt = donneesLocales.alt;
+                sourceLabel = `OFFLINE_LOCAL_VSOP (${meteoLocale.source})`;
+                element.style.borderColor = "var(--border-nominal)";
+            }
+
+            element.querySelector('.title .status').innerText = finalAlt > 0 ? "AXE VISIBLE" : "SOUS HORIZON";
+            element.querySelector('.title .status').style.color = finalAlt > 0 ? "var(--status-ok)" : "var(--text-muted)";
+            element.querySelector('.metrics').innerHTML = 
+                `ALTITUDE: <strong style="color:var(--accent-solar)">${finalAlt.toFixed(4)}°</strong> | ` +
+                `AZIMUT: <strong>${finalAz.toFixed(4)}°</strong><br>` +
+                `<span style="font-size:10px; color:var(--text-muted); display:block; margin-top:5px;">MOTEUR GÉODÉSIQUE : ${sourceLabel}</span>`;
+        });
+    }
+
+    (function() {
+        initialiserComposants();
+        activerSuiviGpsDynamique();
+        activerCapteurPressionMateriel();
+        
+        requestAnimationFrame(cycleRenduGraphique);
+        
+        window.addEventListener('click', declencherAutoQuartz);
+        window.addEventListener('touchstart', declencherAutoQuartz);
+        
+        executerRoutineSynchronisationAutomatique();
+        setInterval(executerRoutineSynchronisationAutomatique, 30000);
+    })();
+</script>
+</body>
+     </html> 
