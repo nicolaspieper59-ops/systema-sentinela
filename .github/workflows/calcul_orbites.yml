@@ -35,19 +35,15 @@ jobs:
       - name: Installation des dépendances Astronomiques
         run: pip install requests skyfield
 
-      # Utilisation du miroir officiel de l'UAI pour garantir un téléchargement propre en moins de 3 secondes
       - name: Pré-chargement du Noyau Ephémérides JPL (DE421)
         run: |
           curl -sL "https://github.com/skyfielders/python-skyfield/raw/master/ci/de421.bsp" -o de421.bsp
           ls -lh de421.bsp
 
-      - name: Calcul des éphémérides (Execution Script)
-        run: python calculer_orbites.py
-
-      - name: Preparation du deploiement
+      - name: Preparation du deploiement Web-UHF
         run: |
           mkdir _site
-          rsync -av --exclude='.git*' --exclude='_site' --exclude='de421.bsp' ./ _site/
+          rsync -av --exclude='.git*' --exclude='_site' ./ _site/
 
       - name: Configurer l'artefact Pages
         uses: actions/upload-pages-artifact@v3
