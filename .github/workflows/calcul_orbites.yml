@@ -1,55 +1,55 @@
-name: SENTINELA - RECONSTRUCTION FORCEE
+name: SENTINELA HARD-REALTIME - Matrix Engine
 
 on:
   schedule:
-    - cron: '5 * * * *'
-  workflow_dispatch:
+    # Déclenchement automatique toutes les heures (MM HH * * *)
+    - cron: '0 * * * *'
+  workflow_dispatch: # Permet de forcer le calcul manuellement depuis l'interface GitHub
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  contents: write # Autorisation cruciale pour permettre au robot de pousser la matrice sur le dépôt
 
 jobs:
-  build:
+  build-and-matrix:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
-      - name: Code Checkout
-        uses: actions/checkout@v4
+    - name: 1. Extraction du code source (Checkout)
+      uses: actions/checkout@v4
 
-      - name: Configuration de l'environnement Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+    - name: 2. Initialisation de l'environnement Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
 
-      - name: Installation des dépendances Astronomiques
-        run: pip install requests skyfield
+    - name: 3. Installation des dépendances astronomiques
+      run: |
+        python -m pip install --upgrade pip
+        pip install skyfield numpy requests
 
-      - name: Pré-chargement du Noyau Ephémérides JPL (DE421)
-        run: |
-          curl -sL "https://github.com/skyfielders/python-skyfield/raw/master/ci/de421.bsp" -o de421.bsp
-          ls -lh de421.bsp
+    - name: 4. Téléchargement du modèle de calcul éphémérides (JPL DE421)
+      run: |
+        # Télécharge le fichier BSP de la NASA s'il n'est pas déjà présent dans le dépôt
+        if [ ! -f de421.bsp ]; then
+          curl -O https://cdn.rawgit.com/skyfielders/astronomy-notebooks/master/de421.bsp
+        fi
 
-      - name: Preparation du deploiement Web-UHF
-        run: |
-          mkdir _site
-          rsync -av --exclude='.git*' --exclude='_site' ./ _site/
+    - name: 5. Exécution du Moteur Orbital Calculer_Orbites
+      run: |
+        python calculer_orbites.py
 
-      - name: Configurer l'artefact Pages
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: './_site'
-
-      - name: Déploiement Flash GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+    - name: 6. Déploiement et Push de la matrice mise à jour sur GitHub Pages
+      run: |
+        git config --global user.name "Sentinela Core Bot"
+        git config --global user.email "sentinela-bot@github.com"
+        
+        # Vérifie si la matrice brute ou les fichiers JSON ont changé
+        git add matrice_jpl_brute.csv flux_live.json orbites.json
+        
+        if git diff --staged --quiet; then
+          echo "Aucune dérive orbitale détectée. Matrice inchangée."
+        else
+          git commit -m "SENTINELA : Régénération de la matrice 5D [Automatique Cloud]"
+          git push
+        fi
