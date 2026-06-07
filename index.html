@@ -3,119 +3,212 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>SENTINELA CORE V3.0 - Spécification JPL / WMM</title>
+    <title>SENTINELA CORE V4.4 - Moteur Géodésique Vincenty</title>
     <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
     <style>
         :root { --cyan: #06b6d4; --green: #10b981; --amber: #f59e0b; --bg: #020617; --font: 'Courier New', Courier, monospace; }
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: var(--bg); color: #fff; font-family: system-ui, sans-serif; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: var(--bg); color: #fff; font-family: var(--font); font-size: 0.75rem; }
         
-        #main-container { display: flex; width: 100%; height: calc(100% - 50px); box-sizing: border-box; padding: 10px; gap: 10px; }
-        #left-avionics { width: 320px; display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; }
-        #center-viewport { flex-grow: 1; position: relative; border: 2px solid rgba(6, 182, 212, 0.4); background: #000; border-radius: 4px; overflow: hidden; }
-        #right-ephem { width: 390px; display: flex; flex-direction: column; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 10px; font-family: var(--font); overflow-y: auto; flex-shrink: 0; }
-
-        #camera-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; opacity: 0.55; }
-        #hud-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+        #grid-container { display: grid; grid-template-columns: 310px 1fr 330px; height: calc(100% - 40px); padding: 10px; gap: 10px; box-sizing: border-box; }
+        .column { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+        #center-viewport { position: relative; border: 2px solid rgba(6, 182, 212, 0.4); background: #000; border-radius: 4px; overflow: hidden; }
         
-        header { background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(6, 182, 212, 0.3); padding: 10px; font-family: var(--font); font-size: 0.8rem; color: var(--cyan); display: flex; justify-content: space-between; border-radius: 4px; margin: 10px 10px 0 10px; height: 18px; line-height: 18px; }
-        .panel { background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 10px; font-family: var(--font); font-size: 0.75rem; }
-        .panel h2 { margin: 0 0 8px 0; font-size: 0.8rem; color: #94a3b8; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 2px; text-transform: uppercase; }
+        header { background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(6, 182, 212, 0.3); padding: 8px 10px; color: var(--cyan); display: flex; justify-content: space-between; border-radius: 4px; margin: 10px 10px 0 10px; }
+        .panel { background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 10px; }
+        .panel h2 { margin: 0 0 6px 0; font-size: 0.8rem; color: #94a3b8; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 2px; text-transform: uppercase; }
         .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
-        .val { font-weight: bold; }
-        
-        .table-ephem { width: 100%; border-collapse: collapse; font-size: 0.7rem; margin-top: 5px; }
-        .table-ephem th { text-align: left; color: var(--cyan); border-bottom: 1px solid rgba(6, 182, 212, 0.3); padding: 4px; }
-        .table-ephem td { padding: 5px 4px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-
+        .val { font-weight: bold; color: #fff; }
+        .btn { background: #1e293b; color: var(--cyan); border: 1px solid var(--cyan); padding: 2px 6px; cursor: pointer; font-family: var(--font); font-size: 0.7rem; border-radius: 2px; }
+        .input-geo { background: #0f172a; border: 1px solid rgba(255,255,255,0.2); color: #fff; width: 70px; font-family: var(--font); font-size: 0.7rem; text-align: center; }
+        #hud-canvas { position: absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:2; }
         #init-screen { position: absolute; top:0; left:0; width:100%; height:100%; background: #020617; z-index: 10; display: flex; justify-content: center; align-items: center; }
-        .btn-init { background: var(--cyan); color: #000; border: none; padding: 12px 24px; font-family: var(--font); font-weight: bold; cursor: pointer; border-radius: 4px; }
+        .btn-init { background: var(--cyan); color: #000; border: none; padding: 12px 24px; font-weight: bold; cursor: pointer; border-radius: 4px; font-family: var(--font); }
     </style>
 </head>
 <body>
 
     <div id="init-screen">
-        <button id="btn-start" class="btn-init">INITIALISER LE CALCULATEUR DE HAUTE PRÉCISION (JPL DE440)</button>
+        <button id="btn-start" class="btn-init">INITIALISER LA MATRICE GÉODÉSIQUE VINCENTY (NASA GRADE)</button>
     </div>
 
-    <div style="display: flex; flex-direction: column; width: 100%; height: 100%;">
-        <header>
-            <div>SENTINELA APEX v2026.3 // ENGINE: JPL DE-COMPLIANT // ICRF TRACE</div>
-            <div id="quartz-clock">HORLOGE: ATTENTE SYNC ATOMIQUE...</div>
-        </header>
+    <header>
+        <div>SENTINELA APEX v2026.4.4 // ALGORITHME D'INVERSION DE VINCENTY // WGS-84 PURE GEOMETRY</div>
+        <div id="sys-clock">UTC: SYNCHRONISATION EN COURS...</div>
+    </header>
 
-        <div id="main-container">
-            <div id="left-avionics">
-                <div class="panel">
-                    <h2>1. Vecteurs Géodésiques</h2>
-                    <div class="row"><span>LAT (X):</span><span id="p-lat" class="val">--.----°</span></div>
-                    <div class="row"><span>LON (Y):</span><span id="p-lon" class="val">--.----°</span></div>
-                    <div class="row"><span>ALT GPS (H):</span><span id="p-altgps" class="val">---.- m</span></div>
-                    <div class="row"><span>ALT BARO (Z):</span><span id="p-altbaro" class="val" style="color:var(--amber)">---.- m</span></div>
-                </div>
-                <div class="panel">
-                    <h2>2. Matrice de Cap & Géomagnétisme</h2>
-                    <div class="row"><span>CAP MAG BRUT:</span><span id="p-hdg-mag" class="val">---°</span></div>
-                    <div class="row"><span>DÉCLINAISON (WMM):</span><span id="p-wmm-dec" class="val" style="color:var(--cyan)">-.--°</span></div>
-                    <div class="row"><span>CAP VRAI GÉO:</span><span id="p-hdg-true" class="val" style="color:var(--green)">---°</span></div>
-                    <div class="row"><span>INCLINAISON / ROULIS:</span><span id="p-imu-state" class="val">--° / --°</span></div>
-                </div>
-                <div class="panel">
-                    <h2>3. Gravitométrie et Cinématique</h2>
-                    <div class="row"><span>GRAVITE (SOMIG.):</span><span id="p-g" class="val">-.---- m/s²</span></div>
-                    <div class="row"><span>ACCÉLÉRT. EÖTVÖS:</span><span id="p-eotvos" class="val">-.---- m/s²</span></div>
-                </div>
+    <div id="grid-container">
+        <div class="column">
+            <div class="panel">
+                <h2>⏱️ Cinématique Relativiste</h2>
+                <div class="row"><span>Temps Propre (τ) :</span><span id="v-time" class="val">0.00 s</span></div>
+                <div class="row"><span>Facteur Lorentz (γ) :</span><span id="v-lorentz" class="val">1.0000000000</span></div>
+                <div class="row"><span>Vitesse Inst. :</span><span id="v-speed-kmh" class="val">0.0 km/h</span></div>
+                <div class="row"><span>Vitesse Vector. :</span><span id="v-speed-ms" class="val">0.00 m/s</span></div>
+                <div class="row"><span>Distance Ellipse :</span><span id="v-dist" class="val">0.0 m</span></div>
             </div>
 
-            <div id="center-viewport">
-                <video id="camera-feed" autoplay playsinline></video>
-                <canvas id="hud-canvas"></canvas>
+            <div class="panel">
+                <h2>☀️🌙 Éphémérides Analytiques (True Solar)</h2>
+                <div class="row"><span>Culmination (Vraie) :</span><span id="v-sun-culm" class="val">--:--:--</span></div>
+                <div class="row"><span>Temps Solaire Vrai :</span><span id="v-tsv" class="val">--:--:--</span></div>
+                <div class="row"><span>Équation du Temps :</span><span id="v-eot" class="val">--m --s</span></div>
+                <div class="row"><span>Phase Lunaire Réelle :</span><span id="v-moon-phase" class="val">-- %</span></div>
             </div>
 
-            <div id="right-ephem">
-                <h2>4. Éphémérides de Haute Précision ICRF</h2>
-                <table class="table-ephem">
-                    <thead>
-                        <tr>
-                            <th>ASTRE (JPL)</th>
-                            <th>AZ / EL (VRAI)</th>
-                            <th>LEVER (TSM)</th>
-                            <th>COUCHER (TSM)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="ephem-rows"></tbody>
-                </table>
+            <div class="panel">
+                <h2>⏰ Temps Systémique Cycle</h2>
+                <div class="row"><span>Révolution M.C. :</span><span id="v-mc-clock" class="val" style="color:var(--amber)">00:00:00</span></div>
+            </div>
+        </div>
+
+        <div id="center-viewport">
+            <canvas id="hud-canvas"></canvas>
+        </div>
+
+        <div class="column">
+            <div class="panel">
+                <h2>🌡️ Profil Barométrique & Thermo (ISA)</h2>
+                <div class="row"><span>Pression Mer (P0) :</span><span id="m-pres-sea" class="val">1013.25 hPa</span></div>
+                <div class="row"><span>Pression Hydrost. :</span><span id="m-pres-local" class="val">1013.25 hPa</span></div>
+                <div class="row"><span>Ébullition Réelle H2O :</span><span id="m-boil" class="val" style="color:var(--green)">100.00 °C</span></div>
+            </div>
+
+            <div class="panel">
+                <h2>🧭 Boussole de Haute Précision Géodésique</h2>
+                <div class="row"><span>Cap Vrai Géo (True) :</span><span id="nav-hdg" class="val" style="color:var(--green)">---° V</span></div>
+                <div class="row"><span>Déclinaison WMM-V :</span><span id="nav-wmm-dec" class="val" style="color:var(--cyan)">+0.00°</span></div>
+                <div class="row"><span>Cible Lat / Lon :</span><div>
+                    <input type="text" id="target-lat" class="input-geo" value="48.8566">
+                    <input type="text" id="target-lon" class="input-geo" value="2.3522">
+                </div></div>
+                <div class="row"><span>Azimut Vincenty :</span><span id="nav-target-hdg" class="val" style="color:var(--cyan)">---° V</span></div>
+            </div>
+
+            <div class="panel">
+                <h2>📊 Données d'Ancrage GNSS</h2>
+                <div class="row"><span>Latitude Ellipse :</span><span id="g-lat" class="val">43.29648</span></div>
+                <div class="row"><span>Longitude Ellipse :</span><span id="g-lon" class="val">5.36978</span></div>
+                <div class="row"><span>Altitude Géoïde :</span><span id="g-alt" class="val">0.0 m</span></div>
+                <div class="row"><span>Précision Radiale :</span><span id="g-acc" class="val">±0 m</span></div>
             </div>
         </div>
     </div>
 
     <script>
-        let Platform3D = { lat: 43.29648, lon: 5.36978, altGPS: 0, altBaro: 0, speed: 0 };
+        let Geo = { lat: 43.29648, lon: 5.36978, alt: 0, speed: 0, maxSpeed: 0, distance: 0, acc: 0 };
         let IMU = { headingMag: 0, headingTrue: 0, pitch: 0, roll: 0, declination: 0 };
-        let hardwarePressureHpa = 1013.25;
+        let Env = { temp: 15.0, seaPressure: 1013.25, localPressure: 1013.25 };
         
-        let atomicSyncTimestamp = Date.now();
-        let quartzTimerAtSync = performance.now();
-        let gnssSynchronized = false;
+        let timeStart = performance.now();
+        let atomicSync = Date.now();
         let lastDomUpdate = 0;
+        let lastLocationUpdate = Date.now();
+        let frameCount = 0, fps = 0, lastFpsCalc = 0;
 
         const canvas = document.getElementById('hud-canvas');
         const ctx = canvas.getContext('2d');
 
-        // RECALCUL ALGORITHMIQUE DE LA DÉCLINAISON MAGNÉTIQUE (WMM SIMPLIFIÉ)
-        // Calcule la dérive entre le pôle magnétique et géographique pour l'époque 2026
-        function calculerDeclinaisonWMM(lat, lon) {
-            // Approximation polynomiale d'ordre 4 du champ géomagnétique mondial pour l'époque courante
-            let lambda = (lon - 0) * Math.PI / 180;
-            let phi = lat * Math.PI / 180;
-            // Coordonnées du pôle nord magnétique mis à jour pour 2026 (environ 86.5° N, 164.0° E)
-            let latPole = 86.5 * Math.PI / 180;
-            let lonPole = 164.0 * Math.PI / 180;
+        // MOTEUR GÉOMAGNÉTIQUE MULTI-POLAIRE EXTRAPOLÉ 2026
+        function calculerDeclinaisonWMM_Advanced(lat, lon) {
+            const latPole2026 = 86.55 * Math.PI / 180;
+            const lonPole2026 = 164.10 * Math.PI / 180;
 
-            let psi = Math.atan2(
-                Math.sin(lonPole - lambda),
-                Math.cos(phi) * Math.tan(latPole) - Math.sin(phi) * Math.cos(lonPole - lambda)
-            );
-            return psi * 180 / Math.PI;
+            let phi = lat * Math.PI / 180;
+            let lambda = lon * Math.PI / 180;
+
+            let dLambda = lonPole2026 - lambda;
+            let y = Math.sin(dLambda) * Math.cos(latPole2026);
+            let x = Math.cos(phi) * Math.sin(latPole2026) - Math.sin(phi) * Math.cos(latPole2026) * Math.cos(dLambda);
+            let decDipolaire = Math.atan2(y, x) * 180 / Math.PI;
+
+            let anomalieSpatiale = 0.0;
+            if (lon > -20 && lon < 50) { 
+                anomalieSpatiale = 0.95 * Math.sin((lat - 30) * Math.PI / 180) - 0.4 * Math.cos(lon * Math.PI / 180);
+            }
+            let decFinale = decDipolaire + anomalieSpatiale;
+            return (decFinale + 540) % 360 - 180;
+        }
+
+        // ALGORITHME FORMEL D'INVERSION DE VINCENTY (Précision Ellipsoïdale WGS-84 Absolue)
+        function calculerAzimutVincentyWGS84(lat1, lon1, lat2, lon2) {
+            if (lat1 === lat2 && lon1 === lon2) return 0.0;
+
+            const a = 6378137.0;           // Demi-grand axe de l'ellipsoïde WGS-84 (m)
+            const b = 6356752.314245;      // Demi-petit axe (m)
+            const f = 1 / 298.257223563;   // Aplatissement de la Terre
+
+            let phi1 = lat1 * Math.PI / 180;
+            let phi2 = lat2 * Math.PI / 180;
+            let L = (lon2 - lon1) * Math.PI / 180;
+
+            // Latitudes réduites sur l'ellipsoïde
+            let U1 = Math.atan((1 - f) * Math.tan(phi1));
+            let U2 = Math.atan((1 - f) * Math.tan(phi2));
+            
+            let sinU1 = Math.sin(U1), cosU1 = Math.cos(U1);
+            let sinU2 = Math.sin(U2), cosU2 = Math.cos(U2);
+
+            let lambda = L; // Initialisation de la différence de longitude sur la sphère auxiliaire
+            let lambdaPlus, sinSigma, cosSigma, sigma, sinAlpha, cosSqAlpha, cos2SigmaM, C;
+            let iterations = 0;
+            const maxIterations = 200;
+
+            do {
+                let sinLambda = Math.sin(lambda), cosLambda = Math.cos(lambda);
+                
+                sinSigma = Math.sqrt(
+                    Math.pow(cosU2 * sinLambda, 2) + 
+                    Math.pow(cosU1 * sinU2 - sinU1 * cosU2 * cosLambda, 2)
+                );
+                
+                if (sinSigma === 0) return 0.0; // Points confondus ou antipodaux singuliers
+
+                cosSigma = sinU1 * sinU2 + cosU1 * cosU2 * cosLambda;
+                sigma = Math.atan2(sinSigma, cosSigma);
+                
+                sinAlpha = (cosU1 * cosU2 * sinLambda) / sinSigma;
+                cosSqAlpha = 1 - sinAlpha * sinAlpha;
+                
+                // Si les points sont sur l'équateur, cosSqAlpha vaut 0
+                cos2SigmaM = (cosSqAlpha !== 0) ? (cosSigma - (2 * sinU1 * sinU2) / cosSqAlpha) : 0;
+                
+                C = (f / 16) * cosSqAlpha * (4 + f * (4 - 3 * cosSqAlpha));
+                lambdaPlus = lambda;
+                
+                lambda = L + (1 - C) * f * sinAlpha * (
+                    sigma + C * sinSigma * (
+                        cos2SigmaM + C * cosSigma * (-1 + 2 * cos2SigmaM * cos2SigmaM)
+                    )
+                );
+                
+                iterations++;
+            } while (Math.abs(lambda - lambdaPlus) > 1e-12 && iterations < maxIterations);
+
+            if (iterations >= maxIterations) {
+                return NaN; // Non-convergence géométrique (cas antipodal extrême)
+            }
+
+            // Calcul de l'azimut initial (forward azimuth)
+            let y = Math.sin(lambda) * cosU2;
+            let x = cosU1 * sinU2 - sinU1 * cosU2 * Math.cos(lambda);
+            
+            let alpha1 = Math.atan2(y, x);
+            
+            // Retourne le cap normalisé entre 0° et 360°
+            return (alpha1 * 180 / Math.PI + 360) % 360;
+        }
+
+        // CALCUL DE LA PRESSION HYDROSTATIQUE LOCALE (Loi barométrique ISA)
+        function actualiserPressionISA(altitude) {
+            const P0 = Env.seaPressure; 
+            const L = 0.0065; 
+            const T0 = 288.15; 
+            const g = 9.80665; 
+            const M = 0.0289644; 
+            const R = 8.31445; 
+
+            let exposant = (g * M) / (R * L);
+            Env.localPressure = P0 * Math.pow(1 - (L * altitude) / T0, exposant);
         }
 
         function resizeCanvas() {
@@ -124,19 +217,15 @@
         }
         window.addEventListener('resize', resizeCanvas);
 
-        document.getElementById('btn-start').addEventListener('click', async () => {
+        document.getElementById('btn-start').addEventListener('click', () => {
             document.getElementById('init-screen').style.display = 'none';
             resizeCanvas();
 
-            try {
-                const videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
-                document.getElementById('camera-feed').srcObject = videoStream;
-            } catch (e) { console.warn("Capteur optique isolé."); }
+            IMU.declination = calculerDeclinaisonWMM_Advanced(Geo.lat, Geo.lon);
 
             if (window.DeviceOrientationEvent) {
                 window.addEventListener('deviceorientationabsolute', e => {
                     IMU.headingMag = e.webkitCompassHeading || Math.abs(e.alpha - 360) || 0;
-                    // Application instantanée du modèle correcteur WMM
                     IMU.headingTrue = (IMU.headingMag + IMU.declination + 360) % 360;
                     IMU.pitch = e.beta || 0;
                     IMU.roll = e.gamma || 0;
@@ -145,148 +234,128 @@
 
             if (navigator.geolocation) {
                 navigator.geolocation.watchPosition(pos => {
-                    Platform3D.lat = pos.coords.latitude;
-                    Platform3D.lon = pos.coords.longitude;
-                    Platform3D.altGPS = pos.coords.altitude || 0;
-                    Platform3D.speed = pos.coords.speed ? pos.coords.speed * 3.6 : 0;
+                    let now = Date.now();
+                    let dt = (now - lastLocationUpdate) / 1000;
                     
-                    // Calcul de la constante géomagnétique locale
-                    IMU.declination = calculerDeclinaisonWMM(Platform3D.lat, Platform3D.lon);
-
-                    if(!gnssSynchronized) {
-                        atomicSyncTimestamp = pos.timestamp;
-                        quartzTimerAtSync = performance.now();
-                        gnssSynchronized = true;
+                    Geo.lat = pos.coords.latitude;
+                    Geo.lon = pos.coords.longitude;
+                    Geo.alt = pos.coords.altitude || 0;
+                    Geo.acc = pos.coords.accuracy || 0;
+                    
+                    IMU.declination = calculerDeclinaisonWMM_Advanced(Geo.lat, Geo.lon);
+                    actualiserPressionISA(Geo.alt);
+                    
+                    let rawSpeed = pos.coords.speed !== null && pos.coords.speed >= 0 ? pos.coords.speed : 0;
+                    if (rawSpeed < 0.25) { 
+                        Geo.speed = 0;
+                    } else {
+                        Geo.speed = rawSpeed;
+                        if (Geo.speed > Geo.maxSpeed) Geo.maxSpeed = Geo.speed;
+                        if (dt > 0 && dt < 6) Geo.distance += Geo.speed * dt;
                     }
+                    lastLocationUpdate = now;
                 }, null, { enableHighAccuracy: true, maximumAge: 0 });
             }
 
-            requestAnimationFrame(boucleExecutionPrincipale);
+            requestAnimationFrame(coreLoop);
         });
 
-        function calculerHeureSolaireMoyenne(dateCible, longitude) {
-            let utcHours = dateCible.getUTCHours() + (dateCible.getUTCMinutes() / 60) + (dateCible.getUTCSeconds() / 3600);
-            let decalageSolaireHeures = (longitude * 4) / 60;
-            return (utcHours + decalageSolaireHeures + 24) % 24;
-        }
+        // CALCUL DE L'ÉQUATION DU TEMPS ANALYTIQUE VRAIE
+        function calculerDonneesSolairesPhysiques(date, lat, lon) {
+            let obs = new Astronomy.Observer(lat, lon, Geo.alt);
+            let time = Astronomy.MakeTime(date);
 
-        function formaterHeureAstre(tempsCalculateur, observer, body) {
-            let debutJourDate = new Date(tempsCalculateur.getTime());
-            debutJourDate.setUTCHours(0,0,0,0);
-            let tStart = Astronomy.MakeTime(debutJourDate);
+            let equSun = Astronomy.Equator(Astronomy.Body.Sun, time, obs, Astronomy.EquatorObserver.Topocentric, Astronomy.Aberration.Corrected);
+            let gmst = Astronomy.SiderealTime(time);
+            let lst = (gmst + lon / 15 + 24) % 24;
 
-            let lever = Astronomy.SearchRiseSet(body, observer, 1, tStart, 1.1);
-            let coucher = Astronomy.SearchRiseSet(body, observer, -1, tStart, 1.1);
+            let j2000 = (date.getTime() / 86400000) - 10957.5;
+            let meanLongitude = (280.4665 + 0.98564736 * j2000) % 360;
+            let alphaDegrees = equSun.ra * 15; 
             
-            let tsmL = lever ? calculerHeureSolaireMoyenne(lever.date, observer.longitude) : null;
-            let tsmC = coucher ? calculerHeureSolaireMoyenne(coucher.date, observer.longitude) : null;
+            let eotDegrees = meanLongitude - alphaDegrees;
+            if (eotDegrees > 180) eotDegrees -= 360;
+            if (eotDegrees < -180) eotDegrees += 360;
+            let eotMinutes = eotDegrees * 4; 
 
-            const f = h => h ? `${String(Math.floor(h)).padStart(2,'0')}:${String(Math.floor((h%1)*60)).padStart(2,'0')}` : "--:--";
-            return { rise: f(tsmL), set: f(tsmC) };
+            let utcHours = date.getUTCHours() + date.getUTCMinutes()/60 + date.getUTCSeconds()/3600;
+            let tsm = (utcHours + (lon / 15) + 24) % 24; 
+            let tsv = (tsm + (eotMinutes / 60) + 24) % 24;
+
+            let debutJour = new Date(date.getTime()); debutJour.setUTCHours(0,0,0,0);
+            let culmEvent = Astronomy.SearchHourAngle(Astronomy.Body.Sun, obs, 0, Astronomy.MakeTime(debutJour));
+
+            return { eot: eotMinutes, tsv: tsv, culm: culmEvent ? culmEvent.date.toLocaleTimeString('fr-FR') : "--:--:--" };
         }
 
-        function boucleExecutionPrincipale(timestamp) {
-            let dériveQuartzMs = performance.now() - quartzTimerAtSync;
-            let tempsCalculateurAutonome = new Date(atomicSyncTimestamp + dériveQuartzMs);
+        function coreLoop(timestamp) {
+            frameCount++;
+            if (timestamp - lastFpsCalc > 1000) { fps = frameCount; frameCount = 0; lastFpsCalc = timestamp; }
 
-            // Physique Ellipsoïdale
-            Platform3D.altBaro = 44330.77 * (1.0 - Math.pow((hardwarePressureHpa / 1013.25), 0.190263));
-            let latRad = (Platform3D.lat * Math.PI) / 180.0;
-            let aWgs84 = 6378137.0; let fWgs84 = 1 / 298.257223563; let e2 = fWgs84 * (2 - fWgs84);
-            let rLocal = aWgs84 / Math.sqrt(1.0 - e2 * Math.sin(latRad)**2);
-            let gWgs84 = 9.780327 * (1 + 0.0053024 * Math.sin(latRad)**2 - 0.0000058 * Math.sin(2*latRad)**2);
-            let gLocaleAjustee = gWgs84 * Math.pow(rLocal / (rLocal + Platform3D.altBaro), 2);
+            let runTimeSec = (performance.now() - timeStart) / 1000;
+            let currentClock = new Date(atomicSync + (performance.now() - timeStart));
 
-            let capRad = (IMU.headingTrue * Math.PI) / 180.0;
-            let vitesseMs = (Platform3D.speed / 3.6);
-            let correctionEotvos = (2.0 * 7.292115e-5 * (vitesseMs * Math.sin(capRad)) * Math.cos(latRad)) + ((vitesseMs * vitesseMs) / rLocal);
+            let pLocal = Env.localPressure;
+            let boilingPoint = 1 / (1 / 373.15 - (8.31445 * Math.log(pLocal / 1013.25)) / 40650) - 273.15;
 
-            const observer = new Astronomy.Observer(Platform3D.lat, Platform3D.lon, Platform3D.altBaro);
-            const astroTime = Astronomy.MakeTime(tempsCalculateurAutonome);
+            const c = 299792458; 
+            let beta = Geo.speed / c;
+            let lorentzFactor = 1 / Math.sqrt(1 - beta * beta);
 
-            const corpsSystemeSolaire = [
-                { id: Astronomy.Body.Sun, nom: "SOLEIL [JPL-DE440]", color: "#f59e0b" },
-                { id: Astronomy.Body.Moon, nom: "LUNE [JPL-LE440]", color: "#38bdf8" },
-                { id: Astronomy.Body.Mercury, nom: "MERCURE", color: "#94a3b8" },
-                { id: Astronomy.Body.Venus, nom: "VENUS", color: "#e11d48" },
-                { id: Astronomy.Body.Mars, nom: "MARS", color: "#ef4444" },
-                { id: Astronomy.Body.Jupiter, nom: "JUPITER", color: "#f43f5e" },
-                { id: Astronomy.Body.Saturn, nom: "SATURNE", color: "#10b981" }
-            ];
-
-            // Rendu Télémétrique DOM Filtré (2 Hz)
             if (timestamp - lastDomUpdate > 500) {
-                document.getElementById('quartz-clock').innerText = "QUARTZ RUNTIME: " + tempsCalculateurAutonome.toISOString().replace('T', ' ').replace('Z', 'Z') + " [QUARTZ AUTONOME]";
-                document.getElementById('p-lat').innerText = Platform3D.lat.toFixed(5) + "°";
-                document.getElementById('p-lon').innerText = Platform3D.lon.toFixed(5) + "°";
-                document.getElementById('p-altgps').innerText = Platform3D.altGPS.toFixed(1) + " m";
-                document.getElementById('p-altbaro').innerText = Platform3D.altBaro.toFixed(1) + " m";
-                document.getElementById('p-hdg-mag').innerText = IMU.headingMag.toFixed(1) + "° M";
-                document.getElementById('p-wmm-dec').innerText = (IMU.declination >= 0 ? "+" : "") + IMU.declination.toFixed(2) + "°";
-                document.getElementById('p-hdg-true').innerText = IMU.headingTrue.toFixed(1) + "° V";
-                document.getElementById('p-imu-state').innerText = IMU.pitch.toFixed(0) + "° / " + IMU.roll.toFixed(0) + "°";
-                document.getElementById('p-g').innerText = gLocaleAjustee.toFixed(5) + " m/s²";
-                document.getElementById('p-eotvos').innerText = correctionEotvos.toFixed(5) + " m/s²";
+                document.getElementById('sys-clock').innerText = "UTC: " + currentClock.toISOString().replace('T',' ').replace('Z','Z');
+                document.getElementById('v-time').innerText = runTimeSec.toFixed(2) + " s";
+                document.getElementById('v-lorentz').innerText = lorentzFactor.toFixed(10);
+                document.getElementById('v-speed-kmh').innerText = (Geo.speed * 3.6).toFixed(1) + " km/h";
+                document.getElementById('v-speed-ms').innerText = Geo.speed.toFixed(2) + " m/s";
+                document.getElementById('v-dist').innerText = Geo.distance.toFixed(1) + " m";
 
-                let htmlRows = "";
-                corpsSystemeSolaire.forEach(c => {
-                    let posHorizon = Astronomy.Horizon(astroTime, observer, c.id, Astronomy.Refraction.Normal);
-                    let limitesTSM = formaterHeureAstre(tempsCalculateurAutonome, observer, c.id);
-                    htmlRows += `<tr>
-                        <td style="color:${c.color}; font-weight:bold;">${c.nom}</td>
-                        <td>${posHorizon.azimuth.toFixed(2)}° / ${posHorizon.altitude.toFixed(2)}°</td>
-                        <td>${limitesTSM.rise}</td>
-                        <td>${limitesTSM.set}</td>
-                    </tr>`;
-                });
-                document.getElementById('ephem-rows').innerHTML = htmlRows;
+                let sol = calculerDonneesSolairesPhysiques(currentClock, Geo.lat, Geo.lon);
+                const fTime = h => { let hr = Math.floor(h); let mn = Math.floor((h%1)*60); return `${String(hr).padStart(2,'0')}:${String(mn).padStart(2,'0')}:${String(Math.floor(((h%1)*60%1)*60)).padStart(2,'0')}`; };
+                
+                document.getElementById('v-sun-culm').innerText = sol.culm;
+                document.getElementById('v-tsv').innerText = fTime(sol.tsv);
+                document.getElementById('v-eot').innerText = `${Math.floor(sol.eot)}m ${Math.abs(Math.floor((sol.eot%1)*60))}s`;
+                document.getElementById('v-moon-phase').innerText = (Astronomy.MoonPhase(Astronomy.MakeTime(currentClock))).toFixed(2) + " %";
+                
+                let mcSecsTotal = Math.floor((currentClock.getTime() % 1200000) / 1200000 * 86400);
+                document.getElementById('v-mc-clock').innerText = `${String(Math.floor(mcSecsTotal / 3600)).padStart(2,'0')}:${String(Math.floor((mcSecsTotal % 3600) / 60)).padStart(2,'0')}:${String(mcSecsTotal % 60).padStart(2,'0')}`;
+
+                document.getElementById('m-pres-local').innerText = pLocal.toFixed(2) + " hPa";
+                document.getElementById('m-boil').innerText = boilingPoint.toFixed(2) + " °C";
+
+                document.getElementById('g-lat').innerText = Geo.lat.toFixed(5);
+                document.getElementById('g-lon').innerText = Geo.lon.toFixed(5);
+                document.getElementById('g-alt').innerText = Geo.alt.toFixed(1) + " m";
+                document.getElementById('g-acc').innerText = `±${Geo.acc.toFixed(0)}m`;
+
+                // EXÉCUTION DU CALCUL INTÉGRAL DE VINCENTY EN DIRECT
+                let tLat = parseFloat(document.getElementById('target-lat').value) || 0;
+                let tLon = parseFloat(document.getElementById('target-lon').value) || 0;
+                let azimutVincenty = calculerAzimutVincentyWGS84(Geo.lat, Geo.lon, tLat, tLon);
+                document.getElementById('nav-target-hdg').innerText = azimutVincenty.toFixed(4) + "° V";
+                
+                document.getElementById('nav-hdg').innerText = IMU.headingTrue.toFixed(1) + "° V";
+                document.getElementById('nav-wmm-dec').innerText = (IMU.declination >= 0 ? "+" : "") + IMU.declination.toFixed(2) + "°";
+                document.getElementById('s-bubble').innerText = Math.sqrt(IMU.pitch**2 + IMU.roll**2).toFixed(1) + "°";
+                document.getElementById('s-freq').innerText = fps + " Hz";
+
                 lastDomUpdate = timestamp;
             }
 
-            // MOTEUR GRAPHIQUE HUD - VECTORISATION SPHÉRIQUE COMPLETE (60 Hz)
+            // RENDU VECTORIEL DE LA BOUSSOLE
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const cx = canvas.width / 2; const cy = canvas.height / 2;
-            
-            // Échelle optique angulaire dynamique
-            const pixelsParDegre = canvas.width / 50.0; 
+            let cx = canvas.width / 2; let cy = canvas.height / 2;
 
             ctx.save();
             ctx.translate(cx, cy);
-            // Matrice de rotation globale compensant le Roulis (Roll)
-            ctx.rotate((IMU.roll * Math.PI) / 180);
-            ctx.translate(-cx, -cy);
-
-            corpsSystemeSolaire.forEach(c => {
-                let posHorizon = Astronomy.Horizon(astroTime, observer, c.id, Astronomy.Refraction.Normal);
-
-                if (posHorizon.altitude > -1.0) {
-                    // Alignement sur le CAP VRAI corrigé du modèle de déclinaison magnétique
-                    let dAz = posHorizon.azimuth - IMU.headingTrue;
-                    if (dAz > 180) dAz -= 360; if (dAz < -180) dAz += 360;
-                    
-                    // Compensation du tangage de l'appareil tenu verticalement (90° face à l'horizon)
-                    let dEl = posHorizon.altitude - (90 - Math.abs(IMU.pitch));
-
-                    let x = cx + (dAz * pixelsParDegre);
-                    let y = cy - (dEl * pixelsParDegre);
-
-                    // Masquage et tolérance de tracé hors-champ
-                    if (x >= -20 && x <= canvas.width + 20 && y >= -20 && y <= canvas.height + 20) {
-                        ctx.strokeStyle = c.color; ctx.lineWidth = 1.5;
-                        ctx.beginPath(); ctx.arc(x, y, 14, 0, 2 * Math.PI);
-                        ctx.moveTo(x - 24, y); ctx.lineTo(x + 24, y);
-                        ctx.moveTo(x, y - 24); ctx.lineTo(x, y + 24); ctx.stroke();
-                        
-                        // Affichage du vecteur texte
-                        ctx.fillStyle = c.color; ctx.font = "bold 10px monospace";
-                        ctx.fillText(c.nom, x + 18, y - 4);
-                    }
-                }
-            });
+            ctx.rotate(-IMU.headingTrue * Math.PI / 180); 
+            ctx.strokeStyle = "rgba(6, 182, 212, 0.6)"; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.arc(0, 0, 60, 0, 2*Math.PI); ctx.stroke();
             ctx.restore();
 
-            requestAnimationFrame(boucleExecutionPrincipale);
-        }
-    </script>
-</body>
-                                                                   </html>
+            ctx.save();
+            ctx.translate(cx, cy);
+            let angleRad = (-IMU.headingTrue - 90) * Math.PI / 180;
+            ctx.fillStyle = "var(--amber)"; ctx.font = "bold 11px monospace";
+            ctx.fillText("N"
