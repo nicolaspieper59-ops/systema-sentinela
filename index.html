@@ -129,8 +129,8 @@
 
     <header>
         <div class="sys-title">SENTINELA HARD-REALTIME // AUTOMATIC TELEMETRY LINK</div>
-        <div id="clock" class="value cyan">HORLOGE: SYNCHRONISATION EN COURS...</div>
-        <div id="status-tag" class="sys-status status-offline">CONNEXION AUX FLUX...</div>
+        <div id="clock" class="value cyan">HORLOGE: INITIALISATION DU FLUX...</div>
+        <div id="status-tag" class="sys-status status-offline">TENTATIVE DE SYNCHRONISATION...</div>
     </header>
 
     <div class="grid-cockpit">
@@ -200,16 +200,16 @@
         const canvas = document.getElementById('skyRadar');
         const ctx = canvas.getContext('2d');
 
-        // REQUÊTE AUTOMATIQUE AU CHARGEMENT DE LA PAGE
         window.addEventListener('DOMContentLoaded', () => {
+            // Lecture directe et relative du fichier localisé dans le même dossier racine GitHub
             fetch('matrice_jpl_brute.csv')
                 .then(response => {
-                    if (!response.ok) throw new Error("Fichier de données introuvable sur le serveur local.");
+                    if (!response.ok) throw new Error("Fichier matriciel absent du serveur.");
                     return response.text();
                 })
                 .then(texte => parserMatriceCSV(texte))
                 .catch(erreur => {
-                    document.getElementById('clock').innerText = "ERREUR DE LIAISON : Lancer le script Python d'abord.";
+                    document.getElementById('clock').innerText = "ÉCHEC DE SYNCHRONISATION ATOMIQUE : Matrice manquante sur le dépôt GitHub.";
                     console.error(erreur);
                 });
         });
@@ -220,7 +220,7 @@
             
             for (let i = 1; i < lignes.length; i++) {
                 const col = lignes[i].split(',');
-                if (col.length >= 12) {
+                if (col.length >= 17) {
                     REGISTRES_MATRICE.push({
                         ts: parseFloat(col[0]), lat: parseFloat(col[1]), lon: parseFloat(col[2]), alt: parseFloat(col[3]), speed: parseFloat(col[4]),
                         sol_az: parseFloat(col[5]), sol_el: parseFloat(col[6]),
@@ -240,7 +240,7 @@
                 
                 isEngineRunning = true;
                 const tag = document.getElementById('status-tag');
-                tag.innerText = "● RECEPTION UHF COMPLETE (60HZ)";
+                tag.innerText = "● LIVE STREAMING 60HZ (JPL DE421)";
                 tag.className = "sys-status status-online";
                 
                 requestAnimationFrame(boucleTempsReel);
@@ -266,17 +266,16 @@
             }
 
             if (idxInf === -1) {
-                isEngineRunning = false;
-                document.getElementById('status-tag').innerText = "FIN DE MATRICE (0 HZ)";
-                document.getElementById('status-tag').className = "sys-status status-offline";
-                return;
+                // Boucle infinie : Recommencer au début si la matrice arrive au bout
+                HORLOGE_DEPART_SYSTEME = performance.now();
+                tempsVirtuelActuel = TIMESTAMP_PREMIER_ENREGISTREMENT;
+                idxInf = 0;
             }
 
             let rInf = REGISTRES_MATRICE[idxInf];
             let rSup = REGISTRES_MATRICE[idxInf + 1];
             let facteur = (tempsVirtuelActuel - rInf.ts) / (rSup.ts - rInf.ts);
 
-            // Interpolations
             let lat = interpoler(rInf.lat, rSup.lat, facteur);
             let lon = interpoler(rInf.lon, rSup.lon, facteur);
             let alt = interpoler(rInf.alt, rSup.alt, facteur);
@@ -295,7 +294,7 @@
             let ir = interpoler(rInf.ir, rSup.ir, facteur);
 
             let dateHorloge = new Date(tempsVirtuelActuel * 1000);
-            document.getElementById('clock').innerText = "UTC SYNCHRONISÉ : " + dateHorloge.toISOString().replace('T', ' ').replace('Z', '');
+            document.getElementById('clock').innerText = "UTC ATOMIQUE SYNCHRONISÉ : " + dateHorloge.toISOString().replace('T', ' ').replace('Z', '');
 
             document.getElementById('txt-frame').innerText = frameIndex;
             document.getElementById('txt-lat').innerText = lat.toFixed(5) + "°N";
@@ -370,4 +369,4 @@
         }
     </script>
 </body>
-    </html>
+                        </html>
