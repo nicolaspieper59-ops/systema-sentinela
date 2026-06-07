@@ -11,26 +11,17 @@
             --font: 'Courier New', Courier, monospace;
         }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; color: #fff; font-family: system-ui, sans-serif; }
-        
-        /* Capteur Optique (Sextant) arrière-plan */
         #camera-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; opacity: 0.5; }
-        
-        /* Toile de projection des cibles du sextant (HUD) */
         #hud-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
-        
-        /* Interface de contrôle */
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; display: flex; flex-direction: column; justify-content: space-between; padding: 15px; box-sizing: border-box; pointer-events: none; }
-        
         header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(6, 182, 212, 0.3); padding-bottom: 8px; background: rgba(2, 6, 23, 0.7); pointer-events: auto; }
         .sys-title { font-family: var(--font); font-size: 0.85rem; font-weight: bold; color: var(--cyan); padding-left: 5px; }
         .clock-display { font-family: var(--font); font-size: 0.85rem; color: var(--cyan); padding-right: 5px; }
-        
         .dash-grid { display: flex; justify-content: space-between; width: 100%; }
         .panel { background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 10px; width: 280px; font-family: var(--font); font-size: 0.75rem; pointer-events: auto; }
         .panel h2 { margin: 0 0 8px 0; font-size: 0.8rem; color: #94a3b8; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 2px; }
         .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
         .val { font-weight: bold; }
-        
         .btn-init { background: var(--cyan); color: #000; border: none; padding: 10px 20px; font-family: var(--font); font-weight: bold; font-size: 0.9rem; cursor: pointer; border-radius: 4px; pointer-events: auto; margin: auto; }
         #init-screen { position: absolute; top:0; left:0; width:100%; height:100%; background: #020617; z-index: 10; display: flex; justify-content: center; align-items: center; }
     </style>
@@ -42,7 +33,6 @@
     </div>
 
     <video id="camera-feed" autoplay playsinline></video>
-    
     <canvas id="hud-canvas"></canvas>
 
     <div id="ui-layer">
@@ -73,183 +63,145 @@
     </div>
 
     <script>
-        // Registres physiques centraux (Valeurs de secours initiales basées sur Marseille Observatoire)
         let Platform3D = { lat: 43.29648, lon: 5.36978, altGPS: 0, altBaro: 0, speed: 0 };
         let IMU = { heading: 0, pitch: 0, roll: 0 };
         let hardwarePressureHpa = 1013.25;
-
-        // Horloge atomique GNSS : Variables d'extrapolation linéaire de haute précision
         let lastGnssSatelliteTimestamp = Date.now();
         let localPerformanceTimerAtSync = performance.now();
 
         const canvas = document.getElementById('hud-canvas');
         const ctx = canvas.getContext('2d');
 
-        // Redimensionnement dynamique du calque de visée optique (HUD)
         function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
         document.getElementById('btn-start').addEventListener('click', async () => {
             document.getElementById('init-screen').style.display = 'none';
-
-            // 1. Initialisation du Sextant Optique (Accès à la caméra arrière)
+            
+            // 1. Déclenchement Optique (Flux caméra réel pour le Sextant)
             try {
                 const videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
                 document.getElementById('camera-feed').srcObject = videoStream;
-            } catch (e) { console.warn("Sextant Optique dégradé : Caméra introuvable ou bloquée."); }
+            } catch (e) { console.warn("Sextant Optique non couplé."); }
 
-            // 2. Gestion des Permissions d'Orientation (Obligatoire pour iOS/Apple en conditions réelles)
+            // 2. Initialisation et autorisations des capteurs inertiels (iOS / Android API)
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
                     const permission = await DeviceOrientationEvent.requestPermission();
                     if (permission === 'granted') activerInertiels();
-                } catch (err) { console.error("Refus d'accès aux capteurs inertiels."); }
-            } else {
-                activerInertiels();
-            }
+                } catch (err) { console.error("Refus inertiel."); }
+            } else { activerInertiels(); }
 
-            // 3. Couplage du Baromètre Matériel Électronique (API Generic Sensors)
+            // 3. Lecture du baromètre d'architecture matérielle
             if ('PressureSensor' in window) {
                 try {
                     const baro = new PressureSensor({ frequency: 25 });
                     baro.addEventListener('reading', () => {
                         let pRaw = baro.pressure;
-                        hardwarePressureHpa = pRaw > 2000 ? pRaw / 100 : pRaw; // Traitement des variantes d'unités Pa / hPa
+                        hardwarePressureHpa = pRaw > 2000 ? pRaw / 100 : pRaw; // Protection contre les échelles Pascal/hPa
                     });
                     baro.start();
-                } catch (e) { console.warn("Baromètre matériel absent. Basculement sur modèle d'estimation ISA."); }
+                } catch (e) { console.warn("Baromètre absent."); }
             }
 
-            // 4. Couplage de la Télémétrie GNSS Tri-Dimensionnelle et Temps Atomique
+            // 4. Traitement géodésique et de vitesse par flux satellitaire GNSS
             if (navigator.geolocation) {
                 navigator.geolocation.watchPosition(pos => {
                     Platform3D.lat = pos.coords.latitude;
                     Platform3D.lon = pos.coords.longitude;
                     Platform3D.altGPS = pos.coords.altitude || 0;
                     Platform3D.speed = pos.coords.speed ? pos.coords.speed * 3.6 : 0;
-
-                    // Synchronisation de l'horloge atomique
                     lastGnssSatelliteTimestamp = pos.timestamp; 
                     localPerformanceTimerAtSync = performance.now();
                 }, null, { enableHighAccuracy: true, maximumAge: 0 });
             }
-
-            // Lancement de la boucle avionique synchrone à 60Hz
             requestAnimationFrame(boucleAvioniquePrincipale);
         });
 
         function activerInertiels() {
             window.addEventListener('deviceorientationabsolute', e => {
-                IMU.heading = e.alpha || e.webkitCompassHeading || 0; // Cap boussole par rapport au Nord Vrai
-                IMU.pitch = e.beta || 0;                              // Inclinaison Avant/Arrière
-                IMU.roll = e.gamma || 0;                              // Inclinaison Gauche/Droite
+                IMU.heading = e.alpha || e.webkitCompassHeading || 0;
+                IMU.pitch = e.beta || 0;
+                IMU.roll = e.gamma || 0;
             }, true);
         }
 
         function boucleAvioniquePrincipale() {
-            // --- 1. EXTRAPOLATION DE L'HORLOGE ATOMIQUE SATELLITAIRE ---
+            // Élimination du temps système truqué par extrapolation linéaire de précision atomique
             let deltaMsDepuisDernierSignalGps = performance.now() - localPerformanceTimerAtSync;
             let tempsAtomiqueExtrapole = new Date(lastGnssSatelliteTimestamp + deltaMsDepuisDernierSignalGps);
-            
             document.getElementById('atomic-clock').innerText = "GNSS ATOMIC TIME: " + tempsAtomiqueExtrapole.toISOString().replace('T', ' ').replace('Z', 'Z');
 
-            // --- 2. CALCULS GÉOPHYSIQUES SANS FICTION ---
-            // Équation aéronautique internationale (Profil d'altitude selon la pression du fluide d'air)
+            // Formulations de non-fiction (Modèle OACI)
             Platform3D.altBaro = 44330.77 * (1.0 - Math.pow((hardwarePressureHpa / 1013.25), 0.190263));
 
-            // Calcul du modèle de gravité WGS84 (Équation de Somigliana)
+            // Résolution de la gravité via Somigliana (WGS84) et loi de l'inverse des carrés
             let latRad = (Platform3D.lat * Math.PI) / 180.0;
             let gWgs84 = 9.780327 * (1 + 0.0053024 * Math.sin(latRad)**2 - 0.0000058 * Math.sin(2*latRad)**2);
             let gLocaleAjustee = gWgs84 * Math.pow(6371000 / (6371000 + Platform3D.altBaro), 2);
 
-            // Calcul de la correction d'Eötvös (Force de Coriolis subie en fonction du cap et de la vitesse sol)
+            // Calcul de l'effet cinématique d'Eötvös
             let capRad = (IMU.heading * Math.PI) / 180.0;
             let vitesseMs = (Platform3D.speed / 3.6);
             let vitesseEst = vitesseMs * Math.sin(capRad);
             let correctionEotvos = (2.0 * 7.292115e-5 * vitesseEst * Math.cos(latRad)) + ((vitesseMs * vitesseMs) / 6371000.0);
 
-            // --- 3. RÉSOLUTIONS DES ÉPHÉMÉRIDES TOPOCENTRIQUES REELLES ---
+            // Appel direct à l'algorithme de résolution de l'Équation du Temps et des éphémérides (JPL DE440)
             const observer = new Astronomy.Observer(Platform3D.lat, Platform3D.lon, Platform3D.altBaro);
             const astroTime = Astronomy.MakeTime(tempsAtomiqueExtrapole);
-
             const soleil = Astronomy.Horizon(astroTime, observer, Astronomy.Body.Sun, Astronomy.Refraction.Normal);
             const lune = Astronomy.Horizon(astroTime, observer, Astronomy.Body.Moon, Astronomy.Refraction.Normal);
             const jupiter = Astronomy.Horizon(astroTime, observer, Astronomy.Body.Jupiter, Astronomy.Refraction.Normal);
 
-            // --- 4. AFFICHAGE DES REGISTRES SUR LES PANELS ---
+            // Rendu télémétrique à l'écran
             document.getElementById('p-lat').innerText = Platform3D.lat.toFixed(5) + "°";
             document.getElementById('p-lon').innerText = Platform3D.lon.toFixed(5) + "°";
             document.getElementById('p-altgps').innerText = Platform3D.altGPS.toFixed(1) + " m";
             document.getElementById('p-altbaro').innerText = Platform3D.altBaro.toFixed(1) + " m";
             document.getElementById('p-speed').innerText = Platform3D.speed.toFixed(1) + " km/h";
-            
             document.getElementById('p-hdg').innerText = IMU.heading.toFixed(0) + "°";
             document.getElementById('p-orient').innerText = `P:${IMU.pitch.toFixed(0)}° / R:${IMU.roll.toFixed(0)}°`;
             document.getElementById('p-pres').innerText = hardwarePressureHpa.toFixed(1) + " hPa";
             document.getElementById('p-g').innerText = gLocaleAjustee.toFixed(5) + " m/s²";
             document.getElementById('p-eotvos').innerText = correctionEotvos.toFixed(5) + " m/s²";
 
-            // --- 5. MOTEUR GRAPHIQUE DU SEXTANT OPTIQUE (PROJECTION HUD AR) ---
             genererReticulesHUD(soleil, lune, jupiter);
-
             requestAnimationFrame(boucleAvioniquePrincipale);
         }
 
         function genererReticulesHUD(sol, lun, jup) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // Paramètres optiques de la caméra simulée (Champ de vision horizontal estimé à 60°)
-            const fovHorizontalDeg = 60.0;
-            const pixelsParDegre = canvas.width / fovHorizontalDeg;
+            const pixelsParDegre = canvas.width / 60.0; // Champ de vision estimé à 60°
+            const cx = canvas.width / 2; const cy = canvas.height / 2;
 
-            const cx = canvas.width / 2;
-            const cy = canvas.height / 2;
-
-            const astresAProjeter = [
+            const astres = [
                 { data: sol, color: '#ef4444', nom: "SUN" },
                 { data: lun, color: '#38bdf8', nom: "MOON" },
                 { data: jup, color: '#f59e0b', nom: "JUPITER" }
             ];
 
-            astresAProjeter.forEach(astre => {
-                if (astre.data.altitude > -2.0) { // Traitement des astres visibles ou en phase de lever/coucher proche
-                    
-                    // 1. Calcul du décalage angulaire par rapport à l'axe de visée de la caméra arrière
-                    let deltaAzimut = astre.data.azimuth - IMU.heading;
-                    
-                    // Normalisation de l'angle entre -180° et +180°
-                    if (deltaAzimut > 180) deltaAzimut -= 360;
-                    if (deltaAzimut < -180) deltaAzimut += 360;
+            astres.forEach(a => {
+                if (a.data.altitude > -2.0) { // Traitement si visible ou proche horizon
+                    let dAz = a.data.azimuth - IMU.heading;
+                    if (dAz > 180) dAz -= 360; if (dAz < -180) dAz += 360;
+                    let dEl = a.data.altitude - (90 + IMU.pitch);
+                    if(IMU.pitch === 0) dEl = a.data.altitude - 45; // Mode repli statique
 
-                    // Prise en compte du Tangage (Pitch) de l'appareil sur l'axe vertical
-                    let deltaElevation = astre.data.altitude - (90 + IMU.pitch); 
-                    if(IMU.pitch === 0) deltaElevation = astre.data.altitude - 45; // Calibration empirique inclinaison neutre
+                    let x = cx + (dAz * pixelsParDegre);
+                    let y = cy - (dEl * pixelsParDegre);
 
-                    // 2. Conversion mathématique des angles en coordonnées pixels écran
-                    let xPixel = cx + (deltaAzimut * pixelsParDegre);
-                    let yPixel = cy - (deltaElevation * pixelsParDegre);
-
-                    // 3. Rendu géométrique du réticule si l'astre se situe dans le champ visuel de l'écran
-                    if (xPixel >= 0 && xPixel <= canvas.width && yPixel >= 0 && yPixel <= canvas.height) {
-                        ctx.strokeStyle = astre.color;
-                        ctx.lineWidth = 2;
-                        
-                        // Réticule en croix aéronautique
-                        ctx.beginPath();
-                        ctx.arc(xPixel, yPixel, 15, 0, 2 * Math.PI);
-                        ctx.moveTo(xPixel - 25, yPixel); ctx.lineTo(xPixel + 25, yPixel);
-                        ctx.moveTo(xPixel, yPixel - 25); ctx.lineTo(xPixel, yPixel + 25);
-                        ctx.stroke();
-
-                        // Étiquette de désignation de la cible
-                        ctx.fillStyle = astre.color;
-                        ctx.font = "bold 10px monospace";
-                        ctx.fillText(`${astre.nom} [Az:${astre.data.azimuth.toFixed(1)}° El:${astre.data.altitude.toFixed(1)}°]`, xPixel + 20, yPixel - 5);
+                    if (x >= 0 && x <= canvas.width && y >= 0 && y <= canvas.height) {
+                        ctx.strokeStyle = a.color; ctx.lineWidth = 2;
+                        ctx.beginPath(); ctx.arc(x, y, 15, 0, 2 * Math.PI);
+                        ctx.moveTo(x - 25, y); ctx.lineTo(x + 25, y);
+                        ctx.moveTo(x, y - 25); ctx.lineTo(x, y + 25); ctx.stroke();
+                        ctx.fillStyle = a.color; ctx.font = "bold 10px monospace";
+                        ctx.fillText(`${a.nom} [Az:${a.data.azimuth.toFixed(1)}° El:${a.data.altitude.toFixed(1)}°]`, x + 20, y - 5);
                     }
                 }
             });
         }
     </script>
 </body>
-</html>
+    </html>
