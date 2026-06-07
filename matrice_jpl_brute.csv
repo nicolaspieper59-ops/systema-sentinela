@@ -1,0 +1,3 @@
+git add index.html matrice_jpl_brute.csv
+git commit -m "Deployment of autonomous telemetry array"
+git push origin main
