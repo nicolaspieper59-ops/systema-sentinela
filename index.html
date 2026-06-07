@@ -2,167 +2,253 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SENTINELA - Absolute 3D Autonomous Navigation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>SENTINELA CORE - 3D Real-Time Autonomous Avionics</title>
     <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
     <style>
         :root {
-            --neon-cyan: #06b6d4; --neon-green: #10b981; --neon-amber: #f59e0b; --neon-red: #ef4444;
-            --font-mono: 'Courier New', Courier, monospace;
+            --cyan: #06b6d4; --green: #10b981; --amber: #f59e0b; --red: #ef4444;
+            --font: 'Courier New', Courier, monospace;
         }
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; color: #fff; font-family: system-ui, sans-serif; }
         
-        /* Flux caméra en arrière-plan (Sextant Optique) */
-        #camera-preview {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; opacity: 0.6;
-        }
-
-        /* Interface avionique superposée (HUD) */
-        #hud-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;
-            display: grid; grid-template-rows: auto 1fr; padding: 20px; box-sizing: border-box;
-            pointer-events: none; color: #fff; text-shadow: 1px 1px 2px #000;
-        }
-
-        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px; }
-        .sys-title { font-family: var(--font-mono); font-size: 0.9rem; color: var(--neon-cyan); font-weight: bold; }
+        /* Capteur Optique (Sextant) arrière-plan */
+        #camera-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; opacity: 0.5; }
         
-        .panel-container { display: flex; justify-content: space-between; margin-top: 20px; height: 80%; }
-        .data-panel { background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 15px; width: 300px; font-family: var(--font-mono); font-size: 0.8rem; pointer-events: auto; }
-        .data-panel h2 { size: 0.85rem; margin: 0 0 10px 0; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 3px; color: #94a3b8; }
+        /* Toile de projection des cibles du sextant (HUD) */
+        #hud-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
         
-        .row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+        /* Interface de contrôle */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; display: flex; flex-direction: column; justify-content: space-between; padding: 15px; box-sizing: border-box; pointer-events: none; }
+        
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(6, 182, 212, 0.3); padding-bottom: 8px; background: rgba(2, 6, 23, 0.7); pointer-events: auto; }
+        .sys-title { font-family: var(--font); font-size: 0.85rem; font-weight: bold; color: var(--cyan); padding-left: 5px; }
+        .clock-display { font-family: var(--font); font-size: 0.85rem; color: var(--cyan); padding-right: 5px; }
+        
+        .dash-grid { display: flex; justify-content: space-between; width: 100%; }
+        .panel { background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 10px; width: 280px; font-family: var(--font); font-size: 0.75rem; pointer-events: auto; }
+        .panel h2 { margin: 0 0 8px 0; font-size: 0.8rem; color: #94a3b8; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 2px; }
+        .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
         .val { font-weight: bold; }
         
-        .center-sight {
-            position: absolute; top: 50%; left: 50%; transform: translate(-translate, -50%);
-            width: 40px; height: 40px; border: 2px solid var(--neon-green); border-radius: 50%; z-index: 1; pointer-events: none;
-        }
-        
-        button { pointer-events: auto; background: var(--neon-cyan); border: none; padding: 8px 12px; font-family: var(--font-mono); font-weight: bold; cursor: pointer; border-radius: 4px; }
+        .btn-init { background: var(--cyan); color: #000; border: none; padding: 10px 20px; font-family: var(--font); font-weight: bold; font-size: 0.9rem; cursor: pointer; border-radius: 4px; pointer-events: auto; margin: auto; }
+        #init-screen { position: absolute; top:0; left:0; width:100%; height:100%; background: #020617; z-index: 10; display: flex; justify-content: center; align-items: center; }
     </style>
 </head>
 <body>
 
-    <video id="camera-preview" autoplay playsinline></video>
-    
-    <div class="center-sight"></div>
+    <div id="init-screen">
+        <button id="btn-start" class="btn-init">ENGAGER LE CALCULATEUR SANS FICTION</button>
+    </div>
 
-    <div id="hud-overlay">
+    <video id="camera-feed" autoplay playsinline></video>
+    
+    <canvas id="hud-canvas"></canvas>
+
+    <div id="ui-layer">
         <header>
-            <div class="sys-title">SENTINELA EXECUTIVE // TRIDIMENSIONAL NAVIGATION SYSTEM</div>
-            <div id="txt-time" style="font-family: var(--font-mono); color: var(--neon-cyan);">GNSS ATOMIC TIME: WAIT CLOCK...</div>
-            <button id="btn-engage">ENGAGE HARDWARE FUSION</button>
+            <div class="sys-title">SENTINELA SYSTEM // EXEC APEX-v2026</div>
+            <div id="atomic-clock" class="clock-display">GNSS CLOCK: SYNCHRONISATION...</div>
         </header>
 
-        <div class="panel-container">
-            <div class="data-panel">
-                <h2>1. Registres Tridimensionnels</h2>
-                <div class="row"><span>LAT (X):</span><span id="v-lat" class="val">--.----°</span></div>
-                <div class="row"><span>LON (Y):</span><span id="v-lon" class="val">--.----°</span></div>
-                <div class="row"><span>ALT GEODÉSIQUE (Z-GPS):</span><span id="v-altgps" class="val">---.- m</span></div>
-                <div class="row"><span>ALT BAROMÉTRIQUE (Z-BARO):</span><span id="v-altbaro" class="val --neon-amber">---.- m</span></div>
-                <div class="row"><span>VITESSE VECTEUR (V-SOL):</span><span id="v-speed" class="val">---.- km/h</span></div>
+        <div class="dash-grid">
+            <div class="panel">
+                <h2>1. Vecteurs Tridimensionnels (GNSS)</h2>
+                <div class="row"><span>LATITUDE (X):</span><span id="p-lat" class="val">--.----°</span></div>
+                <div class="row"><span>LONGITUDE (Y):</span><span id="p-lon" class="val">--.----°</span></div>
+                <div class="row"><span>ALT GEODÉSIQUE (Z-GPS):</span><span id="p-altgps" class="val">---.- m</span></div>
+                <div class="row"><span>ALT HYPSOMÉTRIQUE (Z-BARO):</span><span id="p-altbaro" class="val" style="color:var(--amber)">---.- m</span></div>
+                <div class="row"><span>VITESSE VECTEUR SOL:</span><span id="p-speed" class="val">---.- km/h</span></div>
             </div>
 
-            <div class="data-panel" style="align-self: flex-end;">
-                <h2>2. Visée Optique (Sextant Caméra)</h2>
-                <div class="row"><span>CAP BOUSSOLE BRUT:</span><span id="v-hdg" class="val">---°</span></div>
-                <div class="row"><span style="color:var(--neon-red)">SOLEIL AZ/EL:</span><span id="v-sol" class="val">--° / --°</span></div>
-                <div class="row"><span style="color:#38bdf8">LUNE AZ/EL:</span><span id="v-lun" class="val">--° / --°</span></div>
-                <div class="row"><span style="color:var(--neon-amber)">JUPITER AZ/EL:</span><span id="v-jup" class="val">--° / --°</span></div>
-                <div class="row"><span>PRESSION CAPTEUR:</span><span id="v-pres" class="val --neon-green">----.- hPa</span></div>
+            <div class="panel">
+                <h2>2. Capteurs & Environnement</h2>
+                <div class="row"><span>CAP INERTIEL (YAW):</span><span id="p-hdg" class="val">---°</span></div>
+                <div class="row"><span>TANGAGE/ROULIS:</span><span id="p-orient" class="val">--° / --°</span></div>
+                <div class="row"><span>BAROMÈTRE MATÉRIEL:</span><span id="p-pres" class="val" style="color:var(--green)">----.- hPa</span></div>
+                <div class="row"><span>GRAVITÉ DU COMPOSITE:</span><span id="p-g" class="val">-.---- m/s²</span></div>
+                <div class="row"><span>EFFET EÖTVÖS CALC:</span><span id="p-eotvos" class="val">-.---- m/s²</span></div>
             </div>
         </div>
     </div>
 
     <script>
-        let Coordonnees3D = { lat: 43.29648, lon: 5.36978, altGPS: 0, altBaro: 0, vitesse: 0, tempsAtomique: new Date() };
-        let BoussoleInertielle = { heading: 0, pitch: 0, roll: 0 };
-        let hardwarePression = 1013.25;
+        // Registres physiques centraux (Valeurs de secours initiales basées sur Marseille Observatoire)
+        let Platform3D = { lat: 43.29648, lon: 5.36978, altGPS: 0, altBaro: 0, speed: 0 };
+        let IMU = { heading: 0, pitch: 0, roll: 0 };
+        let hardwarePressureHpa = 1013.25;
 
-        document.getElementById('btn-engage').addEventListener('click', async () => {
-            // 1. Activation du Sextant Optique (Flux Caméra Vidéo direct sans latence)
+        // Horloge atomique GNSS : Variables d'extrapolation linéaire de haute précision
+        let lastGnssSatelliteTimestamp = Date.now();
+        let localPerformanceTimerAtSync = performance.now();
+
+        const canvas = document.getElementById('hud-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Redimensionnement dynamique du calque de visée optique (HUD)
+        function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        document.getElementById('btn-start').addEventListener('click', async () => {
+            document.getElementById('init-screen').style.display = 'none';
+
+            // 1. Initialisation du Sextant Optique (Accès à la caméra arrière)
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
-                document.getElementById('camera-preview').srcObject = stream;
-            } catch (err) { console.error("Accès caméra refusé pour le sextant."); }
+                const videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+                document.getElementById('camera-feed').srcObject = videoStream;
+            } catch (e) { console.warn("Sextant Optique dégradé : Caméra introuvable ou bloquée."); }
 
-            // 2. Couplage du Baromètre Matériel (Generic Sensor API)
-            if ('PressureSensor' in window) {
+            // 2. Gestion des Permissions d'Orientation (Obligatoire pour iOS/Apple en conditions réelles)
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
-                    const sensorPres = new PressureSensor({ frequency: 10 });
-                    sensorPres.addEventListener('reading', () => {
-                        hardwarePression = sensorPres.pressure; // Donne la pression en hPa ou Pa selon l'implémentation OS
-                        if(hardwarePression > 2000) hardwarePression /= 100; // Normalisation en hPa si renvoyé en Pascals
-                    });
-                    sensorPres.start();
-                } catch (e) { console.log("Baromètre matériel restreint, passage en mode ISA estimé."); }
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission === 'granted') activerInertiels();
+                } catch (err) { console.error("Refus d'accès aux capteurs inertiels."); }
+            } else {
+                activerInertiels();
             }
 
-            // 3. Couplage GNSS Tridimensionnel de Haute Précision
+            // 3. Couplage du Baromètre Matériel Électronique (API Generic Sensors)
+            if ('PressureSensor' in window) {
+                try {
+                    const baro = new PressureSensor({ frequency: 25 });
+                    baro.addEventListener('reading', () => {
+                        let pRaw = baro.pressure;
+                        hardwarePressureHpa = pRaw > 2000 ? pRaw / 100 : pRaw; // Traitement des variantes d'unités Pa / hPa
+                    });
+                    baro.start();
+                } catch (e) { console.warn("Baromètre matériel absent. Basculement sur modèle d'estimation ISA."); }
+            }
+
+            // 4. Couplage de la Télémétrie GNSS Tri-Dimensionnelle et Temps Atomique
             if (navigator.geolocation) {
                 navigator.geolocation.watchPosition(pos => {
-                    Coordonnees3D.lat = pos.coords.latitude;
-                    Coordonnees3D.lon = pos.coords.longitude;
-                    Coordonnees3D.altGPS = pos.coords.altitude || 0;
-                    Coordonnees3D.vitesse = pos.coords.speed ? pos.coords.speed * 3.6 : 0;
-                    
-                    // Injection immédiate du temps atomique fourni par le réseau de satellites GNSS
-                    Coordonnees3D.tempsAtomique = new Date(pos.timestamp);
+                    Platform3D.lat = pos.coords.latitude;
+                    Platform3D.lon = pos.coords.longitude;
+                    Platform3D.altGPS = pos.coords.altitude || 0;
+                    Platform3D.speed = pos.coords.speed ? pos.coords.speed * 3.6 : 0;
+
+                    // Synchronisation de l'horloge atomique
+                    lastGnssSatelliteTimestamp = pos.timestamp; 
+                    localPerformanceTimerAtSync = performance.now();
                 }, null, { enableHighAccuracy: true, maximumAge: 0 });
             }
 
-            // 4. Couplage Gyroscopique et Centrale Inertielle
-            if (window.DeviceOrientationEvent) {
-                window.addEventListener('deviceorientationabsolute', e => {
-                    BoussoleInertielle.heading = e.alpha || e.webkitCompassHeading || 0;
-                }, true);
-            }
-
-            document.getElementById('btn-engage').style.display = 'none';
-            requestAnimationFrame(boucleHardRealTime);
+            // Lancement de la boucle avionique synchrone à 60Hz
+            requestAnimationFrame(boucleAvioniquePrincipale);
         });
 
-        function boucleHardRealTime() {
-            // Si pas de mise à jour GPS récente, on avance le temps atomique de façon fluide sur l'horloge interne de secours
-            let tempsActuel = (navigator.geolocation) ? Coordonnees3D.tempsAtomique : new Date();
-            if (tempsActuel) {
-                tempsActuel = new Date(tempsActuel.getTime() + 16.67); // Incrément de trame à 60Hz
-                Coordonnees3D.tempsAtomique = tempsActuel;
-            }
+        function activerInertiels() {
+            window.addEventListener('deviceorientationabsolute', e => {
+                IMU.heading = e.alpha || e.webkitCompassHeading || 0; // Cap boussole par rapport au Nord Vrai
+                IMU.pitch = e.beta || 0;                              // Inclinaison Avant/Arrière
+                IMU.roll = e.gamma || 0;                              // Inclinaison Gauche/Droite
+            }, true);
+        }
+
+        function boucleAvioniquePrincipale() {
+            // --- 1. EXTRAPOLATION DE L'HORLOGE ATOMIQUE SATELLITAIRE ---
+            let deltaMsDepuisDernierSignalGps = performance.now() - localPerformanceTimerAtSync;
+            let tempsAtomiqueExtrapole = new Date(lastGnssSatelliteTimestamp + deltaMsDepuisDernierSignalGps);
             
-            document.getElementById('txt-time').innerText = "GNSS ATOMIC TIMESTAMP: " + tempsActuel.toISOString();
+            document.getElementById('atomic-clock').innerText = "GNSS ATOMIC TIME: " + tempsAtomiqueExtrapole.toISOString().replace('T', ' ').replace('Z', 'Z');
 
-            // --- ENGINE DE PHYSIQUE ATMOSPHÉRIQUE REELLE ---
-            // Équation aéronautique internationale (Inverse de l'atmosphère standard OACI)
-            // Calcule l'altitude exacte d'après la densité de la masse d'air détectée par le baromètre
-            let p0 = 1013.25; // Pression standard au niveau de la mer
-            Coordonnees3D.altBaro = 44330.77 * (1.0 - Math.pow((hardwarePression / p0), 0.190263));
+            // --- 2. CALCULS GÉOPHYSIQUES SANS FICTION ---
+            // Équation aéronautique internationale (Profil d'altitude selon la pression du fluide d'air)
+            Platform3D.altBaro = 44330.77 * (1.0 - Math.pow((hardwarePressureHpa / 1013.25), 0.190263));
 
-            // --- CALCULATOR REEL EPHEMERIDES VSOP87 ---
-            const obs = new Astronomy.Observer(Coordonnees3D.lat, Coordonnees3D.lon, Coordonnees3D.altBaro);
-            const instantAstro = Astronomy.MakeTime(tempsActuel);
+            // Calcul du modèle de gravité WGS84 (Équation de Somigliana)
+            let latRad = (Platform3D.lat * Math.PI) / 180.0;
+            let gWgs84 = 9.780327 * (1 + 0.0053024 * Math.sin(latRad)**2 - 0.0000058 * Math.sin(2*latRad)**2);
+            let gLocaleAjustee = gWgs84 * Math.pow(6371000 / (6371000 + Platform3D.altBaro), 2);
 
-            const sol = Astronomy.Horizon(instantAstro, obs, Astronomy.Body.Sun, Astronomy.Refraction.Normal);
-            const lun = Astronomy.Horizon(instantAstro, obs, Astronomy.Body.Moon, Astronomy.Refraction.Normal);
-            const jup = Astronomy.Horizon(instantAstro, obs, Astronomy.Body.Jupiter, Astronomy.Refraction.Normal);
+            // Calcul de la correction d'Eötvös (Force de Coriolis subie en fonction du cap et de la vitesse sol)
+            let capRad = (IMU.heading * Math.PI) / 180.0;
+            let vitesseMs = (Platform3D.speed / 3.6);
+            let vitesseEst = vitesseMs * Math.sin(capRad);
+            let correctionEotvos = (2.0 * 7.292115e-5 * vitesseEst * Math.cos(latRad)) + ((vitesseMs * vitesseMs) / 6371000.0);
 
-            // --- AFFICHAGE DIRECT DE L'ENVELOPPE DE VOL TRIDIMENSIONNELLE ---
-            document.getElementById('v-lat').innerText = Coordonnees3D.lat.toFixed(5) + "°";
-            document.getElementById('v-lon').innerText = Coordonnees3D.lon.toFixed(5) + "°";
-            document.getElementById('v-altgps').innerText = Coordonnees3D.altGPS.toFixed(1) + " m";
-            document.getElementById('v-altbaro').innerText = Coordonnees3D.altBaro.toFixed(1) + " m";
-            document.getElementById('v-speed').innerText = Coordonnees3D.vitesse.toFixed(1) + " km/h";
+            // --- 3. RÉSOLUTIONS DES ÉPHÉMÉRIDES TOPOCENTRIQUES REELLES ---
+            const observer = new Astronomy.Observer(Platform3D.lat, Platform3D.lon, Platform3D.altBaro);
+            const astroTime = Astronomy.MakeTime(tempsAtomiqueExtrapole);
+
+            const soleil = Astronomy.Horizon(astroTime, observer, Astronomy.Body.Sun, Astronomy.Refraction.Normal);
+            const lune = Astronomy.Horizon(astroTime, observer, Astronomy.Body.Moon, Astronomy.Refraction.Normal);
+            const jupiter = Astronomy.Horizon(astroTime, observer, Astronomy.Body.Jupiter, Astronomy.Refraction.Normal);
+
+            // --- 4. AFFICHAGE DES REGISTRES SUR LES PANELS ---
+            document.getElementById('p-lat').innerText = Platform3D.lat.toFixed(5) + "°";
+            document.getElementById('p-lon').innerText = Platform3D.lon.toFixed(5) + "°";
+            document.getElementById('p-altgps').innerText = Platform3D.altGPS.toFixed(1) + " m";
+            document.getElementById('p-altbaro').innerText = Platform3D.altBaro.toFixed(1) + " m";
+            document.getElementById('p-speed').innerText = Platform3D.speed.toFixed(1) + " km/h";
             
-            document.getElementById('v-hdg').innerText = BoussoleInertielle.heading.toFixed(0) + "°";
-            document.getElementById('v-pres').innerText = hardwarePression.toFixed(1) + " hPa";
-            
-            document.getElementById('v-sol').innerText = sol.azimuth.toFixed(1) + "° / " + sol.altitude.toFixed(1) + "°";
-            document.getElementById('v-lun').innerText = lun.azimuth.toFixed(1) + "° / " + lun.altitude.toFixed(1) + "°";
-            document.getElementById('v-jup').innerText = jup.azimuth.toFixed(1) + "° / " + jup.altitude.toFixed(1) + "°";
+            document.getElementById('p-hdg').innerText = IMU.heading.toFixed(0) + "°";
+            document.getElementById('p-orient').innerText = `P:${IMU.pitch.toFixed(0)}° / R:${IMU.roll.toFixed(0)}°`;
+            document.getElementById('p-pres').innerText = hardwarePressureHpa.toFixed(1) + " hPa";
+            document.getElementById('p-g').innerText = gLocaleAjustee.toFixed(5) + " m/s²";
+            document.getElementById('p-eotvos').innerText = correctionEotvos.toFixed(5) + " m/s²";
 
-            requestAnimationFrame(boucleHardRealTime);
+            // --- 5. MOTEUR GRAPHIQUE DU SEXTANT OPTIQUE (PROJECTION HUD AR) ---
+            genererReticulesHUD(soleil, lune, jupiter);
+
+            requestAnimationFrame(boucleAvioniquePrincipale);
+        }
+
+        function genererReticulesHUD(sol, lun, jup) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Paramètres optiques de la caméra simulée (Champ de vision horizontal estimé à 60°)
+            const fovHorizontalDeg = 60.0;
+            const pixelsParDegre = canvas.width / fovHorizontalDeg;
+
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+
+            const astresAProjeter = [
+                { data: sol, color: '#ef4444', nom: "SUN" },
+                { data: lun, color: '#38bdf8', nom: "MOON" },
+                { data: jup, color: '#f59e0b', nom: "JUPITER" }
+            ];
+
+            astresAProjeter.forEach(astre => {
+                if (astre.data.altitude > -2.0) { // Traitement des astres visibles ou en phase de lever/coucher proche
+                    
+                    // 1. Calcul du décalage angulaire par rapport à l'axe de visée de la caméra arrière
+                    let deltaAzimut = astre.data.azimuth - IMU.heading;
+                    
+                    // Normalisation de l'angle entre -180° et +180°
+                    if (deltaAzimut > 180) deltaAzimut -= 360;
+                    if (deltaAzimut < -180) deltaAzimut += 360;
+
+                    // Prise en compte du Tangage (Pitch) de l'appareil sur l'axe vertical
+                    let deltaElevation = astre.data.altitude - (90 + IMU.pitch); 
+                    if(IMU.pitch === 0) deltaElevation = astre.data.altitude - 45; // Calibration empirique inclinaison neutre
+
+                    // 2. Conversion mathématique des angles en coordonnées pixels écran
+                    let xPixel = cx + (deltaAzimut * pixelsParDegre);
+                    let yPixel = cy - (deltaElevation * pixelsParDegre);
+
+                    // 3. Rendu géométrique du réticule si l'astre se situe dans le champ visuel de l'écran
+                    if (xPixel >= 0 && xPixel <= canvas.width && yPixel >= 0 && yPixel <= canvas.height) {
+                        ctx.strokeStyle = astre.color;
+                        ctx.lineWidth = 2;
+                        
+                        // Réticule en croix aéronautique
+                        ctx.beginPath();
+                        ctx.arc(xPixel, yPixel, 15, 0, 2 * Math.PI);
+                        ctx.moveTo(xPixel - 25, yPixel); ctx.lineTo(xPixel + 25, yPixel);
+                        ctx.moveTo(xPixel, yPixel - 25); ctx.lineTo(xPixel, yPixel + 25);
+                        ctx.stroke();
+
+                        // Étiquette de désignation de la cible
+                        ctx.fillStyle = astre.color;
+                        ctx.font = "bold 10px monospace";
+                        ctx.fillText(`${astre.nom} [Az:${astre.data.azimuth.toFixed(1)}° El:${astre.data.altitude.toFixed(1)}°]`, xPixel + 20, yPixel - 5);
+                    }
+                }
+            });
         }
     </script>
 </body>
