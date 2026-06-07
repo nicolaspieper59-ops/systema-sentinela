@@ -214,39 +214,64 @@
                 });
         });
 
-        function parserMatriceCSV(texte) {
-            const lignes = texte.split('\n');
-            REGISTRES_MATRICE = [];
-            
-            for (let i = 1; i < lignes.length; i++) {
-                const col = lignes[i].split(',');
-                if (col.length >= 17) {
-                    REGISTRES_MATRICE.push({
-                        ts: parseFloat(col[0]), lat: parseFloat(col[1]), lon: parseFloat(col[2]), alt: parseFloat(col[3]), speed: parseFloat(col[4]),
-                        sol_az: parseFloat(col[5]), sol_el: parseFloat(col[6]),
-                        lun_az: parseFloat(col[7]), lun_el: parseFloat(col[8]),
-                        jup_az: parseFloat(col[9]), jup_el: parseFloat(col[10]),
-                        pression: parseFloat(col[11]), temp: parseFloat(col[12]),
-                        g_eff: parseFloat(col[13]), g_eotvos: parseFloat(col[14]),
-                        uv: parseFloat(col[15]), ir: parseFloat(col[16])
-                    });
-                }
-            }
+function parserMatriceCSV(texte) {
+    const lignes = texte.split(/\r?\n/); // Gère les sauts de ligne Windows et Linux
+    REGISTRES_MATRICE = [];
+    
+    console.log("Nombre total de lignes extraites du CSV :", lignes.length);
+    
+    // On commence à 1 pour ignorer l'en-tête (Header)
+    for (let i = 1; i < lignes.length; i++) {
+        if (!lignes[i].trim()) continue; // Ignore les lignes vides de fin de fichier
+        
+        const col = lignes[i].split(',');
+        
+        // Vérification stricte de la présence des données minimales
+        if (col.length >= 12) { 
+            let entry = {
+                ts: parseFloat(col[0]), 
+                lat: parseFloat(col[1]), 
+                lon: parseFloat(col[2]), 
+                alt: parseFloat(col[3]), 
+                speed: parseFloat(col[4]),
+                sol_az: parseFloat(col[5]), 
+                sol_el: parseFloat(col[6]),
+                lun_az: parseFloat(col[7]), 
+                lun_el: parseFloat(col[8]),
+                jup_az: parseFloat(col[9]), 
+                jup_el: parseFloat(col[10]),
+                pression: col[11] ? parseFloat(col[11]) : 1013.25,
+                temp: col[12] ? parseFloat(col[12]) : 15.0,
+                g_eff: col[13] ? parseFloat(col[13]) : 9.80665,
+                g_eotvos: col[14] ? parseFloat(col[14]) : 0.0,
+                uv: col[15] ? parseFloat(col[15]) : 0.0,
+                ir: col[16] ? parseFloat(col[16]) : 0.0
+            };
 
-            if (REGISTRES_MATRICE.length > 0) {
-                REGISTRES_MATRICE.sort((a, b) => a.ts - b.ts);
-                HORLOGE_DEPART_SYSTEME = performance.now();
-                TIMESTAMP_PREMIER_ENREGISTREMENT = REGISTRES_MATRICE[0].ts;
-                
-                isEngineRunning = true;
-                const tag = document.getElementById('status-tag');
-                tag.innerText = "● LIVE STREAMING 60HZ (JPL DE421)";
-                tag.className = "sys-status status-online";
-                
-                requestAnimationFrame(boucleTempsReel);
+            // Élimination des valeurs corrompues (NaN)
+            if (!isNaN(entry.ts) && !isNaN(entry.lat) && !isNaN(entry.lon)) {
+                REGISTRES_MATRICE.push(entry);
             }
         }
+    }
 
+    console.log("Registres valides injectés en mémoire :", REGISTRES_MATRICE.length);
+
+    if (REGISTRES_MATRICE.length > 0) {
+        REGISTRES_MATRICE.sort((a, b) => a.ts - b.ts);
+        HORLOGE_DEPART_SYSTEME = performance.now();
+        TIMESTAMP_PREMIER_ENREGISTREMENT = REGISTRES_MATRICE[0].ts;
+        
+        isEngineRunning = true;
+        const tag = document.getElementById('status-tag');
+        tag.innerText = "● LIVE STREAMING 60HZ (JPL DE421)";
+        tag.className = "sys-status status-online";
+        
+        requestAnimationFrame(boucleTempsReel);
+    } else {
+        document.getElementById('clock').innerText = "ERREUR : Aucune ligne valide trouvée dans la matrice.";
+    }
+        }
         function interpoler(valMin, valMax, facteur) {
             return valMin + (valMax - valMin) * facteur;
         }
@@ -300,7 +325,7 @@
             document.getElementById('txt-lat').innerText = lat.toFixed(5) + "°N";
             document.getElementById('txt-lon').innerText = lon.toFixed(5) + "°E";
             document.getElementById('txt-alt').innerText = alt.toFixed(1) + " m";
-            document.getElementById('txt-speed').innerText = speed.toFixed(1) + " km/h";
+            document.getElementById('txt-speed').innerText = speed.toFixed(2) + " km/h";
             document.getElementById('txt-pres').innerText = pression.toFixed(1) + " hPa";
             document.getElementById('txt-tstat').innerText = temp.toFixed(2) + " °C";
             
