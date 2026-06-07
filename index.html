@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SENTINELA Avionics - Absolute JPL Telemetry Link</title>
+    <title>SENTINELA Avionics - Sensor Fusion Link</title>
     <style>
         :root {
             --bg-dark: #020617;
@@ -18,130 +18,58 @@
         }
 
         body {
-            margin: 0;
-            background-color: var(--bg-dark);
-            color: var(--text-main);
-            font-family: system-ui, -apple-system, sans-serif;
-            padding: 15px;
-            overflow-x: hidden;
+            margin: 0; background-color: var(--bg-dark); color: var(--text-main);
+            font-family: system-ui, -apple-system, sans-serif; padding: 15px; overflow-x: hidden;
         }
 
         header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 2px solid #334155;
-            padding-bottom: 10px;
-            margin-bottom: 15px;
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 2px solid #334155; padding-bottom: 10px; margin-bottom: 15px;
         }
 
-        .sys-title {
-            font-family: var(--font-mono);
-            font-size: 1.3rem;
-            font-weight: bold;
-            color: var(--neon-cyan);
-            letter-spacing: 2px;
-        }
-
-        .sys-status {
-            font-family: var(--font-mono);
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.85rem;
-        }
-
+        .sys-title { font-family: var(--font-mono); font-size: 1.1rem; font-weight: bold; color: var(--neon-cyan); letter-spacing: 1px; }
+        .sys-status { font-family: var(--font-mono); padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; }
         .status-offline { background-color: #7f1d1d; color: var(--neon-red); }
         .status-online { background-color: #064e3b; color: var(--neon-green); }
 
         .grid-cockpit {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 15px;
-            max-width: 1800px;
-            margin: 0 auto;
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 15px; max-width: 1800px; margin: 0 auto;
         }
 
-        @media (min-width: 1200px) {
-            .grid-cockpit { grid-template-columns: 1fr 1.2fr 1fr; }
-            .large-widget { grid-column: span 2; }
-        }
+        @media (min-width: 1200px) { .grid-cockpit { grid-template-columns: 1fr 1.2fr 1fr; } .large-widget { grid-column: span 2; } }
 
-        .widget {
-            background-color: var(--panel-bg);
-            border: 1px solid var(--border-glow);
-            border-radius: 8px;
-            padding: 15px;
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
-        }
-
-        .widget h2 {
-            margin: 0 0 12px 0;
-            font-family: var(--font-mono);
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            color: #94a3b8;
-            border-bottom: 1px solid #334155;
-            padding-bottom: 5px;
-        }
-
-        .telemetry-row {
-            display: flex;
-            justify-content: space-between;
-            font-family: var(--font-mono);
-            margin-bottom: 8px;
-            font-size: 0.9rem;
-        }
-
+        .widget { background-color: var(--panel-bg); border: 1px solid var(--border-glow); border-radius: 8px; padding: 15px; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+        .widget h2 { margin: 0 0 12px 0; font-family: var(--font-mono); font-size: 0.85rem; text-transform: uppercase; color: #94a3b8; border-bottom: 1px solid #334155; padding-bottom: 5px; }
+        .telemetry-row { display: flex; justify-content: space-between; font-family: var(--font-mono); margin-bottom: 8px; font-size: 0.85rem; }
+        
         .label { color: #64748b; }
         .value { color: var(--text-main); font-weight: bold; }
         .cyan { color: var(--neon-cyan); }
         .amber { color: var(--neon-amber); }
         .green { color: var(--neon-green); }
 
-        .radar-box {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: #090d16;
-            border-radius: 6px;
-            padding: 10px;
-        }
-
-        canvas {
-            background-color: #040711;
-            border-radius: 50%;
-            border: 1px solid #1e293b;
-        }
-
-        .bar-container {
-            width: 100%;
-            background-color: #1e293b;
-            height: 8px;
-            border-radius: 4px;
-            overflow: hidden;
-            margin-top: 4px;
-        }
-
-        .bar-fill { height: 100%; width: 0%; transition: width 0.05s linear; }
+        .radar-box { display: flex; justify-content: center; align-items: center; background: #090d16; border-radius: 6px; padding: 10px; }
+        canvas { background-color: #040711; border-radius: 50%; border: 1px solid #1e293b; transform: rotate(0deg); transition: transform 0.1s ease-out; }
     </style>
 </head>
 <body>
 
     <header>
         <div class="sys-title">SENTINELA HARD-REALTIME // AUTOMATIC TELEMETRY LINK</div>
-        <div id="clock" class="value cyan">HORLOGE: INITIALISATION DU FLUX...</div>
-        <div id="status-tag" class="sys-status status-offline">TENTATIVE DE SYNCHRONISATION...</div>
+        <div id="clock" class="value cyan">HORLOGE ATOMIQUE : CHARGEMENT...</div>
+        <button id="btn-sensors" style="background: #1e293b; color: #fff; border: 1px solid #475569; padding: 5px 10px; cursor: pointer; border-radius: 4px; font-family: var(--font-mono); font-size: 0.75rem;">ACTIVER CAPTEURS MATÉRIELS</button>
+        <div id="status-tag" class="sys-status status-offline">INITIALISATION FUSION...</div>
     </header>
 
     <div class="grid-cockpit">
         
         <div class="widget">
-            <h2>1. Registres de Positionnement de la Plateforme</h2>
+            <h2>1. Registres de Positionnement de la Plateforme (Fusion GPS)</h2>
             <div class="telemetry-row"><span class="label">PULSE INDEX (FRAME):</span><span id="txt-frame" class="value">0</span></div>
-            <div class="telemetry-row"><span class="label">LATITUDE RÉELLE:</span><span id="txt-lat" class="value">--.----°</span></div>
-            <div class="telemetry-row"><span class="label">LONGITUDE RÉELLE:</span><span id="txt-lon" class="value">--.----°</span></div>
-            <div class="telemetry-row"><span class="label">ALTITUDE CAPTEUR:</span><span id="txt-alt" class="value cyan">--.- m</span></div>
-            <div class="telemetry-row"><span class="label">VITESSE VECTORIELLE:</span><span id="txt-speed" class="value amber">---.- km/h</span></div>
+            <div class="telemetry-row"><span class="label">LATITUDE (CAPTEUR):</span><span id="txt-lat" class="value cyan">--.----°</span></div>
+            <div class="telemetry-row"><span class="label">LONGITUDE (CAPTEUR):</span><span id="txt-lon" class="value cyan">--.----°</span></div>
+            <div class="telemetry-row"><span class="label">ALTITUDE HAE (GPS):</span><span id="txt-alt" class="value">--.- m</span></div>
+            <div class="telemetry-row"><span class="label">VITESSE SOL (GPS):</span><span id="txt-speed" class="value amber">---.- km/h</span></div>
         </div>
 
         <div class="widget large-widget" style="grid-row: span 2;">
@@ -151,41 +79,36 @@
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 15px; font-family: var(--font-mono); font-size: 0.8rem;">
                 <div style="border-left: 2px solid #ef4444; padding-left: 5px;">
-                    <span style="color:#ef4444; font-weight:bold;">SOLEIL</span><br>
-                    Az: <span id="sol-az">--</span>°<br> El: <span id="sol-el">--</span>°
+                    <span style="color:#ef4444; font-weight:bold;">SOLEIL</span><br>Az: <span id="sol-az">--</span>°<br>El: <span id="sol-el">--</span>°
                 </div>
                 <div style="border-left: 2px solid #38bdf8; padding-left: 5px;">
-                    <span style="color:#38bdf8; font-weight:bold;">LUNE</span><br>
-                    Az: <span id="lun-az">--</span>°<br> El: <span id="lun-el">--</span>°
+                    <span style="color:#38bdf8; font-weight:bold;">LUNE</span><br>Az: <span id="lun-az">--</span>°<br>El: <span id="lun-el">--</span>°
                 </div>
                 <div style="border-left: 2px solid #f59e0b; padding-left: 5px;">
-                    <span style="color:#f59e0b; font-weight:bold;">JUPITER</span><br>
-                    Az: <span id="jup-az">--</span>°<br> El: <span id="jup-el">--</span>°
+                    <span style="color:#f59e0b; font-weight:bold;">JUPITER</span><br>Az: <span id="jup-az">--</span>°<br>El: <span id="jup-el">--</span>°
                 </div>
             </div>
         </div>
 
         <div class="widget">
             <h2>3. Capteurs Atmosphériques d'Altitude</h2>
-            <div class="telemetry-row"><span class="label">PRESSION EXT. HPA:</span><span id="txt-pres" class="value">---.- hPa</span></div>
+            <div class="telemetry-row"><span class="label">PRESSION EXT. (ISA):</span><span id="txt-pres" class="value">---.- hPa</span></div>
             <div class="telemetry-row"><span class="label">TEMP. AIR AMBIANT:</span><span id="txt-tstat" class="value cyan">--.-- °C</span></div>
             <div class="telemetry-row"><span class="label">TEMP. PAROI (COMPRESSION):</span><span id="txt-tparoi" class="value amber">--.-- °C</span></div>
             <div class="telemetry-row"><span class="label">ÉCOULEMENT REEL (MACH):</span><span id="txt-mach" class="value">-.---</span></div>
         </div>
 
         <div class="widget">
-            <h2>4. Gravimétrie &amp; Corrections d'Eötvös</h2>
-            <div class="telemetry-row"><span class="label">ACCÉLÉRATION G EFFECTIVE:</span><span id="txt-g" class="value green">-.---- m/s²</span></div>
-            <div class="telemetry-row"><span class="label">COMPENSATION D'EÖTVÖS:</span><span id="txt-geotvos" class="value amber">-.---- m/s²</span></div>
+            <h2>4. Centrale Inertielle vs Gravimétrie JPL</h2>
+            <div class="telemetry-row"><span class="label">ACCÉLÉRATION PROPRE Z:</span><span id="txt-accel" class="value amber">-.---- m/s²</span></div>
+            <div class="telemetry-row"><span class="label">GRAVITÉ THÉORIQUE JPL:</span><span id="txt-g" class="value green">-.---- m/s²</span></div>
+            <div class="telemetry-row"><span class="label">CORRECTION D'EÖTVÖS (CALC):</span><span id="txt-geotvos" class="value">-.---- m/s²</span></div>
         </div>
 
         <div class="widget">
-            <h2>5. Rayonnement Électromagnétique Direct</h2>
-            <div class="telemetry-row"><span class="label">INDICE SPECTRALE UV:</span><span id="txt-uv" class="value">0.00</span></div>
-            <div class="bar-container"><div id="bar-uv" class="bar-fill" style="background-color: #a855f7;"></div></div>
-            
-            <div class="telemetry-row" style="margin-top: 10px;"><span class="label">FLUX ENERGETIQUE IR:</span><span id="txt-ir" class="value">0.0 W/m²</span></div>
-            <div class="bar-container"><div id="bar-ir" class="bar-fill" style="background-color: #ef4444;"></div></div>
+            <h2>5. Analyse Photométrique Directe</h2>
+            <div class="telemetry-row"><span class="label">ÉCLEMENT LUXMÈTRE:</span><span id="txt-lux" class="value cyan">-- Lux</span></div>
+            <div class="telemetry-row"><span class="label">INDICE UV THÉORIQUE:</span><span id="txt-uv" class="value">0.00</span></div>
         </div>
 
     </div>
@@ -196,182 +119,176 @@
         let TIMESTAMP_PREMIER_ENREGISTREMENT = 0;
         let frameIndex = 0;
         let isEngineRunning = false;
+        let boussoleHeading = 0;
+
+        // Variables d'état des capteurs matériels physiques (Pocket Devices Concept)
+        let hardwareGPS = { lat: null, lon: null, alt: null, speed: 0 };
+        let hardwareAccelZ = 0;
+        let hardwareLux = null;
 
         const canvas = document.getElementById('skyRadar');
         const ctx = canvas.getContext('2d');
 
         window.addEventListener('DOMContentLoaded', () => {
-            // Lecture directe et relative du fichier localisé dans le même dossier racine GitHub
             fetch('matrice_jpl_brute.csv')
-                .then(response => {
-                    if (!response.ok) throw new Error("Fichier matriciel absent du serveur.");
-                    return response.text();
-                })
-                .then(texte => parserMatriceCSV(texte))
-                .catch(erreur => {
-                    document.getElementById('clock').innerText = "ÉCHEC DE SYNCHRONISATION ATOMIQUE : Matrice manquante sur le dépôt GitHub.";
-                    console.error(erreur);
-                });
+                .then(res => { if (!res.ok) throw new Error("Absence de la matrice"); return res.text(); })
+                .then(txt => parserMatriceCSV(txt))
+                .catch(err => { document.getElementById('clock').innerText = "ERREUR MATRICE INITIALE ABSENTE"; });
+
+            document.getElementById('btn-sensors').addEventListener('click', connecterCapteursMateriels);
         });
 
-function parserMatriceCSV(texte) {
-    const lignes = texte.split(/\r?\n/); // Gère les sauts de ligne Windows et Linux
-    REGISTRES_MATRICE = [];
-    
-    console.log("Nombre total de lignes extraites du CSV :", lignes.length);
-    
-    // On commence à 1 pour ignorer l'en-tête (Header)
-    for (let i = 1; i < lignes.length; i++) {
-        if (!lignes[i].trim()) continue; // Ignore les lignes vides de fin de fichier
-        
-        const col = lignes[i].split(',');
-        
-        // Vérification stricte de la présence des données minimales
-        if (col.length >= 12) { 
-            let entry = {
-                ts: parseFloat(col[0]), 
-                lat: parseFloat(col[1]), 
-                lon: parseFloat(col[2]), 
-                alt: parseFloat(col[3]), 
-                speed: parseFloat(col[4]),
-                sol_az: parseFloat(col[5]), 
-                sol_el: parseFloat(col[6]),
-                lun_az: parseFloat(col[7]), 
-                lun_el: parseFloat(col[8]),
-                jup_az: parseFloat(col[9]), 
-                jup_el: parseFloat(col[10]),
-                pression: col[11] ? parseFloat(col[11]) : 1013.25,
-                temp: col[12] ? parseFloat(col[12]) : 15.0,
-                g_eff: col[13] ? parseFloat(col[13]) : 9.80665,
-                g_eotvos: col[14] ? parseFloat(col[14]) : 0.0,
-                uv: col[15] ? parseFloat(col[15]) : 0.0,
-                ir: col[16] ? parseFloat(col[16]) : 0.0
-            };
-
-            // Élimination des valeurs corrompues (NaN)
-            if (!isNaN(entry.ts) && !isNaN(entry.lat) && !isNaN(entry.lon)) {
-                REGISTRES_MATRICE.push(entry);
-            }
-        }
-    }
-
-    console.log("Registres valides injectés en mémoire :", REGISTRES_MATRICE.length);
-
-    if (REGISTRES_MATRICE.length > 0) {
-        REGISTRES_MATRICE.sort((a, b) => a.ts - b.ts);
-        HORLOGE_DEPART_SYSTEME = performance.now();
-        TIMESTAMP_PREMIER_ENREGISTREMENT = REGISTRES_MATRICE[0].ts;
-        
-        isEngineRunning = true;
-        const tag = document.getElementById('status-tag');
-        tag.innerText = "● LIVE STREAMING 60HZ (JPL DE421)";
-        tag.className = "sys-status status-online";
-        
-        requestAnimationFrame(boucleTempsReel);
-    } else {
-        document.getElementById('clock').innerText = "ERREUR : Aucune ligne valide trouvée dans la matrice.";
-    }
-        }
-        function interpoler(valMin, valMax, facteur) {
-            return valMin + (valMax - valMin) * facteur;
-        }
-
-        function boucleTempsReel(tempsCalcul) {
-            if (!isEngineRunning) return;
-
-            let deltaTempsSysteme = (tempsCalcul - HORLOGE_DEPART_SYSTEME) / 1000.0;
-            let tempsVirtuelActuel = TIMESTAMP_PREMIER_ENREGISTREMENT + deltaTempsSysteme;
-
-            let idxInf = -1;
-            for (let i = 0; i < REGISTRES_MATRICE.length - 1; i++) {
-                if (tempsVirtuelActuel >= REGISTRES_MATRICE[i].ts && tempsVirtuelActuel <= REGISTRES_MATRICE[i+1].ts) {
-                    idxInf = i;
-                    break;
+        function parserMatriceCSV(texte) {
+            const lignes = texte.split(/\r?\n/);
+            for (let i = 1; i < lignes.length; i++) {
+                if (!lignes[i].trim()) continue;
+                const col = lignes[i].split(',');
+                if (col.length >= 13) {
+                    REGISTRES_MATRICE.push({
+                        ts: parseFloat(col[0]), lat: parseFloat(col[1]), lon: parseFloat(col[2]), alt: parseFloat(col[3]),
+                        sol_az: parseFloat(col[4]), sol_el: parseFloat(col[5]),
+                        lun_az: parseFloat(col[6]), lun_el: parseFloat(col[7]),
+                        jup_az: parseFloat(col[8]), jup_el: parseFloat(col[9]),
+                        pression: parseFloat(col[10]), temp: parseFloat(col[11]), g_base: parseFloat(col[12])
+                    });
                 }
             }
-
-            if (idxInf === -1) {
-                // Boucle infinie : Recommencer au début si la matrice arrive au bout
+            if (REGISTRES_MATRICE.length > 0) {
+                REGISTRES_MATRICE.sort((a,b) => a.ts - b.ts);
                 HORLOGE_DEPART_SYSTEME = performance.now();
-                tempsVirtuelActuel = TIMESTAMP_PREMIER_ENREGISTREMENT;
-                idxInf = 0;
+                TIMESTAMP_PREMIER_ENREGISTREMENT = REGISTRES_MATRICE[0].ts;
+                isEngineRunning = true;
+                document.getElementById('status-tag').innerText = "● FUSION DE DONNÉES EN COURS";
+                document.getElementById('status-tag').className = "sys-status status-online";
+                requestAnimationFrame(boucleAvionique60Hz);
+            }
+        }
+
+        function connecterCapteursMateriels() {
+            // 1. Initialisation GPS
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(pos => {
+                    hardwareGPS.lat = pos.coords.latitude;
+                    hardwareGPS.lon = pos.coords.longitude;
+                    hardwareGPS.alt = pos.coords.altitude;
+                    hardwareGPS.speed = pos.coords.speed ? pos.coords.speed * 3.6 : 0;
+                }, null, { enableHighAccuracy: true });
             }
 
-            let rInf = REGISTRES_MATRICE[idxInf];
-            let rSup = REGISTRES_MATRICE[idxInf + 1];
-            let facteur = (tempsVirtuelActuel - rInf.ts) / (rSup.ts - rInf.ts);
+            // 2. Initialisation Boussole et Orientation
+            if (window.DeviceOrientationEvent) {
+                window.addEventListener('deviceorientationabsolute', e => {
+                    boussoleHeading = e.alpha || e.webkitCompassHeading || 0;
+                    canvas.style.transform = `rotate(${-boussoleHeading}deg)`;
+                }, true);
+            }
 
-            let lat = interpoler(rInf.lat, rSup.lat, facteur);
-            let lon = interpoler(rInf.lon, rSup.lon, facteur);
-            let alt = interpoler(rInf.alt, rSup.alt, facteur);
-            let speed = interpoler(rInf.speed, rSup.speed, facteur);
-            let sol_az = interpoler(rInf.sol_az, rSup.sol_az, facteur);
-            let sol_el = interpoler(rInf.sol_el, rSup.sol_el, facteur);
-            let lun_az = interpoler(rInf.lun_az, rSup.lun_az, facteur);
-            let lun_el = interpoler(rInf.lun_el, rSup.lun_el, facteur);
-            let jup_az = interpoler(rInf.jup_az, rSup.jup_az, facteur);
-            let jup_el = interpoler(rInf.jup_el, rSup.jup_el, facteur);
-            let pression = interpoler(rInf.pression, rSup.pression, facteur);
-            let temp = interpoler(rInf.temp, rSup.temp, facteur);
-            let g_eff = interpoler(rInf.g_eff, rSup.g_eff, facteur);
-            let g_eotvos = interpoler(rInf.g_eotvos, rSup.g_eotvos, facteur);
-            let uv = interpoler(rInf.uv, rSup.uv, facteur);
-            let ir = interpoler(rInf.ir, rSup.ir, facteur);
+            // 3. Initialisation de l'accéléromètre linéaire
+            if (window.DeviceMotionEvent) {
+                window.addEventListener('devicemotion', e => {
+                    if (e.accelerationIncludingGravity) {
+                        hardwareAccelZ = e.accelerationIncludingGravity.z || 0;
+                    }
+                });
+            }
 
-            let dateHorloge = new Date(tempsVirtuelActuel * 1000);
-            document.getElementById('clock').innerText = "UTC ATOMIQUE SYNCHRONISÉ : " + dateHorloge.toISOString().replace('T', ' ').replace('Z', '');
+            // 4. Capteur de luminosité ambiante (si supporté par le matériel)
+            if ('AmbientLightSensor' in window) {
+                try {
+                    const sensor = new AmbientLightSensor();
+                    sensor.addEventListener('reading', () => { hardwareLux = sensor.lux; });
+                    sensor.start();
+                } catch (err) { console.log("Luxmètre restreint par sécurité navigateur."); }
+            }
+            document.getElementById('btn-sensors').style.background = "#10b981";
+        }
 
-            document.getElementById('txt-frame').innerText = frameIndex;
-            document.getElementById('txt-lat').innerText = lat.toFixed(5) + "°N";
-            document.getElementById('txt-lon').innerText = lon.toFixed(5) + "°E";
-            document.getElementById('txt-alt').innerText = alt.toFixed(1) + " m";
-            document.getElementById('txt-speed').innerText = speed.toFixed(2) + " km/h";
-            document.getElementById('txt-pres').innerText = pression.toFixed(1) + " hPa";
-            document.getElementById('txt-tstat').innerText = temp.toFixed(2) + " °C";
-            
-            let vitMs = (speed / 3.6);
+        function interpoler(vMin, vMax, f) { return vMin + (vMax - vMin) * f; }
+
+        function boucleAvionique60Hz(tempsCalcul) {
+            if (!isEngineRunning) return;
+
+            let deltaSysteme = (tempsCalcul - HORLOGE_DEPART_SYSTEME) / 1000.0;
+            let tsVirtuel = TIMESTAMP_PREMIER_ENREGISTREMENT + deltaSysteme;
+
+            let idx = REGISTRES_MATRICE.findIndex((r, i) => i < REGISTRES_MATRICE.length - 1 && tsVirtuel >= r.ts && tsVirtuel <= REGISTRES_MATRICE[i+1].ts);
+            if (idx === -1) { HORLOGE_DEPART_SYSTEME = performance.now(); tsVirtuel = TIMESTAMP_PREMIER_ENREGISTREMENT; idx = 0; }
+
+            let rInf = REGISTRES_MATRICE[idx], rSup = REGISTRES_MATRICE[idx+1];
+            let f = (tsVirtuel - rInf.ts) / (rSup.ts - rInf.ts);
+
+            // Interpolations mathématiques JPL
+            let sol_az = interpoler(rInf.sol_az, rSup.sol_az, f);
+            let sol_el = interpoler(rInf.sol_el, rSup.sol_el, f);
+            let lun_az = interpoler(rInf.lun_az, rSup.lun_az, f);
+            let lun_el = interpoler(rInf.lun_el, rSup.lun_el, f);
+            let jup_az = interpoler(rInf.jup_az, rSup.jup_az, f);
+            let jup_el = interpoler(rInf.jup_el, rSup.jup_el, f);
+            let pression = interpoler(rInf.pression, rSup.pression, f);
+            let temp = interpoler(rInf.temp, rSup.temp, f);
+            let g_base = interpoler(rInf.g_base, rSup.g_base, f);
+
+            // Algorithme de fusion de données (Sensor Fusion)
+            let lat_finale = hardwareGPS.lat !== null ? hardwareGPS.lat : interpoler(rInf.lat_ref, rSup.lat_ref, f);
+            let lon_finale = hardwareGPS.lon !== null ? hardwareGPS.lon : interpoler(rInf.lon_ref, rSup.lon_ref, f);
+            let alt_finale = hardwareGPS.alt !== null ? hardwareGPS.alt : interpoler(rInf.alt_ref, rSup.alt_ref, f);
+            let vit_finale = hardwareGPS.speed > 0 ? hardwareGPS.speed : 950.0; // Par défaut vitesse théorique avionique
+
+            // Équations aérodynamiques en temps réel
+            let vitMs = vit_finale / 3.6;
             let tK = temp + 273.15;
             let vitSon = Math.sqrt(1.4 * 287.05 * tK);
             let mach = vitMs / vitSon;
             let tParoi = tK * (1.0 + 0.85 * 0.2 * Math.pow(mach, 2)) - 273.15;
 
+            // Calcul de la correction d'Eötvös en fonction de la boussole matérielle et de la vitesse réelle
+            let latRad = (lat_finale * Math.PI) / 180.0;
+            let directionRad = (boussoleHeading * Math.PI) / 180.0;
+            let vEst = vitMs * Math.sin(directionRad);
+            let g_eotvos = 2.0 * 7.292115e-5 * vEst * Math.cos(latRad) + (vitMs * vitMs) / 6371000.0;
+
+            // Rendu de l'affichage
+            let dt = new Date(tsVirtuel * 1000);
+            document.getElementById('clock').innerText = "UTC FUSIONNÉ : " + dt.toISOString().replace('T', ' ').replace('Z', '');
+            document.getElementById('txt-frame').innerText = frameIndex;
+            document.getElementById('txt-lat').innerText = lat_finale.toFixed(5) + "°";
+            document.getElementById('txt-lon').innerText = lon_finale.toFixed(5) + "°";
+            document.getElementById('txt-alt').innerText = alt_finale.toFixed(1) + " m";
+            document.getElementById('txt-speed').innerText = vit_finale.toFixed(1) + " km/h";
+            document.getElementById('txt-pres').innerText = pression.toFixed(1) + " hPa";
+            document.getElementById('txt-tstat').innerText = temp.toFixed(2) + " °C";
             document.getElementById('txt-tparoi').innerText = tParoi.toFixed(2) + " °C";
             document.getElementById('txt-mach').innerText = mach.toFixed(3);
-            document.getElementById('txt-g').innerText = g_eff.toFixed(4) + " m/s²";
-            document.getElementById('txt-geotvos').innerText = g_eotvos.toFixed(4) + " m/s²";
+            
+            document.getElementById('txt-accel').innerText = hardwareAccelZ !== 0 ? hardwareAccelZ.toFixed(4) + " m/s²" : "0.0000 (IMU OFF)";
+            document.getElementById('txt-g').innerText = g_base.toFixed(5) + " m/s²";
+            document.getElementById('txt-geotvos').innerText = g_eotvos.toFixed(5) + " m/s²";
+            
+            let cosZ = Math.cos(Math.radians(90.0 - sol_el)) if sol_el > 0 else 0;
+            document.getElementById('txt-uv').innerText = (11.0 * cosZ).toFixed(2);
+            document.getElementById('txt-lux').innerText = hardwareLux !== null ? hardwareLux.toFixed(0) + " Lux" : "Éteint";
 
-            document.getElementById('txt-uv').innerText = uv.toFixed(2);
-            document.getElementById('bar-uv').style.width = Math.min(100, (uv / 12) * 100) + "%";
-            document.getElementById('txt-ir').innerText = ir.toFixed(1) + " W/m²";
-            document.getElementById('bar-ir').style.width = Math.min(100, (ir / 800) * 100) + "%";
-
-            document.getElementById('sol-az').innerText = sol_az.toFixed(2);
-            document.getElementById('sol-el').innerText = sol_el.toFixed(2);
-            document.getElementById('lun-az').innerText = lun_az.toFixed(2);
-            document.getElementById('lun-el').innerText = lun_el.toFixed(2);
-            document.getElementById('jup-az').innerText = jup_az.toFixed(2);
-            document.getElementById('jup-el').innerText = jup_el.toFixed(2);
+            document.getElementById('sol-az').innerText = sol_az.toFixed(1);
+            document.getElementById('sol-el').innerText = sol_el.toFixed(1);
+            document.getElementById('lun-az').innerText = lun_az.toFixed(1);
+            document.getElementById('lun-el').innerText = lun_el.toFixed(1);
+            document.getElementById('jup-az').innerText = jup_az.toFixed(1);
+            document.getElementById('jup-el').innerText = jup_el.toFixed(1);
 
             dessinerRadar({ soleil: {az: sol_az, el: sol_el}, lune: {az: lun_az, el: lun_el}, jupiter: {az: jup_az, el: jup_el} });
 
             frameIndex++;
-            requestAnimationFrame(boucleTempsReel);
+            requestAnimationFrame(boucleAvionique60Hz);
         }
 
+        Math.radians = function(deg) { return deg * Math.PI / 180; };
+
         function dessinerRadar(astres) {
-            const cx = canvas.width / 2;
-            const cy = canvas.height / 2;
-            const rMax = cx - 15;
+            const cx = canvas.width / 2, cy = canvas.height / 2, rMax = cx - 15;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            ctx.strokeStyle = '#1e293b';
-            ctx.lineWidth = 1;
-            [0.33, 0.66, 1].forEach(f => {
-                ctx.beginPath(); ctx.arc(cx, cy, rMax * f, 0, 2 * Math.PI); ctx.stroke();
-            });
-
-            ctx.beginPath(); ctx.moveTo(cx, 5); ctx.lineTo(cx, canvas.height - 5);
-            ctx.moveTo(5, cy); ctx.lineTo(canvas.width - 5, cy); ctx.stroke();
+            ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1;
+            [0.33, 0.66, 1].forEach(f => { ctx.beginPath(); ctx.arc(cx, cy, rMax * f, 0, 2 * Math.PI); ctx.stroke(); });
+            ctx.beginPath(); ctx.moveTo(cx, 5); ctx.lineTo(cx, canvas.height - 5); ctx.moveTo(5, cy); ctx.lineTo(canvas.width - 5, cy); ctx.stroke();
 
             function projeter(az, el) {
                 let r = rMax * (1.0 - (el / 90.0));
@@ -379,19 +296,9 @@ function parserMatriceCSV(texte) {
                 return { x: cx + r * Math.cos(theta), y: cy + r * Math.sin(theta) };
             }
 
-            const config = [
-                { target: astres.soleil, color: '#ef4444', size: 6 },
-                { target: astres.lune, color: '#38bdf8', size: 5 },
-                { target: astres.jupiter, color: '#f59e0b', size: 4 }
-            ];
-
-            config.forEach(obj => {
-                if (obj.target.el > 0) {
-                    let pt = projeter(obj.target.az, obj.target.el);
-                    ctx.fillStyle = obj.color; ctx.beginPath(); ctx.arc(pt.x, pt.y, obj.size, 0, 2 * Math.PI); ctx.fill();
-                }
-            });
+            const points = [{t: astres.soleil, c: '#ef4444'}, {t: astres.lune, c: '#38bdf8'}, {t: astres.jupiter, c: '#f59e0b'}];
+            points.forEach(p => { if (p.t.el > 0) { let pt = projeter(p.t.az, p.t.el); ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(pt.x, pt.y, 5, 0, 2 * Math.PI); ctx.fill(); } });
         }
     </script>
 </body>
-                        </html>
+            </html>
