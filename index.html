@@ -358,4 +358,14 @@
             ctx.translate(cx, cy);
             let angleRad = (-IMU.headingTrue - 90) * Math.PI / 180;
             ctx.fillStyle = "var(--amber)"; ctx.font = "bold 11px monospace";
-            ctx.fillText("N"
+            ctx.fillText("N", 48 * Math.cos(angleRad) - 3, 48 * Math.sin(angleRad) + 4);
+            ctx.restore();
+
+            ctx.strokeStyle = "var(--green)"; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(cx - 15, cy); ctx.lineTo(cx + 15, cy); ctx.moveTo(cx, cy - 15); ctx.lineTo(cx, cy + 15); ctx.stroke();
+
+            requestAnimationFrame(coreLoop);
+        }
+    </script>
+</body>
+</html>
