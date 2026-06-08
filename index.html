@@ -106,32 +106,28 @@
         const canvas = document.getElementById('hud-canvas');
         const ctx = canvas.getContext('2d');
 
-        // REQUÊTE ASYNCHRONE DIRECTE SUR LES DONNÉES DU FLUX AUTOMATIQUE PYTHON/JPL
+        // REQUÊTE ASYNCHRONE RESTAURÉE DANS LA PORTÉE GLOBALE
         async function connecterMatriceJPL() {
             try {
-                const reponse = await fetch('flux_live.json');
+                const reponse = await fetch('flux_live.json?nocache=' + (new Date()).getTime());
                 const flux = await reponse.json();
                 
-                if (flux.donnees_instantanees) {
-                    // Analyse de la ligne d'éphémérides du JPL Horizons
-                    // Extrait l'angle S-T-O situé vers la fin de la ligne de données standard du JPL
-                    let segments = flux.donnees_instantanees.trim().split(/\s+/);
+                if (flux.ENVIRONNEMENT && flux.LUNE) {
+                    JplLive.angleSTO = flux.ENVIRONNEMENT.lune_phase_sto;
+                    JplLive.illumination = flux.ENVIRONNEMENT.lune_illumination_pct;
+                    JplLive.statut = "SYNCHRONISÉ";
                     
-                    // Dans le format standard QUANTITIES='20', l'angle S-T-O se situe après la distance (delta)
-                    // Recherche de la valeur de l'angle de phase S-T-O
-                    let angleSTO = parseFloat(segments[8]); 
-                    
-                    if (!isNaN(angleSTO)) {
-                        JplLive.angleSTO = angleSTO;
-                        // Calcul physique pur de la fraction illuminée à partir de l'angle de phase : k = (1 + cos(O)) / 2
-                        let alphaRad = angleSTO * Math.PI / 180;
-                        JplLive.illumination = ((1 + Math.cos(alphaRad)) / 2) * 100;
-                        JplLive.statut = "SYNCHRONISÉ";
+                    if (flux.CLOCK_3D && flux.CLOCK_3D.coordonnees) {
+                        Geo.lat = flux.CLOCK_3D.coordonnees.lat;
+                        Geo.lon = flux.CLOCK_3D.coordonnees.lon;
+                        Geo.alt = flux.CLOCK_3D.coordonnees.alt_m;
                     }
+                } else {
+                    JplLive.statut = "FORMAT REJETÉ";
                 }
             } catch (e) {
                 JplLive.statut = "ERREUR MATRICE";
-                console.log("Erreur de lecture du flux JPL, bascule sur modèle analytique.", e);
+                console.error("Défaillance de liaison avec l'API de streaming géodésique.", e);
             }
         }
 
@@ -181,38 +177,26 @@
             canvas.height = document.getElementById('center-viewport').clientHeight;
         }
 
+        // INITIALISATION ET ÉCOUTEURS DÉLÉGUÉS PROPREMENT FERMÉS
         document.getElementById('btn-start').addEventListener('click', () => {
             document.getElementById('init-screen').style.display = 'none';
             resizeCanvas();
             IMU.declination = calculerDeclinaisonWMM_Advanced(Geo.lat, Geo.lon);
             
-            // Lancement de l'interconnexion avec les données physiques de l'API JPL locale
-// REQUÊTE ASYNCHRONE RESTAURÉE SUR LA STRUCTURE DIRECTE DU FLUX PYTHON
-async function connecterMatriceJPL() {
-    try {
-        const reponse = await fetch('flux_live.json?nocache=' + (new Date()).getTime());
-        const flux = await reponse.json();
-        
-        if (flux.ENVIRONNEMENT && flux.LUNE) {
-            // Lecture directe de la structure objet validée
-            JplLive.angleSTO = flux.ENVIRONNEMENT.lune_phase_sto;
-            JplLive.illumination = flux.ENVIRONNEMENT.lune_illumination_pct;
-            JplLive.statut = "SYNCHRONISÉ";
-            
-            // Mise à jour optionnelle des variables globales avec les coordonnées réelles transmises par le serveur
-            if(flux.CLOCK_3D && flux.CLOCK_3D.coordonnees) {
-                Geo.lat = flux.CLOCK_3D.coordonnees.lat;
-                Geo.lon = flux.CLOCK_3D.coordonnees.lon;
-                Geo.alt = flux.CLOCK_3D.coordonnees.alt_m;
+            // Appels initiaux
+            connecterMatriceJPL();
+            setInterval(connecterMatriceJPL, 60000);
+
+            if (window.DeviceOrientationEvent) {
+                window.addEventListener('deviceorientationabsolute', e => {
+                    IMU.headingMag = e.webkitCompassHeading || Math.abs(e.alpha - 360) || 0;
+                    IMU.headingTrue = (IMU.headingMag + IMU.declination + 360) % 360;
+                    IMU.pitch = e.beta || 0;
+                    IMU.roll = e.gamma || 0;
+                }, true);
             }
-        } else {
-            JplLive.statut = "FORMAT REJETÉ";
-        }
-    } catch (e) {
-        JplLive.statut = "ERREUR MATRICE";
-        console.error("Défaillance de liaison avec l'API de streaming géodésique.", e);
-    }
-            }
+            requestAnimationFrame(coreLoop);
+        });
 
         function coreLoop(timestamp) {
             frameCount++;
@@ -221,7 +205,6 @@ async function connecterMatriceJPL() {
             let runTimeSec = (performance.now() - timeStart) / 1000;
             let currentClock = new Date(atomicSync + (performance.now() - timeStart));
 
-            // Loi barométrique ISA locale pour Endoume (55m)
             Env.localPressure = Env.seaPressure * Math.pow(1 - (0.0065 * Geo.alt) / 288.15, 5.25588);
             let boilingPoint = 1 / (1 / 373.15 - (8.31445 * Math.log(Env.localPressure / 1013.25)) / 40650) - 273.15;
 
@@ -232,7 +215,6 @@ async function connecterMatriceJPL() {
                 document.getElementById('v-speed-ms').innerText = Geo.speed.toFixed(2) + " m/s";
                 document.getElementById('v-dist').innerText = Geo.distance.toFixed(1) + " m";
 
-                // Éphémérides analytiques du Soleil pour le temps local
                 let obs = new Astronomy.Observer(Geo.lat, Geo.lon, Geo.alt);
                 let astTime = Astronomy.MakeTime(currentClock);
                 let equSun = Astronomy.Equator(Astronomy.Body.Sun, astTime, obs, Astronomy.EquatorObserver.Topocentric, Astronomy.Aberration.Corrected);
@@ -246,7 +228,6 @@ async function connecterMatriceJPL() {
                 document.getElementById('v-sun-culm').innerText = culmEvent ? culmEvent.date.toLocaleTimeString('fr-FR') : "--:--:--";
                 document.getElementById('v-tsv').innerText = fTime(tsvHeures);
 
-                // INJECTION DIRECTE DES DONNÉES DE HAUTE PRÉCISION DU JPL NASA
                 document.getElementById('v-sto-angle').innerText = JplLive.angleSTO.toFixed(4) + "°";
                 document.getElementById('v-moon-phase').innerText = JplLive.illumination.toFixed(2) + " %";
                 document.getElementById('g-jpl-status').innerText = JplLive.statut;
@@ -270,7 +251,7 @@ async function connecterMatriceJPL() {
                 lastDomUpdate = timestamp;
             }
 
-            // RENDU GRAPHIQUE DU HUD
+            // RENDU GRAPHISME CANVAS
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             let cx = canvas.width / 2, cy = canvas.height / 2;
 
