@@ -1,95 +1,10 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <title>TERMINAL ASTRO-METROLOGIQUE APEX v2026.2</title>
-    <style>
-        :root { 
-            --cyan: #00f0ff; --green: #00ff66; --amber: #ffaa00; --pink: #ff007f; --bg: #030306; 
-            font-family: 'Courier New', monospace; 
-        }
-        body { background: var(--bg); color: #94a3b8; font-size: 11px; padding: 15px; margin: 0; }
-        .header { border: 1px solid rgba(0, 240, 255, 0.2); background: #000; padding: 10px; color: var(--cyan); display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 15px; }
-        .grid { display: grid; grid-template-columns: 440px 1fr; gap: 15px; }
-        .panel { border: 1px solid rgba(255,255,255,0.08); background: #08080f; padding: 12px; border-radius: 4px; }
-        .panel.astro { border-color: rgba(255, 170, 0, 0.2); }
-        .panel.meteo { border-color: rgba(0, 255, 102, 0.2); }
-        h2 { font-size: 10px; margin: 0 0 10px 0; padding-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); letter-spacing: 1px; }
-        .panel.astro h2 { color: var(--amber); }
-        .panel.meteo h2 { color: var(--green); }
-        .metric { display: flex; justify-content: space-between; margin-bottom: 5px; line-height: 14px; }
-        .data { font-weight: bold; color: #fff; }
-        .sub-group { margin-left: 10px; border-left: 1px solid #1e293b; padding-left: 8px; margin-bottom: 8px; }
-        .sub-title { color: #64748b; font-weight: bold; font-size: 10px; text-transform: uppercase; margin-bottom: 3px; }
-        #radar-canvas { width: 100%; height: 460px; background: #000; border: 1px solid #1e293b; border-radius: 4px; }
-        #debug-console { margin-top: 15px; padding: 10px; background: #110505; border: 1px solid #551111; color: #ff5555; border-radius: 4px; font-size: 10px; max-height: 60px; overflow-y: auto; }
-    </style>
-</head>
-<body>
-
-<div class="header">
-    <div>SYSTEMA SENTINELA : CHRONOMÈTRE ATOMIQUE WEB & DRIFT NET CORRECTION</div>
-    <div id="clock-utc">UTC ATOMIQUE : --:--:--</div>
-</div>
-
-<div class="grid">
-    <div style="display:flex; flex-direction:column; gap:15px;">
-        
-        <div class="panel astro">
-            <h2>🌌 RÉFÉRENTIELS ET TEMPS SIDÉRAL (PLANETCALC 9235)</h2>
-            <div class="metric"><span>Jour Julien (JD) :</span><span id="astro-jd" class="data" style="color:var(--cyan)">------.-----</span></div>
-            <div class="metric"><span>Temps Sidéral Local (LST) :</span><span id="astro-lst" class="data" style="color:var(--pink)">--:--:--</span></div>
-            <div class="metric"><span>Pointeur Index Matrice :</span><span><span id="ast-index" class="data">----</span> / 1439 min</span></div>
-            
-            <div class="sub-group">
-                <div class="sub-title" style="color:var(--cyan)">📍 Vecteur de Position 3D Réel</div>
-                <div class="metric"><span>Latitude / Longitude :</span><span id="geo-latlon" class="data">43.29070° / 5.35490°</span></div>
-                <div class="metric"><span>Altitude Ellipsoïdale (h) :</span><span><span id="geo-alt" class="data">55.0</span> m</span></div>
-            </div>
-
-            <div class="sub-group">
-                <div class="sub-title" style="color:var(--amber)">☀️ Soleil (Position Apparente)</div>
-                <div class="metric"><span>Az / El (Réfracté) :</span><span id="sol-pos" class="data">---.---° / --.---°</span></div>
-                <div class="metric"><span>Correction Réfraction :</span><span>+<span id="sol-refract" class="data">-.---</span>°</span></div>
-            </div>
-
-            <div class="sub-group">
-                <div class="sub-title" style="color:#e2e8f0">🌙 Lune</div>
-                <div class="metric"><span>Az / El (Réfracté) :</span><span id="lun-pos" class="data">---.---° / --.---°</span></div>
-            </div>
-
-            <div class="sub-group">
-                <div class="sub-title" style="color:var(--pink)">🪐 Éphémérides des Planètes (JPL DE440)</div>
-                <div class="metric"><span>Mercure / Vénus :</span><span><span id="mer-pos" class="data">---°</span> / <span id="ven-pos" class="data">---°</span></span></div>
-                <div class="metric"><span>Mars / Jupiter :</span><span><span id="mar-pos" class="data">---°</span> / <span id="jup-pos" class="data">---°</span></span></div>
-                <div class="metric"><span>Saturne :</span><span id="sat-pos" class="data">---° / --°</span></div>
-            </div>
-        </div>
-
-        <div class="panel meteo">
-            <h2>🌍 CORRECTEUR BAROMÉTRIQUE HYDROSTATIQUE HAUTE PRÉCISION</h2>
-            <div class="metric"><span>Pression Station Réelle ($P_s$) :</span><span><span id="m-pres" class="data">----.-</span> hPa</span></div>
-            <div class="metric"><span>Température Virtuelle ($T_v$) :</span><span><span id="m-tvirt" class="data">--.--</span> °C</span></div>
-            <div class="metric"><span>Densité de l'Air Locale ($\rho$) :</span><span><span id="m-rho" class="data">-.---</span> kg/m³</span></div>
-        </div>
-    </div>
-
-    <div class="panel astro" style="display:flex; flex-direction:column;">
-        <h2>🧭 SCOPE GÉODÉSIQUE TOURNANT (ALIGNEMENT NORD VRAI ITRF)</h2>
-        <canvas id="radar-canvas"></canvas>
-    </div>
-</div>
-
-<div id="debug-console">SYS : INITIALISATION DE L'INSTRUMENT DE MESURE VIRTUEL...</div>
-
 <script>
     const canvas = document.getElementById('radar-canvas');
     const ctx = canvas.getContext('2d');
     const debugDiv = document.getElementById('debug-console');
     
-    // Variables d'état métrologiques globales
-    let coordonnees3D = { lat: 43.2907, lon: 5.3549, alt: 55.0 };
-    let d偏移_ms = 0; // Delta temporel : Heure Serveur Web - Heure Interne Android
+    let coordonnees3D = { lat: 43.28648, lon: 5.35431, alt: 89.6 };
+    let d偏移_ms = 0; 
     let DonneesAstroCourantes = {};
     let pressionStationEtablie = 1013.25;
 
@@ -100,7 +15,6 @@
         debugDiv.style.borderColor = isErr ? "#551111" : "#115511";
     }
 
-    // Normalisateur de structure JSON (Insensible à la casse des clés du script python)
     function extraireNoeudFou(objet, nomCle) {
         if (!objet) return null;
         let cible = nomCle.toLowerCase();
@@ -110,29 +24,25 @@
         return null;
     }
 
-    // Activation de l'acquisition tridimensionnelle géodésique par le capteur matériel
     if (navigator.geolocation) {
         navigator.geolocation.watchPosition((p) => {
             coordonnees3D.lat = p.coords.latitude;
             coordonnees3D.lon = p.coords.longitude;
-            coordonnees3D.alt = p.coords.altitude || 55.0; // Protection si le hardware n'a pas fixé l'axe Z
+            coordonnees3D.alt = p.coords.altitude || 89.6; 
             document.getElementById('geo-latlon').innerText = `${coordonnees3D.lat.toFixed(5)}° / ${coordonnees3D.lon.toFixed(5)}°`;
             document.getElementById('geo-alt').innerText = coordonnees3D.alt.toFixed(1);
-        }, () => logDebug("GPS 3D indisponible. Utilisation vecteur statique.", true), { enableHighAccuracy: true });
+        }, () => logDebug("GPS 3D fixe par défaut actif."), { enableHighAccuracy: true });
     }
 
-    // Calculs Astronomiques Fondamentaux (Équivalents à PlanetCalc 9235 et Subhashbose LST)
     function executerCalculsTempsAstronome(dateAtomique) {
         let tMs = dateAtomique.getTime();
         let jd = (tMs / 86400000) + 2440587.5;
         document.getElementById('astro-jd').innerText = jd.toFixed(5);
 
-        // Polynôme du temps sidéral moyen de Greenwich (GMST)
         let T = (jd - 2451545.0) / 36525;
         let gmst = 280.46061837 + 360.98564736629 * (jd - 2451545.0) + 0.000387933 * T * T - (T * T * T) / 38710000;
         gmst = gmst % 360; if (gmst < 0) gmst += 360;
 
-        // Projection sur le méridien de promenade local (LST)
         let lstDeg = (gmst + coordonnees3D.lon) % 360; if (lstDeg < 0) lstDeg += 360;
         
         let heuresSidérales = lstDeg / 15;
@@ -142,12 +52,11 @@
         document.getElementById('astro-lst').innerText = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
     }
 
-    // Calcul de la réfraction de l'air selon la formule de Bennett
     function corrigerRefractionAtmospherique(elevationDeg, pression, temperature) {
         if (elevationDeg < -0.5) return 0; 
         let rArcmin = 1.02 / Math.tan((elevationDeg + (10.3 / (elevationDeg + 5.11))) * Math.PI / 180);
         let correction = rArcmin * (pression / 1013.25) * (283.15 / (273.15 + temperature));
-        return correction / 60; // Conversion en degrés décimaux
+        return correction / 60; 
     }
 
     async function acquérirEphéméridesJPL() {
@@ -155,7 +64,6 @@
             const reponse = await fetch('./flux_live.json?cache_bust=' + Date.now());
             if (!reponse.ok) throw new Error(`Échec HTTP: ${reponse.status}`);
             
-            // Élimination de l'heure Android : Captation du temps atomique des serveurs distants
             let dateServeurBrute = reponse.headers.get('Date');
             if (dateServeurBrute) {
                 d偏移_ms = new Date(dateServeurBrute).getTime() - Date.now();
@@ -163,21 +71,25 @@
 
             const flux = await reponse.json();
 
-            // Extraction robuste par couche adaptative insensible à la casse
-            let jpl = extraireNoeudFou(flux, "EPHEMERIDES_JPL_1440") || extraireNoeudFou(flux, "jpl");
-            let meteo = extraireNoeudFou(flux, "METEO_TERRESTRE") || extraireNoeudFou(flux, "meteo");
-            let dynamique = extraireNoeudFou(flux, "DYNAMIQUE_VEHICULE") || extraireNoeudFou(flux, "dynamique");
-            let spatiale = extraireNoeudFou(flux, "METEO_SPATIALE") || extraireNoeudFou(flux, "spatiale");
-            let meta = extraireNoeudFou(flux, "METADONNEES") || extraireNoeudFou(flux, "metadata");
+            // ANALYSE ADAPTATIVE DE LA STRUCTURE DU BACKEND
+            // On cherche d'abord dans un sous-noeud, sinon on considère que la racine est le conteneur
+            let jpl = extraireNoeudFou(flux, "EPHEMERIDES_JPL_1440") || extraireNoeudFou(flux, "jpl") || extraireNoeudFou(flux, "orbites") || flux;
+            let meteo = extraireNoeudFou(flux, "METEO_TERRESTRE") || extraireNoeudFou(flux, "meteo") || flux;
+            let dynamique = extraireNoeudFou(flux, "DYNAMIQUE_VEHICULE") || extraireNoeudFou(flux, "dynamique") || flux;
+            let spatiale = extraireNoeudFou(flux, "METEO_SPATIALE") || extraireNoeudFou(flux, "spatiale") || flux;
 
-            if (!jpl || !meteo) {
-                throw new Error("Erreur de mapping : Données structurelles introuvables dans flux_live.json");
+            // Tentative d'extraction des listes de vecteurs
+            let listeSoleil = extraireNoeudFou(jpl, "SOLEIL") || extraireNoeudFou(jpl, "sun");
+            
+            // Si même le Soleil est introuvable, on génère un rapport de clés pour l'ingénieur
+            if (!listeSoleil) {
+                let clesDispo = Object.keys(flux).join(', ');
+                throw new Error(`Structure non reconnue. Racine du JSON contient les clés : [${clesDispo}]`);
             }
 
-            // Horloge Atomique stabilisée
             let dateAtomique = new Date(Date.now() + d偏移_ms);
             let hUTC = dateAtomique.getUTCHours();
-            let mUTC = dateAtomique.getUTMinutes() || dateAtomique.getUTCMinutes();
+            let mUTC = dateAtomique.getUTCMinutes();
             let sUTC = dateAtomique.getUTCSeconds();
             document.getElementById('clock-utc').innerText = `UTC ATOMIQUE : ${String(hUTC).padStart(2,'0')}:${String(mUTC).padStart(2,'0')}:${String(sUTC).padStart(2,'0')}`;
 
@@ -186,8 +98,8 @@
             let index1440 = (hUTC * 60) + mUTC;
             document.getElementById('ast-index').innerText = index1440;
 
-            // Chargement des vecteurs planétaires insensibles à la casse interne
-            let sol = (extraireNoeudFou(jpl, "SOLEIL") || extraireNoeudFou(jpl, "sun"))?.[index1440] || { az: 0, el: 0, dist_ua: 1 };
+            // Extraction unitaire sécurisée indexée à la minute
+            let sol = listeSoleil[index1440] || { az: 0, el: 0, dist_ua: 1 };
             let lun = (extraireNoeudFou(jpl, "LUNE") || extraireNoeudFou(jpl, "moon"))?.[index1440] || { az: 0, el: 0 };
             let mer = (extraireNoeudFou(jpl, "MERCURE") || extraireNoeudFou(jpl, "mercury"))?.[index1440] || { az: 0, el: 0 };
             let ven = (extraireNoeudFou(jpl, "VENUS") || extraireNoeudFou(jpl, "venus"))?.[index1440] || { az: 0, el: 0 };
@@ -195,44 +107,43 @@
             let jup = (extraireNoeudFou(jpl, "JUPITER") || extraireNoeudFou(jpl, "jupiter"))?.[index1440] || { az: 0, el: 0 };
             let sat = (extraireNoeudFou(jpl, "SATURNE") || extraireNoeudFou(jpl, "saturn"))?.[index1440] || { az: 0, el: 0 };
 
-            // Résolution de la thermodynamique de l'air locale et tridimensionnelle
-            let tC = meteo.temperature_c ?? 15.0;
-            let hPct = meteo.humidite_pct ?? 50.0;
-            let pMer = meteo.pression_mer_hpa ?? 1013.25;
+            // Thermodynamique locale
+            let tC = meteo.temperature_c ?? meteo.temp ?? 15.0;
+            let hPct = meteo.humidite_pct ?? meteo.humidity ?? 50.0;
+            let pMer = meteo.pression_mer_hpa ?? meteo.pressure ?? 1013.25;
 
-            // Calcul de la Température Virtuelle réelle (prise en compte de la vapeur d'eau)
-            let e = (hPct / 100) * 6.112 * Math.exp((17.67 * tC) / (tC + 243.5)); // Pression de vapeur saturante
+            // Pression de vapeur saturante & Température virtuelle
+            let e = (hPct / 100) * 6.112 * Math.exp((17.67 * tC) / (tC + 243.5)); 
             let tVirtuelleK = (tC + 273.15) / (1 - (e / pMer) * (1 - 0.622));
             let tVirtuelleC = tVirtuelleK - 273.15;
             document.getElementById('m-tvirt').innerText = tVirtuelleC.toFixed(2);
 
-            // Équation hydrostatique appliquée à la hauteur tridimensionnelle GPS
+            // Correction hydrostatique basée sur l'altitude 3D GPS variable
             pressionStationEtablie = pMer * Math.pow(1 - (0.0065 * coordonnees3D.alt) / (tVirtuelleK), 5.25588);
             document.getElementById('m-pres').innerText = pressionStationEtablie.toFixed(1);
 
-            // Densité de l'air locale (kg/m3) via équation d'état des gaz parfaits
+            // Densité massique locale de l'air
             let rho = (pressionStationEtablie * 100) / (287.05 * tVirtuelleK);
             document.getElementById('m-rho').innerText = rho.toFixed(3);
 
-            // Application de la correction météo de réfraction astronomique sur le Soleil
+            // Réfraction topocentrique vraie
             let refSol = corrigerRefractionAtmospherique(sol.el, pressionStationEtablie, tVirtuelleC);
             let elApparenteSoleil = sol.el + refSol;
             document.getElementById('sol-pos').innerText = `${sol.az.toFixed(3)}° / ${elApparenteSoleil.toFixed(3)}°`;
             document.getElementById('sol-refract').innerText = refSol.toFixed(3);
 
-            // Mise à jour des nœuds secondaires
-            document.getElementById('lun-pos').innerText = `${lun.az.toFixed(2)}° / ${(lun.el + corrigerRefractionAtmospherique(lun.el, pressionStationEtablie, tVirtuelleC)).toFixed(2)}°`;
-            document.getElementById('mer-pos').innerText = `${mer.az.toFixed(0)}°`;
-            document.getElementById('ven-pos').innerText = `${ven.az.toFixed(0)}°`;
-            document.getElementById('mar-pos').innerText = `${mar.az.toFixed(0)}°`;
-            document.getElementById('jup-pos').innerText = `${jup.az.toFixed(0)}°`;
-            document.getElementById('sat-pos').innerText = `${sat.az.toFixed(0)}°`;
+            document.getElementById('lun-pos').innerText = `${lun.az.toFixed(3)}° / ${(lun.el + corrigerRefractionAtmospherique(lun.el, pressionStationEtablie, tVirtuelleC)).toFixed(3)}°`;
+            document.getElementById('mer-pos').innerText = `${mer.az.toFixed(0)}° / ${mer.el?.toFixed(0) || 0}°`;
+            document.getElementById('ven-pos').innerText = `${ven.az.toFixed(0)}° / ${ven.el?.toFixed(0) || 0}°`;
+            document.getElementById('mar-pos').innerText = `${mar.az.toFixed(0)}° / ${mar.el?.toFixed(0) || 0}°`;
+            document.getElementById('jup-pos').innerText = `${jup.az.toFixed(0)}° / ${jup.el?.toFixed(0) || 0}°`;
+            document.getElementById('sat-pos').innerText = `${sat.az.toFixed(0)}° / ${sat.el?.toFixed(0) || 0}°`;
 
-            let capMag = dynamique?.cap_magnetique_brut_deg ?? 0;
-            let decWmm = spatiale?.declinaison_wmm_deg ?? 0;
+            let capMag = dynamique.cap_magnetique_brut_deg ?? dynamique.cap ?? 0;
+            let decWmm = spatiale.declinaison_wmm_deg ?? spatiale.dec ?? 0;
             DonneesAstroCourantes = { sol, lun, mer, ven, mar, jup, sat, capVrai: (capMag + decWmm + 360) % 360 };
 
-            logDebug("Système Synchrone. Télémétrie valide.");
+            logDebug("Télémétrie verrouillée. Horloge Atomique Web Active.");
             générerRenduRadar();
 
         } catch (erreur) {
@@ -253,10 +164,10 @@
         ctx.strokeStyle = "rgba(0, 240, 255, 0.1)";
         ctx.beginPath(); ctx.arc(0, 0, rMax, 0, 2*Math.PI); ctx.stroke();
         ctx.beginPath(); ctx.arc(0, 0, rMax*0.6, 0, 2*Math.PI); ctx.stroke();
-        ctx.fillStyle = "var(--cyan)"; ctx.fillText("NORD VRAI", -25, -rMax - 12);
+        ctx.fillStyle = "var(--cyan)"; ctx.fillText("NORD VRAI ITRF", -35, -rMax - 12);
 
         function dessinerAstre(astre, couleur, taille, label) {
-            let elRefractee = astre.el + corrigerRefractionAtmospherique(astre.el, pressionStationEtablie, 20.0);
+            let elRefractee = astre.el + corrigerRefractionAtmospherique(astre.el, pressionStationEtablie, 15.0);
             if (elRefractee < 0) return; 
             ctx.save();
             ctx.rotate((astre.az * Math.PI) / 180);
@@ -283,6 +194,4 @@
 
     window.onresize = redimensionner;
     window.onload = () => { redimensionner(); acquérirEphéméridesJPL(); setInterval(acquérirEphéméridesJPL, 1000); };
-</script>
-</body>
-    </html>
+            </script>
