@@ -1,29 +1,52 @@
 {
-  "METADONNEES_SYSTEME": {
-    "timestamp_utc": "2026-06-08T18:25:14Z",
-    "station_nom": "Marseille-Endoume (43.2846, 5.3586)"
+  "METADONNEES": {
+    "timestamp_utc": "2026-06-08T21:15:00Z",
+    "latitude": 43.2907,
+    "longitude": 5.3549,
+    "altitude_m": 55.0,
+    "points_par_jour": 1440
   },
-  "METEO_TERRESTRE_THERMODYNAMIQUE": {
-    "pression_mer_hpa": 1015.2,
-    "temperature_seche_c": 22.1,
-    "humidite_relative_pct": 58.0,
-    "vent_vrai_vitesse_noeuds": 12.0,
+  "METEO_TERRESTRE": {
+    "pression_mer_hpa": 1014.25,
+    "temperature_c": 22.4,
+    "humidite_pct": 61.0,
+    "vent_vrai_vitesse_kmh": 22.2,
     "vent_vrai_direction_deg": 290.0
   },
-  "METEO_SPATIALE_MAGNETIQUE": {
-    "indice_kp": 2.33,
-    "vent_solaire_vitesse_kms": 412.5,
-    "declinaison_wmm_calculee_deg": 1.635
+  "DYNAMIQUE_VEHICULE": {
+    "vitesse_gps_kmh": 0.0,
+    "cap_magnetique_brut_deg": 0.0
   },
-  "EPHEMERIDES_TRAJECTOIRE_CELESTE": {
-    "soleil": {
-      "azimut_vrai_deg": 284.1254,
-      "elevation_refractee_deg": 12.3411,
-      "transit_utc": "12:14:32"
-    },
-    "lune": {
-      "illumination_pct": 49.99,
-      "angle_phase_sto_deg": 90.0034
-    }
+  "METEO_SPATIALE": {
+    "indice_kp": 2.3,
+    "vent_solaire_kms": 415.0,
+    "declinaison_wmm_deg": 1.63
+  },
+  "EPHEMERIDES_JPL_1440": {
+    "SOLEIL": [
+      {"az": 1.254, "el": -42.125, "dist_ua": 1.0151},
+      "...", 
+      {"az": 284.125, "el": 12.341, "dist_ua": 1.0152}
+    ],
+    "LUNE": [
+      {"az": 14.521, "el": -12.412, "phase_pct": 49.9},
+      "...",
+      {"az": 110.452, "el": -5.231, "phase_pct": 50.0}
+    ],
+    "MERCURE": [
+      {"az": 300.12, "el": -20.45, "dist_ua": 0.621}
+    ],
+    "VENUS": [
+      {"az": 145.89, "el": 34.12, "dist_ua": 1.412}
+    ],
+    "MARS": [
+      {"az": 88.45, "el": 15.62, "dist_ua": 2.145}
+    ],
+    "JUPITER": [
+      {"az": 210.15, "el": -5.11, "dist_ua": 4.891}
+    ],
+    "SATURNE": [
+      {"az": 15.34, "el": -52.41, "dist_ua": 9.541}
+    ]
   }
 }
