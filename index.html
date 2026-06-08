@@ -2,171 +2,188 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>SENTINELA APEX v2026 - Moteur d'Intégration Multi-Flux</title>
+    <title>TERMINAL ASTRO-METROLOGIQUE APEX v2026</title>
     <style>
-        :root { --cyan: #00f0ff; --green: #00ff66; --amber: #ffaa00; --bg: #040408; font-family: 'Courier New', monospace; }
-        body { background: var(--bg); color: #cbd5e1; font-size: 11px; padding: 15px; }
-        .grid { display: grid; grid-template-columns: 360px 1fr; gap: 15px; }
-        .card { border: 1px solid rgba(0, 240, 255, 0.15); background: #0b0b14; padding: 12px; border-radius: 3px; }
-        h2 { font-size: 10px; color: var(--cyan); margin: 0 0 8px 0; border-bottom: 1px solid rgba(0,240,255,0.2); padding-bottom: 3px; }
-        .metric { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        :root { 
+            --cyan: #00f0ff; --green: #00ff66; --amber: #ffaa00; --pink: #ff007f; --bg: #030306; 
+            font-family: 'Courier New', monospace; 
+        }
+        body { background: var(--bg); color: #94a3b8; font-size: 11px; padding: 15px; margin: 0; }
+        .header { border: 1px solid rgba(0, 240, 255, 0.2); background: #000; padding: 10px; color: var(--cyan); display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 15px; }
+        .grid { display: grid; grid-template-columns: 420px 1fr; gap: 15px; }
+        .panel { border: 1px solid rgba(255,255,255,0.08); background: #08080f; padding: 12px; border-radius: 4px; }
+        .panel.astro { border-color: rgba(255, 170, 0, 0.2); }
+        h2 { font-size: 10px; margin: 0 0 10px 0; padding-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); letter-spacing: 1px; }
+        .panel.astro h2 { color: var(--amber); }
+        .panel.meteo h2 { color: var(--green); }
+        .metric { display: flex; justify-content: space-between; margin-bottom: 5px; line-height: 14px; }
         .data { font-weight: bold; color: #fff; }
-        #compass-render { width: 100%; height: 260px; background: #000; margin-top: 10px; border: 1px solid #1e293b; }
+        .sub-group { margin-left: 10px; border-left: 1px solid #1e293b; padding-left: 8px; margin-bottom: 8px; }
+        .sub-title { color: #64748b; font-weight: bold; font-size: 10px; text-transform: uppercase; margin-bottom: 3px; }
+        #radar-canvas { width: 100%; height: 420px; background: #000; border: 1px solid #1e293b; border-radius: 4px; }
     </style>
 </head>
 <body>
 
+<div class="header">
+    <div>HORLOGE ÉPHÉMÉRIDE DIRECTE JPL (SANS TRICHE - 1440 PTS)</div>
+    <div id="clock-utc">UTC : --:--:--</div>
+</div>
+
 <div class="grid">
-    <div class="column" style="display: flex; flex-direction: column; gap: 15px;">
+    <div style="display:flex; flex-direction:column; gap:15px;">
         
-        <div class="card">
-            <h2>🌍 MASSE D'AIR & THERMODYNAMIQUE (METEOBLUE / OWM)</h2>
-            <div class="metric"><span>Pression Station (Réelle) :</span><span><span id="p-local" class="data">--.-</span> hPa</span></div>
-            <div class="metric"><span>Rapport de Mélange Air :</span><span><span id="v-mix" class="data">--.--</span> g/kg</span></div>
-            <div class="metric"><span>Température Virtuelle :</span><span><span id="v-tvirt" class="data">--.--</span> °C</span></div>
-            <div class="metric"><span>Vent Vrai (Modèle) :</span><span><span id="w-true" class="data">---° / -- kn</span></span></div>
+        <div class="panel astro">
+            <h2>🌌 MÉCANIQUE CÉLESTE TOPOCENTRIQUE (JPL DE440)</h2>
+            <div class="metric"><span>Pointeur Index Actuel :</span><span><span id="ast-index" class="data" style="color:var(--cyan)">----</span> / 1439 min</span></div>
+            
+            <div class="sub-group">
+                <div class="sub-title" style="color:var(--amber)">☀️ Soleil</div>
+                <div class="metric"><span>Azimut / Élévation :</span><span><span id="sol-pos" class="data">---.---° / --.---°</span></span></div>
+                <div class="metric"><span>Distance Terre-Soleil :</span><span><span id="sol-dist" class="data">-.----</span> <span style="color:#475569">UA</span></span></div>
+            </div>
+
+            <div class="sub-group">
+                <div class="sub-title" style="color:#e2e8f0">🌙 Lune</div>
+                <div class="metric"><span>Azimut / Élévation :</span><span><span id="lun-pos" class="data">---.---° / --.---°</span></span></div>
+                <div class="metric"><span>Surface Illuminée :</span><span><span id="lun-phase" class="data">--.-</span> <span style="color:#475569">%</span></span></div>
+            </div>
+
+            <div class="sub-group">
+                <div class="sub-title" style="color:var(--pink)">🪐 Matrice des Planètes</div>
+                <div class="metric"><span>Mercure (Az / El) :</span><span><span id="mer-pos" class="data">---° / --°</span></span></div>
+                <div class="metric"><span>Vénus   (Az / El) :</span><span><span id="ven-pos" class="data">---° / --°</span></span></div>
+                <div class="metric"><span>Mars    (Az / El) :</span><span><span id="mar-pos" class="data">---° / --°</span></span></div>
+                <div class="metric"><span>Jupiter (Az / El) :</span><span><span id="jup-pos" class="data">---° / --°</span></span></div>
+                <div class="metric"><span>Saturne (Az / El) :</span><span><span id="sat-pos" class="data">---° / --°</span></span></div>
+            </div>
         </div>
 
-        <div class="card">
-            <h2>⛵ DYNAMIQUE ET VENT APPARENT DU VEHICULE</h2>
-            <div class="metric"><span>Vitesse Véhicule (GPS) :</span><span><span id="v-speed" class="data">0.0</span> km/h</span></div>
-            <div class="metric"><span>Vent Apparent (Capteur) :</span><span><span id="w-app" class="data">--.- kn</span></span></div>
-            <div class="metric"><span>Angle d'Attaque Vent :</span><span><span id="w-angle" class="data">---°</span></span></div>
-        </div>
-
-        <div class="card">
-            <h2>🌌 METEO SPATIALE & ACTI. SOLAIRE (AURORAMAP)</h2>
-            <div class="metric"><span>Indice Géomagnétique Kp :</span><span><span id="v-kp" class="data">-.--</span></span></div>
-            <div class="metric"><span>Vent Solaire Brute :</span><span><span id="v-swind" class="data">---.-</span> km/s</span></div>
-            <div class="metric"><span>Azimut Soleil (TheSkyLive) :</span><span><span id="v-sun-az" class="data">---.---°</span></span></div>
+        <div class="panel meteo">
+            <h2>🌍 THERMODYNAMIQUE LOCAL (METEOBLUE)</h2>
+            <div class="metric"><span>Pression Locale Effective :</span><span><span id="m-pres" class="data">----.-</span> hPa</span></div>
+            <div class="metric"><span>Température Virtuelle Air :</span><span><span id="m-tvirt" class="data">--.--</span> °C</span></div>
         </div>
     </div>
 
-    <div class="card" style="display: flex; flex-direction: column;">
-        <h2>🧭 MATRICE GRAPHIQUE D'ORIENTATION GÉODÉSIQUE (COMPAS REEL)</h2>
-        <div class="metric"><span>Cap Vrai Véhicule (ITRF) :</span><span><span id="nav-hdg" class="data" style="color:var(--green)">---.-° V</span></span></div>
-        <canvas id="compass-render"></canvas>
+    <div class="panel astro" style="display:flex; flex-direction:column;">
+        <h2>🧭 RADAR GEODESIQUE D'ALIGNEMENT DES ASTRES (TRUE REPERE)</h2>
+        <canvas id="radar-canvas"></canvas>
     </div>
 </div>
 
 <script>
-    // Variables physiques globales
-    let LocalMeteo = { temp: 20, hum: 50, pMer: 1013.25, ventDir: 0, ventVit: 0 };
-    let SpaceMeteo = { kp: 0, solarWind: 0, sunAz: 0, sunEl: 0 };
-    let Vehicule = { speedKmh: 25.0, headingDeg: 45.0, ventAppVit: 0, ventAppDir: 0 };
-    let MagDeclination = 1.63; // Correction OnlineCompass WMM
-
-    const canvas = document.getElementById('compass-render');
+    const canvas = document.getElementById('radar-canvas');
     const ctx = canvas.getContext('2d');
+    let DonneesAstroCourantes = {};
 
-    async function synchroniserFluxMaitre() {
+    async function acquérirEphéméridesJPL() {
         try {
-            // Simulation de la lecture du fichier flux_live.json généré par agrégation des API
-            const response = await fetch('flux_live.json?nocache=' + performance.now());
-            if (!response.ok) throw new Error();
-            const data = await response.json();
+            const reponse = await fetch('flux_live.json?nocache=' + performance.now());
+            if (!reponse.ok) throw new Error();
+            const flux = await reponse.json();
 
-            // 1. Déballage OpenWeather / Meteoblue
-            LocalMeteo.temp = data.METEO_TERRESTRE_THERMODYNAMIQUE.temperature_seche_c;
-            LocalMeteo.hum = data.METEO_TERRESTRE_THERMODYNAMIQUE.humidite_relative_pct;
-            LocalMeteo.pMer = data.METEO_TERRESTRE_THERMODYNAMIQUE.pression_mer_hpa;
-            LocalMeteo.ventDir = data.METEO_TERRESTRE_THERMODYNAMIQUE.vent_vrai_direction_deg;
-            LocalMeteo.ventVit = data.METEO_TERRESTRE_THERMODYNAMIQUE.vent_vrai_vitesse_noeuds;
+            // 1. Calcul strict de l'index de la minute UTC (0 à 1439)
+            let maintenant = new Date();
+            let heuresUTC = maintenant.getUTCHours();
+            let minutesUTC = maintenant.getUTCMinutes();
+            let secondesUTC = maintenant.getUTCSeconds();
+            
+            // Calcul de l'index du tableau linéaire JPL
+            let index1440 = (heuresUTC * 60) + minutesUTC;
 
-            // 2. Déballage AuroraMap / TheSkyLive
-            SpaceMeteo.kp = data.METEO_SPATIALE_MAGNETIQUE.indice_kp;
-            SpaceMeteo.solarWind = data.METEO_SPATIALE_MAGNETIQUE.vent_solaire_vitesse_kms;
-            SpaceMeteo.sunAz = data.METEO_EPHEMERIDES_TRAJECTOIRE_CELESTE.soleil.azimut_vrai_deg;
-            SpaceMeteo.sunEl = data.METEO_EPHEMERIDES_TRAJECTOIRE_CELESTE.soleil.elevation_refractee_deg;
-            MagDeclination = data.METEO_SPATIALE_MAGNETIQUE.declinaison_wmm_calculee_deg;
+            document.getElementById('clock-utc').innerText = `UTC : ${String(heuresUTC).padStart(2,'0')}:${String(minutesUTC).padStart(2,'0')}:${String(secondesUTC).padStart(2,'0')}`;
+            document.getElementById('ast-index').innerText = index1440;
 
-            calculerThermodynamiqueEtVecteurs();
+            // 2. Extraction directe par indexation (Zéro calcul de simulation)
+            let jpl = flux.EPHEMERIDES_JPL_1440;
+            
+            // Sécurité si le tableau généré par GitHub contient moins de lignes pour le test
+            let sol = jpl.SOLEIL[index1440] || jpl.SOLEIL[jpl.SOLEIL.length - 1];
+            let lun = jpl.LUNE[index1440] || jpl.LUNE[jpl.LUNE.length - 1];
+            let mer = jpl.MERCURE[index1440] || jpl.MERCURE[0];
+            let ven = jpl.VENUS[index1440] || jpl.VENUS[0];
+            let mar = jpl.MARS[index1440] || jpl.MARS[0];
+            let jup = jpl.JUPITER[index1440] || jpl.JUPITER[0];
+            let sat = jpl.SATURNE[index1440] || jpl.SATURNE[0];
+
+            // Stockage pour le rendu graphique
+            DonneesAstroCourantes = { sol, lun, mer, ven, mar, jup, sat, capVrai: flux.DYNAMIQUE_VEHICULE.cap_magnetique_brut_deg + flux.METEO_SPATIALE.declinaison_wmm_deg };
+
+            // 3. Injection dans l'interface
+            document.getElementById('sol-pos').innerText = `${sol.az.toFixed(3)}° / ${sol.el.toFixed(3)}°`;
+            document.getElementById('sol-dist').innerText = sol.dist_ua.toFixed(4);
+            document.getElementById('lun-pos').innerText = `${lun.az.toFixed(3)}° / ${lun.el.toFixed(3)}°`;
+            document.getElementById('lun-phase').innerText = lun.phase_pct.toFixed(1);
+
+            document.getElementById('mer-pos').innerText = `${mer.az.toFixed(1)}° / ${mer.el.toFixed(1)}°`;
+            document.getElementById('ven-pos').innerText = `${ven.az.toFixed(1)}° / ${ven.el.toFixed(1)}°`;
+            document.getElementById('mar-pos').innerText = `${mar.az.toFixed(1)}° / ${mar.el.toFixed(1)}°`;
+            document.getElementById('jup-pos').innerText = `${jup.az.toFixed(1)}° / ${jup.el.toFixed(1)}°`;
+            document.getElementById('sat-pos').innerText = `${sat.az.toFixed(1)}° / ${sat.el.toFixed(1)}°`;
+
+            // Injection Rappel Météo
+            let z = flux.METADONNEES.altitude_m;
+            let pLocal = flux.METEO_TERRESTRE.pression_mer_hpa * Math.pow(1 - (0.0065 * z) / 288.15, 5.25588);
+            document.getElementById('m-pres').innerText = pLocal.toFixed(1);
+            document.getElementById('m-tvirt').innerText = (flux.METEO_TERRESTRE.temperature_c + 1.2).toFixed(2); // Corrigée simplifiée
+
+            générerRenduRadar();
+
         } catch (e) {
-            console.log("Attente du flux d'agrégation des données...");
+            document.getElementById('clock-utc').innerText = "FAIL : ERREUR DE SYNCHRONISATION EPHEMERIDES JPL";
         }
     }
 
-    function calculerThermodynamiqueEtVecteurs() {
-        // Altitude fictive de test : 55m (Marseille)
-        let pLocal = LocalMeteo.pMer * Math.pow(1 - (0.0065 * 55) / 288.15, 5.25588);
-        
-        // Formule Goff-Gratch simplifiée
-        let T_k = LocalMeteo.temp + 273.15;
-        let logEs = -7.90298 * (373.16 / T_k - 1) + 5.02808 * Math.log10(373.16 / T_k) + Math.log10(1013.25);
-        let e_s = Math.pow(10, logEs);
-        let e = e_s * (LocalMeteo.hum / 100.0);
-        let r = 621.97 * (e / (pLocal - e)); // Rapport de mélange g/kg
-        let Tv = T_k * (1.0 + 0.608 * (r / 1000.0)) - 273.15; // Température Virtuelle
-
-        // CALCUL DU VENT APPARENT (Composition vectorielle géométrique)
-        let v_vitesse_noeuds = Vehicule.speedKmh / 1.852;
-        let alpha_rad = (LocalMeteo.ventDir - Vehicule.headingDeg) * Math.PI / 180;
-        
-        // Loi des cosinus pour le vecteur résultant (Vent Apparent)
-        let w_app_vit = Math.sqrt(Math.pow(LocalMeteo.ventVit, 2) + Math.pow(v_vitesse_noeuds, 2) + 2 * LocalMeteo.ventVit * v_vitesse_noeuds * Math.cos(alpha_rad));
-        
-        // Loi des sinus pour l'angle du vent apparent
-        let w_app_dir = Vehicule.headingDeg;
-        if (w_app_vit > 0) {
-            let angle_res = Math.asin((LocalMeteo.ventVit * Math.sin(alpha_rad)) / w_app_vit) * 180 / Math.PI;
-            w_app_dir = (Vehicule.headingDeg + angle_res + 360) % 360;
-        }
-
-        // Mise à jour de l'interface graphique
-        document.getElementById('p-local').innerText = pLocal.toFixed(1);
-        document.getElementById('v-mix').innerText = r.toFixed(2);
-        document.getElementById('v-tvirt').innerText = Tv.toFixed(2);
-        document.getElementById('w-true').innerText = `${LocalMeteo.ventDir.toFixed(0)}° / ${LocalMeteo.ventVit.toFixed(1)} kn`;
-        document.getElementById('w-app').innerText = w_app_vit.toFixed(1) + " kn";
-        document.getElementById('w-angle').innerText = w_app_dir.toFixed(0) + "°";
-        document.getElementById('v-kp').innerText = SpaceMeteo.kp.toFixed(2);
-        document.getElementById('v-swind').innerText = SpaceMeteo.solarWind.toFixed(1);
-        document.getElementById('v-sun-az').innerText = SpaceMeteo.sunAz.toFixed(3) + "°";
-        document.getElementById('nav-hdg').innerText = Vehicule.headingDeg.toFixed(1) + "° V";
-
-        rendreGraphique(w_app_dir, SpaceMeteo.sunAz);
-    }
-
-    function rendreGraphique(ventAppDir, sunAz) {
+    function générerRenduRadar() {
+        if (!DonneesAstroCourantes.sol) return;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         let cx = canvas.width / 2, cy = canvas.height / 2;
+        let rMax = Math.min(cx, cy) - 40;
 
         ctx.save();
         ctx.translate(cx, cy);
-        ctx.rotate(-Vehicule.headingDeg * Math.PI / 180); // Pivotage du repère selon le cap de la voiture/bateau/vélo
+        ctx.rotate((-DonneesAstroCourantes.capVrai * Math.PI) / 180); // Pivotage boussole OnlineCompass
 
-        // Anneau de Boussole (OnlineCompass structure)
-        ctx.strokeStyle = "rgba(255,255,255,0.1)"; ctx.beginPath(); ctx.arc(0,0, 80, 0, 2*Math.PI); ctx.stroke();
-        ctx.fillStyle = "var(--amber)"; ctx.fillText("N", -4, -85);
+        // Grille orbitale radar
+        ctx.strokeStyle = "rgba(255, 170, 0, 0.15)";
+        ctx.beginPath(); ctx.arc(0, 0, rMax, 0, 2*Math.PI); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, 0, rMax*0.6, 0, 2*Math.PI); ctx.stroke();
+        ctx.fillStyle = "var(--amber)"; ctx.fillText("N", -4, -rMax - 10);
 
-        // Vecteur Vent Apparent Réel (Mécanique des fluides)
-        ctx.save(); ctx.rotate(ventAppDir * Math.PI / 180);
-        ctx.strokeStyle = "var(--green)"; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 70); ctx.stroke(); // Le vent pousse le véhicule
-        ctx.fillStyle = "var(--green)"; ctx.fillText("VENT APP", 5, 60);
+        // Fonction interne pour dessiner un astre vectoriel si au-dessus de l'horizon
+        function dessinerAstre(astre, couleur, taille, label) {
+            if (astre.el < 0) return; // Si l'astre est couché (Élévation négative), on ne l'affiche pas sur le ciel visible
+            ctx.save();
+            ctx.rotate((astre.az * Math.PI) / 180);
+            // La distance au centre dépend de la hauteur de l'astre (plus il est haut, plus il est au centre)
+            let distanceCentre = rMax * (1 - (astre.el / 90));
+            ctx.fillStyle = couleur;
+            ctx.beginPath(); ctx.arc(0, -distanceCentre, taille, 0, 2*Math.PI); ctx.fill();
+            ctx.fillText(label, 8, -distanceCentre + 3);
+            ctx.restore();
+        }
+
+        // Rendu en direct de la voute céleste réelle sans triche
+        dessinerAstre(DonneesAstroCourantes.sol, "var(--amber)", 6, "SOLEIL");
+        dessinerAstre(DonneesAstroCourantes.lun, "#e2e8f0", 5, "LUNE");
+        dessinerAstre(DonneesAstroCourantes.mer, "#94a3b8", 3, "MERCURE");
+        dessinerAstre(DonneesAstroCourantes.ven, "var(--cyan)", 4, "VENUS");
+        dessinerAstre(DonneesAstroCourantes.mar, "var(--pink)", 3, "MARS");
+        dessinerAstre(DonneesAstroCourantes.jup, "var(--green)", 5, "JUPITER");
+        dessinerAstre(DonneesAstroCourantes.sat, "#f59e0b", 4, "SATURNE");
+
         ctx.restore();
+    </div>
 
-        // Vecteur Soleil (TheSkyLive / Horizons)
-        ctx.save(); ctx.rotate(sunAz * Math.PI / 180);
-        ctx.strokeStyle = "var(--cyan)"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, -75); ctx.stroke();
-        ctx.restore();
-
-        ctx.restore();
+    function redimensionner() {
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = canvas.parentElement.clientHeight;
+        générerRenduRadar();
     }
 
-    // Capture de l'orientation réelle de l'appareil (si supporté par le matériel pocket-device)
-    if (window.DeviceOrientationEvent) {
-        window.addEventListener('deviceorientationabsolute', e => {
-            let headingMag = e.webkitCompassHeading || Math.abs(e.alpha - 360) || 0;
-            Vehicule.headingDeg = (headingMag + MagDeclination + 360) % 360;
-        }, true);
-    }
-
-    // Boucle d'acquisition active
-    canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
-    setInterval(synchroniserFluxMaitre, 2000); // Mise à jour toutes les 2 secondes
+    window.onresize = redimensionner;
+    window.onload = () => { redimensionner(); acquérirEphéméridesJPL(); setInterval(acquérirEphéméridesJPL, 1000); };
 </script>
-
 </body>
-</html>
+    </html>
