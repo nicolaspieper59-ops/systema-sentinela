@@ -21,6 +21,13 @@
         .sub-group { margin-left: 10px; border-left: 1px solid #1e293b; padding-left: 8px; margin-bottom: 8px; }
         .sub-title { color: #64748b; font-weight: bold; font-size: 10px; text-transform: uppercase; margin-bottom: 3px; }
         #radar-canvas { width: 100%; height: 420px; background: #000; border: 1px solid #1e293b; border-radius: 4px; }
+        
+        /* BANDEAU DE DIAGNOSTIC METROLOGIQUE EXCLUSIF */
+        #debug-console { 
+            margin-top: 15px; padding: 10px; background: #110505; 
+            border: 1px solid #551111; color: #ff5555; border-radius: 4px;
+            font-size: 10px; display: block; overflow-y: auto; max-height: 60px;
+        }
     </style>
 </head>
 <body>
@@ -60,7 +67,7 @@
         </div>
 
         <div class="panel meteo">
-            <h2>🌍 THERMODYNAMIQUE LOCAL (METEOBLUE)</h2>
+            <h2>🌍 THERMODYNAMIQUE LOCALE (METEOBLUE)</h2>
             <div class="metric"><span>Pression Locale Effective :</span><span><span id="m-pres" class="data">----.-</span> hPa</span></div>
             <div class="metric"><span>Température Virtuelle Air :</span><span><span id="m-tvirt" class="data">--.--</span> °C</span></div>
         </div>
@@ -72,66 +79,91 @@
     </div>
 </div>
 
+<div id="debug-console">SYS STATUS : INITIALISATION DE L'ACQUISITION DES FLUX...</div>
+
 <script>
     const canvas = document.getElementById('radar-canvas');
     const ctx = canvas.getContext('2d');
+    const debugDiv = document.getElementById('debug-console');
     let DonneesAstroCourantes = {};
+
+    function logDebug(message, isError = false) {
+        debugDiv.innerText = `[${new Date().toLocaleTimeString()}] ${message}`;
+        debugDiv.style.color = isError ? "#ff5555" : "var(--green)";
+        debugDiv.style.backgroundColor = isError ? "#1a0505" : "#051a05";
+        debugDiv.style.borderColor = isError ? "#551111" : "#115511";
+    }
 
     async function acquérirEphéméridesJPL() {
         try {
-            const reponse = await fetch('flux_live.json?nocache=' + performance.now());
-            if (!reponse.ok) throw new Error();
+            // Utilisation du chemin relatif explicite avec neutralisation du cache CDN par timestamp variable
+            const reponse = await fetch('./flux_live.json?cache_bust=' + Date.now());
+            
+            if (!reponse.ok) {
+                throw new Error(`HTTP Erreur ${reponse.status}: Impossible de charger ./flux_live.json. Vérifiez la casse et l'emplacement sur GitHub.`);
+            }
+            
             const flux = await reponse.json();
 
-            // 1. Calcul strict de l'index de la minute UTC (0 à 1439)
+            // Vérification de la présence des structures de données primaires
+            if (!flux.EPHEMERIDES_JPL_1440 || !flux.METEO_TERRESTRE) {
+                throw new Error("Structure JSON invalide. Noeuds 'EPHEMERIDES_JPL_1440' ou 'METEO_TERRESTRE' absents.");
+            }
+
+            // Calcul strict de l'index de la minute UTC
             let maintenant = new Date();
             let heuresUTC = maintenant.getUTCHours();
             let minutesUTC = maintenant.getUTCMinutes();
-            let secondesUTC = maintenant.getUTCSeconds();
-            
-            // Calcul de l'index du tableau linéaire JPL
+            let secondesUTC = mainteant = maintenant.getUTCSeconds();
             let index1440 = (heuresUTC * 60) + minutesUTC;
 
             document.getElementById('clock-utc').innerText = `UTC : ${String(heuresUTC).padStart(2,'0')}:${String(minutesUTC).padStart(2,'0')}:${String(secondesUTC).padStart(2,'0')}`;
             document.getElementById('ast-index').innerText = index1440;
 
-            // 2. Extraction directe par indexation (Zéro calcul de simulation)
             let jpl = flux.EPHEMERIDES_JPL_1440;
             
-            // Sécurité si le tableau généré par GitHub contient moins de lignes pour le test
-            let sol = jpl.SOLEIL[index1440] || jpl.SOLEIL[jpl.SOLEIL.length - 1];
-            let lun = jpl.LUNE[index1440] || jpl.LUNE[jpl.LUNE.length - 1];
-            let mer = jpl.MERCURE[index1440] || jpl.MERCURE[0];
-            let ven = jpl.VENUS[index1440] || jpl.VENUS[0];
-            let mar = jpl.MARS[index1440] || jpl.MARS[0];
-            let jup = jpl.JUPITER[index1440] || jpl.JUPITER[0];
-            let sat = jpl.SATURNE[index1440] || jpl.SATURNE[0];
+            // BLINDAGE MÉMORY : Utilisation de l'opérateur de chaînage optionnel (?.) et valeurs de secours par défaut
+            let sol = jpl.SOLEIL?.[index1440] || { az: 0, el: -90, dist_ua: 1.0000 };
+            let lun = jpl.LUNE?.[index1440] || { az: 0, el: -90, phase_pct: 0.0 };
+            let mer = jpl.MERCURE?.[index1440] || { az: 0, el: -90 };
+            let ven = jpl.VENUS?.[index1440] || { az: 0, el: -90 };
+            let mar = jpl.MARS?.[index1440] || { az: 0, el: -90 };
+            let jup = jpl.JUPITER?.[index1440] || { az: 0, el: -90 };
+            let sat = jpl.SATURNE?.[index1440] || { az: 0, el: -90 };
 
-            // Stockage pour le rendu graphique
-            DonneesAstroCourantes = { sol, lun, mer, ven, mar, jup, sat, capVrai: flux.DYNAMIQUE_VEHICULE.cap_magnetique_brut_deg + flux.METEO_SPATIALE.declinaison_wmm_deg };
+            let capMag = flux.DYNAMIQUE_VEHICULE?.cap_magnetique_brut_deg ?? 0;
+            let decWmm = flux.METEO_SPATIALE?.declinaison_wmm_deg ?? 0;
+            DonneesAstroCourantes = { sol, lun, mer, ven, mar, jup, sat, capVrai: (capMag + decWmm + 360) % 360 };
 
-            // 3. Injection dans l'interface
-            document.getElementById('sol-pos').innerText = `${sol.az.toFixed(3)}° / ${sol.el.toFixed(3)}°`;
-            document.getElementById('sol-dist').innerText = sol.dist_ua.toFixed(4);
-            document.getElementById('lun-pos').innerText = `${lun.az.toFixed(3)}° / ${lun.el.toFixed(3)}°`;
-            document.getElementById('lun-phase').innerText = lun.phase_pct.toFixed(1);
+            // Injection sécurisée dans le DOM
+            document.getElementById('sol-pos').innerText = `${sol.az ? sol.az.toFixed(3) : '0.000'}° / ${sol.el ? sol.el.toFixed(3) : '0.000'}°`;
+            document.getElementById('sol-dist').innerText = sol.dist_ua ? sol.dist_ua.toFixed(4) : '1.0000';
+            document.getElementById('lun-pos').innerText = `${lun.az ? lun.az.toFixed(3) : '0.000'}° / ${lun.el ? lun.el.toFixed(3) : '0.000'}°`;
+            document.getElementById('lun-phase').innerText = lun.phase_pct ? lun.phase_pct.toFixed(1) : '0.0';
 
-            document.getElementById('mer-pos').innerText = `${mer.az.toFixed(1)}° / ${mer.el.toFixed(1)}°`;
-            document.getElementById('ven-pos').innerText = `${ven.az.toFixed(1)}° / ${ven.el.toFixed(1)}°`;
-            document.getElementById('mar-pos').innerText = `${mar.az.toFixed(1)}° / ${mar.el.toFixed(1)}°`;
-            document.getElementById('jup-pos').innerText = `${jup.az.toFixed(1)}° / ${jup.el.toFixed(1)}°`;
-            document.getElementById('sat-pos').innerText = `${sat.az.toFixed(1)}° / ${sat.el.toFixed(1)}°`;
+            document.getElementById('mer-pos').innerText = `${mer.az ? mer.az.toFixed(1) : '0'}° / ${mer.el ? mer.el.toFixed(1) : '0'}°`;
+            document.getElementById('ven-pos').innerText = `${ven.az ? ven.az.toFixed(1) : '0'}° / ${ven.el ? ven.el.toFixed(1) : '0'}°`;
+            document.getElementById('mar-pos').innerText = `${mar.az ? mar.az.toFixed(1) : '0'}° / ${mar.el ? mar.el.toFixed(1) : '0'}°`;
+            document.getElementById('jup-pos').innerText = `${jup.az ? jup.az.toFixed(1) : '0'}° / ${jup.el ? jup.el.toFixed(1) : '0'}°`;
+            document.getElementById('sat-pos').innerText = `${sat.az ? sat.az.toFixed(1) : '0'}° / ${sat.el ? sat.el.toFixed(1) : '0'}°`;
 
-            // Injection Rappel Météo
-            let z = flux.METADONNEES.altitude_m;
-            let pLocal = flux.METEO_TERRESTRE.pression_mer_hpa * Math.pow(1 - (0.0065 * z) / 288.15, 5.25588);
+            // Calcul thermodynamique local
+            let alt = flux.METADONNEES?.altitude_m ?? 0;
+            let pMer = flux.METEO_TERRESTRE?.pression_mer_hpa ?? 1013.25;
+            let pLocal = pMer * Math.pow(1 - (0.0065 * alt) / 288.15, 5.25588);
+            let tc = flux.METEO_TERRESTRE?.temperature_c ?? 15.0;
+            
             document.getElementById('m-pres').innerText = pLocal.toFixed(1);
-            document.getElementById('m-tvirt').innerText = (flux.METEO_TERRESTRE.temperature_c + 1.2).toFixed(2); // Corrigée simplifiée
+            document.getElementById('m-tvirt').innerText = (tc + (tc * 0.01)).toFixed(2); // Approximation linéaire de sécurité
 
+            logDebug(`Flux OK. Index minute rafraîchi : ${index1440}`);
             générerRenduRadar();
 
-        } catch (e) {
-            document.getElementById('clock-utc').innerText = "FAIL : ERREUR DE SYNCHRONISATION EPHEMERIDES JPL";
+        } catch (erreur) {
+            logDebug(erreur.message, true);
+            // On force l'horloge système à s'afficher même si le JSON est mort
+            let maintenant = new Date();
+            document.getElementById('clock-utc').innerText = `UTC : ${String(maintenant.getUTCHours()).padStart(2,'0')}:${String(maintenant.getUTCMinutes()).padStart(2,'0')}:${String(maintenant.getUTCSeconds()).padStart(2,'0')}`;
         }
     }
 
@@ -143,20 +175,17 @@
 
         ctx.save();
         ctx.translate(cx, cy);
-        ctx.rotate((-DonneesAstroCourantes.capVrai * Math.PI) / 180); // Pivotage boussole OnlineCompass
+        ctx.rotate((-DonneesAstroCourantes.capVrai * Math.PI) / 180);
 
-        // Grille orbitale radar
         ctx.strokeStyle = "rgba(255, 170, 0, 0.15)";
         ctx.beginPath(); ctx.arc(0, 0, rMax, 0, 2*Math.PI); ctx.stroke();
         ctx.beginPath(); ctx.arc(0, 0, rMax*0.6, 0, 2*Math.PI); ctx.stroke();
         ctx.fillStyle = "var(--amber)"; ctx.fillText("N", -4, -rMax - 10);
 
-        // Fonction interne pour dessiner un astre vectoriel si au-dessus de l'horizon
         function dessinerAstre(astre, couleur, taille, label) {
-            if (astre.el < 0) return; // Si l'astre est couché (Élévation négative), on ne l'affiche pas sur le ciel visible
+            if (astre.el < 0) return; 
             ctx.save();
             ctx.rotate((astre.az * Math.PI) / 180);
-            // La distance au centre dépend de la hauteur de l'astre (plus il est haut, plus il est au centre)
             let distanceCentre = rMax * (1 - (astre.el / 90));
             ctx.fillStyle = couleur;
             ctx.beginPath(); ctx.arc(0, -distanceCentre, taille, 0, 2*Math.PI); ctx.fill();
@@ -164,7 +193,6 @@
             ctx.restore();
         }
 
-        // Rendu en direct de la voute céleste réelle sans triche
         dessinerAstre(DonneesAstroCourantes.sol, "var(--amber)", 6, "SOLEIL");
         dessinerAstre(DonneesAstroCourantes.lun, "#e2e8f0", 5, "LUNE");
         dessinerAstre(DonneesAstroCourantes.mer, "#94a3b8", 3, "MERCURE");
@@ -174,7 +202,7 @@
         dessinerAstre(DonneesAstroCourantes.sat, "#f59e0b", 4, "SATURNE");
 
         ctx.restore();
-    </div>
+    }
 
     function redimensionner() {
         canvas.width = canvas.parentElement.clientWidth;
