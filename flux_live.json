@@ -1,52 +1,29 @@
 {
-  "METADONNEES": {
-    "timestamp_utc": "2026-06-08T21:15:00Z",
-    "latitude": 43.2907,
-    "longitude": 5.3549,
-    "altitude_m": 55.0,
-    "points_par_jour": 1440
+  "CLOCK_3D": {
+    "utc_gnss_atomique": "2026-06-08 19:24:05.958",
+    "coordonnees": {
+      "lat": 43.28463,
+      "lon": 5.35865,
+      "alt_m": 55.0
+    }
   },
-  "METEO_TERRESTRE": {
-    "pression_mer_hpa": 1014.25,
-    "temperature_c": 22.4,
-    "humidite_pct": 61.0,
-    "vent_vrai_vitesse_kmh": 22.2,
-    "vent_vrai_direction_deg": 290.0
+  "ENVIRONNEMENT": {
+    "pression_externe_hpa": 1006.66,
+    "temperature_air_c": 14.64,
+    "pesanteur_eotvos_ms2": 9.8046,
+    "lune_phase_sto": 90.0,
+    "lune_illumination_pct": 50.0
   },
-  "DYNAMIQUE_VEHICULE": {
-    "vitesse_gps_kmh": 0.0,
-    "cap_magnetique_brut_deg": 0.0
-  },
-  "METEO_SPATIALE": {
-    "indice_kp": 2.3,
-    "vent_solaire_kms": 415.0,
-    "declinaison_wmm_deg": 1.63
-  },
-  "EPHEMERIDES_JPL_1440": {
-    "SOLEIL": [
-      {"az": 1.254, "el": -42.125, "dist_ua": 1.0151},
-      "...", 
-      {"az": 284.125, "el": 12.341, "dist_ua": 1.0152}
-    ],
-    "LUNE": [
-      {"az": 14.521, "el": -12.412, "phase_pct": 49.9},
-      "...",
-      {"az": 110.452, "el": -5.231, "phase_pct": 50.0}
-    ],
-    "MERCURE": [
-      {"az": 300.12, "el": -20.45, "dist_ua": 0.621}
-    ],
-    "VENUS": [
-      {"az": 145.89, "el": 34.12, "dist_ua": 1.412}
-    ],
-    "MARS": [
-      {"az": 88.45, "el": 15.62, "dist_ua": 2.145}
-    ],
-    "JUPITER": [
-      {"az": 210.15, "el": -5.11, "dist_ua": 4.891}
-    ],
-    "SATURNE": [
-      {"az": 15.34, "el": -52.41, "dist_ua": 9.541}
-    ]
-  }
+  "SOLEIL": [
+    0.0,
+    0.0
+  ],
+  "LUNE": [
+    0.0,
+    0.0
+  ],
+  "JUPITER": [
+    0.0,
+    0.0
+  ]
 }
