@@ -2,12 +2,11 @@ name: SENTINELA HARD-REALTIME - Matrix Engine
 
 on:
   schedule:
-    # Déclenchement automatique toutes les heures (MM HH * * *)
     - cron: '0 * * * *'
-  workflow_dispatch: # Permet de forcer le calcul manuellement depuis l'interface GitHub
+  workflow_dispatch:
 
 permissions:
-  contents: write # Autorisation cruciale pour permettre au robot de pousser la matrice sur le dépôt
+  contents: write
 
 jobs:
   build-and-matrix:
@@ -21,31 +20,22 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-        cache: 'pip'
 
-    - name: 3. Installation des dépendances astronomiques
+    - name: 3. Installation des dépendances légères
       run: |
         python -m pip install --upgrade pip
-        pip install skyfield numpy requests
+        pip install requests
 
-    - name: 4. Téléchargement du modèle de calcul éphémérides (JPL DE421)
-      run: |
-        # Télécharge le fichier BSP de la NASA s'il n'est pas déjà présent dans le dépôt
-        if [ ! -f de421.bsp ]; then
-          curl -O https://cdn.rawgit.com/skyfielders/astronomy-notebooks/master/de421.bsp
-        fi
-
-    - name: 5. Exécution du Moteur Orbital Calculer_Orbites
+    - name: 4. Exécution du Moteur Orbital Calculer_Orbites
       run: |
         python calculer_orbites.py
 
-    - name: 6. Déploiement et Push de la matrice mise à jour sur GitHub Pages
+    - name: 5. Déploiement et Push de la matrice mise à jour sur GitHub Pages
       run: |
         git config --global user.name "Sentinela Core Bot"
         git config --global user.email "sentinela-bot@github.com"
         
-        # Vérifie si la matrice brute ou les fichiers JSON ont changé
-        git add matrice_jpl_brute.csv flux_live.json orbites.json
+        git add matrice_jpl_brute.csv flux_live.json
         
         if git diff --staged --quiet; then
           echo "Aucune dérive orbitale détectée. Matrice inchangée."
