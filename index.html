@@ -187,19 +187,32 @@
             IMU.declination = calculerDeclinaisonWMM_Advanced(Geo.lat, Geo.lon);
             
             // Lancement de l'interconnexion avec les données physiques de l'API JPL locale
-            connecterMatriceJPL();
-            setInterval(connecterMatriceJPL, 60000); // Rafraîchissement de la matrice toutes les minutes
-
-            if (window.DeviceOrientationEvent) {
-                window.addEventListener('deviceorientationabsolute', e => {
-                    IMU.headingMag = e.webkitCompassHeading || Math.abs(e.alpha - 360) || 0;
-                    IMU.headingTrue = (IMU.headingMag + IMU.declination + 360) % 360;
-                    IMU.pitch = e.beta || 0;
-                    IMU.roll = e.gamma || 0;
-                }, true);
+// REQUÊTE ASYNCHRONE RESTAURÉE SUR LA STRUCTURE DIRECTE DU FLUX PYTHON
+async function connecterMatriceJPL() {
+    try {
+        const reponse = await fetch('flux_live.json?nocache=' + (new Date()).getTime());
+        const flux = await reponse.json();
+        
+        if (flux.ENVIRONNEMENT && flux.LUNE) {
+            // Lecture directe de la structure objet validée
+            JplLive.angleSTO = flux.ENVIRONNEMENT.lune_phase_sto;
+            JplLive.illumination = flux.ENVIRONNEMENT.lune_illumination_pct;
+            JplLive.statut = "SYNCHRONISÉ";
+            
+            // Mise à jour optionnelle des variables globales avec les coordonnées réelles transmises par le serveur
+            if(flux.CLOCK_3D && flux.CLOCK_3D.coordonnees) {
+                Geo.lat = flux.CLOCK_3D.coordonnees.lat;
+                Geo.lon = flux.CLOCK_3D.coordonnees.lon;
+                Geo.alt = flux.CLOCK_3D.coordonnees.alt_m;
             }
-            requestAnimationFrame(coreLoop);
-        });
+        } else {
+            JplLive.statut = "FORMAT REJETÉ";
+        }
+    } catch (e) {
+        JplLive.statut = "ERREUR MATRICE";
+        console.error("Défaillance de liaison avec l'API de streaming géodésique.", e);
+    }
+            }
 
         function coreLoop(timestamp) {
             frameCount++;
