@@ -1,18 +1,29 @@
 {
   "CLOCK_3D": {
-    "utc_gnss_atomique": "2026-06-06 16:03:30.016",
-    "coordonnees": {"lat": 43.2891, "lon": 6.1254, "alt_m": 9500.0}
+    "utc_gnss_atomique": "2026-06-08 17:19:47.907",
+    "coordonnees": {
+      "lat": 43.28463,
+      "lon": 5.35865,
+      "alt_m": 55.0
+    }
   },
   "ENVIRONNEMENT": {
-    "pression_externe_hpa": 286.4,
-    "temperature_air_c": -46.75,
-    "temperature_paroi_c": -8.68,
-    "vitesse_mach": 0.92,
-    "pesanteur_eotvos_ms2": 9.735,
-    "indice_uv": 13.42,
-    "flux_infrarouge_wm2": 524.7
+    "pression_externe_hpa": 1006.66,
+    "temperature_air_c": 14.64,
+    "pesanteur_eotvos_ms2": 9.8046,
+    "lune_phase_sto": 90.0,
+    "lune_illumination_pct": 50.0
   },
-  "SOLEIL": [101.3124, 45.1612, -26.74, 1.014645, 0.007],
-  "LUNE": [239.2015, 8.0189, -12.74, 0.00264, 0.226],
-  "JUPITER": [73.2014, 13.7542, -2.5, 6.011779, 17.529]
+  "SOLEIL": [
+    0.0,
+    0.0
+  ],
+  "LUNE": [
+    0.0,
+    0.0
+  ],
+  "JUPITER": [
+    0.0,
+    0.0
+  ]
 }
