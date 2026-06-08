@@ -1,29 +1,29 @@
 {
-  "CLOCK_3D": {
-    "utc_gnss_atomique": "2026-06-08 17:46:48.188",
-    "coordonnees": {
-      "lat": 43.28463,
-      "lon": 5.35865,
-      "alt_m": 55.0
+  "METADONNEES_SYSTEME": {
+    "timestamp_utc": "2026-06-08T18:25:14Z",
+    "station_nom": "Marseille-Endoume (43.2846, 5.3586)"
+  },
+  "METEO_TERRESTRE_THERMODYNAMIQUE": {
+    "pression_mer_hpa": 1015.2,
+    "temperature_seche_c": 22.1,
+    "humidite_relative_pct": 58.0,
+    "vent_vrai_vitesse_noeuds": 12.0,
+    "vent_vrai_direction_deg": 290.0
+  },
+  "METEO_SPATIALE_MAGNETIQUE": {
+    "indice_kp": 2.33,
+    "vent_solaire_vitesse_kms": 412.5,
+    "declinaison_wmm_calculee_deg": 1.635
+  },
+  "EPHEMERIDES_TRAJECTOIRE_CELESTE": {
+    "soleil": {
+      "azimut_vrai_deg": 284.1254,
+      "elevation_refractee_deg": 12.3411,
+      "transit_utc": "12:14:32"
+    },
+    "lune": {
+      "illumination_pct": 49.99,
+      "angle_phase_sto_deg": 90.0034
     }
-  },
-  "ENVIRONNEMENT": {
-    "pression_externe_hpa": 1006.66,
-    "temperature_air_c": 14.64,
-    "pesanteur_eotvos_ms2": 9.8046,
-    "lune_phase_sto": 90.0,
-    "lune_illumination_pct": 50.0
-  },
-  "SOLEIL": [
-    0.0,
-    0.0
-  ],
-  "LUNE": [
-    0.0,
-    0.0
-  ],
-  "JUPITER": [
-    0.0,
-    0.0
-  ]
+  }
 }
