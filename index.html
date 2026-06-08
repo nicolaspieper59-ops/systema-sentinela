@@ -1,3 +1,86 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>TERMINAL ASTRO-METROLOGIQUE APEX v2026.2</title>
+    <style>
+        :root { 
+            --cyan: #00f0ff; --green: #00ff66; --amber: #ffaa00; --pink: #ff007f; --bg: #030306; 
+            font-family: 'Courier New', monospace; 
+        }
+        body { background: var(--bg); color: #94a3b8; font-size: 11px; padding: 15px; margin: 0; }
+        .header { border: 1px solid rgba(0, 240, 255, 0.2); background: #000; padding: 10px; color: var(--cyan); display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 15px; }
+        .grid { display: grid; grid-template-columns: 440px 1fr; gap: 15px; }
+        .panel { border: 1px solid rgba(255,255,255,0.08); background: #08080f; padding: 12px; border-radius: 4px; }
+        .panel.astro { border-color: rgba(255, 170, 0, 0.2); }
+        .panel.meteo { border-color: rgba(0, 255, 102, 0.2); }
+        h2 { font-size: 10px; margin: 0 0 10px 0; padding-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); letter-spacing: 1px; }
+        .panel.astro h2 { color: var(--amber); }
+        .panel.meteo h2 { color: var(--green); }
+        .metric { display: flex; justify-content: space-between; margin-bottom: 5px; line-height: 14px; }
+        .data { font-weight: bold; color: #fff; }
+        .sub-group { margin-left: 10px; border-left: 1px solid #1e293b; padding-left: 8px; margin-bottom: 8px; }
+        .sub-title { color: #64748b; font-weight: bold; font-size: 10px; text-transform: uppercase; margin-bottom: 3px; }
+        #radar-canvas { width: 100%; height: 460px; background: #000; border: 1px solid #1e293b; border-radius: 4px; }
+        #debug-console { margin-top: 15px; padding: 10px; background: #110505; border: 1px solid #551111; color: #ff5555; border-radius: 4px; font-size: 10px; max-height: 60px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div>SYSTEMA SENTINELA : CHRONOMÈTRE ATOMIQUE WEB & DRIFT NET CORRECTION</div>
+    <div id="clock-utc">UTC ATOMIQUE : --:--:--</div>
+</div>
+
+<div class="grid">
+    <div style="display:flex; flex-direction:column; gap:15px;">
+        
+        <div class="panel astro">
+            <h2>🌌 RÉFÉRENTIELS ET TEMPS SIDÉRAL (PLANETCALC 9235)</h2>
+            <div class="metric"><span>Jour Julien (JD) :</span><span id="astro-jd" class="data" style="color:var(--cyan)">------.-----</span></div>
+            <div class="metric"><span>Temps Sidéral Local (LST) :</span><span id="astro-lst" class="data" style="color:var(--pink)">--:--:--</span></div>
+            <div class="metric"><span>Pointeur Index Matrice :</span><span><span id="ast-index" class="data">----</span> / 1439 min</span></div>
+            
+            <div class="sub-group">
+                <div class="sub-title" style="color:var(--cyan)">📍 Vecteur de Position 3D Réel</div>
+                <div class="metric"><span>Latitude / Longitude :</span><span id="geo-latlon" class="data">43.29070° / 5.35490°</span></div>
+                <div class="metric"><span>Altitude Ellipsoïdale (h) :</span><span><span id="geo-alt" class="data">55.0</span> m</span></div>
+            </div>
+
+            <div class="sub-group">
+                <div class="sub-title" style="color:var(--amber)">☀️ Soleil (Position Apparente)</div>
+                <div class="metric"><span>Az / El (Réfracté) :</span><span id="sol-pos" class="data">---.---° / --.---°</span></div>
+                <div class="metric"><span>Correction Réfraction :</span><span>+<span id="sol-refract" class="data">-.---</span>°</span></div>
+            </div>
+
+            <div class="sub-group">
+                <div class="sub-title" style="color:#e2e8f0">🌙 Lune</div>
+                <div class="metric"><span>Az / El (Réfracté) :</span><span id="lun-pos" class="data">---.---° / --.---°</span></div>
+            </div>
+
+            <div class="sub-group">
+                <div class="sub-title" style="color:var(--pink)">🪐 Éphémérides des Planètes (JPL DE440)</div>
+                <div class="metric"><span>Mercure / Vénus :</span><span><span id="mer-pos" class="data">---°</span> / <span id="ven-pos" class="data">---°</span></span></div>
+                <div class="metric"><span>Mars / Jupiter :</span><span><span id="mar-pos" class="data">---°</span> / <span id="jup-pos" class="data">---°</span></span></div>
+                <div class="metric"><span>Saturne :</span><span id="sat-pos" class="data">---° / --°</span></div>
+            </div>
+        </div>
+
+        <div class="panel meteo">
+            <h2>🌍 CORRECTEUR BAROMÉTRIQUE HYDROSTATIQUE HAUTE PRÉCISION</h2>
+            <div class="metric"><span>Pression Station Réelle ($P_s$) :</span><span><span id="m-pres" class="data">----.-</span> hPa</span></div>
+            <div class="metric"><span>Température Virtuelle ($T_v$) :</span><span><span id="m-tvirt" class="data">--.--</span> °C</span></div>
+            <div class="metric"><span>Densité de l'Air Locale ($\rho$) :</span><span><span id="m-rho" class="data">-.---</span> kg/m³</span></div>
+        </div>
+    </div>
+
+    <div class="panel astro" style="display:flex; flex-direction:column;">
+        <h2>🧭 SCOPE GÉODÉSIQUE TOURNANT (ALIGNEMENT NORD VRAI ITRF)</h2>
+        <canvas id="radar-canvas"></canvas>
+    </div>
+</div>
+
+<div id="debug-console">SYS : INITIALISATION DE L'INSTRUMENT DE MESURE VIRTUEL...</div>
 <script>
     const canvas = document.getElementById('radar-canvas');
     const ctx = canvas.getContext('2d');
@@ -194,4 +277,9 @@
 
     window.onresize = redimensionner;
     window.onload = () => { redimensionner(); acquérirEphéméridesJPL(); setInterval(acquérirEphéméridesJPL, 1000); };
-            </script>
+</script>
+            
+
+
+</body>
+    </html>
