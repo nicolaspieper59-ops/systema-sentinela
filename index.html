@@ -92,187 +92,207 @@
     </div>
 
     <script>
-        // Ancrage physique précis au 254 rue d'Endoume, Marseille
-        let Geo = { lat: 43.284627, lon: 5.358651, alt: 55, speed: 0, distance: 0 };
-        let IMU = { headingMag: 0, headingTrue: 0, pitch: 0, roll: 0, declination: 0 };
-        let Env = { seaPressure: 1013.25, localPressure: 1013.25 };
-        let JplLive = { angleSTO: 90.0, illumination: 50.0, statut: "Attente..." };
+
+        // 1. Initialisation des structures de données globales
+let Geo = { lat: 43.284627, lon: 5.358651, alt: 55, speed: 0, distance: 0 };
+let IMU = { headingMag: 0, headingTrue: 0, pitch: 0, roll: 0, declination: 0 };
+let Env = { seaPressure: 1013.25, localPressure: 1013.25 };
+let JplLive = { angleSTO: 90.0, illumination: 50.0, statut: "Attente..." };
+
+let timeStart = performance.now();
+let atomicSync = Date.now();
+let lastDomUpdate = 0;
+let frameCount = 0, fps = 0, lastFpsCalc = 0;
+
+const canvas = document.getElementById('hud-canvas');
+const ctx = canvas.getContext('2d');
+
+// 2. Connexion asynchrone isolée (hors de la boucle principale)
+async function connecterMatriceJPL() {
+    try {
+        const reponse = await fetch('flux_live.json?nocache=' + (new Date()).getTime());
+        if (!reponse.ok) throw new Error("Fichier introuvable");
+        const flux = await reponse.json();
         
-        let timeStart = performance.now();
-        let atomicSync = Date.now();
-        let lastDomUpdate = 0;
-        let frameCount = 0, fps = 0, lastFpsCalc = 0;
-
-        const canvas = document.getElementById('hud-canvas');
-        const ctx = canvas.getContext('2d');
-
-        // REQUÊTE ASYNCHRONE RESTAURÉE DANS LA PORTÉE GLOBALE
-        async function connecterMatriceJPL() {
-            try {
-                const reponse = await fetch('flux_live.json?nocache=' + (new Date()).getTime());
-                const flux = await reponse.json();
-                
-                if (flux.ENVIRONNEMENT && flux.LUNE) {
-                    JplLive.angleSTO = flux.ENVIRONNEMENT.lune_phase_sto;
-                    JplLive.illumination = flux.ENVIRONNEMENT.lune_illumination_pct;
-                    JplLive.statut = "SYNCHRONISÉ";
-                    
-                    if (flux.CLOCK_3D && flux.CLOCK_3D.coordonnees) {
-                        Geo.lat = flux.CLOCK_3D.coordonnees.lat;
-                        Geo.lon = flux.CLOCK_3D.coordonnees.lon;
-                        Geo.alt = flux.CLOCK_3D.coordonnees.alt_m;
-                    }
-                } else {
-                    JplLive.statut = "FORMAT REJETÉ";
-                }
-            } catch (e) {
-                JplLive.statut = "ERREUR MATRICE";
-                console.error("Défaillance de liaison avec l'API de streaming géodésique.", e);
-            }
+        if (flux.ENVIRONNEMENT && flux.LUNE) {
+            JplLive.angleSTO = parseFloat(flux.ENVIRONNEMENT.lune_phase_sto) || 90.0;
+            JplLive.illumination = parseFloat(flux.ENVIRONNEMENT.lune_illumination_pct) || 50.0;
+            JplLive.statut = "SYNCHRONISÉ";
+        } else {
+            JplLive.statut = "FORMAT REJETÉ";
         }
+    } catch (e) {
+        JplLive.statut = "ERREUR MATRICE";
+        console.warn("Liaison JPL absente. Mode analytique local actif.");
+    }
+}
 
-        function calculerDeclinaisonWMM_Advanced(lat, lon) {
-            const latPole2026 = 86.55 * Math.PI / 180;
-            const lonPole2026 = 164.10 * Math.PI / 180;
-            let phi = lat * Math.PI / 180;
-            let lambda = lon * Math.PI / 180;
-            let dLambda = lonPole2026 - lambda;
-            let y = Math.sin(dLambda) * Math.cos(latPole2026);
-            let x = Math.cos(phi) * Math.sin(latPole2026) - Math.sin(phi) * Math.cos(latPole2026) * Math.cos(dLambda);
-            let decDipolaire = Math.atan2(y, x) * 180 / Math.PI;
-            return (decDipolaire + 540) % 360 - 180;
-        }
+// 3. Fonctions de calcul géodésique
+function calculerDeclinaisonWMM_Advanced(lat, lon) {
+    const latPole2026 = 86.55 * Math.PI / 180;
+    const lonPole2026 = 164.10 * Math.PI / 180;
+    let phi = lat * Math.PI / 180;
+    let lambda = lon * Math.PI / 180;
+    let dLambda = lonPole2026 - lambda;
+    let y = Math.sin(dLambda) * Math.cos(latPole2026);
+    let x = Math.cos(phi) * Math.sin(latPole2026) - Math.sin(phi) * Math.cos(latPole2026) * Math.cos(dLambda);
+    let decDipolaire = Math.atan2(y, x) * 180 / Math.PI;
+    return (decDipolaire + 540) % 360 - 180;
+}
 
-        function calculerAzimutVincentyWGS84(lat1, lon1, lat2, lon2) {
-            if (lat1 === lat2 && lon1 === lon2) return 0.0;
-            const a = 6378137.0, b = 6356752.314245, f = 1 / 298.257223563;   
-            let phi1 = lat1 * Math.PI / 180, phi2 = lat2 * Math.PI / 180;
-            let L = (lon2 - lon1) * Math.PI / 180;
-            let U1 = Math.atan((1 - f) * Math.tan(phi1)), U2 = Math.atan((1 - f) * Math.tan(phi2));
-            let sinU1 = Math.sin(U1), cosU1 = Math.cos(U1), sinU2 = Math.sin(U2), cosU2 = Math.cos(U2);
-            let lambda = L, lambdaPlus, sinSigma, cosSigma, sigma, sinAlpha, cosSqAlpha, cos2SigmaM, C;
-            let iterations = 0;
+function calculerAzimutVincentyWGS84(lat1, lon1, lat2, lon2) {
+    if (lat1 === lat2 && lon1 === lon2) return 0.0;
+    const a = 6378137.0, f = 1 / 298.257223563;   
+    let phi1 = lat1 * Math.PI / 180, phi2 = lat2 * Math.PI / 180;
+    let L = (lon2 - lon1) * Math.PI / 180;
+    let U1 = Math.atan((1 - f) * Math.tan(phi1)), U2 = Math.atan((1 - f) * Math.tan(phi2));
+    let sinU1 = Math.sin(U1), cosU1 = Math.cos(U1), sinU2 = Math.sin(U2), cosU2 = Math.cos(U2);
+    let lambda = L, lambdaPlus, sinSigma, cosSigma, sigma, sinAlpha, cosSqAlpha, cos2SigmaM, C;
+    let iterations = 0;
 
-            do {
-                let sinLambda = Math.sin(lambda), cosLambda = Math.cos(lambda);
-                sinSigma = Math.sqrt(Math.pow(cosU2 * sinLambda, 2) + Math.pow(cosU1 * sinU2 - sinU1 * cosU2 * cosLambda, 2));
-                if (sinSigma === 0) return 0.0; 
-                cosSigma = sinU1 * sinU2 + cosU1 * cosU2 * cosLambda;
-                sigma = Math.atan2(sinSigma, cosSigma);
-                sinAlpha = (cosU1 * cosU2 * sinLambda) / sinSigma;
-                cosSqAlpha = 1 - sinAlpha * sinAlpha;
-                cos2SigmaM = (cosSqAlpha !== 0) ? (cosSigma - (2 * sinU1 * sinU2) / cosSqAlpha) : 0;
-                C = (f / 16) * cosSqAlpha * (4 + f * (4 - 3 * cosSqAlpha));
-                lambdaPlus = lambda;
-                lambda = L + (1 - C) * f * sinAlpha * (sigma + C * sinSigma * (cos2SigmaM + C * cosSigma * (-1 + 2 * cos2SigmaM * cos2SigmaM)));
-                iterations++;
-            } while (Math.abs(lambda - lambdaPlus) > 1e-12 && iterations < 200);
+    do {
+        let sinLambda = Math.sin(lambda), cosLambda = Math.cos(lambda);
+        sinSigma = Math.sqrt(Math.pow(cosU2 * sinLambda, 2) + Math.pow(cosU1 * sinU2 - sinU1 * cosU2 * cosLambda, 2));
+        if (sinSigma === 0) return 0.0; 
+        cosSigma = sinU1 * sinU2 + cosU1 * cosU2 * cosLambda;
+        sigma = Math.atan2(sinSigma, cosSigma);
+        sinAlpha = (cosU1 * cosU2 * sinLambda) / sinSigma;
+        cosSqAlpha = 1 - sinAlpha * sinAlpha;
+        cos2SigmaM = (cosSqAlpha !== 0) ? (cosSigma - (2 * sinU1 * sinU2) / cosSqAlpha) : 0;
+        C = (f / 16) * cosSqAlpha * (4 + f * (4 - 3 * cosSqAlpha));
+        lambdaPlus = lambda;
+        lambda = L + (1 - C) * f * sinAlpha * (sigma + C * sinSigma * (cos2SigmaM + C * cosSigma * (-1 + 2 * cos2SigmaM * cos2SigmaM)));
+        iterations++;
+    } while (Math.abs(lambda - lambdaPlus) > 1e-12 && iterations < 200);
 
-            if (iterations >= 200) return (phi1 + phi2) / 2 >= 0 ? 180.0 : 0.0; 
-            return (Math.atan2(Math.sin(lambda) * cosU2, cosU1 * sinU2 - sinU1 * cosU2 * Math.cos(lambda)) * 180 / Math.PI + 360) % 360;
-        }
+    return (Math.atan2(Math.sin(lambda) * cosU2, cosU1 * sinU2 - sinU1 * cosU2 * Math.cos(lambda)) * 180 / Math.PI + 360) % 360;
+}
 
-        function resizeCanvas() {
-            canvas.width = document.getElementById('center-viewport').clientWidth;
-            canvas.height = document.getElementById('center-viewport').clientHeight;
-        }
+function resizeCanvas() {
+    const viewport = document.getElementById('center-viewport');
+    if(viewport) { canvas.width = viewport.clientWidth; canvas.height = viewport.clientHeight; }
+}
 
-        // INITIALISATION ET ÉCOUTEURS DÉLÉGUÉS PROPREMENT FERMÉS
-        document.getElementById('btn-start').addEventListener('click', () => {
-            document.getElementById('init-screen').style.display = 'none';
-            resizeCanvas();
-            IMU.declination = calculerDeclinaisonWMM_Advanced(Geo.lat, Geo.lon);
+// 4. Point d'entrée de l'application (Délégation d'événements)
+document.getElementById('btn-start').addEventListener('click', () => {
+    document.getElementById('init-screen').style.display = 'none';
+    resizeCanvas();
+    
+    // Calcul de la déclinaison magnétique initiale pour Marseille
+    IMU.declination = calculerDeclinaisonWMM_Advanced(Geo.lat, Geo.lon);
+    
+    // Amorçage du pipeline asynchrone JPL (fréquence : 60 secondes)
+    connecterMatriceJPL();
+    setInterval(connecterMatriceJPL, 60000);
+
+    // Activation de la boussole si capteurs présents
+    if (window.DeviceOrientationEvent) {
+        window.addEventListener('deviceorientationabsolute', e => {
+            IMU.headingMag = e.webkitCompassHeading || Math.abs(e.alpha - 360) || 0;
+            IMU.headingTrue = (IMU.headingMag + IMU.declination + 360) % 360;
+            IMU.pitch = e.beta || 0;
+            IMU.roll = e.gamma || 0;
+        }, true);
+    }
+    
+    // Lancement de la boucle d'exécution principale
+    requestAnimationFrame(coreLoop);
+});
+
+// 5. Boucle d'exécution principale (Moteur Synchrone Hard-Realtime)
+function coreLoop(timestamp) {
+    // SÉCURITÉ CRITIQUE : Relancer l'écoute immédiatement pour éviter le gel en cas d'erreur interne
+    requestAnimationFrame(coreLoop);
+
+    frameCount++;
+    if (timestamp - lastFpsCalc > 1000) { 
+        fps = frameCount; 
+        frameCount = 0; 
+        lastFpsCalc = timestamp; 
+    }
+
+    let runTimeSec = (performance.now() - timeStart) / 1000;
+    let currentClock = new Date(atomicSync + (performance.now() - timeStart));
+
+    // Calcul barométrique
+    Env.localPressure = Env.seaPressure * Math.pow(1 - (0.0065 * Geo.alt) / 288.15, 5.25588);
+    let boilingPoint = 1 / (1 / 373.15 - (8.31445 * Math.log(Env.localPressure / 1013.25)) / 40650) - 273.15;
+
+    // Limitation de la fréquence de rafraîchissement de l'affichage (DOM) à 2Hz (500ms)
+    if (timestamp - lastDomUpdate > 500) {
+        document.getElementById('sys-clock').innerText = "UTC: " + currentClock.toISOString().replace('T',' ').replace('Z','Z');
+        document.getElementById('v-time').innerText = runTimeSec.toFixed(2) + " s";
+        document.getElementById('v-lorentz').innerText = (1 / Math.sqrt(1 - (Geo.speed / 299792458)**2)).toFixed(10);
+        document.getElementById('v-speed-ms').innerText = Geo.speed.toFixed(2) + " m/s";
+        document.getElementById('v-dist').innerText = Geo.distance.toFixed(1) + " m";
+
+        // Éphémérides analytiques Soleil via Astronomy-Engine
+        try {
+            let obs = new Astronomy.Observer(Geo.lat, Geo.lon, Geo.alt);
+            let astTime = Astronomy.MakeTime(currentClock);
+            let equSun = Astronomy.Equator(Astronomy.Body.Sun, astTime, obs, Astronomy.EquatorObserver.Topocentric, Astronomy.Aberration.Corrected);
+            let lst = (Astronomy.SiderealTime(astTime) + Geo.lon / 15 + 24) % 24;
+            let tsvHeures = ((lst - equSun.ra + 24) % 24 + 12) % 24;
             
-            // Appels initiaux
-            connecterMatriceJPL();
-            setInterval(connecterMatriceJPL, 60000);
+            let debutJour = new Date(currentClock.getTime()); debutJour.setUTCHours(0,0,0,0);
+            let culmEvent = Astronomy.SearchHourAngle(Astronomy.Body.Sun, obs, 0, Astronomy.MakeTime(debutJour));
 
-            if (window.DeviceOrientationEvent) {
-                window.addEventListener('deviceorientationabsolute', e => {
-                    IMU.headingMag = e.webkitCompassHeading || Math.abs(e.alpha - 360) || 0;
-                    IMU.headingTrue = (IMU.headingMag + IMU.declination + 360) % 360;
-                    IMU.pitch = e.beta || 0;
-                    IMU.roll = e.gamma || 0;
-                }, true);
-            }
-            requestAnimationFrame(coreLoop);
-        });
-
-        function coreLoop(timestamp) {
-            frameCount++;
-            if (timestamp - lastFpsCalc > 1000) { fps = frameCount; frameCount = 0; lastFpsCalc = timestamp; }
-
-            let runTimeSec = (performance.now() - timeStart) / 1000;
-            let currentClock = new Date(atomicSync + (performance.now() - timeStart));
-
-            Env.localPressure = Env.seaPressure * Math.pow(1 - (0.0065 * Geo.alt) / 288.15, 5.25588);
-            let boilingPoint = 1 / (1 / 373.15 - (8.31445 * Math.log(Env.localPressure / 1013.25)) / 40650) - 273.15;
-
-            if (timestamp - lastDomUpdate > 500) {
-                document.getElementById('sys-clock').innerText = "UTC: " + currentClock.toISOString().replace('T',' ').replace('Z','Z');
-                document.getElementById('v-time').innerText = runTimeSec.toFixed(2) + " s";
-                document.getElementById('v-lorentz').innerText = (1 / Math.sqrt(1 - (Geo.speed / 299792458)**2)).toFixed(10);
-                document.getElementById('v-speed-ms').innerText = Geo.speed.toFixed(2) + " m/s";
-                document.getElementById('v-dist').innerText = Geo.distance.toFixed(1) + " m";
-
-                let obs = new Astronomy.Observer(Geo.lat, Geo.lon, Geo.alt);
-                let astTime = Astronomy.MakeTime(currentClock);
-                let equSun = Astronomy.Equator(Astronomy.Body.Sun, astTime, obs, Astronomy.EquatorObserver.Topocentric, Astronomy.Aberration.Corrected);
-                let lst = (Astronomy.SiderealTime(astTime) + Geo.lon / 15 + 24) % 24;
-                let tsvHeures = ((lst - equSun.ra + 24) % 24 + 12) % 24;
-                
-                let debutJour = new Date(currentClock.getTime()); debutJour.setUTCHours(0,0,0,0);
-                let culmEvent = Astronomy.SearchHourAngle(Astronomy.Body.Sun, obs, 0, Astronomy.MakeTime(debutJour));
-
-                const fTime = h => { let hr = Math.floor(h); let mn = Math.floor((h%1)*60); return `${String(hr).padStart(2,'0')}:${String(mn).padStart(2,'0')}:${String(Math.floor(((h%1)*60%1)*60)).padStart(2,'0')}`; };
-                document.getElementById('v-sun-culm').innerText = culmEvent ? culmEvent.date.toLocaleTimeString('fr-FR') : "--:--:--";
-                document.getElementById('v-tsv').innerText = fTime(tsvHeures);
-
-                document.getElementById('v-sto-angle').innerText = JplLive.angleSTO.toFixed(4) + "°";
-                document.getElementById('v-moon-phase').innerText = JplLive.illumination.toFixed(2) + " %";
-                document.getElementById('g-jpl-status').innerText = JplLive.statut;
-                if(JplLive.statut === "SYNCHRONISÉ") document.getElementById('g-jpl-status').style.color = "var(--green)";
-
-                document.getElementById('m-pres-local').innerText = Env.localPressure.toFixed(2) + " hPa";
-                document.getElementById('m-boil').innerText = boilingPoint.toFixed(2) + " °C";
-
-                document.getElementById('g-lat').innerText = Geo.lat.toFixed(5);
-                document.getElementById('g-lon').innerText = Geo.lon.toFixed(5);
-
-                let tLat = parseFloat(document.getElementById('target-lat').value) || 0;
-                let tLon = parseFloat(document.getElementById('target-lon').value) || 0;
-                document.getElementById('nav-target-hdg').innerText = calculerAzimutVincentyWGS84(Geo.lat, Geo.lon, tLat, tLon).toFixed(4) + "° V";
-                
-                document.getElementById('nav-hdg').innerText = IMU.headingTrue.toFixed(1) + "° V";
-                document.getElementById('nav-wmm-dec').innerText = (IMU.declination >= 0 ? "+" : "") + IMU.declination.toFixed(2) + "°";
-                document.getElementById('s-bubble').innerText = Math.sqrt(IMU.pitch**2 + IMU.roll**2).toFixed(1) + "°";
-                document.getElementById('s-freq').innerText = fps + " Hz";
-
-                lastDomUpdate = timestamp;
-            }
-
-            // RENDU GRAPHISME CANVAS
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            let cx = canvas.width / 2, cy = canvas.height / 2;
-
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.rotate(-IMU.headingTrue * Math.PI / 180); 
-            ctx.strokeStyle = "rgba(6, 182, 212, 0.6)"; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.arc(0, 0, 60, 0, 2*Math.PI); ctx.stroke();
-            
-            ctx.fillStyle = "var(--amber)"; ctx.font = "bold 11px monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-            ctx.fillText("N", 0, -45);
-            ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
-            ctx.fillText("S", 0, 45); ctx.fillText("E", 45, 0); ctx.fillText("O", -45, 0);
-            ctx.restore();
-
-            ctx.strokeStyle = "rgba(239, 68, 68, 0.8)"; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(cx, cy - 65); ctx.lineTo(cx, cy - 55); ctx.stroke();
-
-            requestAnimationFrame(coreLoop);
+            const fTime = h => { let hr = Math.floor(h); let mn = Math.floor((h%1)*60); return `${String(hr).padStart(2,'0')}:${String(mn).padStart(2,'0')}:${String(Math.floor(((h%1)*60%1)*60)).padStart(2,'0')}`; };
+            document.getElementById('v-sun-culm').innerText = culmEvent ? culmEvent.date.toLocaleTimeString('fr-FR') : "--:--:--";
+            document.getElementById('v-tsv').innerText = fTime(tsvHeures);
+        } catch(err) {
+            console.error("Erreur éphémérides analytiques:", err);
         }
-        window.addEventListener('resize', resizeCanvas);
-    </script>
+
+        // Injection des données JPL
+        document.getElementById('v-sto-angle').innerText = (JplLive.angleSTO || 0).toFixed(4) + "°";
+        document.getElementById('v-moon-phase').innerText = (JplLive.illumination || 0).toFixed(2) + " %";
+        document.getElementById('g-jpl-status').innerText = JplLive.statut;
+        if(JplLive.statut === "SYNCHRONISÉ") {
+            document.getElementById('g-jpl-status').style.color = "var(--green)";
+        } else {
+            document.getElementById('g-jpl-status').style.color = "var(--amber)";
+        }
+
+        document.getElementById('m-pres-local').innerText = Env.localPressure.toFixed(2) + " hPa";
+        document.getElementById('m-boil').innerText = boilingPoint.toFixed(2) + " °C";
+        document.getElementById('g-lat').innerText = Geo.lat.toFixed(5);
+        document.getElementById('g-lon').innerText = Geo.lon.toFixed(5);
+
+        // Calcul Vincenty
+        let tLat = parseFloat(document.getElementById('target-lat').value) || 0;
+        let tLon = parseFloat(document.getElementById('target-lon').value) || 0;
+        document.getElementById('nav-target-hdg').innerText = calculerAzimutVincentyWGS84(Geo.lat, Geo.lon, tLat, tLon).toFixed(4) + "° V";
+        
+        document.getElementById('nav-hdg').innerText = IMU.headingTrue.toFixed(1) + "° V";
+        document.getElementById('nav-wmm-dec').innerText = (IMU.declination >= 0 ? "+" : "") + IMU.declination.toFixed(2) + "°";
+        document.getElementById('s-bubble').innerText = Math.sqrt(IMU.pitch**2 + IMU.roll**2).toFixed(1) + "°";
+        document.getElementById('s-freq').innerText = fps + " Hz";
+
+        lastDomUpdate = timestamp;
+    }
+
+    // Affichage graphique du HUD (Compas Rose)
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let cx = canvas.width / 2, cy = canvas.height / 2;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-IMU.headingTrue * Math.PI / 180); 
+    ctx.strokeStyle = "rgba(6, 182, 212, 0.6)"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(0, 0, 60, 0, 2*Math.PI); ctx.stroke();
+    
+    ctx.fillStyle = "var(--amber)"; ctx.font = "bold 11px monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("N", 0, -45);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+    ctx.fillText("S", 0, 45); ctx.fillText("E", 45, 0); ctx.fillText("O", -45, 0);
+    ctx.restore();
+
+    ctx.strokeStyle = "rgba(239, 68, 68, 0.8)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(cx, cy - 65); ctx.lineTo(cx, cy - 55); ctx.stroke();
+}
+window.addEventListener('resize', resizeCanvas);
+        
+            </script>
 </body>
     </html>
