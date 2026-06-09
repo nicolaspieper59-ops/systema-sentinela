@@ -1,29 +1,38 @@
 {
-  "CLOCK_3D": {
-    "utc_gnss_atomique": "2026-06-08 19:24:05.958",
-    "coordonnees": {
-      "lat": 43.28463,
-      "lon": 5.35865,
-      "alt_m": 55.0
-    }
+  "HORLOGE": {
+    "utc": "06:38:00",
+    "lmt": "08:59:25",
+    "jd": 2461200.36771,
+    "lst": "14:19:54",
+    "index_1440": 1249
   },
-  "ENVIRONNEMENT": {
-    "pression_externe_hpa": 1006.66,
-    "temperature_air_c": 14.64,
-    "pesanteur_eotvos_ms2": 9.8046,
-    "lune_phase_sto": 90.0,
-    "lune_illumination_pct": 50.0
+  "GEODATA": {
+    "latitude": 43.28649,
+    "longitude": 5.35437,
+    "altitude": 89.5
   },
-  "SOLEIL": [
-    0.0,
-    0.0
-  ],
-  "LUNE": [
-    0.0,
-    0.0
-  ],
-  "JUPITER": [
-    0.0,
-    0.0
-  ]
+  "METEO_TERRESTRE": {
+    "pression_station_hpa": 1002.6,
+    "temperature_virtuelle_c": 15.92,
+    "densite_air_kgm3": 1.208
+  },
+  "EPHEMERIDES_JPL_1440": {
+    "JUPITER": [
+      {
+        "azimut_brut": 57.44,
+        "elevation_brute": -1.56,
+        "elevation_refractee": -1.56,
+        "correction_refraction": 0.0,
+        "distance_ua": 6.0410,
+        "distance_km": 903721020,
+        "magnitude": -1.85,
+        "ascension_droite": "7h 50m 55s",
+        "declinaison": 21.419,
+        "constellation": "Gemini",
+        "lever_lmt": "09.06.2026 08:48:30",
+        "culmination_lmt": "09.06.2026 16:17:52",
+        "coucher_lmt": "09.06.2026 23:47:08"
+      }
+    ]
+  }
 }
