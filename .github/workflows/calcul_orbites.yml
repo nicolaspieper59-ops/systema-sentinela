@@ -2,8 +2,9 @@ name: SENTINELA HARD-REALTIME - Matrix Engine
 
 on:
   schedule:
+    # Exécution automatique au début de chaque heure (60 minutes d'intervalle)
     - cron: '0 * * * *'
-  workflow_dispatch:
+  workflow_dispatch: # Permet le déclenchement manuel depuis l'interface GitHub
 
 permissions:
   contents: write
@@ -15,31 +16,45 @@ jobs:
     steps:
     - name: 1. Extraction du code source (Checkout)
       uses: actions/checkout@v4
+      with:
+        persist-credentials: true # Conserve les droits pour le git push ultérieur
 
     - name: 2. Initialisation de l'environnement Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
+        cache: 'pip' # Active la mise en cache automatique des paquets pip
 
-    - name: 3. Installation des dépendances légères
+    - name: 3. Installation des dépendances astrophysiques
       run: |
         python -m pip install --upgrade pip
-        pip install requests
+        pip install requests numpy astropy
 
     - name: 4. Exécution du Moteur Orbital Calculer_Orbites
       run: |
-        python calculer_orbites.py
+        # On s'assure que le script Python correspond au fichier attendu
+        if [ -f "calculer_orbites.py" ]; then
+          python calculer_orbites.py
+        elif [ -f "generate_matrix.py" ]; then
+          python generate_matrix.py
+        else
+          echo "ERREUR : Script du moteur introuvable." && exit 1
+        fi
 
-    - name: 5. Déploiement et Push de la matrice mise à jour sur GitHub Pages
+    - name: 5. Déploiement et Push de la matrice mise à jour
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         git config --global user.name "Sentinela Core Bot"
         git config --global user.email "sentinela-bot@github.com"
         
-        git add matrice_jpl_brute.csv flux_live.json
+        # Prise en compte sécurisée des fichiers générés (CSV optionnel et JSON)
+        git add -A flux_live.json matrice_jpl_brute.csv 2>/dev/null || git add flux_live.json
         
         if git diff --staged --quiet; then
-          echo "Aucune dérive orbitale détectée. Matrice inchangée."
+          echo "⚡ Aucune dérive orbitale détectée. Matrice spatio-temporelle inchangée."
         else
-          git commit -m "SENTINELA : Régénération de la matrice 5D [Automatique Cloud]"
-          git push
+          echo "🛰️ Dérive détectée. Alignement de la matrice topocentrique..."
+          git commit -m "SENTINELA : Régénération de la matrice 3D [Automatique Cloud]"
+          git push origin HEAD:${{ github.ref }}
         fi
