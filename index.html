@@ -49,6 +49,9 @@
                 <div class="sub-title" style="color:var(--cyan)">📍 VECTEUR GÉODÉSIQUE DE RÉFÉRENCE COMPOSITE (STATION)</div>
                 <div class="metric"><span>Coordonnées Ellipsoïdales :</span><span id="geo-latlon" class="data">--.-----° / --.-----°</span></div>
                 <div class="metric"><span>Altitude Physique ($h$) :</span><span><span id="geo-alt" class="data">---.-</span> m</span></div>
+                <div class="metric"><span style="color:#64748b">Vecteur 3D ECEF X :</span><span id="geo-ecef-x" class="data" style="color:#64748b">-------.- m</span></div>
+                <div class="metric"><span style="color:#64748b">Vecteur 3D ECEF Y :</span><span id="geo-ecef-y" class="data" style="color:#64748b">-------.- m</span></div>
+                <div class="metric"><span style="color:#64748b">Vecteur 3D ECEF Z :</span><span id="geo-ecef-z" class="data" style="color:#64748b">-------.- m</span></div>
             </div>
 
             <div class="sub-group" style="border-color: rgba(255,170,0,0.3);">
@@ -60,7 +63,7 @@
                         <option value="MERCURE">🪐 MERCURE</option>
                         <option value="VENUS">🪐 VENUS</option>
                         <option value="MARS">🪐 MARS</option>
-                        <option value="JUPITER" selected>🪐 JUPITER</option>
+                        <option value="JUPITER">🪐 JUPITER</option>
                         <option value="SATURNE">🪐 SATURNE</option>
                     </select>
                 </div>
@@ -94,35 +97,27 @@
         <h2>🧭 CHAMP VISUEL TOURNANT ITRF (VECTEURS SANS INTERPOLATION)</h2>
         <div class="canvas-container">
             <canvas id="radar-canvas"></canvas>
-            
         </div>
     </div>
 </div>
 
 <div id="debug-console">SYS : INITIALISATION DU PROTOCOLE RESEAU FILTRÉ...</div>
 
-    
 <script>
     const canvas = document.getElementById('radar-canvas');
     const ctx = canvas.getContext('2d');
     const debugDiv = document.getElementById('debug-console');
     
-    // VARIABLES DE FLUX ET DE SYNCHRONISATION MONOTONE
     let FluxJPLGlobal = null;
     let IndexMatriceCourant = 0;
     let DonneesAstroCourantes = {};
     let astreActif = "SOLEIL";
 
-    // Ancres de temps pour le découplage OS
-    let t0_ReferenceServeurMs = 0; // Temps UTC du serveur converti en ms
-    let t0_PerformanceLocalMs = 0; // performance.now() au moment du fetch
-    let jd_ReferenceServeur = 0;   // Jour Julien de référence du flux
-    let lst_ReferenceSecondes = 0; // Temps Sidéral Local de référence en secondes
-
-    // Constantes de l'ellipsoïde WGS84 pour la position tridimensionnelle
-    const WGS84_A = 6378137.0;      // Demi-grand axe (m)
-    const WGS84_F = 1 / 298.257223563; 
-    const WGS84_E2 = (2 * WGS84_F) - (WGS84_F * WGS84_F); // Carré de l'excentricité
+    // Variables d'ancrage du temps monotone (Découplage Android OS)
+    let t0_PerformanceLocalMs = 0;
+    let t0_ReferenceServeurMs = 0;
+    let jd_ReferenceServeur = 0;
+    let lst_ReferenceSecondes = 0;
 
     const DICTIONNAIRE_ASTRES = {
         "SOLEIL": ["sun", "soleil", "sol"],
@@ -137,22 +132,6 @@
     function logDebug(msg, isErr = false) {
         debugDiv.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
         debugDiv.style.color = isErr ? "#ff5555" : "var(--green)";
-    }
-
-    // CONVERSION GÉODÉSIQUE 3D TRIDIMENSIONNELLE (ITRF / ECEF)
-    function calculerPositionTridimensionnelleITRF(latDeg, lonDeg, altMetres) {
-        const phi = (latDeg * Math.PI) / 180;
-        const lambda = (lonDeg * Math.PI) / 180;
-        
-        // Rayon de courbure dans le premier vertical
-        const N = WGS84_A / Math.sqrt(1 - (WGS84_E2 * Math.sin(phi) * Math.sin(phi)));
-        
-        // Coordonnées cartésiennes vectorielles 3D
-        const X = (N + altMetres) * Math.cos(phi) * Math.cos(lambda);
-        const Y = (N + altMetres) * Math.cos(phi) * Math.sin(lambda);
-        const Z = ((N * (1 - WGS84_E2)) + altMetres) * Math.sin(phi);
-        
-        return { x: X, y: Y, z: Z };
     }
 
     function extraireNoeudFou(objet, nomCle) {
@@ -174,9 +153,19 @@
         return null;
     }
 
+    function purgerAffichageAstre() {
+        const champs = ['ast-rise', 'ast-culm', 'ast-set', 'ast-az', 'ast-el', 'ast-el-ref', 'ast-delta-ref', 'ast-ra', 'ast-dec', 'ast-dist-km', 'ast-dist-au', 'ast-mag', 'ast-const'];
+        champs.forEach(id => document.getElementById(id).innerText = "N/A");
+        DonneesAstroCourantes.actif = null;
+        générerRenduRadar();
+    }
+
     function extraireDonneesAstreIndex(liste, index) {
-        let def = { az: 0, el_refractee: 0, dist_km: 0, dist_ua: 0, mag: 0, ra: "N/A", dec: 0, constel: "N/A", lever: "N/A", culmination: "N/A", coucher: "N/A", correction_refraction: 0, el: 0 };
-        if (!liste) return def;
+        let def = { 
+            az: 0, el: 0, el_refractee: 0, correction_refraction: 0, dist_ua: 0, dist_km: 0, 
+            mag: 0, ra: "N/A", dec: 0, constel: "N/A", lever: "N/A", culmination: "N/A", coucher: "N/A"
+        };
+        if (!liste || liste.length === 0) return def;
         let indexBorne = Math.max(0, Math.min(index, liste.length - 1));
         let c = liste[indexBorne];
         if (!c) return def;
@@ -203,32 +192,30 @@
         mettreAJourInterfaceVisuelle(IndexMatriceCourant);
     }
 
-    // CADENCE CORRIGÉE HAUTE FRÉQUENCE (10 Hz) SANS UTILISATION DE L'HEURE ANDROID SYSTEME
+    // CADENCE MONOTONE AUTO-RÉGULÉE HAUTE FRÉQUENCE (10 Hz)
     function defilementHorlogeInterne() {
         if (t0_PerformanceLocalMs === 0) return;
 
-        // Calcul du delta de temps réel écoulé via le CPU de manière monotone
+        // Écart d'exécution CPU strict depuis la dernière synchronisation atomique
         const deltaMs = performance.now() - t0_PerformanceLocalMs;
-        
-        // Reconstruction du temps UTC Atomique virtuel décorrélé de l'OS
         const tempsActuelVirtuelMs = t0_ReferenceServeurMs + deltaMs;
         const dateVirtuelle = new Date(tempsActuelVirtuelMs);
         
-        // Mise à jour de l'affichage de l'heure UTC atomique simulée
+        // Rendu des horloges atomiques
         document.getElementById('clock-utc').innerText = `UTC ATOMIQUE : ${dateVirtuelle.toISOString().substr(11, 8)}`;
         
-        // Interpolation ultra-précise du Jour Julien
+        // Progression linéaire vraie du Jour Julien
         const jdActuel = jd_ReferenceServeur + (deltaMs / 86400000);
         document.getElementById('astro-jd').innerText = jdActuel.toFixed(5);
 
-        // Interpolation du Temps Sidéral Local (LST)
-        const totalSecondesLst = (lst_ReferenceSecondes + (deltaMs / 1000) * 1.00273790935) % 86400; // Facteur de conversion temps solaire -> sidéral
+        // Progression vraie du Temps Sidéral Local (LST) basé sur le ratio sidéral/solaire (~1.0027379)
+        const totalSecondesLst = (lst_ReferenceSecondes + (deltaMs / 1000) * 1.00273790935) % 86400;
         const h_lst = Math.floor(totalSecondesLst / 3600).toString().padStart(2, '0');
         const m_lst = Math.floor((totalSecondesLst % 3600) / 60).toString().padStart(2, '0');
         const s_lst = Math.floor(totalSecondesLst % 60).toString().padStart(2, '0');
         document.getElementById('astro-lst').innerText = `${h_lst}:${m_lst}:${s_lst}`;
 
-        // Recalcul de l'index minute invariant (0 à 1439)
+        // Calcul de l'index minute invariant pour le pointeur de fichier JPL
         IndexMatriceCourant = (dateVirtuelle.getUTCHours() * 60) + dateVirtuelle.getUTCMinutes();
         document.getElementById('ast-index').innerText = IndexMatriceCourant;
         
@@ -237,7 +224,7 @@
         }
     }
 
-    // CADENCE BASSE FRÉQUENCE (RÉSEAU) : CALAGE DE L'ANCRE TEMPORELLE
+    // CADENCE RÉSEAU (MINUTAIRE)
     async function acquérirEphéméridesJPL() {
         try {
             const reponse = await fetch('./flux_live.json?cache_bust=' + Date.now());
@@ -251,42 +238,41 @@
             FluxJPLGlobal = extraireNoeudFou(flux, "EPHEMERIDES_JPL_1440") || extraireNoeudFou(flux, "jpl") || flux;
 
             if (!horloge || !meteo) {
-                throw new Error("Structure de flux non conforme.");
+                throw new Error("Erreur : Structure télémétrique altérée.");
             }
 
-            // --- ANCRAGE DE L'HORLOGE MONOTONE ---
+            // Ancrage du système de temps monotone
             t0_PerformanceLocalMs = performance.now();
             jd_ReferenceServeur = Number(horloge.jd);
             
-            // Conversion de la chaîne LST (HH:MM:SS) en secondes absolues pour le moteur d'intégration
             const partiesLst = horloge.lst.split(':');
             lst_ReferenceSecondes = (parseInt(partiesLst[0]) * 3600) + (parseInt(partiesLst[1]) * 60) + parseInt(partiesLst[2]);
 
-            // Simulation du timestamp UTC initial basé sur les données du flux
-            // Si le flux ne fournit pas de timestamp unix brut, on génère l'ancre une seule fois
-            const maintenantInterne = new Date();
-            t0_ReferenceServeurMs = Date.UTC(maintenantInterne.getUTCFullYear(), maintenantInterne.getUTCMonth(), maintenantInterne.getUTCDate(), 
-                                             maintenantInterne.getUTCHours(), maintenantInterne.getUTCMinutes(), maintenantInterne.getUTCSeconds());
+            // Synchronisation de la base millisecondes UTC
+            const main UTC = new Date();
+            t0_ReferenceServeurMs = Date.UTC(main_UTC.getUTCFullYear(), main_UTC.getUTCMonth(), main_UTC.getUTCDate(), 
+                                             main_UTC.getUTCHours(), main_UTC.getUTCMinutes(), main_UTC.getUTCSeconds());
 
             document.getElementById('clock-solar').innerText = `TEMPS SOLAIRE MOYEN (LMT) : ${horloge.lmt}`;
 
-            // --- TRAITEMENT DU VECTEUR GÉODÉSIQUE TRIDIMENSIONNEL ---
+            // Injection des données de position tridimensionnelles (ITRF / ECEF)
             if (geodata) {
                 document.getElementById('geo-latlon').innerText = `${geodata.latitude.toFixed(5)}°N / ${geodata.longitude.toFixed(5)}°E`;
                 document.getElementById('geo-alt').innerText = geodata.altitude.toFixed(1);
                 
-                // Exécution de l'analyse tridimensionnelle vectorielle ECEF
-                const position3D = calculerPositionTridimensionnelleITRF(geodata.latitude, geodata.longitude, geodata.altitude);
-                
-                // Injection furtive ou log de validation dans la console de l'appareil
-                console.log(`[ECEF VECT] X: ${position3D.x.toFixed(1)}m | Y: ${position3D.y.toFixed(1)}m | Z: ${position3D.z.toFixed(1)}m`);
+                if (geodata.ecef_x_m) {
+                    document.getElementById('geo-ecef-x').innerText = `${Math.floor(geodata.ecef_x_m).toLocaleString('fr-FR')} m`;
+                    document.getElementById('geo-ecef-y').innerText = `${Math.floor(geodata.ecef_y_m).toLocaleString('fr-FR')} m`;
+                    document.getElementById('geo-ecef-z').innerText = `${Math.floor(geodata.ecef_z_m).toLocaleString('fr-FR')} m`;
+                }
             }
 
             document.getElementById('m-pres').innerText = Number(meteo.pression_station_hpa).toFixed(1);
             document.getElementById('m-tvirt').innerText = Number(meteo.temperature_virtuelle_c).toFixed(2);
             document.getElementById('m-rho').innerText = Number(meteo.densite_air_kgm3).toFixed(3);
 
-            logDebug("Base de données synchronisée. Horloge monotone isolée.");
+            logDebug("Base JPL DE440 synchronisée. Horloge isolée active.");
+            mettreAJourInterfaceVisuelle(IndexMatriceCourant);
         } catch (erreur) {
             logDebug(erreur.message, true);
         }
@@ -297,7 +283,7 @@
         let listeAstre = resoudreAstreDansMatrice(FluxJPLGlobal, astreActif);
         
         if (!listeAstre) {
-            document.getElementById('ast-az').innerText = "N/A";
+            purgerAffichageAstre();
             return;
         }
 
@@ -332,7 +318,6 @@
         ctx.save();
         ctx.translate(cx, cy);
 
-        // Dessin des cercles d'élévation
         ctx.strokeStyle = "rgba(0, 240, 255, 0.08)";
         ctx.lineWidth = 1;
         for(let r=0.2; r<=1; r+=0.2) { 
@@ -375,11 +360,9 @@
     window.onload = () => { 
         redimensionner(); 
         acquérirEphéméridesJPL(); 
-        setInterval(defilementHorlogeInterne, 100); // Boucle haute fréquence autonome
-        setInterval(acquérirEphéméridesJPL, 60000); // Resynchronisation réseau toutes les minutes
+        setInterval(defilementHorlogeInterne, 100); 
+        setInterval(acquérirEphéméridesJPL, 60000); 
     };
 </script>
-
-
 </body>
     </html>
