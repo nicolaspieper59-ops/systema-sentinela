@@ -60,17 +60,17 @@
                     <select id="select-astre" onchange="basculerAstreAffichage()">
                         <option value="SOLEIL">☀️ SOLEIL</option>
                         <option value="LUNE">🌙 LUNE</option>
-                        <option value="MERCURE">🪐 MERCURE</option>
-                        <option value="VENUS">🪐 VENUS</option>
-                        <option value="MARS">🪐 MARS</option>
+                        <option value="VENUS">🪐 VÉNUS</option>
                         <option value="JUPITER">🪐 JUPITER</option>
+                        <option value="MARS">🪐 MARS</option>
+                        <option value="MERCURE">🪐 MERCURE</option>
                         <option value="SATURNE">🪐 SATURNE</option>
                     </select>
                 </div>
                 
-                <div class="metric"><span style="color:#64748b">Rise (Heure Solaire LMT) :</span><span id="ast-rise" class="data">--.--.---- --:--:--</span></div>
-                <div class="metric"><span style="color:#64748b">Culmination (Heure Solaire LMT) :</span><span id="ast-culm" class="data">--.--.---- --:--:--</span></div>
-                <div class="metric"><span style="color:#64748b">Set (Heure Solaire LMT) :</span><span id="ast-set" class="data">--.--.---- --:--:--</span></div>
+                <div class="metric"><span style="color:#64748b">Rise (Heure Solaire LMT) :</span><span id="ast-rise" class="data">--:--:--</span></div>
+                <div class="metric"><span style="color:#64748b">Culmination (Heure Solaire LMT) :</span><span id="ast-culm" class="data">--:--:--</span></div>
+                <div class="metric"><span style="color:#64748b">Set (Heure Solaire LMT) :</span><span id="ast-set" class="data">--:--:--</span></div>
                 
                 <div class="metric"><span>Azimut Vrai ($Az$) :</span><span id="ast-az" class="data">---.---°</span></div>
                 <div class="metric"><span>Élévation Géométrique Brute :</span><span id="ast-el" class="data">--.---°</span></div>
@@ -113,7 +113,6 @@
     let DonneesAstroCourantes = {};
     let astreActif = "SOLEIL";
 
-    // Variables d'ancrage du temps monotone (Découplage Android OS)
     let t0_PerformanceLocalMs = 0;
     let t0_ReferenceServeurMs = 0;
     let jd_ReferenceServeur = 0;
@@ -123,7 +122,7 @@
         "SOLEIL": ["sun", "soleil", "sol"],
         "LUNE": ["moon", "lune", "luna"],
         "MERCURE": ["mercury", "mercure"],
-        "VENUS": ["venus"],
+        "VENUS": ["venus", "vénus"],
         "MARS": ["mars"],
         "JUPITER": ["jupiter"],
         "SATURNE": ["saturn", "saturne"]
@@ -192,30 +191,24 @@
         mettreAJourInterfaceVisuelle(IndexMatriceCourant);
     }
 
-    // CADENCE MONOTONE AUTO-RÉGULÉE HAUTE FRÉQUENCE (10 Hz)
     function defilementHorlogeInterne() {
         if (t0_PerformanceLocalMs === 0) return;
 
-        // Écart d'exécution CPU strict depuis la dernière synchronisation atomique
         const deltaMs = performance.now() - t0_PerformanceLocalMs;
         const tempsActuelVirtuelMs = t0_ReferenceServeurMs + deltaMs;
         const dateVirtuelle = new Date(tempsActuelVirtuelMs);
         
-        // Rendu des horloges atomiques
         document.getElementById('clock-utc').innerText = `UTC ATOMIQUE : ${dateVirtuelle.toISOString().substr(11, 8)}`;
         
-        // Progression linéaire vraie du Jour Julien
         const jdActuel = jd_ReferenceServeur + (deltaMs / 86400000);
         document.getElementById('astro-jd').innerText = jdActuel.toFixed(5);
 
-        // Progression vraie du Temps Sidéral Local (LST) basé sur le ratio sidéral/solaire (~1.0027379)
         const totalSecondesLst = (lst_ReferenceSecondes + (deltaMs / 1000) * 1.00273790935) % 86400;
         const h_lst = Math.floor(totalSecondesLst / 3600).toString().padStart(2, '0');
         const m_lst = Math.floor((totalSecondesLst % 3600) / 60).toString().padStart(2, '0');
         const s_lst = Math.floor(totalSecondesLst % 60).toString().padStart(2, '0');
         document.getElementById('astro-lst').innerText = `${h_lst}:${m_lst}:${s_lst}`;
 
-        // Calcul de l'index minute invariant pour le pointeur de fichier JPL
         IndexMatriceCourant = (dateVirtuelle.getUTCHours() * 60) + dateVirtuelle.getUTCMinutes();
         document.getElementById('ast-index').innerText = IndexMatriceCourant;
         
@@ -224,7 +217,6 @@
         }
     }
 
-    // CADENCE RÉSEAU (MINUTAIRE)
     async function acquérirEphéméridesJPL() {
         try {
             const reponse = await fetch('./flux_live.json?cache_bust=' + Date.now());
@@ -241,21 +233,19 @@
                 throw new Error("Erreur : Structure télémétrique altérée.");
             }
 
-            // Ancrage du système de temps monotone
             t0_PerformanceLocalMs = performance.now();
             jd_ReferenceServeur = Number(horloge.jd);
             
             const partiesLst = horloge.lst.split(':');
             lst_ReferenceSecondes = (parseInt(partiesLst[0]) * 3600) + (parseInt(partiesLst[1]) * 60) + parseInt(partiesLst[2]);
 
-            // Synchronisation de la base millisecondes UTC
-            const main UTC = new Date();
+            // Correctif critique de la variable temporelle (Suppression de l'espace de syntaxe syntax error)
+            const main_UTC = new Date();
             t0_ReferenceServeurMs = Date.UTC(main_UTC.getUTCFullYear(), main_UTC.getUTCMonth(), main_UTC.getUTCDate(), 
                                              main_UTC.getUTCHours(), main_UTC.getUTCMinutes(), main_UTC.getUTCSeconds());
 
             document.getElementById('clock-solar').innerText = `TEMPS SOLAIRE MOYEN (LMT) : ${horloge.lmt}`;
 
-            // Injection des données de position tridimensionnelles (ITRF / ECEF)
             if (geodata) {
                 document.getElementById('geo-latlon').innerText = `${geodata.latitude.toFixed(5)}°N / ${geodata.longitude.toFixed(5)}°E`;
                 document.getElementById('geo-alt').innerText = geodata.altitude.toFixed(1);
@@ -331,16 +321,18 @@
         ctx.fillText("NORD VRAI ITRF", -40, -rMax - 10);
         ctx.fillText("EST", rMax + 10, 4);
 
-        if (DonneesAstroCourantes.actif && DonneesAstroCourantes.actif.el >= 0) {
+        if (DonneesAstroCourantes.actif && DonneesAstroCourantes.actif.el >= -15) {
             ctx.save();
+            // L'Azimut astronomique est compté depuis le Nord vers l'Est (sens horaire). 
+            // En toile Canvas, on applique la rotation correspondante.
             ctx.rotate((DonneesAstroCourantes.actif.az * Math.PI) / 180);
-            let dist = rMax * (1 - (DonneesAstroCourantes.actif.el / 90));
+            let dist = rMax * (1 - (Math.max(0, DonneesAstroCourantes.actif.el) / 90));
             
             ctx.strokeStyle = "rgba(255, 170, 0, 0.15)";
             ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -dist); ctx.stroke();
             
-            ctx.fillStyle = "var(--amber)";
-            ctx.beginPath(); ctx.arc(0, -dist, 7, 0, 2 * Math.PI); ctx.fill();
+            ctx.fillStyle = DonneesAstroCourantes.actif.el < 0 ? "#475569" : "var(--amber)";
+            ctx.beginPath(); ctx.arc(0, -dist, 6, 0, 2 * Math.PI); ctx.fill();
             ctx.fillText(astreActif, 12, -dist + 4);
             ctx.restore();
         }
