@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TERMINAL INSTRUMENTAL APEX - ZERO APPROXIMATION CLIENT</title>
+    <title>SYSTEMA SENTINELA - LECTEUR TOPOCENTRIQUE SANS INTERPOLATION</title>
     <style>
         :root { 
             --cyan: #00f0ff; --green: #00ff66; --amber: #ffaa00; --pink: #ff007f; --bg: #020205; 
@@ -31,7 +31,7 @@
 <body>
 
 <div class="header">
-    <div>SYSTEMA SENTINELA : LECTEUR TOPOCENTRIQUE VRAI INDÉPENDANT</div>
+    <div>SYSTEMA SENTINELA : LECTEUR TOPOCENTRIQUE VRAI V2026.2</div>
     <div id="clock-solar" style="color:var(--pink)">TEMPS SOLAIRE MOYEN (LMT) : --:--:--</div>
     <div id="clock-utc">UTC ATOMIQUE : --:--:--</div>
 </div>
@@ -105,17 +105,28 @@
     const ctx = canvas.getContext('2d');
     const debugDiv = document.getElementById('debug-console');
     
-    // Variables d'état persistantes pour immuniser le processus d'affichage
     let FluxJPLGlobal = null;
     let IndexMatriceCourant = 0;
     let DonneesAstroCourantes = {};
     let astreActif = "JUPITER";
+
+    // MATRICE D'ALIASING MULTILINGUE DE SÉCURITÉ (FÉDÉRATION DES CLÉS DE L'EPHÉMÉRIDE)
+    const DICTIONNAIRE_ASTRES = {
+        "SOLEIL": ["sun", "soleil", "sol"],
+        "LUNE": ["moon", "lune", "luna"],
+        "MERCURE": ["mercury", "mercure"],
+        "VENUS": ["venus"],
+        "MARS": ["mars"],
+        "JUPITER": ["jupiter"],
+        "SATURNE": ["saturn", "saturne"]
+    };
 
     function logDebug(msg, isErr = false) {
         debugDiv.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
         debugDiv.style.color = isErr ? "#ff5555" : "var(--green)";
     }
 
+    // Extraction récursive insensible à la casse et aux variantes linguistiques
     function extraireNoeudFou(objet, nomCle) {
         if (!objet) return null;
         let cible = nomCle.toLowerCase();
@@ -125,16 +136,32 @@
         return null;
     }
 
-    // EXTRACTION FILTRÉE ET SÉCURISÉE SANS ARRONDIS CLIENTS
+    function resoudreAstreDansMatrice(fluxEphemerides, cleUI) {
+        if (!fluxEphemerides || !DICTIONNAIRE_ASTRES[cleUI]) return null;
+        const synonymes = DICTIONNAIRE_ASTRES[cleUI];
+        for (let syn of synonymes) {
+            let noeud = extraireNoeudFou(fluxEphemerides, syn);
+            if (noeud) return noeud;
+        }
+        return null;
+    }
+
+    // PURGE INTÉGRALE DE SÉCURITÉ POUR ÉVITER LES DONNÉES FANTÔMES
+    function purgerAffichageAstre() {
+        const champs = ['ast-rise', 'ast-culm', 'ast-set', 'ast-az', 'ast-el', 'ast-el-ref', 'ast-delta-ref', 'ast-ra', 'ast-dec', 'ast-dist-km', 'ast-dist-au', 'ast-mag', 'ast-const'];
+        champs.forEach(id => {
+            document.getElementById(id).innerText = "N/A";
+        });
+        DonneesAstroCourantes.actif = null;
+        générerRenduRadar();
+    }
+
     function extraireDonneesAstreIndex(liste, index) {
         let def = { 
-            az: 0, el: 0, el_refractee: 0, correction_refraction: 0, dist_ua: 1, dist_km: 0, 
-            mag: 0, ra: "0h 0m 0s", dec: 0, constel: "N/A", lever: "N/A", culmination: "N/A", coucher: "N/A"
+            az: 0, el: 0, el_refractee: 0, correction_refraction: 0, dist_ua: 0, dist_km: 0, 
+            mag: 0, ra: "N/A", dec: 0, constel: "N/A", lever: "N/A", culmination: "N/A", coucher: "N/A"
         };
-        
         if (!liste) return def;
-        
-        // Sanitarisation stricte des bornes de la matrice (0 à 1439)
         let indexBorne = Math.max(0, Math.min(index, liste.length - 1));
         let c = liste[indexBorne];
         if (!c) return def;
@@ -144,10 +171,10 @@
             el: Number(c.elevation_brute ?? c.el ?? 0),
             el_refractee: Number(c.elevation_refractee ?? c.el_ref ?? 0),
             correction_refraction: Number(c.correction_refraction ?? c.delta_ref ?? 0),
-            dist_ua: Number(c.distance_ua ?? 1),
+            dist_ua: Number(c.distance_ua ?? 0),
             dist_km: Number(c.distance_km ?? 0),
             mag: Number(c.magnitude ?? 0),
-            ra: String(c.ascension_droite ?? c.ra ?? "0h 0m 0s"),
+            ra: String(c.ascension_droite ?? c.ra ?? "N/A"),
             dec: Number(c.declination ?? c.dec ?? 0),
             constel: String(c.constellation ?? "N/A"),
             lever: String(c.lever_lmt ?? c.lever ?? "N/A"),
@@ -158,7 +185,6 @@
 
     function basculerAstreAffichage() {
         astreActif = document.getElementById('select-astre').value;
-        // Utilisation sécurisée de l'index validé par le dernier battement réseau
         mettreAJourInterfaceVisuelle(IndexMatriceCourant);
     }
 
@@ -175,13 +201,11 @@
             FluxJPLGlobal = extraireNoeudFou(flux, "EPHEMERIDES_JPL_1440") || extraireNoeudFou(flux, "jpl") || flux;
 
             if (!horloge || !meteo) {
-                throw new Error("Structure invalide : Les noeuds 'HORLOGE' ou 'METEO_TERRESTRE' manquent.");
+                throw new Error("Structure de flux erronée : 'HORLOGE' ou 'METEO_TERRESTRE' absents.");
             }
 
-            // Enregistrement sécurisé du pointeur d'index
             IndexMatriceCourant = Math.max(0, Math.min(parseInt(horloge.index_1440) || 0, 1439));
 
-            // Injection brute des échelles temporelles calculées par la suite instrumentale
             document.getElementById('clock-utc').innerText = `UTC ATOMIQUE : ${horloge.utc}`;
             document.getElementById('clock-solar').innerText = `TEMPS SOLAIRE MOYEN (LMT) : ${horloge.lmt}`;
             document.getElementById('astro-jd').innerText = Number(horloge.jd).toFixed(5);
@@ -206,21 +230,23 @@
     function mettreAJourInterfaceVisuelle(index1440) {
         if (!FluxJPLGlobal) return;
 
-        let listeAstre = extraireNoeudFou(FluxJPLGlobal, astreActif) || extraireNoeudFou(FluxJPLGlobal, astreActif.toLowerCase());
+        // Appel du système d'aliasing polyglotte
+        let listeAstre = resoudreAstreDansMatrice(FluxJPLGlobal, astreActif);
+        
         if (!listeAstre) {
-            logDebug(`Flux de l'astre [${astreActif}] non localisé dans la matrice`, true);
+            purgerAffichageAstre();
+            logDebug(`Flux de l'astre [${astreActif}] non localisé dans la matrice (Vérifier clés JSON)`, true);
             return;
         }
 
         let s = extraireDonneesAstreIndex(listeAstre, index1440);
         
-        // Remplissage IHM invariant
         document.getElementById('ast-az').innerText = `${s.az.toFixed(3)}°`;
         document.getElementById('ast-el').innerText = `${s.el.toFixed(3)}°`;
         document.getElementById('ast-el-ref').innerText = `${s.el_refractee.toFixed(3)}°`;
         document.getElementById('ast-delta-ref').innerText = `+${s.correction_refraction.toFixed(3)}°`;
         
-        document.getElementById('ast-dist-km').innerText = Math.floor(s.dist_km).toLocaleString('fr-FR');
+        document.getElementById('ast-dist-km').innerText = s.dist_km > 0 ? Math.floor(s.dist_km).toLocaleString('fr-FR') : "N/A";
         document.getElementById('ast-dist-au').innerText = s.dist_ua.toFixed(4);
         document.getElementById('ast-mag').innerText = s.mag.toFixed(2);
         document.getElementById('ast-ra').innerText = s.ra;
@@ -242,11 +268,9 @@
         let rMax = Math.min(cx, cy) - 40;
 
         ctx.clearRect(0, 0, rect.width, rect.height);
-
         ctx.save();
         ctx.translate(cx, cy);
 
-        // Canevas fixe d'orientation géodésique
         ctx.strokeStyle = "rgba(0, 240, 255, 0.08)";
         ctx.lineWidth = 1;
         for(let r=0.2; r<=1; r+=0.2) { 
@@ -260,10 +284,8 @@
         ctx.fillText("NORD VRAI ITRF", -40, -rMax - 10);
         ctx.fillText("EST", rMax + 10, 4);
 
-        // Projection angulaire 2D pure (Aucune modification des valeurs physiques)
         if (DonneesAstroCourantes.actif && DonneesAstroCourantes.actif.el >= 0) {
             ctx.save();
-            // Inversion trigonométrique standard pour faire correspondre l'azimut (0° au Nord, horaire)
             ctx.rotate((DonneesAstroCourantes.actif.az * Math.PI) / 180);
             let dist = rMax * (1 - (DonneesAstroCourantes.actif.el / 90));
             
@@ -278,16 +300,11 @@
         ctx.restore();
     }
 
-    // GESTION ANTI-ALIASING POUR LES ÉCRANS RETINA / HAUTE DENSITÉ
     function redimensionner() {
         let rect = canvas.parentElement.getBoundingClientRect();
         let dpr = window.devicePixelRatio || 1;
-        
-        // Ajustement des dimensions physiques du pixel de la matrice de rendu
         canvas.width = rect.width * dpr;
         canvas.height = rect.height * dpr;
-        
-        // Mise à l'échelle du contexte pour préserver les dimensions CSS
         ctx.scale(dpr, dpr);
         générerRenduRadar();
     }
@@ -300,4 +317,4 @@
     };
 </script>
 </body>
-                                                                                                                                   </html>
+                                                                                         </html>
