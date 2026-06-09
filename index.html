@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ˆ<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
@@ -98,7 +98,7 @@
     </div>
 </div>
 
-<div id="debug-console">SYS : CHARGEMENT DU PROTOCOLE HISTOGRAMME FLUX REEL...</div>
+<div id="debug-console">SYS : INITIALISATION DU PROTOCOLE RESEAU FILTRÉ...</div>
 
 <script>
     const canvas = document.getElementById('radar-canvas');
@@ -110,7 +110,6 @@
     let DonneesAstroCourantes = {};
     let astreActif = "JUPITER";
 
-    // MATRICE D'ALIASING MULTILINGUE DE SÉCURITÉ (FÉDÉRATION DES CLÉS DE L'EPHÉMÉRIDE)
     const DICTIONNAIRE_ASTRES = {
         "SOLEIL": ["sun", "soleil", "sol"],
         "LUNE": ["moon", "lune", "luna"],
@@ -126,7 +125,6 @@
         debugDiv.style.color = isErr ? "#ff5555" : "var(--green)";
     }
 
-    // Extraction récursive insensible à la casse et aux variantes linguistiques
     function extraireNoeudFou(objet, nomCle) {
         if (!objet) return null;
         let cible = nomCle.toLowerCase();
@@ -146,12 +144,9 @@
         return null;
     }
 
-    // PURGE INTÉGRALE DE SÉCURITÉ POUR ÉVITER LES DONNÉES FANTÔMES
     function purgerAffichageAstre() {
         const champs = ['ast-rise', 'ast-culm', 'ast-set', 'ast-az', 'ast-el', 'ast-el-ref', 'ast-delta-ref', 'ast-ra', 'ast-dec', 'ast-dist-km', 'ast-dist-au', 'ast-mag', 'ast-const'];
-        champs.forEach(id => {
-            document.getElementById(id).innerText = "N/A";
-        });
+        champs.forEach(id => document.getElementById(id).innerText = "N/A");
         DonneesAstroCourantes.actif = null;
         générerRenduRadar();
     }
@@ -188,6 +183,21 @@
         mettreAJourInterfaceVisuelle(IndexMatriceCourant);
     }
 
+    // CADENCE NATIONALE HAUTE FRÉQUENCE (10 Hz) : Horloge locale calculée en local
+    defilementHorlogeInterne() {
+        const maintenant = new Date();
+        // Recalcul de l'index minute en temps réel basé sur l'horloge locale
+        IndexMatriceCourant = (maintenant.getUTCHours() * 60) + maintenant.getUTCMinutes();
+        
+        document.getElementById('clock-utc').innerText = `UTC ATOMIQUE : ${maintenant.toISOString().substr(11, 8)}`;
+        document.getElementById('ast-index').innerText = IndexMatriceCourant;
+        
+        if (FluxJPLGlobal) {
+            mettreAJourInterfaceVisuelle(IndexMatriceCourant);
+        }
+    }
+
+    // CADENCE BASSE FRÉQUENCE (RÉSEAU - 60s) : Soulagement de la bande passante
     async function acquérirEphéméridesJPL() {
         try {
             const reponse = await fetch('./flux_live.json?cache_bust=' + Date.now());
@@ -201,16 +211,12 @@
             FluxJPLGlobal = extraireNoeudFou(flux, "EPHEMERIDES_JPL_1440") || extraireNoeudFou(flux, "jpl") || flux;
 
             if (!horloge || !meteo) {
-                throw new Error("Structure de flux erronée : 'HORLOGE' ou 'METEO_TERRESTRE' absents.");
+                throw new Error("Structure de flux erronée : Données télémétriques non conformes.");
             }
 
-            IndexMatriceCourant = Math.max(0, Math.min(parseInt(horloge.index_1440) || 0, 1439));
-
-            document.getElementById('clock-utc').innerText = `UTC ATOMIQUE : ${horloge.utc}`;
             document.getElementById('clock-solar').innerText = `TEMPS SOLAIRE MOYEN (LMT) : ${horloge.lmt}`;
             document.getElementById('astro-jd').innerText = Number(horloge.jd).toFixed(5);
             document.getElementById('astro-lst').innerText = horloge.lst;
-            document.getElementById('ast-index').innerText = IndexMatriceCourant;
 
             if (geodata) {
                 document.getElementById('geo-latlon').innerText = `${geodata.latitude.toFixed(5)}°N / ${geodata.longitude.toFixed(5)}°E`;
@@ -221,7 +227,7 @@
             document.getElementById('m-tvirt').innerText = Number(meteo.temperature_virtuelle_c).toFixed(2);
             document.getElementById('m-rho').innerText = Number(meteo.densite_air_kgm3).toFixed(3);
 
-            mettreAJourInterfaceVisuelle(IndexMatriceCourant);
+            logDebug("Base de données éphémérides synchronisée.");
         } catch (erreur) {
             logDebug(erreur.message, true);
         }
@@ -229,13 +235,10 @@
 
     function mettreAJourInterfaceVisuelle(index1440) {
         if (!FluxJPLGlobal) return;
-
-        // Appel du système d'aliasing polyglotte
         let listeAstre = resoudreAstreDansMatrice(FluxJPLGlobal, astreActif);
         
         if (!listeAstre) {
             purgerAffichageAstre();
-            logDebug(`Flux de l'astre [${astreActif}] non localisé dans la matrice (Vérifier clés JSON)`, true);
             return;
         }
 
@@ -258,7 +261,6 @@
         document.getElementById('ast-set').innerText = s.coucher;
 
         DonneesAstroCourantes.actif = { az: s.az, el: s.el_refractee };
-        logDebug("Synchronisation complète. Données physiques invariantes.");
         générerRenduRadar();
     }
 
@@ -313,8 +315,9 @@
     window.onload = () => { 
         redimensionner(); 
         acquérirEphéméridesJPL(); 
-        setInterval(acquérirEphéméridesJPL, 1000); 
+        setInterval(defilementHorlogeInterne, 100); // 10 Hz pour l'affichage fluide
+        setInterval(acquérirEphéméridesJPL, 60000); // 60 secondes pour les appels réseau
     };
 </script>
 </body>
-                                                                                         </html>
+    </html>
