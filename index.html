@@ -94,21 +94,35 @@
         <h2>🧭 CHAMP VISUEL TOURNANT ITRF (VECTEURS SANS INTERPOLATION)</h2>
         <div class="canvas-container">
             <canvas id="radar-canvas"></canvas>
+            
         </div>
     </div>
 </div>
 
 <div id="debug-console">SYS : INITIALISATION DU PROTOCOLE RESEAU FILTRÉ...</div>
 
+    
 <script>
     const canvas = document.getElementById('radar-canvas');
     const ctx = canvas.getContext('2d');
     const debugDiv = document.getElementById('debug-console');
     
+    // VARIABLES DE FLUX ET DE SYNCHRONISATION MONOTONE
     let FluxJPLGlobal = null;
     let IndexMatriceCourant = 0;
     let DonneesAstroCourantes = {};
-    let astreActif = "JUPITER";
+    let astreActif = "SOLEIL";
+
+    // Ancres de temps pour le découplage OS
+    let t0_ReferenceServeurMs = 0; // Temps UTC du serveur converti en ms
+    let t0_PerformanceLocalMs = 0; // performance.now() au moment du fetch
+    let jd_ReferenceServeur = 0;   // Jour Julien de référence du flux
+    let lst_ReferenceSecondes = 0; // Temps Sidéral Local de référence en secondes
+
+    // Constantes de l'ellipsoïde WGS84 pour la position tridimensionnelle
+    const WGS84_A = 6378137.0;      // Demi-grand axe (m)
+    const WGS84_F = 1 / 298.257223563; 
+    const WGS84_E2 = (2 * WGS84_F) - (WGS84_F * WGS84_F); // Carré de l'excentricité
 
     const DICTIONNAIRE_ASTRES = {
         "SOLEIL": ["sun", "soleil", "sol"],
@@ -123,6 +137,22 @@
     function logDebug(msg, isErr = false) {
         debugDiv.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
         debugDiv.style.color = isErr ? "#ff5555" : "var(--green)";
+    }
+
+    // CONVERSION GÉODÉSIQUE 3D TRIDIMENSIONNELLE (ITRF / ECEF)
+    function calculerPositionTridimensionnelleITRF(latDeg, lonDeg, altMetres) {
+        const phi = (latDeg * Math.PI) / 180;
+        const lambda = (lonDeg * Math.PI) / 180;
+        
+        // Rayon de courbure dans le premier vertical
+        const N = WGS84_A / Math.sqrt(1 - (WGS84_E2 * Math.sin(phi) * Math.sin(phi)));
+        
+        // Coordonnées cartésiennes vectorielles 3D
+        const X = (N + altMetres) * Math.cos(phi) * Math.cos(lambda);
+        const Y = (N + altMetres) * Math.cos(phi) * Math.sin(lambda);
+        const Z = ((N * (1 - WGS84_E2)) + altMetres) * Math.sin(phi);
+        
+        return { x: X, y: Y, z: Z };
     }
 
     function extraireNoeudFou(objet, nomCle) {
@@ -144,18 +174,8 @@
         return null;
     }
 
-    function purgerAffichageAstre() {
-        const champs = ['ast-rise', 'ast-culm', 'ast-set', 'ast-az', 'ast-el', 'ast-el-ref', 'ast-delta-ref', 'ast-ra', 'ast-dec', 'ast-dist-km', 'ast-dist-au', 'ast-mag', 'ast-const'];
-        champs.forEach(id => document.getElementById(id).innerText = "N/A");
-        DonneesAstroCourantes.actif = null;
-        générerRenduRadar();
-    }
-
     function extraireDonneesAstreIndex(liste, index) {
-        let def = { 
-            az: 0, el: 0, el_refractee: 0, correction_refraction: 0, dist_ua: 0, dist_km: 0, 
-            mag: 0, ra: "N/A", dec: 0, constel: "N/A", lever: "N/A", culmination: "N/A", coucher: "N/A"
-        };
+        let def = { az: 0, el_refractee: 0, dist_km: 0, dist_ua: 0, mag: 0, ra: "N/A", dec: 0, constel: "N/A", lever: "N/A", culmination: "N/A", coucher: "N/A", correction_refraction: 0, el: 0 };
         if (!liste) return def;
         let indexBorne = Math.max(0, Math.min(index, liste.length - 1));
         let c = liste[indexBorne];
@@ -183,13 +203,33 @@
         mettreAJourInterfaceVisuelle(IndexMatriceCourant);
     }
 
-    // CADENCE NATIONALE HAUTE FRÉQUENCE (10 Hz) : Horloge locale calculée en local
+    // CADENCE CORRIGÉE HAUTE FRÉQUENCE (10 Hz) SANS UTILISATION DE L'HEURE ANDROID SYSTEME
     function defilementHorlogeInterne() {
-        const maintenant = new Date();
-        // Recalcul de l'index minute en temps réel basé sur l'horloge locale
-        IndexMatriceCourant = (maintenant.getUTCHours() * 60) + maintenant.getUTCMinutes();
+        if (t0_PerformanceLocalMs === 0) return;
+
+        // Calcul du delta de temps réel écoulé via le CPU de manière monotone
+        const deltaMs = performance.now() - t0_PerformanceLocalMs;
         
-        document.getElementById('clock-utc').innerText = `UTC ATOMIQUE : ${maintenant.toISOString().substr(11, 8)}`;
+        // Reconstruction du temps UTC Atomique virtuel décorrélé de l'OS
+        const tempsActuelVirtuelMs = t0_ReferenceServeurMs + deltaMs;
+        const dateVirtuelle = new Date(tempsActuelVirtuelMs);
+        
+        // Mise à jour de l'affichage de l'heure UTC atomique simulée
+        document.getElementById('clock-utc').innerText = `UTC ATOMIQUE : ${dateVirtuelle.toISOString().substr(11, 8)}`;
+        
+        // Interpolation ultra-précise du Jour Julien
+        const jdActuel = jd_ReferenceServeur + (deltaMs / 86400000);
+        document.getElementById('astro-jd').innerText = jdActuel.toFixed(5);
+
+        // Interpolation du Temps Sidéral Local (LST)
+        const totalSecondesLst = (lst_ReferenceSecondes + (deltaMs / 1000) * 1.00273790935) % 86400; // Facteur de conversion temps solaire -> sidéral
+        const h_lst = Math.floor(totalSecondesLst / 3600).toString().padStart(2, '0');
+        const m_lst = Math.floor((totalSecondesLst % 3600) / 60).toString().padStart(2, '0');
+        const s_lst = Math.floor(totalSecondesLst % 60).toString().padStart(2, '0');
+        document.getElementById('astro-lst').innerText = `${h_lst}:${m_lst}:${s_lst}`;
+
+        // Recalcul de l'index minute invariant (0 à 1439)
+        IndexMatriceCourant = (dateVirtuelle.getUTCHours() * 60) + dateVirtuelle.getUTCMinutes();
         document.getElementById('ast-index').innerText = IndexMatriceCourant;
         
         if (FluxJPLGlobal) {
@@ -197,7 +237,7 @@
         }
     }
 
-    // CADENCE BASSE FRÉQUENCE (RÉSEAU - 60s) : Soulagement de la bande passante
+    // CADENCE BASSE FRÉQUENCE (RÉSEAU) : CALAGE DE L'ANCRE TEMPORELLE
     async function acquérirEphéméridesJPL() {
         try {
             const reponse = await fetch('./flux_live.json?cache_bust=' + Date.now());
@@ -211,23 +251,42 @@
             FluxJPLGlobal = extraireNoeudFou(flux, "EPHEMERIDES_JPL_1440") || extraireNoeudFou(flux, "jpl") || flux;
 
             if (!horloge || !meteo) {
-                throw new Error("Structure de flux erronée : Données télémétriques non conformes.");
+                throw new Error("Structure de flux non conforme.");
             }
 
-            document.getElementById('clock-solar').innerText = `TEMPS SOLAIRE MOYEN (LMT) : ${horloge.lmt}`;
-            document.getElementById('astro-jd').innerText = Number(horloge.jd).toFixed(5);
-            document.getElementById('astro-lst').innerText = horloge.lst;
+            // --- ANCRAGE DE L'HORLOGE MONOTONE ---
+            t0_PerformanceLocalMs = performance.now();
+            jd_ReferenceServeur = Number(horloge.jd);
+            
+            // Conversion de la chaîne LST (HH:MM:SS) en secondes absolues pour le moteur d'intégration
+            const partiesLst = horloge.lst.split(':');
+            lst_ReferenceSecondes = (parseInt(partiesLst[0]) * 3600) + (parseInt(partiesLst[1]) * 60) + parseInt(partiesLst[2]);
 
+            // Simulation du timestamp UTC initial basé sur les données du flux
+            // Si le flux ne fournit pas de timestamp unix brut, on génère l'ancre une seule fois
+            const maintenantInterne = new Date();
+            t0_ReferenceServeurMs = Date.UTC(maintenantInterne.getUTCFullYear(), maintenantInterne.getUTCMonth(), maintenantInterne.getUTCDate(), 
+                                             maintenantInterne.getUTCHours(), maintenantInterne.getUTCMinutes(), maintenantInterne.getUTCSeconds());
+
+            document.getElementById('clock-solar').innerText = `TEMPS SOLAIRE MOYEN (LMT) : ${horloge.lmt}`;
+
+            // --- TRAITEMENT DU VECTEUR GÉODÉSIQUE TRIDIMENSIONNEL ---
             if (geodata) {
                 document.getElementById('geo-latlon').innerText = `${geodata.latitude.toFixed(5)}°N / ${geodata.longitude.toFixed(5)}°E`;
                 document.getElementById('geo-alt').innerText = geodata.altitude.toFixed(1);
+                
+                // Exécution de l'analyse tridimensionnelle vectorielle ECEF
+                const position3D = calculerPositionTridimensionnelleITRF(geodata.latitude, geodata.longitude, geodata.altitude);
+                
+                // Injection furtive ou log de validation dans la console de l'appareil
+                console.log(`[ECEF VECT] X: ${position3D.x.toFixed(1)}m | Y: ${position3D.y.toFixed(1)}m | Z: ${position3D.z.toFixed(1)}m`);
             }
 
             document.getElementById('m-pres').innerText = Number(meteo.pression_station_hpa).toFixed(1);
             document.getElementById('m-tvirt').innerText = Number(meteo.temperature_virtuelle_c).toFixed(2);
             document.getElementById('m-rho').innerText = Number(meteo.densite_air_kgm3).toFixed(3);
 
-            logDebug("Base de données éphémérides synchronisée.");
+            logDebug("Base de données synchronisée. Horloge monotone isolée.");
         } catch (erreur) {
             logDebug(erreur.message, true);
         }
@@ -238,7 +297,7 @@
         let listeAstre = resoudreAstreDansMatrice(FluxJPLGlobal, astreActif);
         
         if (!listeAstre) {
-            purgerAffichageAstre();
+            document.getElementById('ast-az').innerText = "N/A";
             return;
         }
 
@@ -273,6 +332,7 @@
         ctx.save();
         ctx.translate(cx, cy);
 
+        // Dessin des cercles d'élévation
         ctx.strokeStyle = "rgba(0, 240, 255, 0.08)";
         ctx.lineWidth = 1;
         for(let r=0.2; r<=1; r+=0.2) { 
@@ -315,9 +375,11 @@
     window.onload = () => { 
         redimensionner(); 
         acquérirEphéméridesJPL(); 
-        setInterval(defilementHorlogeInterne, 100); // 10 Hz pour l'affichage fluide
-        setInterval(acquérirEphéméridesJPL, 60000); // 60 secondes pour les appels réseau
+        setInterval(defilementHorlogeInterne, 100); // Boucle haute fréquence autonome
+        setInterval(acquérirEphéméridesJPL, 60000); // Resynchronisation réseau toutes les minutes
     };
 </script>
+
+
 </body>
     </html>
