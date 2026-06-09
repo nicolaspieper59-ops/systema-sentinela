@@ -2,12 +2,15 @@ name: SENTINELA HARD-REALTIME - Matrix Engine
 
 on:
   schedule:
-    # Exécution automatique au début de chaque heure (60 minutes d'intervalle)
     - cron: '0 * * * *'
-  workflow_dispatch: # Permet le déclenchement manuel depuis l'interface GitHub
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+env:
+  # Élimine le warning GitHub Actions 2026 en forçant le moteur d'exécution Node.js 24
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   build-and-matrix:
@@ -17,13 +20,13 @@ jobs:
     - name: 1. Extraction du code source (Checkout)
       uses: actions/checkout@v4
       with:
-        persist-credentials: true # Conserve les droits pour le git push ultérieur
+        persist-credentials: true
 
-    - name: 2. Initialisation de l'environnement Python
+    - name: 2. Initialisation de l'environnement Python (Correctif Cache)
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-        cache: 'pip' # Active la mise en cache automatique des paquets pip
+        # Le paramètre 'cache: pip' a été retiré pour éviter l'échec d'absence de requirements.txt
 
     - name: 3. Installation des dépendances astrophysiques
       run: |
@@ -32,7 +35,6 @@ jobs:
 
     - name: 4. Exécution du Moteur Orbital Calculer_Orbites
       run: |
-        # On s'assure que le script Python correspond au fichier attendu
         if [ -f "calculer_orbites.py" ]; then
           python calculer_orbites.py
         elif [ -f "generate_matrix.py" ]; then
@@ -48,7 +50,6 @@ jobs:
         git config --global user.name "Sentinela Core Bot"
         git config --global user.email "sentinela-bot@github.com"
         
-        # Prise en compte sécurisée des fichiers générés (CSV optionnel et JSON)
         git add -A flux_live.json matrice_jpl_brute.csv 2>/dev/null || git add flux_live.json
         
         if git diff --staged --quiet; then
