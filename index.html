@@ -1,4 +1,4 @@
-ˆ<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
@@ -184,23 +184,8 @@
     }
 
     // CADENCE NATIONALE HAUTE FRÉQUENCE (10 Hz) : Horloge locale calculée en local
-    // ============================================================================
-// CORRECTIF SYSTEMA SENTINELA V2026.2 (Ligne ~153)
-// ============================================================================
-
-// CADENCE NATIONALE HAUTE FRÉQUENCE (10 Hz) : Horloge locale calculée en local
-function defilementHorlogeInterne() {
-    const maintenant = new Date();
-    // Recalcul de l'index minute en temps réel basé sur l'horloge locale
-    IndexMatriceCourant = (maintenant.getUTCHours() * 60) + maintenant.getUTCMinutes();
-    
-    document.getElementById('clock-utc').innerText = `UTC ATOMIQUE : ${maintenant.toISOString().substr(11, 8)}`;
-    document.getElementById('ast-index').innerText = IndexMatriceCourant;
-    
-    if (FluxJPLGlobal) {
-        mettreAJourInterfaceVisuelle(IndexMatriceCourant);
-    }
-    }
+    function defilementHorlogeInterne() {
+        const maintenant = new Date();
         // Recalcul de l'index minute en temps réel basé sur l'horloge locale
         IndexMatriceCourant = (maintenant.getUTCHours() * 60) + maintenant.getUTCMinutes();
         
