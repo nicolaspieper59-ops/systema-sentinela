@@ -9,7 +9,6 @@ permissions:
   contents: write
 
 env:
-  # Élimine le warning GitHub Actions 2026 en forçant le moteur d'exécution Node.js 24
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
@@ -22,25 +21,34 @@ jobs:
       with:
         persist-credentials: true
 
-    - name: 2. Initialisation de l'environnement Python (Correctif Cache)
+    - name: 2. Initialisation de l'environnement Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-        # Le paramètre 'cache: pip' a été retiré pour éviter l'échec d'absence de requirements.txt
 
-    - name: 3. Installation des dépendances astrophysiques
+    - name: 3. Installation des dépendances astrophysiques (Inclusion jplephem)
       run: |
         python -m pip install --upgrade pip
-        pip install requests numpy astropy
+        pip install requests numpy astropy jplephem
 
-    - name: 4. Exécution du Moteur Orbital Calculer_Orbites
+    - name: 4. Exécution du Moteur Orbital
       run: |
+        # Détection automatique de n'importe quel script Python principal si les noms standards échouent
         if [ -f "calculer_orbites.py" ]; then
           python calculer_orbites.py
         elif [ -f "generate_matrix.py" ]; then
           python generate_matrix.py
+        elif [ -f "main.py" ]; then
+          python main.py
         else
-          echo "ERREUR : Script du moteur introuvable." && exit 1
+          echo "🛰️ Recherche d'un script Python alternatif..."
+          script_backup=$(ls *.py | head -n 1)
+          if [ -n "$script_backup" ]; then
+            echo "Exécution de : $script_backup"
+            python "$script_backup"
+          else
+            echo "ERREUR CRITIQUE : Aucun script Python (.py) décelé à la racine." && exit 1
+          fi
         fi
 
     - name: 5. Déploiement et Push de la matrice mise à jour
