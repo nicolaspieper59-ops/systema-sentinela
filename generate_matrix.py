@@ -8,31 +8,40 @@ JPL DE440 Ephemeris Kernel & Live Synoptic Meteorological Ingest
 import json
 import os
 import sys
-import requests
-import numpy as np
 from datetime import datetime, timezone, timedelta
-from astropy.time import Time
-from astropy.coordinates import EarthLocation, AltAz, get_body, solar_system_ephemeris
-import astropy.units as u
+import numpy as np
 
-# Force l'utilisation stricte du noyau d'intégration numérique JPL DE440
+try:
+    import requests
+except ImportError:
+    print("[CRITICAL] Le module 'requests' requis pour l'ingest météo est absent.", file=sys.stderr)
+    sys.exit(2)
+
+try:
+    from astropy.time import Time
+    from astropy.coordinates import EarthLocation, AltAz, get_body, solar_system_ephemeris
+    from astropy.utils.iers import iers
+    import astropy.units as u
+    # Auto-téléchargement des tables de prédiction IERS EOP désactivé pour éviter les échecs de timeout réseau en CI
+    iers.conf.auto_download = False 
+except ImportError:
+    print("[CRITICAL] Dépendances astronomiques manquantes (astropy, jplephem).", file=sys.stderr)
+    sys.exit(2)
+
+# Activation stricte du noyau d'intégration numérique JPL DE440
 try:
     solar_system_ephemeris.set('de440')
 except Exception as e:
-    print("[WARN] Impossible de charger le noyau JPL DE440 localement. Repli sur le modèle d'intégration de base.", file=sys.stderr)
+    print("[WARN] Impossible de lier le noyau DE440 distant, utilisation du noyau d'intégration par défaut.", file=sys.stderr)
     solar_system_ephemeris.set('builtin')
 
 def acquerir_meteorologie_synoptique(lat, lon):
-    """
-    Interroge l'API météorologique pour obtenir les paramètres réels
-    de la station sans simplification (Modèle numérique du temps de surface).
-    """
+    """Extraction en temps réel des données de la maille météorologique officielle."""
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": lat,
         "longitude": lon,
         "current": ["temperature_2m", "relative_humidity_2m", "surface_pressure"],
-        "wind_speed_unit": "ms",
         "timeformat": "unixtime",
         "timezone": "GMT"
     }
@@ -46,8 +55,8 @@ def acquerir_meteorologie_synoptique(lat, lon):
             "humidite_relative": float(donnees["relative_humidity_2m"]),
             "source": "WMO Synoptic Grid (ECMWF/DWD)"
         }
-    except Exception as e:
-        # En cas de coupure réseau, bascule sur l'atmosphère standard ISA de l'OACI
+    except Exception:
+        # Repli sur les conditions physiques standards (ISA OACI) si coupure d'infrastructure
         return {
             "pression_hpa": 1013.25,
             "temperature_c": 15.0,
@@ -56,10 +65,7 @@ def acquerir_meteorologie_synoptique(lat, lon):
         }
 
 def calculer_magnitude_iau_2018(astre, r_helio, delta_geo, angle_phase_deg):
-    """
-    Formulations physiques issues du groupe de travail de l'UAI (Mallama & Hilton).
-    Correction : Substitution de np.pow par l'opérateur d'élévation natif de Python (**).
-    """
+    """Modèles photométriques d'opposition de phase de l'UAI (Mallama & Hilton)."""
     alpha = angle_phase_deg
     if astre == "soleil":
         return -26.74
@@ -79,21 +85,19 @@ def calculer_magnitude_iau_2018(astre, r_helio, delta_geo, angle_phase_deg):
     return 0.0
 
 def executer_pipeline():
-    # Géodésie de la station (Marseille Longchamp)
+    # Coordonnées géodésiques de la station de référence (Marseille Longchamp)
     lat, lon, alt = 43.29070, 5.35490, 55.0
     station = EarthLocation(lat=lat*u.deg, lon=lon*u.deg, height=alt*u.m)
     ecef_xyz = station.geocentric
 
-    # Ingest des données météorologiques réelles du biome
     meteo = acquerir_meteorologie_synoptique(lat, lon)
     pression_astro = meteo["pression_hpa"] * u.hPa
     temp_astro = meteo["temperature_c"] * u.deg_C
     
-    # Masse volumique de l'air humide (Formule de CIPM-81)
+    # Équation d'état des gaz denses pour la masse volumique de l'air humide
     R_air_sec = 287.05
     rho_air = (meteo["pression_hpa"] * 100) / (R_air_sec * (meteo["temperature_c"] + 273.15))
 
-    # Base temporelle synchrone
     maintenant_utc = datetime.now(timezone.utc)
     base_midi_utc = datetime(maintenant_utc.year, maintenant_utc.month, maintenant_utc.day, tzinfo=timezone.utc)
     
@@ -105,7 +109,7 @@ def executer_pipeline():
     jd_val = t_instant.jd
     lst_obj = t_instant.sidereal_time('mean', longitude=lon * u.deg)
     
-    # Modélisation des repères topocentriques avec et sans distorsion réfractive
+    # Repères horizontaux topocentriques : Intégration de la réfraction atmosphérique réelle
     cadre_refracte = AltAz(location=station, obstime=t_vector, pressure=pression_astro, temperature=temp_astro, obswl=0.55*u.micron)
     cadre_vide = AltAz(location=station, obstime=t_vector)
 
@@ -122,7 +126,6 @@ def executer_pipeline():
     for cle_fr, id_en in CORPS_TRADUCTION.items():
         corps_barycentrique = get_body(id_en, t_vector, location=station)
         
-        # Projection matricielle tridimensionnelle
         proj_horiz_ref = corps_barycentrique.transform_to(cadre_refracte)
         proj_horiz_brut = corps_barycentrique.transform_to(cadre_vide)
         
@@ -136,7 +139,7 @@ def executer_pipeline():
         ra_hms = corps_barycentrique.ra.hms
         dec_deg = corps_barycentrique.dec.deg
 
-        # Extraction des distances héliocentriques pour le calcul de l'albédo et de la phase
+        # Extraction géométrique tridimensionnelle des vecteurs héliocentriques
         xyz_corps = corps_barycentrique.cartesian.xyz.to(u.au).value
         vec_corps_soleil = xyz_soleil - xyz_corps
         r_helio_arr = np.linalg.norm(vec_corps_soleil, axis=0)
@@ -145,16 +148,19 @@ def executer_pipeline():
         cos_phase = np.clip(dot_product / (dist_ua_arr * r_helio_arr), -1.0, 1.0)
         angle_phase_arr = np.degrees(np.arccos(cos_phase))
 
-        # Résolution des événements d'horizon (Recherche de zéros physiques)
+        # Résolution des éphémérides de l'horizon (Calcul sur l'élévation apparente vraie)
         lever_str, coucher_str, transit_str = "--:--:--", "--:--:--", "--:--:--"
-        idx_transit = np.argmax(el_brut_arr)
+        idx_transit = np.argmax(el_ref_arr)
         transit_str = (base_midi_utc + timedelta(minutes=int(idx_transit))).strftime("%H:%M:%S")
         
+        # Le limbe inférieur apparent touche l'horizon réel à 0.0° pour les étoiles/planètes, 
+        # et intègre le demi-diamètre apparent pour le Soleil et la Lune.
+        limite_horizon = -0.267 if cle_fr in ["soleil", "lune"] else 0.0
+        
         for m in range(1439):
-            h_limbe = -0.833 if cle_fr in ["soleil", "lune"] else 0.0
-            if el_brut_arr[m] < h_limbe and el_brut_arr[m+1] >= h_limbe:
+            if el_ref_arr[m] < limite_horizon and el_ref_arr[m+1] >= limite_horizon:
                 lever_str = (base_midi_utc + timedelta(minutes=m)).strftime("%H:%M:%S")
-            elif el_brut_arr[m] >= h_limbe and el_brut_arr[m+1] < h_limbe:
+            elif el_ref_arr[m] >= limite_horizon and el_ref_arr[m+1] < limite_horizon:
                 coucher_str = (base_midi_utc + timedelta(minutes=m)).strftime("%H:%M:%S")
 
         liste_chronologique = []
@@ -207,10 +213,9 @@ def executer_pipeline():
         "SERIES_CHRONOLOGIQUES_1440": ephemerides_output
     }
 
-    chemin = './flux_live.json'
-    with open(chemin + '.tmp', 'w') as f:
+    with open('./flux_live.json.tmp', 'w') as f:
         json.dump(flux_structure, f, indent=4)
-    os.replace(chemin + '.tmp', chemin)
+    os.replace('./flux_live.json.tmp', './flux_live.json')
 
 if __name__ == "__main__":
     executer_pipeline()
