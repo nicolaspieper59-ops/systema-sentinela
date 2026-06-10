@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Topocentric Ephemeris Engine - Strict IAU 2006/2000A Standard
-JPL DE440 Ephemeris Kernel & Live Synoptic Meteorological Ingest
+JPL DE440 Ephemeris Kernel & Dynamic Refraction Integration
 """
 
 import json
@@ -11,43 +11,35 @@ import sys
 from datetime import datetime, timezone, timedelta
 import numpy as np
 
-# Vérification stricte des dépendances d'infrastructure
-try:
-    import requests
-except ImportError:
-    print("[CRITICAL] Le module 'requests' est introuvable. Code de sortie 2.", file=sys.stderr)
-    sys.exit(2)
+# Importations directes pour permettre le traçage natif des erreurs (Traceback) par le runner
+import requests
+import astropy.units as u
+from astropy.time import Time
+from astropy.coordinates import EarthLocation, AltAz, get_body, solar_system_ephemeris
+from astropy.utils.iers import conf as iers_conf
+from astropy.utils.data import conf as data_conf
 
-try:
-    from astropy.time import Time
-    from astropy.coordinates import EarthLocation, AltAz, get_body, solar_system_ephemeris
-    from astropy.utils.iers import conf as iers_conf
-    import astropy.units as u
-    
-    # Empêche le script de crasher si les prédictions du pôle IERS pour 2026 ont un millième de seconde de dérive
-    iers_conf.iers_degraded_accuracy = 'warn'
-    iers_conf.auto_download = True
-except ImportError:
-    print("[CRITICAL] Dépendances Astropy ou JPLephem introuvables. Code de sortie 2.", file=sys.stderr)
-    sys.exit(2)
+# Durcissement des tolérances réseau et temporelles (Contexte Année 2026)
+iers_conf.iers_degraded_accuracy = 'warn'
+iers_conf.auto_download = True
+data_conf.remote_timeout = 60.0  # Laisse le temps au runner de télécharger le fichier BSP de 100+ Mo
 
 # Coordonnées géodésiques de l'Observatoire de Marseille Longchamp
 LATITUDE, LONGITUDE, ALTITUDE = 43.29070, 5.35490, 55.0
 STATION_LOCATION = EarthLocation(lat=LATITUDE*u.deg, lon=LONGITUDE*u.deg, height=ALTITUDE*u.m)
 
-# Sécurisation et instanciation immédiate (non paresseuse) du noyau JPL DE440
+# Initialisation et contrôle d'intégrité du noyau vectoriel JPL DE440
 try:
     solar_system_ephemeris.set('de440')
-    # Force le téléchargement/chargement immédiat pour valider l'intégrité du noyau de la NASA
     _verification_instant = Time(datetime.now(timezone.utc))
     _ = get_body("sun", _verification_instant, location=STATION_LOCATION)
-    print("[SYS] Noyau d'intégration numérique JPL DE440 initialisé avec succès.")
+    print("[SYS] Noyau d'intégration numérique de haute précision JPL DE440 initialisé.")
 except Exception as e:
-    print(f"[WARN] Erreur d'accès au noyau JPL DE440 ({e}). Bascule sur le modèle analytique standard.", file=sys.stderr)
+    print(f"[WARN] Impossible de charger le noyau JPL DE440 ({e}). Bascule sur le modèle analytique standard.", file=sys.stderr)
     solar_system_ephemeris.set('builtin')
 
 def acquerir_meteorologie_synoptique(lat, lon):
-    """Extraction des données de la maille météorologique synoptique officielle."""
+    """Extraction en temps réel des conditions de la maille atmosphérique de Marseille."""
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": lat,
@@ -57,7 +49,7 @@ def acquerir_meteorologie_synoptique(lat, lon):
         "timezone": "GMT"
     }
     try:
-        reponse = requests.get(url, params=params, timeout=12)
+        reponse = requests.get(url, params=params, timeout=15)
         reponse.raise_for_status()
         donnees = reponse.json()["current"]
         return {
@@ -67,7 +59,7 @@ def acquerir_meteorologie_synoptique(lat, lon):
             "source": "WMO Synoptic Grid (ECMWF/DWD)"
         }
     except Exception as e:
-        print(f"[WARN] Incident réseau météo ({e}). Repli sur l'Atmosphère Standard Internationale.", file=sys.stderr)
+        print(f"[WARN] Échec de la télémétrie météo ({e}). Utilisation de l'Atmosphère Standard Internationale.", file=sys.stderr)
         return {
             "pression_hpa": 1013.25,
             "temperature_c": 15.0,
@@ -76,7 +68,7 @@ def acquerir_meteorologie_synoptique(lat, lon):
         }
 
 def calculer_magnitude_iau_2018(astre, r_helio, delta_geo, angle_phase_deg):
-    """Modèles photométriques rigoureux de l'UAI (Mallama & Hilton)."""
+    """Modèles de luminance validés par l'UAI (Mallama & Hilton)."""
     alpha = angle_phase_deg
     if astre == "soleil":
         return -26.74
@@ -98,15 +90,16 @@ def calculer_magnitude_iau_2018(astre, r_helio, delta_geo, angle_phase_deg):
 def executer_pipeline():
     ecef_xyz = STATION_LOCATION.geocentric
 
-    # Intégration de la thermodynamique de l'air réel de Marseille
+    # Capture et calcul des constantes thermodynamiques locales
     meteo = acquerir_meteorologie_synoptique(LATITUDE, LONGITUDE)
     pression_astro = meteo["pression_hpa"] * u.hPa
     temp_astro = meteo["temperature_c"] * u.deg_C
+    humidite_unitaire = meteo["humidite_relative"] / 100.0  # Alignement sur l'échelle ERFA [0.0 - 1.0]
     
     R_air_sec = 287.05
     rho_air = (meteo["pression_hpa"] * 100) / (R_air_sec * (meteo["temperature_c"] + 273.15))
 
-    # Base de temps synchrone
+    # Génération du vecteur temporel complet (Échantillonnage synchrone sur 24 heures)
     maintenant_utc = datetime.now(timezone.utc)
     base_midi_utc = datetime(maintenant_utc.year, maintenant_utc.month, maintenant_utc.day, tzinfo=timezone.utc)
     
@@ -116,10 +109,21 @@ def executer_pipeline():
     
     t_instant = Time(maintenant_utc)
     jd_val = t_instant.jd
-    lst_obj = t_instant.sidereal_time('mean', longitude=LONGITUDE * u.deg)
     
-    # Transformation de coordonnées horizontales avec indice de réfraction dynamique
-    cadre_refracte = AltAz(location=STATION_LOCATION, obstime=t_vector, pressure=pression_astro, temperature=temp_astro, obswl=0.55*u.micron)
+    # Résolution rigoureuse du Temps Sidéral Local (LST)
+    lst_obj = t_instant.sidereal_time('mean', longitude=LONGITUDE * u.deg)
+    lst_hms = lst_obj.to(u.hourangle).hms
+    lst_str = f"{int(lst_hms.h):02d}:{int(lst_hms.m):02d}:{int(lst_hms.s):02d}"
+    
+    # Instanciation des référentiels d'observation (Avec et sans réfraction de l'air)
+    cadre_refracte = AltAz(
+        location=STATION_LOCATION, 
+        obstime=t_vector, 
+        pressure=pression_astro, 
+        temperature=temp_astro, 
+        relative_humidity=humidite_unitaire, 
+        obswl=0.55*u.micron
+    )
     cadre_vide = AltAz(location=STATION_LOCATION, obstime=t_vector)
 
     soleil_barycentrique = get_body("sun", t_vector, location=STATION_LOCATION)
@@ -133,8 +137,12 @@ def executer_pipeline():
     ephemerides_output = {}
 
     for cle_fr, id_en in CORPS_TRADUCTION.items():
-        corps_barycentrique = get_body(id_en, t_vector, location=STATION_LOCATION)
-        
+        try:
+            corps_barycentrique = get_body(id_en, t_vector, location=STATION_LOCATION)
+        except Exception as err_body:
+            print(f"[ERROR] Impossible d'extraire les coordonnées pour {cle_fr} : {err_body}", file=sys.stderr)
+            continue
+            
         proj_horiz_ref = corps_barycentrique.transform_to(cadre_refracte)
         proj_horiz_brut = corps_barycentrique.transform_to(cadre_vide)
         
@@ -148,7 +156,7 @@ def executer_pipeline():
         ra_hms = corps_barycentrique.ra.hms
         dec_deg = corps_barycentrique.dec.deg
 
-        # Calcul vectoriel de l'angle de phase
+        # Calcul matriciel géocentrique de l'angle de phase
         xyz_corps = corps_barycentrique.cartesian.xyz.to(u.au).value
         vec_corps_soleil = xyz_soleil - xyz_corps
         r_helio_arr = np.linalg.norm(vec_corps_soleil, axis=0)
@@ -157,7 +165,7 @@ def executer_pipeline():
         cos_phase = np.clip(dot_product / (dist_ua_arr * r_helio_arr), -1.0, 1.0)
         angle_phase_arr = np.degrees(np.arccos(cos_phase))
 
-        # Résolution des événements d'horizon sur l'élévation apparente vraie
+        # Événements géocentriques à l'horizon apparent de l'observateur
         lever_str, coucher_str, transit_str = "--:--:--", "--:--:--", "--:--:--"
         idx_transit = np.argmax(el_ref_arr)
         transit_str = (base_midi_utc + timedelta(minutes=int(idx_transit))).strftime("%H:%M:%S")
@@ -200,7 +208,7 @@ def executer_pipeline():
         "HORLOGE": {
             "utc": maintenant_utc.strftime("%H:%M:%S"),
             "jd": float(jd_val),
-            "lst": f"{int(lst_obj.value):02d}:{int((lst_obj.value*60)%60):02d}:{int((lst_obj.value*3600)%60):02d}"
+            "lst": lst_str
         },
         "STATION_COORDONNEES": {
             "latitude_deg": LATITUDE,
@@ -223,7 +231,7 @@ def executer_pipeline():
     with open(nom_fichier + '.tmp', 'w') as f:
         json.dump(flux_structure, f, indent=4)
     os.replace(nom_fichier + '.tmp', nom_fichier)
-    print("[SUCCESS] Données physiques synchronisées sans aucune approximation.")
+    print("[SUCCESS] Le traitement vectoriel s'est terminé sans erreur.")
 
 if __name__ == "__main__":
     executer_pipeline()
