@@ -1,4 +1,4 @@
-name: SENTINELA HARD-REALTIME - Matrix Engine
+name: Astronomical Ephemeris Generation
 
 on:
   schedule:
@@ -12,48 +12,41 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  build-and-matrix:
+  run-ephemeris-engine:
     runs-on: ubuntu-latest
 
     steps:
-    - name: 1. Extraction du code source (Checkout)
+    - name: 1. Extraction du dépôt
       uses: actions/checkout@v4
       with:
         persist-credentials: true
 
-    - name: 2. Initialisation de l'environnement Python
+    - name: 2. Initialisation de Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
-    - name: 3. Installation des dépendances astrophysiques
+    - name: 3. Chargement des bibliothèques de calcul UAI
       run: |
         python -m pip install --upgrade pip
-        pip install requests numpy astropy jplephem
+        pip install numpy astropy jplephem
 
-    - name: 4. Exécution du Moteur Orbital Vectorisé
-      run: |
-        if [ -f "generate_matrix.py" ]; then
-          python generate_matrix.py
-        elif [ -f "calculer_orbites.py" ]; then
-          python calculer_orbites.py
-        else
-          python main.py
-        fi
+    - name: 4. Exécution du générateur d'éphémérides
+      run: python ephemerides_engine.py
 
-    - name: 5. Déploiement et Push de la matrice mise à jour
+    - name: 5. Publication de la série temporelle
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        git config --global user.name "Sentinela Core Bot"
-        git config --global user.email "sentinela-bot@github.com"
+        git config --global user.name "Astropy Automation Bot"
+        git config --global user.email "astropy-bot@github.com"
         
         git add flux_live.json 2>/dev/null || true
         
         if git diff --staged --quiet; then
-          echo "⚡ Aucune dérive orbitale détectée."
+          echo "Aucune déviation orbitale détectée."
         else
-          echo "🛰️ Alignement de la matrice topocentrique..."
-          git commit -m "SENTINELA : Régénération de la matrice 1440 min [Automatique Cloud]"
+          echo "Changements cinématiques enregistrés. Synchronisation du dépôt."
+          git commit -m "Ephemeris Update: Vectorized IAU-2000/2006 Dataset [Automated]"
           git push origin HEAD:${{ github.ref }}
         fi
