@@ -19,13 +19,13 @@ import astropy.units as u
 try:
     solar_system_ephemeris.set('de440')
 except Exception as e:
-    print(window.alert("Impossible de charger le noyau JPL DE440. Repli automatique."))
+    print("[WARN] Impossible de charger le noyau JPL DE440 localement. Repli sur le modèle d'intégration de base.", file=sys.stderr)
     solar_system_ephemeris.set('builtin')
 
 def acquerir_meteorologie_synoptique(lat, lon):
     """
-    Interroge l'API météorologique scientifique pour obtenir les paramètres réels
-    de la station sans simplification (Modèle de prévision numérique du temps).
+    Interroge l'API météorologique pour obtenir les paramètres réels
+    de la station sans simplification (Modèle numérique du temps de surface).
     """
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
@@ -57,28 +57,24 @@ def acquerir_meteorologie_synoptique(lat, lon):
 
 def calculer_magnitude_iau_2018(astre, r_helio, delta_geo, angle_phase_deg):
     """
-    Formulations physiques rigoureuses issues du groupe de travail de l'UAI
-    sur les coordonnées cartographiques et les éléments de rotation (Mallama & Hilton).
+    Formulations physiques issues du groupe de travail de l'UAI (Mallama & Hilton).
+    Correction : Substitution de np.pow par l'opérateur d'élévation natif de Python (**).
     """
     alpha = angle_phase_deg
     if astre == "soleil":
         return -26.74
     elif astre == "lune":
-        # Modèle de phase empirique de Lane & Irvine
-        rad = np.radians(alpha)
-        return float(-12.74 + 0.026 * alpha + 4. * np.pow(10, -9) * np.pow(alpha, 4))
+        return float(-12.74 + 0.026 * alpha + 4.0 * (10**-9) * (alpha**4))
     
-    # Formules d'opposition de phase de Mallama (2018)
     if astre == "mercure":
-        return float(-0.61 + 3.80 * (alpha/100) - 2.73 * np.pow(alpha/100, 2) + 2.00 * np.pow(alpha/100, 3) + 5 * np.log10(r_helio * delta_geo))
+        return float(-0.61 + 3.80 * (alpha/100) - 2.73 * ((alpha/100)**2) + 2.00 * ((alpha/100)**3) + 5 * np.log10(r_helio * delta_geo))
     elif astre == "venus":
-        return float(-4.47 + 0.13 * (alpha/100) + 2.39 * np.pow(alpha/100, 2) - 0.65 * np.pow(alpha/100, 3) + 5 * np.log10(r_helio * delta_geo))
+        return float(-4.47 + 0.13 * (alpha/100) + 2.39 * ((alpha/100)**2) - 0.65 * ((alpha/100)**3) + 5 * np.log10(r_helio * delta_geo))
     elif astre == "mars":
         return float(-1.60 + 1.60 * (alpha/100) + 5 * np.log10(r_helio * delta_geo))
     elif astre == "jupiter":
         return float(-9.395 + 0.05 * (alpha/100) + 5 * np.log10(r_helio * delta_geo))
     elif astre == "saturne":
-        # Inclut une approximation de la contribution moyenne du plan des anneaux
         return float(-8.94 + 2.40 * (alpha/100) + 5 * np.log10(r_helio * delta_geo))
     return 0.0
 
@@ -93,7 +89,7 @@ def executer_pipeline():
     pression_astro = meteo["pression_hpa"] * u.hPa
     temp_astro = meteo["temperature_c"] * u.deg_C
     
-    # Masse volumique de l'air humide (Formule de CIPM-81 simplifiée)
+    # Masse volumique de l'air humide (Formule de CIPM-81)
     R_air_sec = 287.05
     rho_air = (meteo["pression_hpa"] * 100) / (R_air_sec * (meteo["temperature_c"] + 273.15))
 
@@ -155,7 +151,6 @@ def executer_pipeline():
         transit_str = (base_midi_utc + timedelta(minutes=int(idx_transit))).strftime("%H:%M:%S")
         
         for m in range(1439):
-            # Prise en compte du rayon apparent moyen (-0.833° pour le limbe supérieur du Soleil/Lune)
             h_limbe = -0.833 if cle_fr in ["soleil", "lune"] else 0.0
             if el_brut_arr[m] < h_limbe and el_brut_arr[m+1] >= h_limbe:
                 lever_str = (base_midi_utc + timedelta(minutes=m)).strftime("%H:%M:%S")
@@ -212,8 +207,10 @@ def executer_pipeline():
         "SERIES_CHRONOLOGIQUES_1440": ephemerides_output
     }
 
-    with open('./flux_live.json', 'w') as f:
+    chemin = './flux_live.json'
+    with open(chemin + '.tmp', 'w') as f:
         json.dump(flux_structure, f, indent=4)
+    os.replace(chemin + '.tmp', chemin)
 
 if __name__ == "__main__":
     executer_pipeline()
