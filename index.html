@@ -47,11 +47,11 @@
             
             <div class="sub-group">
                 <div class="sub-title" style="color:var(--cyan)">📍 VECTEUR GÉODÉSIQUE DE RÉFÉRENCE COMPOSITE (STATION)</div>
-                <div class="metric"><span>Coordonnées Ellipsoïdales :</span><span id="geo-latlon" class="data">--.-----° / --.-----°</span></div>
+                <div class="metric"><span>Coordonnées Ellipsoïdales :</span><span id="geo-latlon" class="data">--.-----°N / --.-----°E</span></div>
                 <div class="metric"><span>Altitude Physique ($h$) :</span><span><span id="geo-alt" class="data">---.-</span> m</span></div>
-                <div class="metric"><span style="color:#64748b">Vecteur 3D ECEF X :</span><span id="geo-ecef-x" class="data" style="color:#64748b">-------.- m</span></div>
-                <div class="metric"><span style="color:#64748b">Vecteur 3D ECEF Y :</span><span id="geo-ecef-y" class="data" style="color:#64748b">-------.- m</span></div>
-                <div class="metric"><span style="color:#64748b">Vecteur 3D ECEF Z :</span><span id="geo-ecef-z" class="data" style="color:#64748b">-------.- m</span></div>
+                <div class="metric"><span style="color:#64748b">Vecteur 3D ECEF X :</span><span id="geo-ecef-x" class="data" style="color:#64748b">------- m</span></div>
+                <div class="metric"><span style="color:#64748b">Vecteur 3D ECEF Y :</span><span id="geo-ecef-y" class="data" style="color:#64748b">------- m</span></div>
+                <div class="metric"><span style="color:#64748b">Vecteur 3D ECEF Z :</span><span id="geo-ecef-z" class="data" style="color:#64748b">------- m</span></div>
             </div>
 
             <div class="sub-group" style="border-color: rgba(255,170,0,0.3);">
@@ -60,10 +60,10 @@
                     <select id="select-astre" onchange="basculerAstreAffichage()">
                         <option value="SOLEIL">☀️ SOLEIL</option>
                         <option value="LUNE">🌙 LUNE</option>
-                        <option value="VENUS">🪐 VÉNUS</option>
-                        <option value="JUPITER">🪐 JUPITER</option>
-                        <option value="MARS">🪐 MARS</option>
                         <option value="MERCURE">🪐 MERCURE</option>
+                        <option value="VENUS">🪐 VÉNUS</option>
+                        <option value="MARS">🪐 MARS</option>
+                        <option value="JUPITER">🪐 JUPITER</option>
                         <option value="SATURNE">🪐 SATURNE</option>
                     </select>
                 </div>
@@ -81,7 +81,7 @@
                 <div class="metric"><span>Déclinaison ($\delta$ J2000) :</span><span id="ast-dec" class="data">--.---°</span></div>
                 <div class="metric"><span>Distance Réelle :</span><span><span id="ast-dist-km" class="data">---,---,---</span> km</span></div>
                 <div class="metric"><span>Distance Vectorielle :</span><span><span id="ast-dist-au" class="data">-.----</span> UA</span></div>
-                <div class="metric"><span>Magnitude Visuelle / Constellation :</span><span><span id="ast-mag" class="data">-.--</span> / <span id="ast-const" class="data">---</span></span></div>
+                <div class="metric"><span>Magnitude Visuelle / Constellation :</span><span>--.-- / <span id="ast-const" class="data">---</span></span></div>
             </div>
         </div>
 
@@ -101,7 +101,7 @@
     </div>
 </div>
 
-<div id="debug-console">SYS : INITIALISATION DU PROTOCOLE RESEAU FILTRÉ...</div>
+<div id="debug-console">SYS : [WAIT] En attente de synchronisation du flux live JPL DE440...</div>
 
 <script>
     const canvas = document.getElementById('radar-canvas');
@@ -153,8 +153,18 @@
     }
 
     function purgerAffichageAstre() {
-        const champs = ['ast-rise', 'ast-culm', 'ast-set', 'ast-az', 'ast-el', 'ast-el-ref', 'ast-delta-ref', 'ast-ra', 'ast-dec', 'ast-dist-km', 'ast-dist-au', 'ast-mag', 'ast-const'];
-        champs.forEach(id => document.getElementById(id).innerText = "N/A");
+        document.getElementById('ast-rise').innerText = "--:--:--";
+        document.getElementById('ast-culm').innerText = "--:--:--";
+        document.getElementById('ast-set').innerText = "--:--:--";
+        document.getElementById('ast-az').innerText = "---.---°";
+        document.getElementById('ast-el').innerText = "--.---°";
+        document.getElementById('ast-el-ref').innerText = "--.---°";
+        document.getElementById('ast-delta-ref').innerText = "+-.---°";
+        document.getElementById('ast-ra').innerText = "--h --m --s";
+        document.getElementById('ast-dec').innerText = "--.---°";
+        document.getElementById('ast-dist-km').innerText = "---,---,---";
+        document.getElementById('ast-dist-au').innerText = "-.----";
+        document.getElementById('ast-const').innerText = "---";
         DonneesAstroCourantes.actif = null;
         générerRenduRadar();
     }
@@ -162,7 +172,7 @@
     function extraireDonneesAstreIndex(liste, index) {
         let def = { 
             az: 0, el: 0, el_refractee: 0, correction_refraction: 0, dist_ua: 0, dist_km: 0, 
-            mag: 0, ra: "N/A", dec: 0, constel: "N/A", lever: "N/A", culmination: "N/A", coucher: "N/A"
+            mag: 0, ra: "--h --m --s", dec: 0, constel: "---", lever: "--:--:--", culmination: "--:--:--", coucher: "--:--:--"
         };
         if (!liste || liste.length === 0) return def;
         let indexBorne = Math.max(0, Math.min(index, liste.length - 1));
@@ -170,19 +180,19 @@
         if (!c) return def;
         
         return {
-            az: Number(c.azimut_brut ?? c.az ?? 0),
-            el: Number(c.elevation_brute ?? c.el ?? 0),
-            el_refractee: Number(c.elevation_refractee ?? c.el_ref ?? 0),
-            correction_refraction: Number(c.correction_refraction ?? c.delta_ref ?? 0),
+            az: Number(c.azimut_brut ?? 0),
+            el: Number(c.elevation_brute ?? 0),
+            el_refractee: Number(c.elevation_refractee ?? 0),
+            correction_refraction: Number(c.correction_refraction ?? 0),
             dist_ua: Number(c.distance_ua ?? 0),
             dist_km: Number(c.distance_km ?? 0),
             mag: Number(c.magnitude ?? 0),
-            ra: String(c.ascension_droite ?? c.ra ?? "N/A"),
-            dec: Number(c.declination ?? c.dec ?? 0),
-            constel: String(c.constellation ?? "N/A"),
-            lever: String(c.lever_lmt ?? c.lever ?? "N/A"),
-            culmination: String(c.culmination_lmt ?? c.culm ?? "N/A"),
-            coucher: String(c.coucher_lmt ?? c.coucher ?? "N/A")
+            ra: String(c.ascension_droite ?? "--h --m --s"),
+            dec: Number(c.declination ?? 0),
+            constel: String(c.constellation ?? "---"),
+            lever: String(c.lever_lmt ?? "--:--:--"),
+            culmination: String(c.culmination_lmt ?? "--:--:--"),
+            coucher: String(c.coucher_lmt ?? "--:--:--")
         };
     }
 
@@ -239,7 +249,6 @@
             const partiesLst = horloge.lst.split(':');
             lst_ReferenceSecondes = (parseInt(partiesLst[0]) * 3600) + (parseInt(partiesLst[1]) * 60) + parseInt(partiesLst[2]);
 
-            // Correctif critique de la variable temporelle (Suppression de l'espace de syntaxe syntax error)
             const main_UTC = new Date();
             t0_ReferenceServeurMs = Date.UTC(main_UTC.getUTCFullYear(), main_UTC.getUTCMonth(), main_UTC.getUTCDate(), 
                                              main_UTC.getUTCHours(), main_UTC.getUTCMinutes(), main_UTC.getUTCSeconds());
@@ -250,11 +259,9 @@
                 document.getElementById('geo-latlon').innerText = `${geodata.latitude.toFixed(5)}°N / ${geodata.longitude.toFixed(5)}°E`;
                 document.getElementById('geo-alt').innerText = geodata.altitude.toFixed(1);
                 
-                if (geodata.ecef_x_m) {
-                    document.getElementById('geo-ecef-x').innerText = `${Math.floor(geodata.ecef_x_m).toLocaleString('fr-FR')} m`;
-                    document.getElementById('geo-ecef-y').innerText = `${Math.floor(geodata.ecef_y_m).toLocaleString('fr-FR')} m`;
-                    document.getElementById('geo-ecef-z').innerText = `${Math.floor(geodata.ecef_z_m).toLocaleString('fr-FR')} m`;
-                }
+                document.getElementById('geo-ecef-x').innerText = `${Math.floor(geodata.ecef_x_m).toLocaleString('fr-FR')} m`;
+                document.getElementById('geo-ecef-y').innerText = `${Math.floor(geodata.ecef_y_m).toLocaleString('fr-FR')} m`;
+                document.getElementById('geo-ecef-z').innerText = `${Math.floor(geodata.ecef_z_m).toLocaleString('fr-FR')} m`;
             }
 
             document.getElementById('m-pres').innerText = Number(meteo.pression_station_hpa).toFixed(1);
@@ -265,6 +272,7 @@
             mettreAJourInterfaceVisuelle(IndexMatriceCourant);
         } catch (erreur) {
             logDebug(erreur.message, true);
+            purgerAffichageAstre();
         }
     }
 
@@ -284,9 +292,8 @@
         document.getElementById('ast-el-ref').innerText = `${s.el_refractee.toFixed(3)}°`;
         document.getElementById('ast-delta-ref').innerText = `+${s.correction_refraction.toFixed(3)}°`;
         
-        document.getElementById('ast-dist-km').innerText = s.dist_km > 0 ? Math.floor(s.dist_km).toLocaleString('fr-FR') : "N/A";
+        document.getElementById('ast-dist-km').innerText = s.dist_km > 0 ? Math.floor(s.dist_km).toLocaleString('fr-FR') : "---,---,---";
         document.getElementById('ast-dist-au').innerText = s.dist_ua.toFixed(4);
-        document.getElementById('ast-mag').innerText = s.mag.toFixed(2);
         document.getElementById('ast-ra').innerText = s.ra;
         document.getElementById('ast-dec').innerText = `${s.dec.toFixed(3)}°`;
         document.getElementById('ast-const').innerText = s.constel;
@@ -323,8 +330,6 @@
 
         if (DonneesAstroCourantes.actif && DonneesAstroCourantes.actif.el >= -15) {
             ctx.save();
-            // L'Azimut astronomique est compté depuis le Nord vers l'Est (sens horaire). 
-            // En toile Canvas, on applique la rotation correspondante.
             ctx.rotate((DonneesAstroCourantes.actif.az * Math.PI) / 180);
             let dist = rMax * (1 - (Math.max(0, DonneesAstroCourantes.actif.el) / 90));
             
@@ -357,4 +362,4 @@
     };
 </script>
 </body>
-    </html>
+                                                                                                                                                                </html>
