@@ -26,29 +26,19 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: 3. Installation des dépendances astrophysiques (Inclusion jplephem)
+    - name: 3. Installation des dépendances astrophysiques
       run: |
         python -m pip install --upgrade pip
         pip install requests numpy astropy jplephem
 
-    - name: 4. Exécution du Moteur Orbital
+    - name: 4. Exécution du Moteur Orbital Vectorisé
       run: |
-        # Détection automatique de n'importe quel script Python principal si les noms standards échouent
-        if [ -f "calculer_orbites.py" ]; then
-          python calculer_orbites.py
-        elif [ -f "generate_matrix.py" ]; then
+        if [ -f "generate_matrix.py" ]; then
           python generate_matrix.py
-        elif [ -f "main.py" ]; then
-          python main.py
+        elif [ -f "calculer_orbites.py" ]; then
+          python calculer_orbites.py
         else
-          echo "🛰️ Recherche d'un script Python alternatif..."
-          script_backup=$(ls *.py | head -n 1)
-          if [ -n "$script_backup" ]; then
-            echo "Exécution de : $script_backup"
-            python "$script_backup"
-          else
-            echo "ERREUR CRITIQUE : Aucun script Python (.py) décelé à la racine." && exit 1
-          fi
+          python main.py
         fi
 
     - name: 5. Déploiement et Push de la matrice mise à jour
@@ -58,12 +48,12 @@ jobs:
         git config --global user.name "Sentinela Core Bot"
         git config --global user.email "sentinela-bot@github.com"
         
-        git add -A flux_live.json matrice_jpl_brute.csv 2>/dev/null || git add flux_live.json
+        git add flux_live.json 2>/dev/null || true
         
         if git diff --staged --quiet; then
-          echo "⚡ Aucune dérive orbitale détectée. Matrice spatio-temporelle inchangée."
+          echo "⚡ Aucune dérive orbitale détectée."
         else
-          echo "🛰️ Dérive détectée. Alignement de la matrice topocentrique..."
-          git commit -m "SENTINELA : Régénération de la matrice 3D [Automatique Cloud]"
+          echo "🛰️ Alignement de la matrice topocentrique..."
+          git commit -m "SENTINELA : Régénération de la matrice 1440 min [Automatique Cloud]"
           git push origin HEAD:${{ github.ref }}
         fi
