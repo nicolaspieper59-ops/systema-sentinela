@@ -2,272 +2,253 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>STATION D'ÉPHÉMÉRIDES TOPOCENTRIQUES - ANALYSE TEMPS RÉEL</title>
+    <title>STATION COMPOSITE D'ÉPHÉMÉRIDES TOPOCENTRIQUES - UAI / JPL DE440</title>
     <style>
         :root { 
-            --slate-900: #0f172a; --slate-800: #1e293b; --slate-400: #94a3b8;
-            --sky-400: #38bdf8; --emerald-400: #34d399; --amber-500: #f59e0b;
-            font-family: 'SF Mono', 'Courier New', monospace; 
+            --slate-950: #020617; --slate-900: #0f172a; --slate-800: #1e293b; 
+            --slate-400: #94a3b8; --sky-400: #38bdf8; --emerald-400: #34d399; 
         }
-        body { background: var(--slate-900); color: var(--slate-400); font-size: 12px; padding: 20px; margin: 0; }
-        .header { border: 1px solid var(--slate-800); background: #020617; padding: 15px; color: var(--sky-400); display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 20px; }
-        .grid { display: grid; grid-template-columns: 500px 1fr; gap: 20px; }
-        .panel { border: 1px solid var(--slate-800); background: #040815; padding: 16px; border-radius: 4px; }
+        body { background: var(--slate-950); color: var(--slate-400); font-family: 'Courier New', monospace; font-size: 12px; padding: 20px; }
+        .wrapper { max-width: 1400px; margin: 0 auto; }
+        .header { border: 1px solid var(--slate-800); background: var(--slate-900); padding: 15px; color: var(--sky-400); display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 20px; }
+        .grid { display: grid; grid-template-columns: 520px 1fr; gap: 20px; }
+        .panel { border: 1px solid var(--slate-800); background: #040815; padding: 16px; border-radius: 2px; }
         h2 { font-size: 11px; margin: 0 0 14px 0; padding-bottom: 6px; border-bottom: 1px solid var(--slate-800); color: #fff; letter-spacing: 1px; text-transform: uppercase; }
-        .metric { display: flex; justify-content: space-between; margin-bottom: 8px; line-height: 16px; }
+        .metric { display: flex; justify-content: space-between; margin-bottom: 8px; }
         .data { font-weight: bold; color: #fff; }
-        .sub-group { border: 1px solid var(--slate-800); background: rgba(255,255,255,0.01); padding: 12px; border-radius: 4px; margin-bottom: 12px; }
-        .sub-title { color: var(--sky-400); font-weight: bold; font-size: 10px; text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; border-bottom: 1px solid var(--slate-800); padding-bottom: 4px; }
-        select { background: #000; color: var(--sky-400); border: 1px solid var(--sky-400); font-family: monospace; font-size: 11px; padding: 2px 6px; outline: none; }
-        .canvas-container { position: relative; width: 100%; height: 580px; background: #020617; border: 1px solid var(--slate-800); border-radius: 4px; }
+        .sub-group { border: 1px solid var(--slate-800); padding: 12px; margin-bottom: 12px; background: rgba(255,255,255,0.01); }
+        .sub-title { color: var(--sky-400); font-weight: bold; font-size: 10px; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid var(--slate-800); padding-bottom: 4px; display: flex; justify-content: space-between; }
+        select { background: #000; color: var(--sky-400); border: 1px solid var(--sky-400); font-family: monospace; font-size: 11px; }
+        .canvas-container { width: 100%; height: 560px; background: #01040d; border: 1px solid var(--slate-800); }
         #radar-canvas { display: block; width: 100%; height: 100%; }
-        #console-log { margin-top: 20px; padding: 12px; background: #020617; border: 1px solid var(--slate-800); color: var(--emerald-400); font-size: 11px; max-height: 50px; overflow-y: auto; }
+        #console-log { margin-top: 20px; padding: 10px; background: #01040d; border: 1px solid var(--slate-800); color: var(--emerald-400); font-size: 11px; }
     </style>
 </head>
 <body>
+<div class="wrapper">
+    <div class="header">
+        <div>EPHEMERIS ACQUISITION TERMINAL (NUCLEUS JPL DE440)</div>
+        <div id="clock-utc">UTC : --:--:--</div>
+    </div>
 
-<div class="header">
-    <div>STATION D'ÉPHÉMÉRIDES TOPOCENTRIQUES (UAI V2026.2)</div>
-    <div id="clock-utc" style="color:var(--amber-500)">UTC : --:--:--</div>
-</div>
-
-<div class="grid">
-    <div style="display:flex; flex-direction:column; gap:20px;">
-        
-        <div class="panel">
-            <h2>ÉCHELLES DE TEMPS ET COORDONNÉES TERRESTRES</h2>
-            <div class="metric"><span>Date Julienne (JD UTC) :</span><span id="astro-jd" class="data">------.-----</span></div>
-            <div class="metric"><span>Temps Sidéral Moyen Local (LAST) :</span><span id="astro-lst" class="data">--:--:--</span></div>
-            <div class="metric"><span>Index Échantillon (Minute UTC) :</span><span><span id="ast-index" class="data">----</span> / 1439</span></div>
-            
-            <div class="sub-group">
-                <div class="sub-title">📍 COORDONNÉES GÉODÉSIQUES DE LA STATION</div>
-                <div class="metric"><span>Position Ellipsoïdale :</span><span id="geo-latlon" class="data">--.-----° / --.-----°</span></div>
-                <div class="metric"><span>Altitude du Site ($h$) :</span><span><span id="geo-alt" class="data">---.-</span> m</span></div>
-                <div class="metric"><span>Référentiel 3D ITRS X :</span><span id="geo-ecef-x" class="data">------- m</span></div>
-                <div class="metric"><span>Référentiel 3D ITRS Y :</span><span id="geo-ecef-y" class="data">------- m</span></div>
-                <div class="metric"><span>Référentiel 3D ITRS Z :</span><span id="geo-ecef-z" class="data">------- m</span></div>
-            </div>
-
-            <div class="sub-group">
-                <div class="sub-title">
-                    <span>📡 COORDONNÉES DE L'ASTRE SÉLECTIONNÉ</span>
-                    <select id="select-astre" onchange="basculerAstre()">
-                        <option value="SOLEIL">SOLEIL</option>
-                        <option value="LUNE">LUNE</option>
-                        <option value="MERCURE">MERCURE</option>
-                        <option value="VENUS">VÉNUS</option>
-                        <option value="MARS">MARS</option>
-                        <option value="JUPITER">JUPITER</option>
-                        <option value="SATURNE">SATURNE</option>
-                    </select>
+    <div class="grid">
+        <div style="display:flex; flex-direction:column; gap:20px;">
+            <div class="panel">
+                <h2>RÉFÉRENTIELS DE TEMPS & GÉODÉSIE ITRS</h2>
+                <div class="metric"><span>Jour Julien Réel (JD UTC) :</span><span id="astro-jd" class="data">------.-----</span></div>
+                <div class="metric"><span>Temps Sidéral Moyen Local (LAST) :</span><span id="astro-lst" class="data">--:--:--</span></div>
+                <div class="metric"><span>Pointeur Index Chrono (Minute UTC) :</span><span><span id="ast-index" class="data">----</span> / 1439 min</span></div>
+                
+                <div class="sub-group">
+                    <div class="sub-title">VECTEUR GÉODÉSIQUE DE RÉFÉRENCE COMPOSITE</div>
+                    <div class="metric"><span>Coordonnées Ellipsoïdales :</span><span id="geo-latlon" class="data">--.-----°N / --.-----°E</span></div>
+                    <div class="metric"><span>Altitude Physique ($h$) :</span><span><span id="geo-alt" class="data">---.-</span> m</span></div>
+                    <div class="metric"><span>Vecteur 3D ECEF X :</span><span id="geo-ecef-x" class="data">------- m</span></div>
+                    <div class="metric"><span>Vecteur 3D ECEF Y :</span><span id="geo-ecef-y" class="data">------- m</span></div>
+                    <div class="metric"><span>Vecteur 3D ECEF Z :</span><span id="geo-ecef-z" class="data">------- m</span></div>
                 </div>
-                
-                <div class="metric"><span>Lever Géométrique (UTC) :</span><span id="ast-rise" class="data">--:--:--</span></div>
-                <div class="metric"><span>Transit au Méridien (UTC) :</span><span id="ast-culm" class="data">--:--:--</span></div>
-                <div class="metric"><span>Coucher Géométrique (UTC) :</span><span id="ast-set" class="data">--:--:--</span></div>
-                
-                <div class="metric"><span>Azimut Vrai ($Az$) :</span><span id="ast-az" class="data">---.---°</span></div>
-                <div class="metric"><span>Hauteur Géométrique Brute :</span><span id="ast-el" class="data">--.---°</span></div>
-                <div class="metric"><span>Hauteur Apparente Réfractée :</span><span id="ast-el-ref" class="data" style="color:var(--emerald-400)">--.---°</span></div>
-                <div class="metric"><span>Correction de Réfraction ($\Delta R$) :</span><span id="ast-delta-ref" class="data">+-.---°</span></div>
-                
-                <div class="metric"><span>Ascension Droite ($\alpha$ J2000) :</span><span id="ast-ra" class="data">--h --m --s</span></div>
-                <div class="metric"><span>Déclinaison ($\delta$ J2000) :</span><span id="ast-dec" class="data">--.---°</span></div>
-                <div class="metric"><span>Distance Géocentrique :</span><span><span id="ast-dist-km" class="data">---,---,---</span> km</span></div>
-                <div class="metric"><span>Distance Topocentrique :</span><span><span id="ast-dist-au" class="data">-.----</span> UA</span></div>
-                <div class="metric"><span>Magnitude Visuelle Réelle :</span><span id="ast-mag" class="data">--.--</span></div>
+
+                <div class="sub-group">
+                    <div class="sub-title">
+                        <span>SPÉCIFICATIONS PHYSIQUES DE L'ASTRE</span>
+                        <select id="select-astre" onchange="changerAstreCible()">
+                            <option value="SOLEIL">SOLEIL</option>
+                            <option value="LUNE">LUNE</option>
+                            <option value="MERCURE">MERCURE</option>
+                            <option value="VENUS">VÉNUS</option>
+                            <option value="MARS">MARS</option>
+                            <option value="JUPITER">JUPITER</option>
+                            <option value="SATURNE">SATURNE</option>
+                        </select>
+                    </div>
+                    <div class="metric"><span>Rise (Heure Civile UTC) :</span><span id="ast-rise" class="data">--:--:--</span></div>
+                    <div class="metric"><span>Culmination (Heure Civile UTC) :</span><span id="ast-culm" class="data">--:--:--</span></div>
+                    <div class="metric"><span>Set (Heure Civile UTC) :</span><span id="ast-set" class="data">--:--:--</span></div>
+                    <div class="metric"><span>Azimut Vrai ($Az$) :</span><span id="ast-az" class="data">---.---°</span></div>
+                    <div class="metric"><span>Élévation Géométrique Brute :</span><span id="ast-el" class="data">--.---°</span></div>
+                    <div class="metric"><span>Altitude Apparente Réfractée :</span><span id="ast-el-ref" class="data" style="color:var(--emerald-400)">--.---°</span></div>
+                    <div class="metric"><span>Delta Correction Réfraction ($\Delta R$) :</span><span id="ast-delta-ref" class="data">+-.---°</span></div>
+                    <div class="metric"><span>Ascension Droite ($\alpha$ J2000) :</span><span id="ast-ra" class="data">--h --m --s</span></div>
+                    <div class="metric"><span>Déclinaison ($\delta$ J2000) :</span><span id="ast-dec" class="data">--.---°</span></div>
+                    <div class="metric"><span>Distance Réelle Vectorielle :</span><span><span id="ast-dist-km" class="data">---</span> km</span></div>
+                    <div class="metric"><span>Distance Topocentrique :</span><span><span id="ast-dist-au" class="data">-.----</span> UA</span></div>
+                    <div class="metric"><span>Magnitude Visuelle Réelle :</span><span id="ast-mag" class="data">--.--</span></div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>ANALYSE THERMODYNAMIQUE RADAR (CAPTEURS SYNOPTIQUES)</h2>
+                <div class="metric"><span>Pression Station Barométrique ($P_s$) :</span><span><span id="m-pres" class="data">----.-</span> hPa</span></div>
+                <div class="metric"><span>Température Ambiante ($T$) :</span><span><span id="m-temp" class="data">--.--</span> °C</span></div>
+                <div class="metric"><span>Humidité Relative ($HR$) :</span><span><span id="m-hum" class="data">--.-</span> %</span></div>
+                <div class="metric"><span>Densité de l'Air Locale ($\rho$) :</span><span><span id="m-rho" class="data">-.---</span> kg/m³</span></div>
+                <div style="font-size: 9px; color: var(--slate-400); margin-top: 10px; text-align: right;" id="m-src">Source : --</div>
             </div>
         </div>
 
-        <div class="panel">
-            <h2>🌍 PARAMÈTRES ATMOSPHÉRIQUES LOCAUX</h2>
-            <div class="metric"><span>Pression Station ($P_s$) :</span><span><span id="m-pres" class="data">----.-</span> hPa</span></div>
-            <div class="metric"><span>Température Ambiante ($T$) :</span><span><span id="m-tvirt" class="data">--.--</span> °C</span></div>
-            <div class="metric"><span>Densité de la Masse d'Air ($\rho$) :</span><span><span id="m-rho" class="data">-.---</span> kg/m³</span></div>
+        <div class="panel" style="display:flex; flex-direction:column;">
+            <h2>CHAMP VISUEL TOURNANT ITRF (VECTEURS SANS INTERPOLATION)</h2>
+            <div class="canvas-container">
+                <canvas id="radar-canvas"></canvas>
+            </div>
         </div>
     </div>
-
-    <div class="panel" style="display:flex; flex-direction:column;">
-        <h2>PROJECTION HORIZONTALE LOCALE AZIMUT / HAUTEUR (SANS INTERPOLATION)</h2>
-        <div class="canvas-container">
-            <canvas id="radar-canvas"></canvas>
-        </div>
-    </div>
+    <div id="console-log">SYS : Initialisation des flux de données physiques...</div>
 </div>
-
-<div id="console-log">SYS : En attente de transfert du fichier d'éphémérides standardisé...</div>
 
 <script>
     const canvas = document.getElementById('radar-canvas');
     const ctx = canvas.getContext('2d');
-    const logDiv = document.getElementById('console-log');
     
-    let FluxGlobalJSON = null;
-    let IndexCourant = 0;
-    let AstreActif = "SOLEIL";
-    
-    let t0_PerformanceLocal = 0;
-    let t0_ReferenceServeur = 0;
-    let jd_Reference = 0;
-    let lst_ReferenceSecondes = 0;
+    let DonneesEphemerides = null;
+    let AstreSelectionne = "SOLEIL";
+    let HorlogeLocaleZero = 0, HorlogeServeurZero = 0;
+    let JdZero = 0, LstZeroSecondes = 0;
 
-    const CORRESPONDANCES = {
+    const CORRESPONDANCE_CLES = {
         "SOLEIL": "soleil", "LUNE": "lune", "MERCURE": "mercure",
         "VENUS": "venus", "MARS": "mars", "JUPITER": "jupiter", "SATURNE": "saturne"
     };
 
-    function printLog(msg, isErr = false) {
-        logDiv.innerText = `[LOG UTC ${new Date().toISOString().substr(11, 8)}] ${msg}`;
-        logDiv.style.color = isErr ? "#f87171" : "var(--emerald-400)";
+    function ecrireLog(texte) {
+        document.getElementById('console-log').innerText = `[LOG] ${texte}`;
     }
 
-    function purgerInterface() {
-        const elements = ['ast-rise', 'ast-culm', 'ast-set', 'ast-az', 'ast-el', 'ast-el-ref', 'ast-delta-ref', 'ast-ra', 'ast-dec', 'ast-dist-km', 'ast-dist-au', 'ast-mag'];
-        elements.forEach(id => document.getElementById(id).innerText = "--");
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    async function synchroniserDonnees() {
+        try {
+            const res = await fetch('./flux_live.json?t=' + Date.now());
+            if (!res.ok) throw new Error("Flux distant inaccessible.");
+            const data = await res.json();
+            
+            DonneesEphemerides = data.SERIES_CHRONOLOGIQUES_1440;
+            HorlogeLocaleZero = performance.now();
+            JdZero = data.HORLOGE.jd;
+            
+            const partsLst = data.HORLOGE.lst.split(':');
+            lst_ReferenceSecondes = (parseInt(partsLst[0]) * 3600) + (parseInt(partsLst[1]) * 60) + parseInt(partsLst[2]);
+            
+            const now = new Date();
+            HorlogeServeurZero = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds());
+
+            document.getElementById('geo-latlon').innerText = `${data.STATION_COORDONNEES.latitude_deg.toFixed(5)}°N / ${data.STATION_COORDONNEES.longitude_deg.toFixed(5)}°E`;
+            document.getElementById('geo-alt').innerText = data.STATION_COORDONNEES.altitude_m.toFixed(1);
+            document.getElementById('geo-ecef-x').innerText = Math.floor(data.STATION_COORDONNEES.ecef_x_m).toLocaleString('fr-FR');
+            document.getElementById('geo-ecef-y').innerText = Math.floor(data.STATION_COORDONNEES.ecef_y_m).toLocaleString('fr-FR');
+            document.getElementById('geo-ecef-z').innerText = Math.floor(data.STATION_COORDONNEES.ecef_z_m).toLocaleString('fr-FR');
+            
+            document.getElementById('m-pres').innerText = data.ATMOSPHERE.pression_hpa.toFixed(1);
+            document.getElementById('m-temp').innerText = data.ATMOSPHERE.temperature_c.toFixed(1);
+            document.getElementById('m-hum').innerText = data.ATMOSPHERE.humidite_relative_pct.toFixed(1);
+            document.getElementById('m-rho').innerText = data.ATMOSPHERE.densite_air_kgm3.toFixed(3);
+            document.getElementById('m-src').innerText = `Source : ${data.METADATA.meteo_provenance}`;
+
+            ecrireLog("Noyau JPL DE440 interconnecté. Données synoptiques valides.");
+            calculerCadence();
+        } catch (e) {
+            ecrireLog("Échec de synchronisation : " + e.message);
+        }
     }
 
-    function basculerAstre() {
-        astreActif = document.getElementById('select-astre').value;
-        renderVisuals(IndexCourant);
-    }
-
-    function rafraichirHorloges() {
-        if (t0_PerformanceLocal === 0) return;
-
-        const deltaMs = performance.now() - t0_PerformanceLocal;
-        const actuelMs = t0_ReferenceServeur + deltaMs;
-        const dateVirtuelle = new Date(actuelMs);
+    function calculerCadence() {
+        if (!HorlogeLocaleZero) return;
         
-        document.getElementById('clock-utc').innerText = `UTC : ${dateVirtuelle.toISOString().substr(11, 8)}`;
-        document.getElementById('astro-jd').innerText = (jd_Reference + (deltaMs / 86400000)).toFixed(5);
-
+        const deltaMs = performance.now() - HorlogeLocaleZero;
+        const instantUtc = new Date(HorlogeServeurZero + deltaMs);
+        
+        document.getElementById('clock-utc').innerText = `UTC : ${instantUtc.toISOString().substr(11, 8)}`;
+        document.getElementById('astro-jd').innerText = (JdZero + (deltaMs / 86400000)).toFixed(6);
+        
         const totalLstSec = (lst_ReferenceSecondes + (deltaMs / 1000) * 1.00273790935) % 86400;
         const h = Math.floor(totalLstSec / 3600).toString().padStart(2, '0');
         const m = Math.floor((totalLstSec % 3600) / 60).toString().padStart(2, '0');
         const s = Math.floor(totalLstSec % 60).toString().padStart(2, '0');
         document.getElementById('astro-lst').innerText = `${h}:${m}:${s}`;
 
-        IndexCourant = (dateVirtuelle.getUTCHours() * 60) + dateVirtuelle.getUTCMinutes();
-        document.getElementById('ast-index').innerText = IndexCourant;
-        
-        if (FluxGlobalJSON) renderVisuals(IndexCourant);
+        const indexMin = (instantUtc.getUTCHours() * 60) + instantUtc.getUTCMinutes();
+        document.getElementById('ast-index').innerText = indexMin;
+
+        mettreAJourAstre(indexMin);
     }
 
-    async function chargerFluxEphemerides() {
-        try {
-            const res = await fetch('./flux_live.json?nocache=' + Date.now());
-            if (!res.ok) throw new Error(`Erreur HTTP: ${res.status}`);
-            
-            const data = await res.json();
-            FluxGlobalJSON = data.SERIES_CHRONOLOGIQUES_1440;
+    function mettreAJourAstre(index) {
+        if (!DonneesEphemerides) return;
+        const corpsData = DonneesEphemerides[CORRESPONDANCE_CLES[AstreSelectionne]];
+        if (!corpsData || !corpsData[index]) return;
 
-            t0_PerformanceLocal = performance.now();
-            jd_Reference = Number(data.HORLOGE.jd);
-            
-            const LstParts = data.HORLOGE.lst.split(':');
-            lst_ReferenceSecondes = (parseInt(LstParts[0]) * 3600) + (parseInt(LstParts[1]) * 60) + parseInt(LstParts[2]);
-
-            const now = new Date();
-            t0_ReferenceServeur = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUT6Date ?? now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds());
-
-            document.getElementById('geo-latlon').innerText = `${data.STATION_COORDONNEES.latitude_deg.toFixed(5)}°N / ${data.STATION_COORDONNEES.longitude_deg.toFixed(5)}°E`;
-            document.getElementById('geo-alt').innerText = data.STATION_COORDONNEES.altitude_m.toFixed(1);
-            document.getElementById('geo-ecef-x').innerText = `${Math.floor(data.STATION_COORDONNEES.ecef_x_m).toLocaleString('fr-FR')} m`;
-            document.getElementById('geo-ecef-y').innerText = `${Math.floor(data.STATION_COORDONNEES.ecef_y_m).toLocaleString('fr-FR')} m`;
-            document.getElementById('geo-ecef-z').innerText = `${Math.floor(data.STATION_COORDONNEES.ecef_z_m).toLocaleString('fr-FR')} m`;
-
-            document.getElementById('m-pres').innerText = data.ATMOSPHERE.pression_hpa.toFixed(1);
-            document.getElementById('m-tvirt').innerText = data.ATMOSPHERE.temperature_c.toFixed(2);
-            document.getElementById('m-rho').innerText = data.ATMOSPHERE.densite_air_kgm3.toFixed(3);
-
-            printLog("Données cinématiques UAI synchronisées. Noyau de calcul stable.");
-            renderVisuals(IndexCourant);
-        } catch (err) {
-            printLog(err.message, true);
-            purgerInterface();
-        }
-    }
-
-    function renderVisuals(index) {
-        if (!FluxGlobalJSON) return;
-        const key = CORRESPONDANCES[astreActif];
-        const dataset = FluxGlobalJSON[key];
-        if (!dataset || !dataset[index]) return;
-
-        const p = dataset[index];
-        
+        const p = corpsData[index];
         document.getElementById('ast-az').innerText = `${p.azimut_vrai.toFixed(3)}°`;
         document.getElementById('ast-el').innerText = `${p.elevation_geometrique.toFixed(3)}°`;
         document.getElementById('ast-el-ref').innerText = `${p.elevation_refractee.toFixed(3)}°`;
         document.getElementById('ast-delta-ref').innerText = `+${p.correction_refraction.toFixed(3)}°`;
-        document.getElementById('ast-dist-km').innerText = Math.floor(p.distance_km).toLocaleString('fr-FR');
-        document.getElementById('ast-dist-au').innerText = p.distance_ua.toFixed(5);
         document.getElementById('ast-ra').innerText = p.ascension_droite;
         document.getElementById('ast-dec').innerText = `${p.declinaison.toFixed(3)}°`;
+        document.getElementById('ast-dist-km').innerText = Math.floor(p.distance_km).toLocaleString('fr-FR');
+        document.getElementById('ast-dist-au').innerText = p.distance_ua.toFixed(5);
         document.getElementById('ast-mag').innerText = p.magnitude.toFixed(2);
-
+        
         document.getElementById('ast-rise').innerText = p.lever_utc;
         document.getElementById('ast-culm').innerText = p.transit_utc;
         document.getElementById('ast-set').innerText = p.coucher_utc;
 
-        drawHorizonPlot(p.azimut_vrai, p.elevation_refractee);
+        dessinerRadar(p.azimut_vrai, p.elevation_refractee);
     }
 
-    function drawHorizonPlot(az, el) {
-        let w = canvas.width, h = canvas.height;
-        let cx = w / 2, cy = h / 2;
-        let rMax = Math.min(cx, cy) - 30;
+    function changerAstreCible() {
+        AstreSelectionne = document.getElementById('select-astre').value;
+        calculerCadence();
+    }
 
-        ctx.clearRect(0, 0, w, h);
-        ctx.save();
-        ctx.translate(cx, cy);
-
-        // Cercles d'élévation
-        ctx.strokeStyle = "rgba(148, 163, 184, 0.1)";
-        ctx.lineWidth = 1;
-        for (let r = 0.2; r <= 1; r += 0.2) {
-            ctx.beginPath(); ctx.arc(0, 0, rMax * r, 0, 2 * Math.PI); ctx.stroke();
-        }
+    function dessinerRadar(az, el) {
+        const cx = canvas.width / 2, cy = canvas.height / 2;
+        const rMax = Math.min(cx, cy) - 40;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        // Axes cardinaux
-        ctx.beginPath(); ctx.moveTo(-rMax, 0); ctx.lineTo(rMax, 0); ctx.moveTo(0, -rMax); ctx.lineTo(0, rMax); ctx.stroke();
-        ctx.fillStyle = "var(--slate-400)";
-        ctx.fillText("NORD", -12, -rMax - 8);
-        ctx.fillText("EST", rMax + 6, 4);
+        // Tracé des cercles d'altitudes (coordonnées horizontales)
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.15)";
+        ctx.lineWidth = 1;
+        for (let i = 1; i <= 3; i++) {
+            ctx.beginPath();
+            ctx.arc(cx, cy, rMax * (i / 3), 0, 2 * Math.PI);
+            ctx.stroke();
+        }
 
-        // Rendu du vecteur si l'astre est au-dessus du plan d'horizon thermique (-0.5° refraction standard)
+        // Ligne d'horizon physique
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.4)";
+        ctx.beginPath(); ctx.moveTo(cx - rMax, cy); ctx.lineTo(cx + rMax, cy); ctx.moveTo(cx, cy - rMax); ctx.lineTo(cx, cy + rMax); ctx.stroke();
+
+        ctx.fillStyle = "var(--slate-400)";
+        ctx.fillText("NORD 0°", cx - 20, cy - rMax - 10);
+        ctx.fillText("EST 90°", cx + rMax + 8, cy + 4);
+
         if (el >= -0.833) {
             ctx.save();
+            ctx.translate(cx, cy);
             ctx.rotate((az * Math.PI) / 180);
-            let d = rMax * (1 - (Math.max(0, el) / 90));
+            const rayonAstre = rMax * (1 - (Math.max(0, el) / 90));
             
-            ctx.strokeStyle = "rgba(245, 158, 11, 0.3)";
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -d); ctx.stroke();
+            ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -rayonAstre); ctx.stroke();
             
-            ctx.fillStyle = "var(--amber-500)";
-            ctx.beginPath(); ctx.arc(0, -d, 5, 0, 2 * Math.PI); ctx.fill();
-            ctx.fillText(astreActif, 10, -d + 4);
+            ctx.fillStyle = "var(--sky-400)";
+            ctx.beginPath(); ctx.arc(0, -rayonAstre, 6, 0, 2 * Math.PI); ctx.fill();
+            ctx.fillText(AstreSelectionne, 12, -rayonAstre + 4);
             ctx.restore();
         }
-        ctx.restore();
     }
 
-    function initCanvas() {
-        let b = canvas.parentElement.getBoundingClientRect();
+    function ajusterDimension() {
+        const b = canvas.parentElement.getBoundingClientRect();
         canvas.width = b.width; canvas.height = b.height;
-        if (FluxGlobalJSON) renderVisuals(IndexCourant);
+        calculerCadence();
     }
 
-    window.onresize = initCanvas;
+    window.onresize = ajusterDimension;
     window.onload = () => {
-        initCanvas();
-        chargerFluxEphemerides();
-        setInterval(rafraichirHorloges, 100);
-        setInterval(chargerFluxEphemerides, 60000);
+        ajusterDimension();
+        synchroniserDonnees();
+        setInterval(calculerCadence, 200);
+        setInterval(synchroniserDonnees, 60000); // Re-fetch synoptique toutes les minutes
     };
 </script>
 </body>
-                                                                                                                         </html>
+    </html>                                                                                                                         </html>
