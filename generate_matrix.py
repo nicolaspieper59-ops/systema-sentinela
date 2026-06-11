@@ -11,7 +11,6 @@ import sys
 from datetime import datetime, timezone, timedelta
 import numpy as np
 
-# Importations directes pour permettre le traçage natif des erreurs (Traceback) par le runner
 import requests
 import astropy.units as u
 from astropy.time import Time
@@ -19,34 +18,30 @@ from astropy.coordinates import EarthLocation, AltAz, get_body, solar_system_eph
 from astropy.utils.iers import conf as iers_conf
 from astropy.utils.data import conf as data_conf
 
-# Durcissement des tolérances réseau et temporelles (Contexte Année 2026)
+# Configuration de tolérance réseau
 iers_conf.iers_degraded_accuracy = 'warn'
 iers_conf.auto_download = True
-data_conf.remote_timeout = 60.0  # Laisse le temps au runner de télécharger le fichier BSP de 100+ Mo
+data_conf.remote_timeout = 60.0
 
-# Coordonnées géodésiques de l'Observatoire de Marseille Longchamp
+# Marseille Longchamp Coordonnées
 LATITUDE, LONGITUDE, ALTITUDE = 43.29070, 5.35490, 55.0
 STATION_LOCATION = EarthLocation(lat=LATITUDE*u.deg, lon=LONGITUDE*u.deg, height=ALTITUDE*u.m)
 
-# Initialisation et contrôle d'intégrité du noyau vectoriel JPL DE440
 try:
     solar_system_ephemeris.set('de440')
     _verification_instant = Time(datetime.now(timezone.utc))
     _ = get_body("sun", _verification_instant, location=STATION_LOCATION)
     print("[SYS] Noyau d'intégration numérique de haute précision JPL DE440 initialisé.")
 except Exception as e:
-    print(f"[WARN] Impossible de charger le noyau JPL DE440 ({e}). Bascule sur le modèle analytique standard.", file=sys.stderr)
+    print(f"[WARN] Noyau JPL DE440 indisponible ({e}). Bascule sur le modèle analytique standard.", file=sys.stderr)
     solar_system_ephemeris.set('builtin')
 
 def acquerir_meteorologie_synoptique(lat, lon):
-    """Extraction en temps réel des conditions de la maille atmosphérique de Marseille."""
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
-        "latitude": lat,
-        "longitude": lon,
+        "latitude": lat, "longitude": lon,
         "current": ["temperature_2m", "relative_humidity_2m", "surface_pressure"],
-        "timeformat": "unixtime",
-        "timezone": "GMT"
+        "timeformat": "unixtime", "timezone": "GMT"
     }
     try:
         reponse = requests.get(url, params=params, timeout=15)
@@ -59,47 +54,44 @@ def acquerir_meteorologie_synoptique(lat, lon):
             "source": "WMO Synoptic Grid (ECMWF/DWD)"
         }
     except Exception as e:
-        print(f"[WARN] Échec de la télémétrie météo ({e}). Utilisation de l'Atmosphère Standard Internationale.", file=sys.stderr)
+        print(f"[WARN] Échec télémétrie météo ({e}). Utilisation ISA.", file=sys.stderr)
         return {
-            "pression_hpa": 1013.25,
-            "temperature_c": 15.0,
-            "humidite_relative": 50.0,
+            "pression_hpa": 1013.25, "temperature_c": 15.0, "humidite_relative": 50.0,
             "source": "International Standard Atmosphere (ICAO) Fallback"
         }
 
 def calculer_magnitude_iau_2018(astre, r_helio, delta_geo, angle_phase_deg):
-    """Modèles de luminance validés par l'UAI (Mallama & Hilton)."""
     alpha = angle_phase_deg
     if astre == "soleil":
         return -26.74
     elif astre == "lune":
         return float(-12.74 + 0.026 * alpha + 4.0 * (10**-9) * (alpha**4))
     
+    # Sécurisation des arguments logarithmiques
+    sec_dist = max(1e-5, float(r_helio * delta_geo))
+    
     if astre == "mercure":
-        return float(-0.61 + 3.80 * (alpha/100) - 2.73 * ((alpha/100)**2) + 2.00 * ((alpha/100)**3) + 5 * np.log10(r_helio * delta_geo))
+        return float(-0.61 + 3.80 * (alpha/100) - 2.73 * ((alpha/100)**2) + 2.00 * ((alpha/100)**3) + 5 * np.log10(sec_dist))
     elif astre == "venus":
-        return float(-4.47 + 0.13 * (alpha/100) + 2.39 * ((alpha/100)**2) - 0.65 * ((alpha/100)**3) + 5 * np.log10(r_helio * delta_geo))
+        return float(-4.47 + 0.13 * (alpha/100) + 2.39 * ((alpha/100)**2) - 0.65 * ((alpha/100)**3) + 5 * np.log10(sec_dist))
     elif astre == "mars":
-        return float(-1.60 + 1.60 * (alpha/100) + 5 * np.log10(r_helio * delta_geo))
+        return float(-1.60 + 1.60 * (alpha/100) + 5 * np.log10(sec_dist))
     elif astre == "jupiter":
-        return float(-9.395 + 0.05 * (alpha/100) + 5 * np.log10(r_helio * delta_geo))
+        return float(-9.395 + 0.05 * (alpha/100) + 5 * np.log10(sec_dist))
     elif astre == "saturne":
-        return float(-8.94 + 2.40 * (alpha/100) + 5 * np.log10(r_helio * delta_geo))
+        return float(-8.94 + 2.40 * (alpha/100) + 5 * np.log10(sec_dist))
     return 0.0
 
 def executer_pipeline():
     ecef_xyz = STATION_LOCATION.geocentric
-
-    # Capture et calcul des constantes thermodynamiques locales
     meteo = acquerir_meteorologie_synoptique(LATITUDE, LONGITUDE)
     pression_astro = meteo["pression_hpa"] * u.hPa
     temp_astro = meteo["temperature_c"] * u.deg_C
-    humidite_unitaire = meteo["humidite_relative"] / 100.0  # Alignement sur l'échelle ERFA [0.0 - 1.0]
+    humidite_unitaire = meteo["humidite_relative"] / 100.0
     
     R_air_sec = 287.05
     rho_air = (meteo["pression_hpa"] * 100) / (R_air_sec * (meteo["temperature_c"] + 273.15))
 
-    # Génération du vecteur temporel complet (Échantillonnage synchrone sur 24 heures)
     maintenant_utc = datetime.now(timezone.utc)
     base_midi_utc = datetime(maintenant_utc.year, maintenant_utc.month, maintenant_utc.day, tzinfo=timezone.utc)
     
@@ -110,24 +102,20 @@ def executer_pipeline():
     t_instant = Time(maintenant_utc)
     jd_val = t_instant.jd
     
-    # Résolution rigoureuse du Temps Sidéral Local (LST)
     lst_obj = t_instant.sidereal_time('mean', longitude=LONGITUDE * u.deg)
     lst_hms = lst_obj.to(u.hourangle).hms
     lst_str = f"{int(lst_hms.h):02d}:{int(lst_hms.m):02d}:{int(lst_hms.s):02d}"
     
-    # Instanciation des référentiels d'observation (Avec et sans réfraction de l'air)
     cadre_refracte = AltAz(
-        location=STATION_LOCATION, 
-        obstime=t_vector, 
-        pressure=pression_astro, 
-        temperature=temp_astro, 
-        relative_humidity=humidite_unitaire, 
-        obswl=0.55*u.micron
+        location=STATION_LOCATION, obstime=t_vector, 
+        pressure=pression_astro, temperature=temp_astro, 
+        relative_humidity=humidite_unitaire, obswl=0.55*u.micron
     )
     cadre_vide = AltAz(location=STATION_LOCATION, obstime=t_vector)
 
+    # Conversion explicite en coordonnées cartésiennes ICRS stables
     soleil_barycentrique = get_body("sun", t_vector, location=STATION_LOCATION)
-    xyz_soleil = soleil_barycentrique.cartesian.xyz.to(u.au).value
+    xyz_soleil = soleil_barycentrique.icrs.cartesian.xyz.to(u.au).value
 
     CORPS_TRADUCTION = {
         "soleil": "sun", "lune": "moon", "mercure": "mercury",
@@ -140,7 +128,7 @@ def executer_pipeline():
         try:
             corps_barycentrique = get_body(id_en, t_vector, location=STATION_LOCATION)
         except Exception as err_body:
-            print(f"[ERROR] Impossible d'extraire les coordonnées pour {cle_fr} : {err_body}", file=sys.stderr)
+            print(f"[ERROR] Échec extraction {cle_fr} : {err_body}", file=sys.stderr)
             continue
             
         proj_horiz_ref = corps_barycentrique.transform_to(cadre_refracte)
@@ -156,16 +144,23 @@ def executer_pipeline():
         ra_hms = corps_barycentrique.ra.hms
         dec_deg = corps_barycentrique.dec.deg
 
-        # Calcul matriciel géocentrique de l'angle de phase
-        xyz_corps = corps_barycentrique.cartesian.xyz.to(u.au).value
-        vec_corps_soleil = xyz_soleil - xyz_corps
-        r_helio_arr = np.linalg.norm(vec_corps_soleil, axis=0)
-        
-        dot_product = (-xyz_corps[0]*vec_corps_soleil[0] - xyz_corps[1]*vec_corps_soleil[1] - xyz_corps[2]*vec_corps_soleil[2])
-        cos_phase = np.clip(dot_product / (dist_ua_arr * r_helio_arr), -1.0, 1.0)
-        angle_phase_arr = np.degrees(np.arccos(cos_phase))
+        # --- PROTECTION ALGEBRIQUE DE L'ANGLE DE PHASE ---
+        if cle_fr == "soleil":
+            r_helio_arr = np.zeros(1440)
+            angle_phase_arr = np.zeros(1440)
+        else:
+            xyz_corps = corps_barycentrique.icrs.cartesian.xyz.to(u.au).value
+            vec_corps_soleil = xyz_soleil - xyz_corps
+            r_helio_arr = np.linalg.norm(vec_corps_soleil, axis=0)
+            
+            dot_product = (-xyz_corps[0]*vec_corps_soleil[0] - xyz_corps[1]*vec_corps_soleil[1] - xyz_corps[2]*vec_corps_soleil[2])
+            denominateur = dist_ua_arr * r_helio_arr
+            denominateur = np.where(denominateur == 0, 1e-12, denominateur)
+            
+            cos_phase = np.clip(dot_product / denominateur, -1.0, 1.0)
+            angle_phase_arr = np.degrees(np.arccos(cos_phase))
 
-        # Événements géocentriques à l'horizon apparent de l'observateur
+        # Événements à l'horizon apparent
         lever_str, coucher_str, transit_str = "--:--:--", "--:--:--", "--:--:--"
         idx_transit = np.argmax(el_ref_arr)
         transit_str = (base_midi_utc + timedelta(minutes=int(idx_transit))).strftime("%H:%M:%S")
@@ -199,6 +194,7 @@ def executer_pipeline():
             
         ephemerides_output[cle_fr] = liste_chronologique
 
+    # Génération du dictionnaire de données unifié conforme à index.html
     flux_structure = {
         "METADATA": {
             "generateur": "Astropy Keplerian/JPL Vector Engine",
@@ -231,7 +227,7 @@ def executer_pipeline():
     with open(nom_fichier + '.tmp', 'w') as f:
         json.dump(flux_structure, f, indent=4)
     os.replace(nom_fichier + '.tmp', nom_fichier)
-    print("[SUCCESS] Le traitement vectoriel s'est terminé sans erreur.")
+    print("[SUCCESS] Le traitement vectoriel de la matrice s'est terminé sans erreur.")
 
 if __name__ == "__main__":
     executer_pipeline()
