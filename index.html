@@ -100,10 +100,11 @@
     const canvas = document.getElementById('radar-canvas');
     const ctx = canvas.getContext('2d');
     
+    // CORRECTION : Déclaration rigoureuse des variables d'environnement temporel
     let DonneesEphemerides = null;
     let AstreSelectionne = "SOLEIL";
     let HorlogeLocaleZero = 0, HorlogeServeurZero = 0;
-    let JdZero = 0, LstZeroSecondes = 0;
+    let JdZero = 0, lst_ReferenceSecondes = 0;
 
     const CORRESPONDANCE_CLES = {
         "SOLEIL": "soleil", "LUNE": "lune", "MERCURE": "mercure",
@@ -125,7 +126,10 @@
             JdZero = data.HORLOGE.jd;
             
             const partsLst = data.HORLOGE.lst.split(':');
-            lst_ReferenceSecondes = (parseInt(partsLst[0]) * 3600) + (parseInt(partsLst[1]) * 60) + parseInt(partsLst[2]);
+            // CORRECTION : Forçage de l'analyse en base 10 pour éviter les corruptions octales (ex: 08, 09)
+            lst_ReferenceSecondes = (parseInt(partsLst[0], 10) * 3600) + 
+                                    (parseInt(partsLst[1], 10) * 60) + 
+                                    parseInt(partsLst[2], 10);
             
             const now = new Date();
             HorlogeServeurZero = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds());
@@ -158,6 +162,7 @@
         document.getElementById('clock-utc').innerText = `UTC : ${instantUtc.toISOString().substr(11, 8)}`;
         document.getElementById('astro-jd').innerText = (JdZero + (deltaMs / 86400000)).toFixed(6);
         
+        // Ratio exact du passage du temps solaire moyen au temps sidéral moyen
         const totalLstSec = (lst_ReferenceSecondes + (deltaMs / 1000) * 1.00273790935) % 86400;
         const h = Math.floor(totalLstSec / 3600).toString().padStart(2, '0');
         const m = Math.floor((totalLstSec % 3600) / 60).toString().padStart(2, '0');
@@ -220,19 +225,30 @@
         ctx.fillText("NORD 0°", cx - 20, cy - rMax - 10);
         ctx.fillText("EST 90°", cx + rMax + 8, cy + 4);
 
+        // Limite de visibilité basée sur la réfraction atmosphérique moyenne
         if (el >= -0.833) {
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.rotate((az * Math.PI) / 180);
             const rayonAstre = rMax * (1 - (Math.max(0, el) / 90));
             
-            ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -rayonAstre); ctx.stroke();
+            // CORRECTION : Calcul trigonométrique direct remplaçant la rotation de matrice contextuelle.
+            // (0° = Nord = -Y | 90° = Est = +X)
+            const xAstre = cx + rayonAstre * Math.sin((az * Math.PI) / 180);
+            const yAstre = cy - rayonAstre * Math.cos((az * Math.PI) / 180);
             
+            // Tracé du vecteur d'azimut
+            ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
+            ctx.beginPath(); 
+            ctx.moveTo(cx, cy); 
+            ctx.lineTo(xAstre, yAstre); 
+            ctx.stroke();
+            
+            // Marqueur positionnel
             ctx.fillStyle = "var(--sky-400)";
-            ctx.beginPath(); ctx.arc(0, -rayonAstre, 6, 0, 2 * Math.PI); ctx.fill();
-            ctx.fillText(AstreSelectionne, 12, -rayonAstre + 4);
-            ctx.restore();
+            ctx.beginPath(); 
+            ctx.arc(xAstre, yAstre, 6, 0, 2 * Math.PI); 
+            ctx.fill();
+            
+            // Affichage horizontal persistant garantissant la lisibilité
+            ctx.fillText(AstreSelectionne, xAstre + 12, yAstre + 4);
         }
     }
 
@@ -247,8 +263,8 @@
         ajusterDimension();
         synchroniserDonnees();
         setInterval(calculerCadence, 200);
-        setInterval(synchroniserDonnees, 60000); // Re-fetch synoptique toutes les minutes
+        setInterval(synchroniserDonnees, 60000);
     };
 </script>
 </body>
-    </html>                                                                                                                         </html>
+                                                                                                                                     </html>
