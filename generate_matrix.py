@@ -8,6 +8,7 @@ JPL DE440 Ephemeris Kernel & Dynamic Refraction Integration
 import json
 import os
 import sys
+import traceback
 from datetime import datetime, timezone, timedelta
 import numpy as np
 
@@ -18,23 +19,15 @@ from astropy.coordinates import EarthLocation, AltAz, get_body, solar_system_eph
 from astropy.utils.iers import conf as iers_conf
 from astropy.utils.data import conf as data_conf
 
-# Configuration de tolérance réseau
-iers_conf.iers_degraded_accuracy = 'warn'
-iers_conf.auto_download = True
+# --- DURCISSEMENT POUR GITHUB ACTIONS ---
+# Désactivation du téléchargement strict IERS pour éviter les Timeouts (Exit Code 1)
+iers_conf.auto_download = False 
+iers_conf.iers_degraded_accuracy = 'ignore'
 data_conf.remote_timeout = 60.0
 
 # Marseille Longchamp Coordonnées
 LATITUDE, LONGITUDE, ALTITUDE = 43.29070, 5.35490, 55.0
 STATION_LOCATION = EarthLocation(lat=LATITUDE*u.deg, lon=LONGITUDE*u.deg, height=ALTITUDE*u.m)
-
-try:
-    solar_system_ephemeris.set('de440')
-    _verification_instant = Time(datetime.now(timezone.utc))
-    _ = get_body("sun", _verification_instant, location=STATION_LOCATION)
-    print("[SYS] Noyau d'intégration numérique de haute précision JPL DE440 initialisé.")
-except Exception as e:
-    print(f"[WARN] Noyau JPL DE440 indisponible ({e}). Bascule sur le modèle analytique standard.", file=sys.stderr)
-    solar_system_ephemeris.set('builtin')
 
 def acquerir_meteorologie_synoptique(lat, lon):
     url = "https://api.open-meteo.com/v1/forecast"
@@ -67,7 +60,6 @@ def calculer_magnitude_iau_2018(astre, r_helio, delta_geo, angle_phase_deg):
     elif astre == "lune":
         return float(-12.74 + 0.026 * alpha + 4.0 * (10**-9) * (alpha**4))
     
-    # Sécurisation des arguments logarithmiques
     sec_dist = max(1e-5, float(r_helio * delta_geo))
     
     if astre == "mercure":
@@ -83,7 +75,15 @@ def calculer_magnitude_iau_2018(astre, r_helio, delta_geo, angle_phase_deg):
     return 0.0
 
 def executer_pipeline():
-    ecef_xyz = STATION_LOCATION.geocentric
+    try:
+        solar_system_ephemeris.set('de440')
+        _verification_instant = Time(datetime.now(timezone.utc))
+        _ = get_body("sun", _verification_instant, location=STATION_LOCATION)
+        print("[SYS] Noyau d'intégration numérique JPL DE440 initialisé.")
+    except Exception as e:
+        print(f"[WARN] Noyau JPL DE440 indisponible ({e}). Bascule sur analytique standard.", file=sys.stderr)
+        solar_system_ephemeris.set('builtin')
+
     meteo = acquerir_meteorologie_synoptique(LATITUDE, LONGITUDE)
     pression_astro = meteo["pression_hpa"] * u.hPa
     temp_astro = meteo["temperature_c"] * u.deg_C
@@ -113,7 +113,6 @@ def executer_pipeline():
     )
     cadre_vide = AltAz(location=STATION_LOCATION, obstime=t_vector)
 
-    # Conversion explicite en coordonnées cartésiennes ICRS stables
     soleil_barycentrique = get_body("sun", t_vector, location=STATION_LOCATION)
     xyz_soleil = soleil_barycentrique.icrs.cartesian.xyz.to(u.au).value
 
@@ -128,7 +127,7 @@ def executer_pipeline():
         try:
             corps_barycentrique = get_body(id_en, t_vector, location=STATION_LOCATION)
         except Exception as err_body:
-            print(f"[ERROR] Échec extraction {cle_fr} : {err_body}", file=sys.stderr)
+            print(f"[WARN] Impossible de calculer la matrice pour {cle_fr} : {err_body}", file=sys.stderr)
             continue
             
         proj_horiz_ref = corps_barycentrique.transform_to(cadre_refracte)
@@ -144,7 +143,6 @@ def executer_pipeline():
         ra_hms = corps_barycentrique.ra.hms
         dec_deg = corps_barycentrique.dec.deg
 
-        # --- PROTECTION ALGEBRIQUE DE L'ANGLE DE PHASE ---
         if cle_fr == "soleil":
             r_helio_arr = np.zeros(1440)
             angle_phase_arr = np.zeros(1440)
@@ -160,7 +158,6 @@ def executer_pipeline():
             cos_phase = np.clip(dot_product / denominateur, -1.0, 1.0)
             angle_phase_arr = np.degrees(np.arccos(cos_phase))
 
-        # Événements à l'horizon apparent
         lever_str, coucher_str, transit_str = "--:--:--", "--:--:--", "--:--:--"
         idx_transit = np.argmax(el_ref_arr)
         transit_str = (base_midi_utc + timedelta(minutes=int(idx_transit))).strftime("%H:%M:%S")
@@ -194,7 +191,6 @@ def executer_pipeline():
             
         ephemerides_output[cle_fr] = liste_chronologique
 
-    # Génération du dictionnaire de données unifié conforme à index.html
     flux_structure = {
         "METADATA": {
             "generateur": "Astropy Keplerian/JPL Vector Engine",
@@ -210,9 +206,10 @@ def executer_pipeline():
             "latitude_deg": LATITUDE,
             "longitude_deg": LONGITUDE,
             "altitude_m": ALTITUDE,
-            "ecef_x_m": float(ecef_xyz.x.value),
-            "ecef_y_m": float(ecef_xyz.y.value),
-            "ecef_z_m": float(ecef_xyz.z.value)
+            # CORRECTION : Extraction directe des attributs de l'objet EarthLocation
+            "ecef_x_m": float(STATION_LOCATION.x.value),
+            "ecef_y_m": float(STATION_LOCATION.y.value),
+            "ecef_z_m": float(STATION_LOCATION.z.value)
         },
         "ATMOSPHERE": {
             "pression_hpa": float(meteo["pression_hpa"]),
@@ -227,7 +224,13 @@ def executer_pipeline():
     with open(nom_fichier + '.tmp', 'w') as f:
         json.dump(flux_structure, f, indent=4)
     os.replace(nom_fichier + '.tmp', nom_fichier)
-    print("[SUCCESS] Le traitement vectoriel de la matrice s'est terminé sans erreur.")
+    print("[SUCCESS] Traitement et sérialisation matricielle terminés.")
 
 if __name__ == "__main__":
-    executer_pipeline()
+    # PROTECTION GLOBALE : Capturer toute exception pour tracer le plantage du runner
+    try:
+        executer_pipeline()
+    except Exception as fatal_error:
+        print("\n[CRITICAL ERROR] Le pipeline s'est effondré :", file=sys.stderr)
+        traceback.print_exc()
+        sys.exit(1)
