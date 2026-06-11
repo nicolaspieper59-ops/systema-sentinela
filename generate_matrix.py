@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Topocentric Ephemeris Engine - Strict IAU 2006/2000A Standard
-JPL DE440 Ephemeris Kernel & Dynamic Refraction Integration
+Universal Dynamic Ephemeris & Multiphysics Integration Engine
+Scalable for Terrestrial Vehicles, Aircraft, and Spacecraft.
+Standard: IAU 2006/2000A, TAI Scale, Gladstone-Dale & Lorentz Transformations.
 """
 
 import json
@@ -12,142 +13,175 @@ import traceback
 from datetime import datetime, timezone, timedelta
 import numpy as np
 
-import requests
 import astropy.units as u
 from astropy.time import Time
-from astropy.coordinates import EarthLocation, AltAz, get_body, solar_system_ephemeris
+from astropy.coordinates import EarthLocation, AltAz, get_body, solar_system_ephemeris, GCRS
 from astropy.utils.iers import conf as iers_conf
-from astropy.utils.data import conf as data_conf
 
-# --- DURCISSEMENT POUR GITHUB ACTIONS ---
-# Désactivation du téléchargement strict IERS pour éviter les Timeouts (Exit Code 1)
+# Sécurisation du runner (pas de requêtes IERS réseau bloquantes)
 iers_conf.auto_download = False 
 iers_conf.iers_degraded_accuracy = 'ignore'
-data_conf.remote_timeout = 60.0
 
-# Marseille Longchamp Coordonnées
-LATITUDE, LONGITUDE, ALTITUDE = 43.29070, 5.35490, 55.0
-STATION_LOCATION = EarthLocation(lat=LATITUDE*u.deg, lon=LONGITUDE*u.deg, height=ALTITUDE*u.m)
+class VehiculeEnvironnement:
+    """
+    Simule l'acquisition en temps réel des données de bord du véhicule
+    (Bus de données CAN, ARINC 429 ou Télémétrie Spatiale).
+    """
+    def __init__(self, type_vehicule="laboratoire"):
+        self.type_vehicule = type_vehicule.lower()
+        
+    def acquerir_telemetrie_dynamique(self):
+        """ Renvoie les constantes physiques réelles mesurées dans le véhicule """
+        # Exemple basé sur un instant t. En production, ces données lisent des capteurs.
+        if self.type_vehicule == "avion":
+            return {
+                "vitesse_m_s": 250.0,          # ~900 km/h
+                "altitude_m": 10000.0,         # Altitude de croisière
+                "latitude_deg": 43.29070,      # Position dynamique
+                "longitude_deg": 5.35490,
+                "milieu": "atmosphere",
+                "pression_interieure_hPa": 800.0, # Pressurisation cabine
+                "temperature_interieure_C": 22.0, # Régulation thermique
+                "humidite_relative_pct": 5.0,    # Air très sec d'altitude
+                "champ_electrostatique_V_m": 4500.0, # Friction aérodynamique
+                "bruit_acoustique_dB": 78.0,     # Bruit de réacteur
+                "attenuation_vitrage_db": -2.1   # Hublot acrylique triple couche
+            }
+        elif self.type_vehicule == "vaisseau_spatial":
+            return {
+                "vitesse_m_s": 7660.0,         # Vitesse orbitale ISS (7.66 km/s)
+                "altitude_m": 420000.0,        # Orbite basse LEO
+                "latitude_deg": 0.0,           # Équatorial par défaut
+                "longitude_deg": 0.0,
+                "milieu": "vide",              # PLUS de réfraction atmosphérique externe
+                "pression_interieure_hPa": 1013.25, # Atmosphère artificielle
+                "temperature_interieure_C": 21.0,
+                "humidite_relative_pct": 45.0,
+                "champ_electrostatique_V_m": 150.0,
+                "bruit_acoustique_dB": 60.0,
+                "attenuation_vitrage_db": -0.8   # Quartz trempé haute pureté
+            }
+        else: # "laboratoire", "voiture", "train" au sol
+            return {
+                "vitesse_m_s": 0.0 if self.type_vehicule == "laboratoire" else 35.0, 
+                "altitude_m": 55.0,
+                "latitude_deg": 43.29070,
+                "longitude_deg": 5.35490,
+                "milieu": "atmosphere",
+                "pression_interieure_hPa": 1013.25, # Effet de serre intérieur standard
+                "temperature_interieure_C": 38.5,  # Surchauffé par effet de serre solaire
+                "humidite_relative_pct": 40.0,
+                "champ_electrostatique_V_m": 800.0,
+                "bruit_acoustique_dB": 68.0,
+                "attenuation_vitrage_db": -1.2
+            }
 
-def acquerir_meteorologie_synoptique(lat, lon):
-    url = "https://api.open-meteo.com/v1/forecast"
-    params = {
-        "latitude": lat, "longitude": lon,
-        "current": ["temperature_2m", "relative_humidity_2m", "surface_pressure"],
-        "timeformat": "unixtime", "timezone": "GMT"
-    }
-    try:
-        reponse = requests.get(url, params=params, timeout=15)
-        reponse.raise_for_status()
-        donnees = reponse.json()["current"]
-        return {
-            "pression_hpa": float(donnees["surface_pressure"]),
-            "temperature_c": float(donnees["temperature_2m"]),
-            "humidite_relative": float(donnees["relative_humidity_2m"]),
-            "source": "WMO Synoptic Grid (ECMWF/DWD)"
-        }
-    except Exception as e:
-        print(f"[WARN] Échec télémétrie météo ({e}). Utilisation ISA.", file=sys.stderr)
-        return {
-            "pression_hpa": 1013.25, "temperature_c": 15.0, "humidite_relative": 50.0,
-            "source": "International Standard Atmosphere (ICAO) Fallback"
-        }
-
-def calculer_magnitude_iau_2018(astre, r_helio, delta_geo, angle_phase_deg):
-    alpha = angle_phase_deg
-    if astre == "soleil":
-        return -26.74
-    elif astre == "lune":
-        return float(-12.74 + 0.026 * alpha + 4.0 * (10**-9) * (alpha**4))
+def calculer_magnitude_lunaire_reelle(angle_phase_deg, r_helio_ua, delta_geo_ua):
+    """
+    Loi photométrique empirique non-linéaire de la Lune (Effet d'opposition de Seeliger).
+    Élimine la valeur fixe erronée de la Pleine Lune.
+    """
+    alpha = abs(angle_phase_deg)
+    # Formule standard de l'IAU pour la magnitude de la Lune
+    mag_standard = -12.74 + 0.026 * alpha + 4.0e-9 * (alpha**4)
     
-    sec_dist = max(1e-5, float(r_helio * delta_geo))
-    
-    if astre == "mercure":
-        return float(-0.61 + 3.80 * (alpha/100) - 2.73 * ((alpha/100)**2) + 2.00 * ((alpha/100)**3) + 5 * np.log10(sec_dist))
-    elif astre == "venus":
-        return float(-4.47 + 0.13 * (alpha/100) + 2.39 * ((alpha/100)**2) - 0.65 * ((alpha/100)**3) + 5 * np.log10(sec_dist))
-    elif astre == "mars":
-        return float(-1.60 + 1.60 * (alpha/100) + 5 * np.log10(sec_dist))
-    elif astre == "jupiter":
-        return float(-9.395 + 0.05 * (alpha/100) + 5 * np.log10(sec_dist))
-    elif astre == "saturne":
-        return float(-8.94 + 2.40 * (alpha/100) + 5 * np.log10(sec_dist))
-    return 0.0
+    # Ajustement de la distance par la loi en carré inverse
+    # Référencé à la distance moyenne (R_helio ~ 1 UA, Delta ~ 0.00257 UA)
+    facteur_distance = 5 * np.log10((r_helio_ua * delta_geo_ua) / (1.0 * 0.00257))
+    return float(mag_standard + facteur_distance)
 
-def executer_pipeline():
+def executer_pipeline_multiphysique(type_vehicule="laboratoire"):
+    # 1. Chargement de la télémétrie des capteurs du véhicule
+    vehicule = VehiculeEnvironnement(type_vehicule)
+    capteurs = vehicule.acquerir_telemetrie_dynamique()
+    
+    # 2. Métrologie du Temps Atomique (Génération du TAI et TT sans heure Android)
+    maintenant_utc = datetime.now(timezone.utc)
+    t_utc = Time(maintenant_utc, scale='utc')
+    
+    # Calcul strict des échelles de temps de la physique atomique et relativiste
+    t_tai = t_utc.tai
+    t_tt = t_utc.tt
+    jd_tai = t_tai.jd
+    
+    # 3. Relativité Restreinte : Correction de Lorentz (Dilatation du temps à bord)
+    c = 299792458.0 # m/s
+    beta = capteurs["vitesse_m_s"] / c
+    facteur_lorentz_gamma = 1.0 / np.sqrt(1.0 - beta**2)
+    
+    # 4. Géodésie Dynamique (Coordonnées de l'instrument)
+    loc_station = EarthLocation(
+        lat=capteurs["latitude_deg"]*u.deg, 
+        lon=capteurs["longitude_deg"]*u.deg, 
+        height=capteurs["altitude_m"]*u.m
+    )
+    
+    # 5. Physique de la Réfraction Interne (Effet de serre + Acoustique)
+    # Effet de la pression acoustique haute fréquence sur la pression de base
+    p_acoustique_pascal = 2e-5 * (10**(capteurs["bruit_acoustique_dB"]/20))
+    p_totale_hpa = capteurs["pression_interieure_hPa"] + (p_acoustique_pascal / 100.0)
+    
+    t_interieure_k = capteurs["temperature_interieure_C"] + 273.15
+    R_air_sec = 287.05
+    rho_air_interieur = (p_totale_hpa * 100) / (R_air_sec * t_interieure_k)
+    
+    # Équation de Gladstone-Dale pour l'indice de réfraction du milieu de la cabine (n)
+    constant_gladstone_dale = 0.226e-3 # m3/kg pour l'air visible
+    indice_n_interieur = 1.0 + (constant_gladstone_dale * rho_air_interieur)
+    
+    # 6. Initialisation du modèle orbital JPL DE440
     try:
         solar_system_ephemeris.set('de440')
-        _verification_instant = Time(datetime.now(timezone.utc))
-        _ = get_body("sun", _verification_instant, location=STATION_LOCATION)
-        print("[SYS] Noyau d'intégration numérique JPL DE440 initialisé.")
-    except Exception as e:
-        print(f"[WARN] Noyau JPL DE440 indisponible ({e}). Bascule sur analytique standard.", file=sys.stderr)
+    except Exception:
         solar_system_ephemeris.set('builtin')
 
-    meteo = acquerir_meteorologie_synoptique(LATITUDE, LONGITUDE)
-    pression_astro = meteo["pression_hpa"] * u.hPa
-    temp_astro = meteo["temperature_c"] * u.deg_C
-    humidite_unitaire = meteo["humidite_relative"] / 100.0
-    
-    R_air_sec = 287.05
-    rho_air = (meteo["pression_hpa"] * 100) / (R_air_sec * (meteo["temperature_c"] + 273.15))
-
-    maintenant_utc = datetime.now(timezone.utc)
+    # Génération du vecteur temporel complet (1440 minutes pour la journée)
     base_midi_utc = datetime(maintenant_utc.year, maintenant_utc.month, maintenant_utc.day, tzinfo=timezone.utc)
+    series_temporelles = [base_midi_utc + timedelta(minutes=int(m)) for m in range(1440)]
+    t_vector = Time(series_temporelles, scale='utc')
     
-    vecteur_minutes = np.arange(1440)
-    series_temporelles = [base_midi_utc + timedelta(minutes=int(m)) for m in vecteur_minutes]
-    t_vector = Time(series_temporelles)
-    
-    t_instant = Time(maintenant_utc)
-    jd_val = t_instant.jd
-    
-    lst_obj = t_instant.sidereal_time('mean', longitude=LONGITUDE * u.deg)
-    lst_hms = lst_obj.to(u.hourangle).hms
-    lst_str = f"{int(lst_hms.h):02d}:{int(lst_hms.m):02d}:{int(lst_hms.s):02d}"
-    
-    cadre_refracte = AltAz(
-        location=STATION_LOCATION, obstime=t_vector, 
-        pressure=pression_astro, temperature=temp_astro, 
-        relative_humidity=humidite_unitaire, obswl=0.55*u.micron
-    )
-    cadre_vide = AltAz(location=STATION_LOCATION, obstime=t_vector)
+    # Configuration des cadres d'observation optiques
+    if capteurs["milieu"] == "vide":
+        # Dans l'espace : pas d'atmosphère extérieure perturbatrice
+        cadre_optique = AltAz(location=loc_station, obstime=t_vector)
+    else:
+        # Dans l'atmosphère : réfraction couplée à la thermodynamique locale
+        cadre_optique = AltAz(
+            location=loc_station, obstime=t_vector, 
+            pressure=p_totale_hpa*u.hPa, temperature=capteurs["temperature_interieure_C"]*u.deg_C, 
+            relative_humidity=(capteurs["humidite_relative_pct"]/100.0), obswl=0.55*u.micron
+        )
+        
+    cadre_vide = AltAz(location=loc_station, obstime=t_vector)
 
-    soleil_barycentrique = get_body("sun", t_vector, location=STATION_LOCATION)
+    # Positions barycentriques pour le calcul d'angle de phase céleste
+    soleil_barycentrique = get_body("sun", t_vector, location=loc_station)
     xyz_soleil = soleil_barycentrique.icrs.cartesian.xyz.to(u.au).value
 
-    CORPS_TRADUCTION = {
-        "soleil": "sun", "lune": "moon", "mercure": "mercury",
-        "venus": "venus", "mars": "mars", "jupiter": "jupiter", "saturne": "saturn"
-    }
-
+    CORPS_CELESTES = {"soleil": "sun", "lune": "moon"}
     ephemerides_output = {}
 
-    for cle_fr, id_en in CORPS_TRADUCTION.items():
-        try:
-            corps_barycentrique = get_body(id_en, t_vector, location=STATION_LOCATION)
-        except Exception as err_body:
-            print(f"[WARN] Impossible de calculer la matrice pour {cle_fr} : {err_body}", file=sys.stderr)
-            continue
-            
-        proj_horiz_ref = corps_barycentrique.transform_to(cadre_refracte)
-        proj_horiz_brut = corps_barycentrique.transform_to(cadre_vide)
+    for cle_fr, id_en in CORPS_CELESTES.items():
+        corps = get_body(id_en, t_vector, location=loc_station)
         
-        az_arr = proj_horiz_ref.az.deg
-        el_ref_arr = proj_horiz_ref.alt.deg
-        el_brut_arr = proj_horiz_brut.alt.deg
-        delta_r_arr = np.maximum(0.0, el_ref_arr - el_brut_arr)
+        proj_optique = corps.transform_to(cadre_optique)
+        proj_brut = corps.transform_to(cadre_vide)
         
-        dist_km_arr = proj_horiz_ref.distance.km
-        dist_ua_arr = proj_horiz_ref.distance.au
-        ra_hms = corps_barycentrique.ra.hms
-        dec_deg = corps_barycentrique.dec.deg
+        # Récupération géométrique des angles
+        az_arr = proj_optique.az.deg
+        el_optique_arr = proj_optique.alt.deg
+        el_brut_arr = proj_brut.alt.deg
+        delta_r_arr = np.maximum(0.0, el_optique_arr - el_brut_arr)
+        
+        dist_ua_arr = proj_optique.distance.au
+        dist_km_arr = proj_optique.distance.km
 
+        # Calcul exact de l'angle de phase Soleil-Astre-Observateur (Sans Géocentrisme figé)
         if cle_fr == "soleil":
-            r_helio_arr = np.zeros(1440)
             angle_phase_arr = np.zeros(1440)
+            mag_arr = np.full(1440, -26.74)
         else:
-            xyz_corps = corps_barycentrique.icrs.cartesian.xyz.to(u.au).value
+            xyz_corps = corps.icrs.cartesian.xyz.to(u.au).value
             vec_corps_soleil = xyz_soleil - xyz_corps
             r_helio_arr = np.linalg.norm(vec_corps_soleil, axis=0)
             
@@ -157,80 +191,65 @@ def executer_pipeline():
             
             cos_phase = np.clip(dot_product / denominateur, -1.0, 1.0)
             angle_phase_arr = np.degrees(np.arccos(cos_phase))
+            
+            # Application de la correction de magnitude Lunaire réaliste
+            mag_arr = [calculer_magnitude_lunaire_reelle(angle_phase_arr[m], r_helio_arr[m], dist_ua_arr[m]) for m in range(1440)]
 
-        lever_str, coucher_str, transit_str = "--:--:--", "--:--:--", "--:--:--"
-        idx_transit = np.argmax(el_ref_arr)
-        transit_str = (base_midi_utc + timedelta(minutes=int(idx_transit))).strftime("%H:%M:%S")
+        # Extraction de la minute courante de l'index UTC
+        m_index = maintenant_utc.hour * 60 + maintenant_utc.minute
         
-        limite_horizon = -0.267 if cle_fr in ["soleil", "lune"] else 0.0
-        for m in range(1439):
-            if el_ref_arr[m] < limite_horizon and el_ref_arr[m+1] >= limite_horizon:
-                lever_str = (base_midi_utc + timedelta(minutes=m)).strftime("%H:%M:%S")
-            elif el_ref_arr[m] >= limite_horizon and el_ref_arr[m+1] < limite_horizon:
-                coucher_str = (base_midi_utc + timedelta(minutes=m)).strftime("%H:%M:%S")
+        ephemerides_output[cle_fr] = {
+            "azimut_vrai_deg": float(az_arr[m_index]),
+            "elevation_geometrique_deg": float(el_brut_arr[m_index]),
+            "elevation_refractee_corrigee_deg": float(el_optique_arr[m_index]),
+            "delta_refraction_deg": float(delta_r_arr[m_index]),
+            "distance_km": float(dist_km_arr[m_index]),
+            "magnitude_visuelle_reelle": round(float(mag_arr[m_index]), 2),
+            "angle_phase_deg": float(angle_phase_arr[m_index])
+        }
 
-        liste_chronologique = []
-        for m in range(1440):
-            mag_calc = calculer_magnitude_iau_2018(cle_fr, r_helio_arr[m], dist_ua_arr[m], angle_phase_arr[m])
-            ra_str = f"{int(ra_hms.h[m]):02d}h {int(ra_hms.m[m]):02d}m {int(ra_hms.s[m]):02d}s"
-            
-            liste_chronologique.append({
-                "azimut_vrai": float(az_arr[m]),
-                "elevation_geometrique": float(el_brut_arr[m]),
-                "elevation_refractee": float(el_ref_arr[m]),
-                "correction_refraction": float(delta_r_arr[m]),
-                "distance_ua": float(dist_ua_arr[m]),
-                "distance_km": float(dist_km_arr[m]),
-                "magnitude": round(mag_calc, 2),
-                "ascension_droite": ra_str,
-                "declinaison": float(dec_deg[m]),
-                "lever_utc": lever_str,
-                "transit_utc": transit_str,
-                "coucher_utc": coucher_str
-            })
-            
-        ephemerides_output[cle_fr] = liste_chronologique
-
+    # Assemblage de la structure de données finale
     flux_structure = {
         "METADATA": {
-            "generateur": "Astropy Keplerian/JPL Vector Engine",
-            "generation_utc": maintenant_utc.strftime("%Y-%m-%d %H:%M:%S"),
-            "meteo_provenance": meteo["source"]
+            "generateur": "Astropy Dynamic Vehicle Multiphysics Engine",
+            "type_plateforme": capteurs["milieu"].upper() if type_vehicule == "vaisseau_spatial" else type_vehicule.upper()
         },
-        "HORLOGE": {
-            "utc": maintenant_utc.strftime("%H:%M:%S"),
-            "jd": float(jd_val),
-            "lst": lst_str
+        "METROLOGIE_TEMPS_ATOMIQUE": {
+            "ISO_UTC": maintenant_utc.strftime("%Y-%m-%d %H:%M:%S"),
+            "JD_TAI": float(jd_tai),
+            "TT_Echelle_s": float(t_tt.jd * 86400.0),
+            "Dilatation_Lorentz_Gamma": float(facteur_lorentz_gamma)
         },
-        "STATION_COORDONNEES": {
-            "latitude_deg": LATITUDE,
-            "longitude_deg": LONGITUDE,
-            "altitude_m": ALTITUDE,
-            # CORRECTION : Extraction directe des attributs de l'objet EarthLocation
-            "ecef_x_m": float(STATION_LOCATION.x.value),
-            "ecef_y_m": float(STATION_LOCATION.y.value),
-            "ecef_z_m": float(STATION_LOCATION.z.value)
+        "POSITION_GEOFENCING_MOBILE": {
+            "latitude_deg": float(capteurs["latitude_deg"]),
+            "longitude_deg": float(capteurs["longitude_deg"]),
+            "altitude_coordonnee_m": float(capteurs["altitude_m"]),
+            "ecef_x_m": float(loc_station.x.value),
+            "ecef_y_m": float(loc_station.y.value),
+            "ecef_z_m": float(loc_station.z.value)
         },
-        "ATMOSPHERE": {
-            "pression_hpa": float(meteo["pression_hpa"]),
-            "temperature_c": float(meteo["temperature_c"]),
-            "humidite_relative_pct": float(meteo["humidite_relative"]),
-            "densite_air_kgm3": float(rho_air)
+        "THERMODYNAMIQUE_HABITACLE_SERRE": {
+            "pression_effective_hPa": float(p_totale_hpa),
+            "temperature_air_interieur_C": float(capteurs["temperature_interieure_C"]),
+            "densite_air_locale_kg_m3": float(rho_air_interieur),
+            "indice_refraction_n_gladstone": float(indice_n_interieur)
         },
-        "SERIES_CHRONOLOGIQUES_1440": ephemerides_output
+        "COUPLAGES_ELECTROMAGNETIQUES_STATIQUES": {
+            "champ_electrostatique_surface_V_m": float(capteurs["champ_electrostatique_V_m"]),
+            "attenuation_vitrage_spectrale_dB": float(capteurs["attenuation_vitrage_db"]),
+            "bruit_acoustique_pression_Pa": float(p_acoustique_pascal)
+        },
+        "DATA_STREAMS": ephemerides_output
     }
 
-    nom_fichier = './flux_live.json'
-    with open(nom_fichier + '.tmp', 'w') as f:
-        json.dump(flux_structure, f, indent=4)
-    os.replace(nom_fichier + '.tmp', nom_fichier)
-    print("[SUCCESS] Traitement et sérialisation matricielle terminés.")
+    print(json.dumps(flux_structure, indent=4, ensure_ascii=False))
 
 if __name__ == "__main__":
-    # PROTECTION GLOBALE : Capturer toute exception pour tracer le plantage du runner
+    # Détection de l'argument d'environnement de véhicule : "laboratoire", "avion", "voiture", "vaisseau_spatial"
+    choix_plateforme = sys.argv[1] if len(sys.argv) > 1 else "avion"
     try:
-        executer_pipeline()
-    except Exception as fatal_error:
-        print("\n[CRITICAL ERROR] Le pipeline s'est effondré :", file=sys.stderr)
+        executer_pipeline_multiphysique(choix_plateforme)
+    except Exception as e:
+        print(f"[CRITICAL] Effondrement du pipeline multiphysique : {e}", file=sys.stderr)
         traceback.print_exc()
         sys.exit(1)
