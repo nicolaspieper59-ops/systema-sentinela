@@ -2,15 +2,18 @@ name: Moteur Multiphysique Éphémérides
 
 on:
   schedule:
-    # S'exécute automatiquement toutes les 10 minutes (Fréquence maximale gratuite sur GitHub)
     - cron: '*/10 * * * *'
-  workflow_dispatch: # Permet de lancer le calcul manuellement depuis l'interface GitHub
+  workflow_dispatch:
+
+# Résolution de l'avertissement global GitHub 2026 pour Node.js 24
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   run-engine:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Autorise GitHub à enregistrer le nouveau fichier JSON sur le dépôt
+      contents: write
 
     steps:
     - name: Récupération du code source
@@ -20,16 +23,20 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-        cache: 'pip'
+        # Suppression de la ligne cache: 'pip' pour éviter le plantage si le fichier est introuvable
 
     - name: Installation des dépendances métrologiques
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        # Sécurité : Vérifie si le fichier existe, sinon installe les paquets en dur
+        if [ -f requirements.txt ]; then
+          pip install -r requirements.txt
+        else
+          pip install numpy astropy
+        fi
 
     - name: Exécution du calcul physique (Mode Avion par défaut)
       run: |
-        # On exécute le script et on redirige la sortie JSON brute dans le fichier cible
         python dynamic_multiphysics_engine.py avion > flux_live.json
 
     - name: Déploiement et sauvegarde du flux de données
@@ -37,6 +44,5 @@ jobs:
         git config --global user.name "GitHub Action Bot"
         git config --global user.email "actions@github.com"
         git add flux_live.json
-        # On applique un commit uniquement si les données ont changé
         git diff-index --quiet HEAD || git commit -m "Mise à jour métrologique TAI : $(date -u)"
         git push
