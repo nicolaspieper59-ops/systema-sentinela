@@ -9,8 +9,8 @@
             --slate-400: #94a3b8; --sky-400: #38bdf8; --emerald-400: #34d399;
             --amber-400: #fbbf24; 
         }
-        body { background: var(--slate-950); color: var(--slate-400); font-family: 'Courier New', monospace; font-size: 12px; padding: 20px; }
-        .wrapper { max-width: 1400px; margin: 0 auto; }
+        body { background: var(--slate-950); color: var(--slate-400); font-family: 'Courier New', monospace; font-size: 12px; padding: 20px; margin: 0; }
+        .wrapper { max-width: 1400px; margin: 20px auto; padding: 0 20px; }
         .header { border: 1px solid var(--slate-800); background: var(--slate-900); padding: 15px; color: var(--sky-400); display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 20px; }
         .grid { display: grid; grid-template-columns: 550px 1fr; gap: 20px; }
         .panel { border: 1px solid var(--slate-800); background: #040815; padding: 16px; border-radius: 2px; }
@@ -20,10 +20,10 @@
         .data-geo { color: var(--amber-400); font-weight: bold; }
         .sub-group { border: 1px solid var(--slate-800); padding: 12px; margin-bottom: 12px; background: rgba(255,255,255,0.01); }
         .sub-title { color: var(--sky-400); font-weight: bold; font-size: 10px; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid var(--slate-800); padding-bottom: 4px; display: flex; justify-content: space-between; }
-        select { background: #000; color: var(--sky-400); border: 1px solid var(--sky-400); font-family: monospace; font-size: 11px; }
-        .canvas-container { width: 100%; height: 680px; background: #01040d; border: 1px solid var(--slate-800); }
+        select { background: #000; color: var(--sky-400); border: 1px solid var(--sky-400); font-family: monospace; font-size: 11px; padding: 2px; }
+        .canvas-container { width: 100%; height: 680px; background: #01040d; border: 1px solid var(--slate-800); position: relative; }
         #radar-canvas { display: block; width: 100%; height: 100%; }
-        #console-log { margin-top: 20px; padding: 10px; background: #01040d; border: 1px solid var(--slate-800); color: var(--emerald-400); font-size: 11px; }
+        #console-log { margin-top: 20px; padding: 10px; background: #01040d; border: 1px solid var(--slate-800); color: var(--emerald-400); font-size: 11px; overflow-x: auto; white-space: pre-wrap; }
     </style>
 </head>
 <body>
@@ -101,17 +101,25 @@
     let AstreSelectionne = "SOLEIL";
     let HorlogeLocaleZero = 0;
     let JdTaiZero = 0, TtZero = 0;
-    let IndexMinuteFixe = 0;
 
-    function ecrireLog(texte) {
-        document.getElementById('console-log').innerText = `[LOG] ${texte}`;
+    function ecrireLog(texte, estErreur = false) {
+        const logBox = document.getElementById('console-log');
+        logBox.innerText = `[LOG] ${texte}`;
+        logBox.style.color = estErreur ? '#ff6b6b' : 'var(--emerald-400)';
     }
 
     async function synchroniserDonnees() {
         try {
             const res = await fetch('./flux_live.json?t=' + Date.now());
-            if (!res.ok) throw new Error("Flux d'acquisition indisponible.");
+            if (!res.ok) throw new Error(`Flux distant inaccessible (Statut HTTP: ${res.status}).`);
+            
             const data = await res.json();
+            
+            // ÉTANCHÉITÉ STRUCTURELLE STRICTE ANTI-UNDEFINED
+            if (!data || !data.METROLOGIE_TEMPS_ATOMIQUE || !data.POSITION_GEOFENCING_MOBILE || !data.DATA_STREAMS || !data.THERMODYNAMIQUE_HABITACLE_SERRE || !data.COUPLAGES_ELECTROMAGNETIQUES_STATIQUES) {
+                console.error("Payload incomplet ou asynchrone détecté :", data);
+                throw new Error("Mise à jour du pipeline en cours au niveau serveur. Maintien des anciennes coordonnées.");
+            }
             
             FluxJsonDistant = data;
             HorlogeLocaleZero = performance.now();
@@ -119,15 +127,13 @@
             JdTaiZero = data.METROLOGIE_TEMPS_ATOMIQUE.JD_TAI;
             TtZero = data.METROLOGIE_TEMPS_ATOMIQUE.TT_Echelle_s;
 
-            // Chargement géodésique dynamique
-            document.getElementById('platform-type').innerText = data.METADATA.type_plateforme;
-            document.getElementById('geo-latlon').innerText = `${data.POSITION_GEOFENCING_MOBILE.latitude_deg.toFixed(5)}°N / ${data.POSITION_GEOFENCING_MOBILE.longitude_deg.toFixed(5)}°E`;
+            document.getElementById('platform-type').innerText = data.METADATA?.type_plateforme || "INCONNUE";
+            document.getElementById('geo-latlon').innerText = `${data.POSITION_GEOFENCING_MOBILE.latitude_deg.toFixed(5)}° / ${data.POSITION_GEOFENCING_MOBILE.longitude_deg.toFixed(5)}°`;
             document.getElementById('geo-alt').innerText = data.POSITION_GEOFENCING_MOBILE.altitude_coordonnee_m.toFixed(1);
             document.getElementById('geo-ecef-x').innerText = Math.floor(data.POSITION_GEOFENCING_MOBILE.ecef_x_m).toLocaleString('fr-FR');
             document.getElementById('geo-ecef-y').innerText = Math.floor(data.POSITION_GEOFENCING_MOBILE.ecef_y_m).toLocaleString('fr-FR');
             document.getElementById('geo-ecef-z').innerText = Math.floor(data.POSITION_GEOFENCING_MOBILE.ecef_z_m).toLocaleString('fr-FR');
             
-            // Chargement des constantes multiphysiques de l'habitacle
             document.getElementById('m-pres').innerText = data.THERMODYNAMIQUE_HABITACLE_SERRE.pression_effective_hPa.toFixed(2);
             document.getElementById('m-temp').innerText = data.THERMODYNAMIQUE_HABITACLE_SERRE.temperature_air_interieur_C.toFixed(1);
             document.getElementById('m-rho').innerText = data.THERMODYNAMIQUE_HABITACLE_SERRE.densite_air_locale_kg_m3.toFixed(4);
@@ -139,10 +145,10 @@
             
             document.getElementById('lorentz-gamma').innerText = data.METROLOGIE_TEMPS_ATOMIQUE.Dilatation_Lorentz_Gamma.toFixed(10);
 
-            ecrireLog("Données cinématiques et d'environnement physique chargées de manière stable.");
+            ecrireLog("Données d'instrumentation synchronisées de manière stable.");
             calculerCadence();
         } catch (e) {
-            ecrireLog("Échec d'intégration : " + e.message);
+            ecrireLog("Échec d'intégration temporaire : " + e.message, true);
         }
     }
 
@@ -150,16 +156,13 @@
         if (!FluxJsonDistant) return;
         
         const deltaMs = performance.now() - HorlogeLocaleZero;
-        
-        // Incrémentation à la nanoseconde des bases de temps de la physique atomique
         const jdTaiActuel = JdTaiZero + (deltaMs / 86400000);
         const ttActuel = TtZero + (deltaMs / 1000);
         
         document.getElementById('astro-jd').innerText = jdTaiActuel.toFixed(6);
         document.getElementById('astro-tt').innerText = ttActuel.toFixed(3);
         
-        // Extraction de l'heure UTC
-        const dateUtc = new Date(FluxJsonDistant.METROLOGIE_TEMPS_ATOMIQUE.ISO_UTC);
+        const dateUtc = new Date(FluxJsonDistant.METROLOGIE_TEMPS_ATOMIQUE.ISO_UTC.replace(/-/g, "/"));
         const instantCadence = new Date(dateUtc.getTime() + deltaMs);
         document.getElementById('clock-utc').innerText = `UTC : ${instantCadence.toISOString().substr(11, 8)}`;
         
@@ -179,7 +182,7 @@
         document.getElementById('ast-az').innerText = `${p.azimut_vrai_deg.toFixed(3)}°`;
         document.getElementById('ast-el').innerText = `${p.elevation_geometrique_deg.toFixed(3)}°`;
         document.getElementById('ast-el-ref').innerText = `${p.elevation_refractee_corrigee_deg.toFixed(3)}°`;
-        document.getElementById('ast-delta-ref').innerText = `+${p.delta_refraction_deg.toFixed(3)}°`;
+        document.getElementById('ast-delta-ref').innerText = `+Δ ${p.delta_refraction_deg.toFixed(3)}°`;
         document.getElementById('ast-phase').innerText = `${p.angle_phase_deg.toFixed(2)}°`;
         document.getElementById('ast-dist-km').innerText = Math.floor(p.distance_km).toLocaleString('fr-FR');
         document.getElementById('ast-mag').innerText = p.magnitude_visuelle_reelle.toFixed(2);
@@ -197,7 +200,6 @@
         const rMax = Math.min(cx, cy) - 40;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        // Tracé des cercles d'altitudes horizontales
         ctx.strokeStyle = "rgba(148, 163, 184, 0.12)";
         ctx.lineWidth = 1;
         for (let i = 1; i <= 3; i++) {
@@ -206,7 +208,6 @@
             ctx.stroke();
         }
 
-        // Ligne d'horizon physique et méridien local
         ctx.strokeStyle = "rgba(148, 163, 184, 0.3)";
         ctx.beginPath(); 
         ctx.moveTo(cx - rMax, cy); ctx.lineTo(cx + rMax, cy); 
@@ -217,24 +218,18 @@
         ctx.fillText("NORD 0°", cx - 22, cy - rMax - 10);
         ctx.fillText("EST 90°", cx + rMax + 8, cy + 4);
 
-        // Seuil physique de visibilité atmosphérique (Horizon géométrique corrigé)
         if (el >= -0.833) {
             const rayonAstre = rMax * (1 - (Math.max(0, el) / 90));
             const xAstre = cx + rayonAstre * Math.sin((az * Math.PI) / 180);
             const yAstre = cy - rayonAstre * Math.cos((az * Math.PI) / 180);
             
-            // Tracé du vecteur d'azimut optique
             ctx.strokeStyle = "rgba(56, 189, 248, 0.35)";
             ctx.beginPath(); 
-            ctx.moveTo(cx, cy); 
-            ctx.lineTo(xAstre, yAstre); 
+            ctx.moveTo(cx, cy); ctx.lineTo(xAstre, yAstre); 
             ctx.stroke();
             
-            // Point d'impact photonique du vecteur astre
             ctx.fillStyle = "var(--amber-400)";
-            ctx.beginPath(); 
-            ctx.arc(xAstre, yAstre, 6, 0, 2 * Math.PI); 
-            ctx.fill();
+            ctx.beginPath(); ctx.arc(xAstre, yAstre, 6, 0, 2 * Math.PI); ctx.fill();
             
             ctx.fillStyle = "#fff";
             ctx.fillText(AstreSelectionne, xAstre + 12, yAstre + 4);
@@ -244,16 +239,16 @@
     function ajusterDimension() {
         const b = canvas.parentElement.getBoundingClientRect();
         canvas.width = b.width; canvas.height = b.height;
-        calculerCadence();
+        if(FluxJsonDistant) calculerCadence();
     }
 
     window.onresize = ajusterDimension;
     window.onload = () => {
         ajusterDimension();
         synchroniserDonnees();
-        setInterval(calculerCadence, 250);   // Cadence d'horloge de rafraîchissement
-        setInterval(synchroniserDonnees, 30000); // Boucle de synchronisation du flux
+        setInterval(calculerCadence, 250);
+        setInterval(synchroniserDonnees, 30000); // Rafraîchissement HTTP régulé
     };
 </script>
 </body>
-                    </html>
+                                                                                                                    </html>
