@@ -1,66 +1,42 @@
-name: Astronomical Ephemeris Generation
+name: Moteur Multiphysique Éphémérides
 
 on:
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  ASTROPY_KEYPLANET_CACHE: "/home/runner/.astropy/cache/coordinates/jplephem"
+    # S'exécute automatiquement toutes les 10 minutes (Fréquence maximale gratuite sur GitHub)
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Permet de lancer le calcul manuellement depuis l'interface GitHub
 
 jobs:
-  run-ephemeris-engine:
+  run-engine:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Autorise GitHub à enregistrer le nouveau fichier JSON sur le dépôt
 
     steps:
-    - name: 1. Extraction du dépôt
+    - name: Récupération du code source
       uses: actions/checkout@v4
-      with:
-        persist-credentials: true
 
-    - name: 2. Initialisation du runtime Python
+    - name: Configuration de Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
+        cache: 'pip'
 
-    - name: 3. Chargement des dépendances et Téléchargement du Noyau JPL DE440
+    - name: Installation des dépendances métrologiques
       run: |
         python -m pip install --upgrade pip
-        python -m pip install numpy astropy jplephem requests astropy-iers-data pandas scipy
-        
-        # Création du dossier de cache d'Astropy pour bloquer les requêtes réseau futures
-        mkdir -p "$ASTROPY_KEYPLANET_CACHE"
-        echo "[SYS] Pré-téléchargement du noyau d'intégration numérique JPL DE440 (140Mo+)..."
-        curl -L -o "$ASTROPY_KEYPLANET_CACHE/de440.bsp" https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440.bsp
+        pip install -r requirements.txt
 
-    - name: 4. Exécution du générateur de matrice éphéméride
+    - name: Exécution du calcul physique (Mode Avion par défaut)
       run: |
-        if [ -f "generate_matrix.py" ]; then
-          echo "[SYS] Lancement de generate_matrix.py en environnement étanche..."
-          python generate_matrix.py
-        else
-          echo "[CRITICAL] generate_matrix.py est introuvable à la racine du dépôt."
-          exit 1
-        fi
+        # On exécute le script et on redirige la sortie JSON brute dans le fichier cible
+        python dynamic_multiphysics_engine.py avion > flux_live.json
 
-    - name: 5. Publication et synchronisation de la matrice 5D
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Déploiement et sauvegarde du flux de données
       run: |
-        git config --global user.name "Astropy Automation Bot"
-        git config --global user.email "astropy-bot@github.com"
-        git config --global --add safe.directory "$GITHUB_WORKSPACE"
-        
-        git add flux_live.json matrice_jpl_brute.csv orbites.json 2>/dev/null || true
-        
-        if git diff --staged --quiet; then
-          echo "Aucune déviation cinématique détectée."
-        else
-          echo "Modifications détectées. Synchronisation des données orbitales en cours..."
-          git commit -m "SENTINELA : Régénération de la matrice 5D [Automatique Cloud]"
-          git push origin HEAD:${{ github.ref }}
-        fi
+        git config --global user.name "GitHub Action Bot"
+        git config --global user.email "actions@github.com"
+        git add flux_live.json
+        # On applique un commit uniquement si les données ont changé
+        git diff-index --quiet HEAD || git commit -m "Mise à jour métrologique TAI : $(date -u)"
+        git push
