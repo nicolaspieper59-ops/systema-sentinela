@@ -2,8 +2,8 @@ name: Astronomical Ephemeris Generation
 
 on:
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
+    - cron: '0 * * * *'  # Exécution au début de chaque heure
+  workflow_dispatch:      # Permet le déclenchement manuel depuis l'onglet Actions
 
 permissions:
   contents: write
@@ -31,10 +31,17 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install numpy astropy jplephem requests astropy-iers-data
 
-    - name: 4. Exécution du générateur d'éphémérides
-      run: python ephemerides_engine.py
+    - name: 4. Exécution du générateur de matrice éphéméride
+      run: |
+        if [ -f "generate_matrix.py" ]; then
+          echo "[SYS] Lancement de generate_matrix.py..."
+          python generate_matrix.py
+        else
+          echo "[CRITICAL] generate_matrix.py est introuvable à la racine du dépôt."
+          exit 1
+        fi
 
-    - name: 5. Publication et synchronisation du dépôt
+    - name: 5. Publication et synchronisation de la matrice 5D
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
@@ -42,12 +49,13 @@ jobs:
         git config --global user.email "astropy-bot@github.com"
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
         
-        git add flux_live.json 2>/dev/null || true
+        # Suivi des fichiers mis à jour par generate_matrix.py
+        git add flux_live.json matrice_jpl_brute.csv orbites.json 2>/dev/null || true
         
         if git diff --staged --quiet; then
-          echo "Aucune déviation orbitale détectée."
+          echo "Aucune déviation cinématique ou modification de matrice détectée."
         else
-          echo "Modifications cinématiques détectées. Synchronisation réseau en cours..."
-          git commit -m "Ephemeris Update: Vectorized IAU-2000/2006 Dataset [Automated]"
+          echo "Modifications détectées. Synchronisation des données orbitales en cours..."
+          git commit -m "SENTINELA : Régénération de la matrice 5D [Automatique Cloud]"
           git push origin HEAD:${{ github.ref }}
         fi
