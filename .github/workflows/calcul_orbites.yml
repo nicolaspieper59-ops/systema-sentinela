@@ -2,14 +2,15 @@ name: Astronomical Ephemeris Generation
 
 on:
   schedule:
-    - cron: '0 * * * *'  # Exécution au début de chaque heure
-  workflow_dispatch:      # Permet le déclenchement manuel depuis l'onglet Actions
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  ASTROPY_KEYPLANET_CACHE: "/home/runner/.astropy/cache/coordinates/jplephem"
 
 jobs:
   run-ephemeris-engine:
@@ -26,15 +27,20 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: 3. Chargement étanche des dépendances
+    - name: 3. Chargement des dépendances et Téléchargement du Noyau JPL DE440
       run: |
         python -m pip install --upgrade pip
-        python -m pip install numpy astropy jplephem requests astropy-iers-data
+        python -m pip install numpy astropy jplephem requests astropy-iers-data pandas scipy
+        
+        # Création du dossier de cache d'Astropy pour bloquer les requêtes réseau futures
+        mkdir -p "$ASTROPY_KEYPLANET_CACHE"
+        echo "[SYS] Pré-téléchargement du noyau d'intégration numérique JPL DE440 (140Mo+)..."
+        curl -L -o "$ASTROPY_KEYPLANET_CACHE/de440.bsp" https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440.bsp
 
     - name: 4. Exécution du générateur de matrice éphéméride
       run: |
         if [ -f "generate_matrix.py" ]; then
-          echo "[SYS] Lancement de generate_matrix.py..."
+          echo "[SYS] Lancement de generate_matrix.py en environnement étanche..."
           python generate_matrix.py
         else
           echo "[CRITICAL] generate_matrix.py est introuvable à la racine du dépôt."
@@ -49,11 +55,10 @@ jobs:
         git config --global user.email "astropy-bot@github.com"
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
         
-        # Suivi des fichiers mis à jour par generate_matrix.py
         git add flux_live.json matrice_jpl_brute.csv orbites.json 2>/dev/null || true
         
         if git diff --staged --quiet; then
-          echo "Aucune déviation cinématique ou modification de matrice détectée."
+          echo "Aucune déviation cinématique détectée."
         else
           echo "Modifications détectées. Synchronisation des données orbitales en cours..."
           git commit -m "SENTINELA : Régénération de la matrice 5D [Automatique Cloud]"
