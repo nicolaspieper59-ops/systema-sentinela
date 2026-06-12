@@ -4,9 +4,9 @@
         "type_plateforme": "AVION"
     },
     "METROLOGIE_TEMPS_ATOMIQUE": {
-        "ISO_UTC": "2026-06-12 01:39:52",
-        "JD_TAI": 2461203.5697829453,
-        "TT_Echelle_s": 212647988461.43048,
+        "ISO_UTC": "2026-06-12 06:20:04",
+        "JD_TAI": 2461203.7643700875,
+        "TT_Echelle_s": 212648005273.75958,
         "Dilatation_Lorentz_Gamma": 1.0000000000003353
     },
     "POSITION_GEOFENCING_MOBILE": {
@@ -26,25 +26,25 @@
     "DATA_STREAMS": {
         "soleil": {
             "instant_present": {
-                "azimut_vrai_deg": 29.512926875673674,
-                "elevation_geometrique_deg": -17.835965979110462,
-                "elevation_refractee_corrigee_deg": -17.835965979110462,
-                "delta_refraction_deg": 0.0,
-                "distance_km": 151905630.3911053,
+                "azimut_vrai_deg": 79.39968758844869,
+                "elevation_geometrique_deg": 23.1966955341085,
+                "elevation_refractee_corrigee_deg": 23.226559783892746,
+                "delta_refraction_deg": 0.029864249784248238,
+                "distance_km": 151908783.97503564,
                 "magnitude_visuelle_reelle": -26.74
             },
             "cinematique_instantanee": {
                 "vitesse_angulaire_azimut_deg_s": 0.004166666666666667
             },
             "metrologie_evenementielle": {
-                "jd_tt_transit_estime": 2461203.988175093
+                "jd_tt_transit_estime": 2461204.0441879
             }
         },
         "lune": {
             "instant_present": {
-                "azimut_vrai_deg": 209.51292687567368,
-                "elevation_geometrique_deg": 17.835965979110462,
-                "elevation_refractee_corrigee_deg": 17.835965979110462,
+                "azimut_vrai_deg": 259.39968758844867,
+                "elevation_geometrique_deg": -23.1966955341085,
+                "elevation_refractee_corrigee_deg": -23.1966955341085,
                 "delta_refraction_deg": 0.0,
                 "distance_km": 384400.0,
                 "magnitude_visuelle_reelle": -12.74
@@ -53,7 +53,7 @@
                 "vitesse_angulaire_azimut_deg_s": 0.004166666666666667
             },
             "metrologie_evenementielle": {
-                "jd_tt_transit_estime": 2461203.5701554455
+                "jd_tt_transit_estime": 2461203.7647425877
             }
         }
     }
