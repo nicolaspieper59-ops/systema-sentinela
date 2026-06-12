@@ -76,6 +76,7 @@
                 <div class="metric"><span>Date Julienne Atomique (JD TAI) :</span><span id="astro-jd" class="data" style="color:var(--amber-400)">------.-------</span></div>
                 <div class="metric"><span>Époque Dynamique TT (Métrologie) :</span><span id="astro-tt" class="data">---------.------ s</span></div>
                 <div class="metric"><span>Dilatation Temporelle (&gamma; Lorentz) :</span><span id="lorentz-gamma" class="data">1.00000000000000</span></div>
+                <div class="metric"><span>Dérive d'Einstein (RG) :</span><span id="einstein-shift" class="data" style="color:var(--rose-500)">0.00 s/s</span></div>
                 
                 <div class="sub-group">
                     <div class="sub-title">VECTEUR D'ÉTAT GÉOCENTRIQUE ITRF (CAPTATION)</div>
@@ -105,7 +106,8 @@
 
             <div class="panel">
                 <h2>CORRECTIONS THERMODYNAMICOCENTRIQUES LOCALES</h2>
-                <div class="metric"><span>Pression Acoustico-Barométrique ($P_{tot}$) :</span><span><span id="m-pres" class="data">----.------</span> hPa</span></div>
+                <div class="metric"><span>Pression Acoustico-Barométrique Cabine :</span><span><span id="m-pres" class="data">----.------</span> hPa</span></div>
+                <div class="metric"><span>Pression Stratosphérique Externe :</span><span><span id="m-pres-ext" class="data" style="color:var(--sky-400)">----.------</span> hPa</span></div>
                 <div class="metric"><span>Température Cellule de Mesure ($T$) :</span><span><span id="m-temp" class="data">--.--</span> °C</span></div>
                 <div class="metric"><span>Densité de Masse Volumique ($\rho_{air}$) :</span><span><span id="m-rho" class="data">-.------</span> kg/m³</span></div>
                 <div class="metric"><span>Indice Réfractif Gladstone-Dale ($n$) :</span><span id="m-n-gladstone" class="data" style="color:var(--sky-400)">1.000000000</span></div>
@@ -154,12 +156,14 @@
             document.getElementById('geo-ecef').innerText = `X: ${Math.floor(data.POSITION_GEOFENCING_MOBILE.ecef_x_m).toLocaleString()}m | Y: ${Math.floor(data.POSITION_GEOFENCING_MOBILE.ecef_y_m).toLocaleString()}m | Z: ${Math.floor(data.POSITION_GEOFENCING_MOBILE.ecef_z_m).toLocaleString()}m`;
             
             document.getElementById('m-pres').innerText = data.THERMODYNAMIQUE_HABITACLE_SERRE.pression_effective_hPa.toFixed(5);
+            document.getElementById('m-pres-ext').innerText = data.THERMODYNAMIQUE_HABITACLE_SERRE.pression_stratosphere_exterieure_hPa.toFixed(5);
             document.getElementById('m-temp').innerText = data.THERMODYNAMIQUE_HABITACLE_SERRE.temperature_air_interieur_C.toFixed(2);
             document.getElementById('m-rho').innerText = data.THERMODYNAMIQUE_HABITACLE_SERRE.densite_air_locale_kg_m3.toFixed(6);
             document.getElementById('m-n-gladstone').innerText = data.THERMODYNAMIQUE_HABITACLE_SERRE.indice_refraction_n_gladstone.toFixed(9);
             document.getElementById('lorentz-gamma').innerText = data.METROLOGIE_TEMPS_ATOMIQUE.Dilatation_Lorentz_Gamma.toFixed(14);
+            document.getElementById('einstein-shift').innerText = data.METROLOGIE_TEMPS_ATOMIQUE.Derive_Relativiste_Generale_s_s.toExponential(6) + " s/s";
 
-            ecrireLog("Échantillonnage du flux matériel validé (~1.5 Ko). Interpolation locale active.");
+            ecrireLog("Échantillonnage du flux matériel validé via éphémérides JPL DE440. Interpolation active.");
         } catch (e) {
             ecrireLog("Attente de synchronisation du serveur : " + e.message, true);
         }
@@ -170,7 +174,6 @@
         let baseIso = date.toISOString().substr(11, 8);
         let ms = String(date.getMilliseconds()).padStart(3, '0');
         
-        // Extraction des fractions fines (Sub-millisecondes) via performance.now processeur
         let microFrac = (performanceNowOffset * 1000) % 1000;
         let micro = String(Math.floor(microFrac)).padStart(3, '0');
         let pico = String(Math.floor((microFrac % 1) * 1000)).padStart(3, '0');
@@ -243,7 +246,7 @@
             ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(xAstre, yAstre); ctx.stroke();
             
             ctx.fillStyle = AstreSelectionne === "SOLEIL" ? "var(--amber-400)" : "var(--sky-400)";
-            ctx.beginPath(); ctx.arc(xAstre, yAstre, 7, 0, 2 * Math.PI); ctx.fill();
+            ctx.beginPath(); arc(xAstre, yAstre, 7, 0, 2 * Math.PI); ctx.fill();
             
             ctx.fillStyle = "#fff";
             ctx.font = "bold 11px Courier New";
