@@ -23,22 +23,19 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: Installation des dépendances métrologiques
+    - name: Installation des dépendances métrologiques JPL
       run: |
         python -m pip install --upgrade pip
-        # Utilisation d'un opérateur monoligne standard pour éviter l'exit code 2 du 'if'
-        pip install numpy astropy
+        pip install numpy skyfield jplephem
 
     - name: Vérification de la présence du script
       run: |
-        echo "=== Liste des fichiers à la racine ==="
-        ls -la
         if [ ! -f dynamic_multiphysics_engine.py ]; then
-          echo "[CRITICAL] Le fichier dynamic_multiphysics_engine.py est introuvable !"
+          echo "[CRITICAL] Fichier manquant !"
           exit 1
         fi
 
-    - name: Exécution du calcul physique
+    - name: Exécution du calcul physique JPL
       run: |
         python dynamic_multiphysics_engine.py avion > flux_live.json
 
@@ -47,5 +44,5 @@ jobs:
         git config --global user.name "GitHub Action Bot"
         git config --global user.email "actions@github.com"
         git add flux_live.json
-        git diff-index --quiet HEAD || git commit -m "Mise à jour métrologique TAI : $(date -u)"
+        git diff-index --quiet HEAD || git commit -m "Mise à jour métrologique JPL DE440 : $(date -u)"
         git push
