@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>SÉNTINELA - NAVIGATION RELATIVISTE & MÉTROLOGIE MULTIPHYSIQUE</title>
+    <title>SÉNTINELA - MÉTROLOGIE DIRECTIONNELLE & RELATIVISTE</title>
     <style>
         :root { 
             --slate-950: #020617; --slate-900: #0f172a; --slate-800: #1e293b; 
@@ -17,7 +17,7 @@
             padding: 20px; 
             margin: 0; 
         }
-        .wrapper { max-width: 1500px; margin: 0 auto; }
+        .wrapper { max-width: 1600px; margin: 0 auto; }
         .header { 
             border: 1px solid var(--slate-800); 
             background: var(--slate-900); 
@@ -29,21 +29,22 @@
             margin-bottom: 20px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.5);
         }
-        .grid { display: grid; grid-template-columns: 600px 1fr; gap: 20px; }
-        .panel { border: 1px solid var(--slate-800); background: #040815; padding: 18px; border-radius: 4px; }
+        /* Grille principale à 3 colonnes : Physique / Éphémérides Dédiées / Visuel Radar */
+        .grid { display: grid; grid-template-columns: 500px 550px 1fr; gap: 20px; }
+        .panel { border: 1px solid var(--slate-800); background: #040815; padding: 18px; border-radius: 4px; display: flex; flex-direction: column; gap: 10px; }
         h2 { 
-            font-size: 12pt; 
-            margin: 0 0 15px 0; 
+            font-size: 11pt; 
+            margin: 0 0 10px 0; 
             padding-bottom: 6px; 
             border-bottom: 1px solid var(--sky-400); 
             color: #fff; 
             letter-spacing: 1px; 
             text-transform: uppercase; 
         }
-        .metric { display: flex; justify-content: space-between; margin-bottom: 10px; line-height: 1.4; }
+        .metric { display: flex; justify-content: space-between; margin-bottom: 8px; line-height: 1.4; }
         .data { font-weight: bold; color: #fff; }
         .data-geo { color: var(--amber-400); font-weight: bold; }
-        .sub-group { border: 1px solid var(--slate-800); padding: 12px; margin-top: 15px; margin-bottom: 15px; background: rgba(255,255,255,0.01); }
+        .sub-group { border: 1px solid var(--slate-800); padding: 12px; margin-top: 5px; background: rgba(255,255,255,0.01); }
         .sub-title { 
             color: var(--sky-400); 
             font-weight: bold; 
@@ -52,13 +53,17 @@
             margin-bottom: 10px; 
             border-bottom: 1px solid var(--slate-800); 
             padding-bottom: 4px; 
-            display: flex; 
-            justify-content: space-between; 
         }
-        select { background: #000; color: var(--sky-400); border: 1px solid var(--sky-400); font-family: monospace; font-size: 11px; padding: 2px; cursor: pointer; }
-        .canvas-container { width: 100%; height: 650px; background: #01040d; border: 1px solid var(--slate-800); position: relative; }
+        .canvas-container { width: 100%; height: 100%; min-height: 500px; background: #01040d; border: 1px solid var(--slate-800); position: relative; }
         #radar-canvas { display: block; width: 100%; height: 100%; }
-        #console-log { margin-top: 20px; padding: 12px; background: #01040d; border: 1px solid var(--slate-800); color: var(--emerald-400); font-size: 10pt; height: 40px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;}
+        #console-log { margin-top: 20px; padding: 12px; background: #01040d; border: 1px solid var(--slate-800); color: var(--emerald-400); font-size: 10pt; height: 24px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;}
+        
+        /* Tableaux compacts pour la colonne Éphémérides */
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; margin-bottom: 15px; }
+        th, td { border: 1px solid var(--slate-800); padding: 8px; text-align: left; font-size: 10pt; }
+        th { background: var(--slate-900); color: var(--sky-400); font-weight: bold; }
+        .highlight-az { color: var(--emerald-400); font-weight: bold; }
+        .highlight-el { color: var(--amber-400); font-weight: bold; }
     </style>
 </head>
 <body>
@@ -71,57 +76,94 @@
     <div class="grid">
         <div style="display:flex; flex-direction:column; gap:20px;">
             <div class="panel">
-                <h2>RÉFÉRENTIELS DE TEMPS & ESPACE-TEMPS LORENTZIEN</h2>
-                <div class="metric"><span>Échelle Coordonnée (Terrestre) :</span><span id="time-scale" class="data" style="color:var(--sky-400)">TT (Temps Terrestre ISO IAU 2006)</span></div>
-                <div class="metric"><span>Date Julienne Atomique (JD TAI) :</span><span id="astro-jd" class="data" style="color:var(--amber-400)">------.-------</span></div>
-                <div class="metric"><span>Époque Dynamique TT (Métrologie) :</span><span id="astro-tt" class="data">---------.------ s</span></div>
-                <div class="metric"><span>Dilatation Temporelle (&gamma; Lorentz) :</span><span id="lorentz-gamma" class="data">1.00000000000000</span></div>
+                <h2>ESPACE-TEMPS LORENTZIEN & GÉODÉSIE</h2>
+                <div class="metric"><span>Échelle Coordonnée :</span><span class="data" style="color:var(--sky-400)">TT (Temps Terrestre IAU)</span></div>
+                <div class="metric"><span>Date Julienne Atomique :</span><span id="astro-jd" class="data" style="color:var(--amber-400)">------.-------</span></div>
+                <div class="metric"><span>Époque Dynamique TT :</span><span id="astro-tt" class="data">---------.------ s</span></div>
+                <div class="metric"><span>Facteur &gamma; Lorentz :</span><span id="lorentz-gamma" class="data">1.00000000000000</span></div>
                 <div class="metric"><span>Dérive d'Einstein (RG) :</span><span id="einstein-shift" class="data" style="color:var(--rose-500)">0.00 s/s</span></div>
                 
                 <div class="sub-group">
-                    <div class="sub-title">VECTEUR D'ÉTAT GÉOCENTRIQUE ITRF (CAPTATION)</div>
-                    <div class="metric"><span>Identifiant Plateforme :</span><span id="platform-type" class="data" style="color:var(--rose-500)">-</span></div>
-                    <div class="metric"><span>Position Géodésique WGS84 :</span><span id="geo-latlon" class="data-geo">--.-----° / --.-----°</span></div>
-                    <div class="metric"><span>Altitude Ellipsoïdale ($h$) :</span><span><span id="geo-alt" class="data-geo">---.-</span> m</span></div>
-                    <div class="metric"><span>Vecteur Spatial ECEF [X / Y / Z] :</span><span id="geo-ecef" class="data">--- --- --- m</span></div>
-                </div>
-
-                <div class="sub-group">
-                    <div class="sub-title">
-                        <span>ÉPHÉMÉRIDES DISCRÈTES DE HAUTE PRÉCISION</span>
-                        <select id="select-astre" onchange="changerAstreCible()">
-                            <option value="SOLEIL">SOLEIL (JPL DE440)</option>
-                            <option value="LUNE">LUNE (JPL DE440)</option>
-                        </select>
-                    </div>
-                    <div class="metric"><span>Azimut Vrai Continu ($Az$) :</span><span id="ast-az" class="data" style="color:var(--emerald-400)">---.------°</span></div>
-                    <div class="metric"><span>Élévation Géométrique (Brute) :</span><span id="ast-el" class="data">--.------°</span></div>
-                    <div class="metric"><span>Élévation Optique Apparente :</span><span id="ast-el-ref" class="data" style="color:var(--amber-400)">--.------°</span></div>
-                    <div class="metric"><span>Réfraction Atmosphérique ($\Delta R$) :</span><span id="ast-delta-ref" class="data">--.------°</span></div>
-                    <div class="metric"><span>Distance Vectorielle Instantanée :</span><span><span id="ast-dist-km" class="data">---</span> km</span></div>
-                    <div class="metric"><span>Magnitude Radiométrique ($V$) :</span><span id="ast-mag" class="data">--.--</span></div>
-                    <div class="metric"><span>Transit Méridien Calibré (TT) :</span><span id="ast-transit" class="data" style="color:var(--sky-400)">--:--:--.------ ------s</span></div>
+                    <div class="sub-title">VECTEUR D'ÉTAT GÉOCENTRIQUE ITRF</div>
+                    <div class="metric"><span>Plateforme :</span><span id="platform-type" class="data" style="color:var(--rose-500)">-</span></div>
+                    <div class="metric"><span>Position WGS84 :</span><span id="geo-latlon" class="data-geo">--.-----° / --.-----°</span></div>
+                    <div class="metric"><span>Alt. Ellipsoïdale ($h$) :</span><span><span id="geo-alt" class="data-geo">---.-</span> m</span></div>
+                    <div class="metric"><span>Alt. Géoïde (Mer) :</span><span><span id="geo-alt-mer" class="data-geo">---.-</span> m</span></div>
+                    <div class="metric"><span>Vecteur ECEF X :</span><span id="geo-ecef-x" class="data">--- m</span></div>
+                    <div class="metric"><span>Vecteur ECEF Y :</span><span id="geo-ecef-y" class="data">--- m</span></div>
+                    <div class="metric"><span>Vecteur ECEF Z :</span><span id="geo-ecef-z" class="data">--- m</span></div>
                 </div>
             </div>
 
             <div class="panel">
-                <h2>CORRECTIONS THERMODYNAMICOCENTRIQUES LOCALES</h2>
-                <div class="metric"><span>Pression Acoustico-Barométrique Cabine :</span><span><span id="m-pres" class="data">----.------</span> hPa</span></div>
-                <div class="metric"><span>Pression Stratosphérique Externe :</span><span><span id="m-pres-ext" class="data" style="color:var(--sky-400)">----.------</span> hPa</span></div>
-                <div class="metric"><span>Température Cellule de Mesure ($T$) :</span><span><span id="m-temp" class="data">--.--</span> °C</span></div>
-                <div class="metric"><span>Densité de Masse Volumique ($\rho_{air}$) :</span><span><span id="m-rho" class="data">-.------</span> kg/m³</span></div>
-                <div class="metric"><span>Indice Réfractif Gladstone-Dale ($n$) :</span><span id="m-n-gladstone" class="data" style="color:var(--sky-400)">1.000000000</span></div>
+                <h2>CORRECTIONS THERMODYNAMIQUES LOCALES</h2>
+                <div class="metric"><span>Pression Cabine :</span><span><span id="m-pres" class="data">----.------</span> hPa</span></div>
+                <div class="metric"><span>Pression Stratosphère :</span><span><span id="m-pres-ext" class="data" style="color:var(--sky-400)">----.------</span> hPa</span></div>
+                <div class="metric"><span>Température Cellule :</span><span><span id="m-temp" class="data">--.--</span> °C</span></div>
+                <div class="metric"><span>Densité de l'Air ($\mu$) :</span><span><span id="m-rho" class="data">-.------</span> kg/m³</span></div>
+                <div class="metric"><span>Indice Gladstone-Dale :</span><span id="m-n-gladstone" class="data" style="color:var(--sky-400)">1.000000000</span></div>
             </div>
         </div>
 
-        <div class="panel" style="display:flex; flex-direction:column;">
+        <div class="panel">
+            <h2>BLOC DE NAVIGATION DIRECTIONNELLE DIRECTE (JPL DE440)</h2>
+            
+            <div class="sub-title" style="border-bottom: none; margin-bottom: 0;">COORDONNÉES HORIZONTALES EN TEMPS RÉEL</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>CORPS CÉLESTE</th>
+                        <th>AZIMUT (Az)</th>
+                        <th>ÉLÉVATION (El)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="color:#fff; font-weight:bold;">SOLEIL</td>
+                        <td id="td-sol-az" class="highlight-az">---.------°</td>
+                        <td id="td-sol-el" class="highlight-el">--.------°</td>
+                    </tr>
+                    <tr>
+                        <td style="color:#fff; font-weight:bold;">LUNE</td>
+                        <td id="td-lun-az" class="highlight-az">---.------°</td>
+                        <td id="td-lun-el" class="highlight-el">--.------°</td>
+                    </tr>
+                    <tr>
+                        <td style="color:var(--slate-400);">VÉNUS</td>
+                        <td class="highlight-az" style="color:rgba(52,211,153,0.4)">Calcul en cours</td>
+                        <td class="highlight-el" style="color:rgba(251,191,36,0.4)">Calcul en cours</td>
+                    </tr>
+                    <tr>
+                        <td style="color:var(--slate-400);">MARS</td>
+                        <td class="highlight-az" style="color:rgba(52,211,153,0.4)">Calcul en cours</td>
+                        <td class="highlight-el" style="color:rgba(251,191,36,0.4)">Calcul en cours</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="sub-group">
+                <div class="sub-title">DONNÉES COMPLÉMENTAIRES SOLEIL</div>
+                <div class="metric"><span>Réfraction ($\Delta R$) :</span><span id="sol-delta-ref" class="data">--.------°</span></div>
+                <div class="metric"><span>Distance Vectorielle :</span><span><span id="sol-dist" class="data">---</span> km</span></div>
+                <div class="metric"><span>Transit Méridien (TT) :</span><span id="sol-transit" class="data" style="color:var(--sky-400)">--:--:--</span></div>
+            </div>
+
+            <div class="sub-group">
+                <div class="sub-title">DONNÉES COMPLÉMENTAIRES LUNE</div>
+                <div class="metric"><span>Réfraction ($\Delta R$) :</span><span id="lun-delta-ref" class="data">--.------°</span></div>
+                <div class="metric"><span>Distance Vectorielle :</span><span><span id="lun-dist" class="data">---</span> km</span></div>
+                <div class="metric"><span>Magnitude Visuelle :</span><span id="lun-mag" class="data">--.--</span></div>
+            </div>
+        </div>
+
+        <div class="panel">
             <h2>CHAMP D'OBSERVATION AZIMUTAL DYNAMIQUE</h2>
             <div class="canvas-container">
                 <canvas id="radar-canvas"></canvas>
             </div>
         </div>
     </div>
-    <div id="console-log">SYS : Initialisation du terminal métrologique...</div>
+    <div id="console-log">SYS : Initialisation du terminal métrologique isolé...</div>
 </div>
 
 <script>
@@ -129,7 +171,6 @@
     const ctx = canvas.getContext('2d');
     
     let FluxJsonDistant = null;
-    let AstreSelectionne = "SOLEIL";
     let HorlogeLocaleZero = 0;
     let JdTaiZero = 0, TtZero = 0;
 
@@ -150,10 +191,15 @@
             JdTaiZero = data.METROLOGIE_TEMPS_ATOMIQUE.JD_TAI;
             TtZero = data.METROLOGIE_TEMPS_ATOMIQUE.TT_Echelle_s;
 
+            // Injection des données de la Colonne 1
             document.getElementById('platform-type').innerText = data.METADATA.type_plateforme;
             document.getElementById('geo-latlon').innerText = `${data.POSITION_GEOFENCING_MOBILE.latitude_deg.toFixed(6)}° / ${data.POSITION_GEOFENCING_MOBILE.longitude_deg.toFixed(6)}°`;
             document.getElementById('geo-alt').innerText = data.POSITION_GEOFENCING_MOBILE.altitude_coordonnee_m.toFixed(2);
-            document.getElementById('geo-ecef').innerText = `X: ${Math.floor(data.POSITION_GEOFENCING_MOBILE.ecef_x_m).toLocaleString()}m | Y: ${Math.floor(data.POSITION_GEOFENCING_MOBILE.ecef_y_m).toLocaleString()}m | Z: ${Math.floor(data.POSITION_GEOFENCING_MOBILE.ecef_z_m).toLocaleString()}m`;
+            document.getElementById('geo-alt-mer').innerText = data.POSITION_GEOFENCING_MOBILE.altitude_mer_geoide_m.toFixed(2);
+            
+            document.getElementById('geo-ecef-x').innerText = `${data.POSITION_GEOFENCING_MOBILE.ecef_x_m.toFixed(3)} m`;
+            document.getElementById('geo-ecef-y').innerText = `${data.POSITION_GEOFENCING_MOBILE.ecef_y_m.toFixed(3)} m`;
+            document.getElementById('geo-ecef-z').innerText = `${data.POSITION_GEOFENCING_MOBILE.ecef_z_m.toFixed(3)} m`;
             
             document.getElementById('m-pres').innerText = data.THERMODYNAMIQUE_HABITACLE_SERRE.pression_effective_hPa.toFixed(5);
             document.getElementById('m-pres-ext').innerText = data.THERMODYNAMIQUE_HABITACLE_SERRE.pression_stratosphere_exterieure_hPa.toFixed(5);
@@ -163,9 +209,18 @@
             document.getElementById('lorentz-gamma').innerText = data.METROLOGIE_TEMPS_ATOMIQUE.Dilatation_Lorentz_Gamma.toFixed(14);
             document.getElementById('einstein-shift').innerText = data.METROLOGIE_TEMPS_ATOMIQUE.Derive_Relativiste_Generale_s_s.toExponential(6) + " s/s";
 
-            ecrireLog("Échantillonnage du flux matériel validé via éphémérides JPL DE440. Interpolation active.");
+            // Injection des données statiques complémentaires (Colonnes 2)
+            document.getElementById('sol-delta-ref').innerText = `+${data.DATA_STREAMS.soleil.instant_present.delta_refraction_deg.toFixed(6)}°`;
+            document.getElementById('sol-dist').innerText = Math.floor(data.DATA_STREAMS.soleil.instant_present.distance_km).toLocaleString('fr-FR');
+            document.getElementById('sol-transit').innerText = formatJourJulienEnTemps(data.DATA_STREAMS.soleil.metrologie_evenementielle.jd_tt_transit_estime, 0).substr(0,12);
+            
+            document.getElementById('lun-delta-ref').innerText = `+${data.DATA_STREAMS.lune.instant_present.delta_refraction_deg.toFixed(6)}°`;
+            document.getElementById('lun-dist').innerText = Math.floor(data.DATA_STREAMS.lune.instant_present.distance_km).toLocaleString('fr-FR');
+            document.getElementById('lun-mag').innerText = data.DATA_STREAMS.lune.instant_present.magnitude_visuelle_reelle.toFixed(2);
+
+            ecrireLog("Flux géodésique structurel synchronisé. Colonne directionnelle isolée active.");
         } catch (e) {
-            ecrireLog("Attente de synchronisation du serveur : " + e.message, true);
+            ecrireLog("Attente trame GNSS / Fichier JSON : " + e.message, true);
         }
     }
 
@@ -173,12 +228,9 @@
         let date = new Date((jd - 2440587.5) * 86400000);
         let baseIso = date.toISOString().substr(11, 8);
         let ms = String(date.getMilliseconds()).padStart(3, '0');
-        
         let microFrac = (performanceNowOffset * 1000) % 1000;
         let micro = String(Math.floor(microFrac)).padStart(3, '0');
-        let pico = String(Math.floor((microFrac % 1) * 1000)).padStart(3, '0');
-        
-        return `${baseIso}.${ms} ${micro} ${pico}s`;
+        return `${baseIso}.${ms} ${micro}s`;
     }
 
     function animerTerminal() {
@@ -186,41 +238,33 @@
         if (!FluxJsonDistant) return;
         
         const deltaMs = performance.now() - HorlogeLocaleZero;
-        
         const jdTaiActuel = JdTaiZero + (deltaMs / 86400000);
         const ttActuel = TtZero + (deltaMs / 1000);
         
         document.getElementById('astro-jd').innerText = jdTaiActuel.toFixed(9);
         document.getElementById('astro-tt').innerText = ttActuel.toFixed(5) + " s";
-        document.getElementById('clock-utc').innerText = "UTC : " + formatJourJulienEnTemps(jdTaiActuel - (37 / 86400), deltaMs);
+        document.getElementById('clock-utc').innerText = "UTC (GNSS Clock) : " + formatJourJulienEnTemps(jdTaiActuel - (37 / 86400), deltaMs);
 
-        const astreData = FluxJsonDistant.DATA_STREAMS[AstreSelectionne.toLowerCase()];
-        if (!astreData) return;
+        // CALCUL DE L'INTERPOLATION DIRECTIONNELLE POUR LE SOLEIL
+        const solData = FluxJsonDistant.DATA_STREAMS.soleil;
+        let azSol = (solData.instant_present.azimut_vrai_deg + (solData.cinematique_instantanee.vitesse_angulaire_azimut_deg_s * (deltaMs / 1000))) % 360;
+        let elSol = solData.instant_present.elevation_refractee_corrigee_deg;
+        document.getElementById('td-sol-az').innerText = `${azSol.toFixed(6)}°`;
+        document.getElementById('td-sol-el').innerText = `${elSol.toFixed(6)}°`;
 
-        const vitesseAngulaire = astreData.cinematique_instantanee.vitesse_angulaire_azimut_deg_s;
-        let azimutContinu = (astreData.instant_present.azimut_vrai_deg + (vitesseAngulaire * (deltaMs / 1000))) % 360;
-        if (azimutContinu < 0) azimutContinu += 360;
+        // CALCUL DE L'INTERPOLATION DIRECTIONNELLE POUR LA LUNE
+        const lunData = FluxJsonDistant.DATA_STREAMS.lune;
+        let azLun = (lunData.instant_present.azimut_vrai_deg + (lunData.cinematique_instantanee.vitesse_angulaire_azimut_deg_s * (deltaMs / 1000))) % 360;
+        let elLun = lunData.instant_present.elevation_refractee_corrigee_deg;
+        document.getElementById('td-lun-az').innerText = `${azLun.toFixed(6)}°`;
+        document.getElementById('td-lun-el').innerText = `${elLun.toFixed(6)}°`;
 
-        document.getElementById('ast-az').innerText = `${azimutContinu.toFixed(6)}°`;
-        document.getElementById('ast-el').innerText = `${astreData.instant_present.elevation_geometrique_deg.toFixed(6)}°`;
-        document.getElementById('ast-el-ref').innerText = `${astreData.instant_present.elevation_refractee_corrigee_deg.toFixed(6)}°`;
-        document.getElementById('ast-delta-ref').innerText = `+${astreData.instant_present.delta_refraction_deg.toFixed(6)}°`;
-        document.getElementById('ast-dist-km').innerText = Math.floor(astreData.instant_present.distance_km).toLocaleString('fr-FR');
-        document.getElementById('ast-mag').innerText = astreData.instant_present.magnitude_visuelle_reelle.toFixed(2);
-        
-        const jdTransit = astreData.metrologie_evenementielle.jd_tt_transit_estime;
-        document.getElementById('ast-transit').innerText = formatJourJulienEnTemps(jdTransit, 0);
-
-        dessinerRadar(azimutContinu, astreData.instant_present.elevation_refractee_corrigee_deg);
+        dessinerRadarDouble(azSol, elSol, azLun, elLun);
     }
 
-    function changerAstreCible() {
-        AstreSelectionne = document.getElementById('select-astre').value;
-    }
-
-    function dessinerRadar(az, el) {
+    function dessinerRadarDouble(azSol, elSol, azLun, elLun) {
         const cx = canvas.width / 2, cy = canvas.height / 2;
-        const rMax = Math.min(cx, cy) - 50;
+        const rMax = Math.min(cx, cy) - 40;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         ctx.strokeStyle = "rgba(56, 189, 248, 0.08)";
@@ -229,31 +273,31 @@
             ctx.beginPath(); ctx.arc(cx, cy, rMax * (i / 4), 0, 2 * Math.PI); ctx.stroke();
         }
 
-        ctx.strokeStyle = "rgba(148, 163, 184, 0.2)";
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.15)";
         ctx.beginPath(); ctx.moveTo(cx - rMax, cy); ctx.lineTo(cx + rMax, cy); ctx.moveTo(cx, cy - rMax); ctx.lineTo(cx, cy + rMax); ctx.stroke();
         
-        ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
-        ctx.font = "10px Courier New";
-        ctx.fillText("NORD 0°", cx - 22, cy - rMax - 12);
-        ctx.fillText("SUD 180°", cx - 24, cy + rMax + 20);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+        ctx.font = "9px Courier New";
+        ctx.fillText("N 0°", cx - 10, cy - rMax - 8);
 
-        if (el >= -0.833) {
-            const rayonAstre = rMax * (1 - (Math.max(0, el) / 90));
-            const xAstre = cx + rayonAstre * Math.sin((az * Math.PI) / 180);
-            const yAstre = cy - rayonAstre * Math.cos((az * Math.PI) / 180);
-            
-            ctx.strokeStyle = "rgba(52, 211, 153, 0.25)";
-            ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(xAstre, yAstre); ctx.stroke();
-            
-            ctx.fillStyle = AstreSelectionne === "SOLEIL" ? "var(--amber-400)" : "var(--sky-400)";
-            ctx.beginPath(); arc(xAstre, yAstre, 7, 0, 2 * Math.PI); ctx.fill();
-            
-            ctx.fillStyle = "#fff";
-            ctx.font = "bold 11px Courier New";
-            ctx.fillText(`[${AstreSelectionne}] Az:${az.toFixed(2)}° El:${el.toFixed(2)}°`, xAstre + 14, yAstre + 4);
-        } else {
-            ctx.fillStyle = "var(--rose-500)";
-            ctx.fillText(`[${AstreSelectionne} OCCULTÉ]`, cx - 55, cy - 10);
+        // Projection et traçage du Soleil
+        if (elSol >= -0.833) {
+            const rSol = rMax * (1 - (Math.max(0, elSol) / 90));
+            const xSol = cx + rSol * Math.sin((azSol * Math.PI) / 180);
+            const ySol = cy - rSol * Math.cos((azSol * Math.PI) / 180);
+            ctx.fillStyle = "var(--amber-400)";
+            ctx.beginPath(); ctx.arc(xSol, ySol, 6, 0, 2 * Math.PI); ctx.fill();
+            ctx.fillText("SOL", xSol + 10, ySol + 3);
+        }
+
+        // Projection et traçage de la Lune
+        if (elLun >= -0.833) {
+            const rLun = rMax * (1 - (Math.max(0, elLun) / 90));
+            const xLun = cx + rLun * Math.sin((azLun * Math.PI) / 180);
+            const yLun = cy - rLun * Math.cos((azLun * Math.PI) / 180);
+            ctx.fillStyle = "var(--sky-400)";
+            ctx.beginPath(); ctx.arc(xLun, yLun, 5, 0, 2 * Math.PI); ctx.fill();
+            ctx.fillText("LUN", xLun + 10, yLun + 3);
         }
     }
 
@@ -271,4 +315,4 @@
     };
 </script>
 </body>
-    </html>
+                            </html>
