@@ -29,7 +29,6 @@
             margin-bottom: 20px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.5);
         }
-        /* Grille principale à 3 colonnes : Physique / Éphémérides Dédiées / Visuel Radar */
         .grid { display: grid; grid-template-columns: 500px 550px 1fr; gap: 20px; }
         .panel { border: 1px solid var(--slate-800); background: #040815; padding: 18px; border-radius: 4px; display: flex; flex-direction: column; gap: 10px; }
         h2 { 
@@ -58,7 +57,6 @@
         #radar-canvas { display: block; width: 100%; height: 100%; }
         #console-log { margin-top: 20px; padding: 12px; background: #01040d; border: 1px solid var(--slate-800); color: var(--emerald-400); font-size: 10pt; height: 24px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;}
         
-        /* Tableaux compacts pour la colonne Éphémérides */
         table { width: 100%; border-collapse: collapse; margin-top: 5px; margin-bottom: 15px; }
         th, td { border: 1px solid var(--slate-800); padding: 8px; text-align: left; font-size: 10pt; }
         th { background: var(--slate-900); color: var(--sky-400); font-weight: bold; }
@@ -100,14 +98,13 @@
                 <div class="metric"><span>Pression Cabine :</span><span><span id="m-pres" class="data">----.------</span> hPa</span></div>
                 <div class="metric"><span>Pression Stratosphère :</span><span><span id="m-pres-ext" class="data" style="color:var(--sky-400)">----.------</span> hPa</span></div>
                 <div class="metric"><span>Température Cellule :</span><span><span id="m-temp" class="data">--.--</span> °C</span></div>
-                <div class="metric"><span>Densité de l'Air ($\mu$) :</span><span><span id="m-rho" class="data">-.------</span> kg/m³</span></div>
+                <div class="metric"><span>Densité de l'Air ($\rho$) :</span><span><span id="m-rho" class="data">-.------</span> kg/m³</span></div>
                 <div class="metric"><span>Indice Gladstone-Dale :</span><span id="m-n-gladstone" class="data" style="color:var(--sky-400)">1.000000000</span></div>
             </div>
         </div>
 
         <div class="panel">
             <h2>BLOC DE NAVIGATION DIRECTIONNELLE DIRECTE (JPL DE440)</h2>
-            
             <div class="sub-title" style="border-bottom: none; margin-bottom: 0;">COORDONNÉES HORIZONTALES EN TEMPS RÉEL</div>
             <table>
                 <thead>
@@ -130,13 +127,13 @@
                     </tr>
                     <tr>
                         <td style="color:var(--slate-400);">VÉNUS</td>
-                        <td class="highlight-az" style="color:rgba(52,211,153,0.4)">Calcul en cours</td>
-                        <td class="highlight-el" style="color:rgba(251,191,36,0.4)">Calcul en cours</td>
+                        <td id="td-ven-az" class="highlight-az" style="color:rgba(52,211,153,0.3)">---.------°</td>
+                        <td id="td-ven-el" class="highlight-el" style="color:rgba(251,191,36,0.3)">--.------°</td>
                     </tr>
                     <tr>
                         <td style="color:var(--slate-400);">MARS</td>
-                        <td class="highlight-az" style="color:rgba(52,211,153,0.4)">Calcul en cours</td>
-                        <td class="highlight-el" style="color:rgba(251,191,36,0.4)">Calcul en cours</td>
+                        <td id="td-mar-az" class="highlight-az" style="color:rgba(52,211,153,0.3)">---.------°</td>
+                        <td id="td-mar-el" class="highlight-el" style="color:rgba(251,191,36,0.3)">--.------°</td>
                     </tr>
                 </tbody>
             </table>
@@ -191,7 +188,7 @@
             JdTaiZero = data.METROLOGIE_TEMPS_ATOMIQUE.JD_TAI;
             TtZero = data.METROLOGIE_TEMPS_ATOMIQUE.TT_Echelle_s;
 
-            // Injection des données de la Colonne 1
+            // Remplissage structurel colonne 1
             document.getElementById('platform-type').innerText = data.METADATA.type_plateforme;
             document.getElementById('geo-latlon').innerText = `${data.POSITION_GEOFENCING_MOBILE.latitude_deg.toFixed(6)}° / ${data.POSITION_GEOFENCING_MOBILE.longitude_deg.toFixed(6)}°`;
             document.getElementById('geo-alt').innerText = data.POSITION_GEOFENCING_MOBILE.altitude_coordonnee_m.toFixed(2);
@@ -209,18 +206,21 @@
             document.getElementById('lorentz-gamma').innerText = data.METROLOGIE_TEMPS_ATOMIQUE.Dilatation_Lorentz_Gamma.toFixed(14);
             document.getElementById('einstein-shift').innerText = data.METROLOGIE_TEMPS_ATOMIQUE.Derive_Relativiste_Generale_s_s.toExponential(6) + " s/s";
 
-            // Injection des données statiques complémentaires (Colonnes 2)
-            document.getElementById('sol-delta-ref').innerText = `+${data.DATA_STREAMS.soleil.instant_present.delta_refraction_deg.toFixed(6)}°`;
-            document.getElementById('sol-dist').innerText = Math.floor(data.DATA_STREAMS.soleil.instant_present.distance_km).toLocaleString('fr-FR');
-            document.getElementById('sol-transit').innerText = formatJourJulienEnTemps(data.DATA_STREAMS.soleil.metrologie_evenementielle.jd_tt_transit_estime, 0).substr(0,12);
-            
-            document.getElementById('lun-delta-ref').innerText = `+${data.DATA_STREAMS.lune.instant_present.delta_refraction_deg.toFixed(6)}°`;
-            document.getElementById('lun-dist').innerText = Math.floor(data.DATA_STREAMS.lune.instant_present.distance_km).toLocaleString('fr-FR');
-            document.getElementById('lun-mag').innerText = data.DATA_STREAMS.lune.instant_present.magnitude_visuelle_reelle.toFixed(2);
+            // Remplissage structurel colonne 2 (Données fixes complémentaires)
+            if(data.DATA_STREAMS && data.DATA_STREAMS.soleil) {
+                document.getElementById('sol-delta-ref').innerText = `+${data.DATA_STREAMS.soleil.instant_present.delta_refraction_deg.toFixed(6)}°`;
+                document.getElementById('sol-dist').innerText = Math.floor(data.DATA_STREAMS.soleil.instant_present.distance_km).toLocaleString('fr-FR');
+                document.getElementById('sol-transit').innerText = formatJourJulienEnTemps(data.DATA_STREAMS.soleil.metrologie_evenementielle.jd_tt_transit_estime, 0).substr(0,12);
+            }
+            if(data.DATA_STREAMS && data.DATA_STREAMS.lune) {
+                document.getElementById('lun-delta-ref').innerText = `+${data.DATA_STREAMS.lune.instant_present.delta_refraction_deg.toFixed(6)}°`;
+                document.getElementById('lun-dist').innerText = Math.floor(data.DATA_STREAMS.lune.instant_present.distance_km).toLocaleString('fr-FR');
+                document.getElementById('lun-mag').innerText = data.DATA_STREAMS.lune.instant_present.magnitude_visuelle_reelle.toFixed(2);
+            }
 
-            ecrireLog("Flux géodésique structurel synchronisé. Colonne directionnelle isolée active.");
+            ecrireLog("Flux de données géodésiques validé. Interpolation active.");
         } catch (e) {
-            ecrireLog("Attente trame GNSS / Fichier JSON : " + e.message, true);
+            ecrireLog("Attente trame GNSS : " + e.message, true);
         }
     }
 
@@ -235,7 +235,7 @@
 
     function animerTerminal() {
         requestAnimationFrame(animerTerminal);
-        if (!FluxJsonDistant) return;
+        if (!FluxJsonDistant || !FluxJsonDistant.DATA_STREAMS) return;
         
         const deltaMs = performance.now() - HorlogeLocaleZero;
         const jdTaiActuel = JdTaiZero + (deltaMs / 86400000);
@@ -243,21 +243,43 @@
         
         document.getElementById('astro-jd').innerText = jdTaiActuel.toFixed(9);
         document.getElementById('astro-tt').innerText = ttActuel.toFixed(5) + " s";
-        document.getElementById('clock-utc').innerText = "UTC (GNSS Clock) : " + formatJourJulienEnTemps(jdTaiActuel - (37 / 86400), deltaMs);
+        document.getElementById('clock-utc').innerText = "UTC (GNSS Space Clock) : " + formatJourJulienEnTemps(jdTaiActuel - (37 / 86400), deltaMs);
 
-        // CALCUL DE L'INTERPOLATION DIRECTIONNELLE POUR LE SOLEIL
+        // EXTRACTION ET SÉCURISATION DU PROCESSUS INTERPOLAIRE - SOLEIL
         const solData = FluxJsonDistant.DATA_STREAMS.soleil;
-        let azSol = (solData.instant_present.azimut_vrai_deg + (solData.cinematique_instantanee.vitesse_angulaire_azimut_deg_s * (deltaMs / 1000))) % 360;
-        let elSol = solData.instant_present.elevation_refractee_corrigee_deg;
-        document.getElementById('td-sol-az').innerText = `${azSol.toFixed(6)}°`;
-        document.getElementById('td-sol-el').innerText = `${elSol.toFixed(6)}°`;
+        let azSol = 0, elSol = 0;
+        if(solData) {
+            azSol = (solData.instant_present.azimut_vrai_deg + (solData.cinematique_instantanee.vitesse_angulaire_azimut_deg_s * (deltaMs / 1000))) % 360;
+            if(azSol < 0) azSol += 360;
+            elSol = solData.instant_present.elevation_refractee_corrigee_deg;
+            document.getElementById('td-sol-az').innerText = `${azSol.toFixed(6)}°`;
+            document.getElementById('td-sol-el').innerText = `${elSol.toFixed(6)}°`;
+        }
 
-        // CALCUL DE L'INTERPOLATION DIRECTIONNELLE POUR LA LUNE
+        // EXTRACTION ET SÉCURISATION DU PROCESSUS INTERPOLAIRE - LUNE
         const lunData = FluxJsonDistant.DATA_STREAMS.lune;
-        let azLun = (lunData.instant_present.azimut_vrai_deg + (lunData.cinematique_instantanee.vitesse_angulaire_azimut_deg_s * (deltaMs / 1000))) % 360;
-        let elLun = lunData.instant_present.elevation_refractee_corrigee_deg;
-        document.getElementById('td-lun-az').innerText = `${azLun.toFixed(6)}°`;
-        document.getElementById('td-lun-el').innerText = `${elLun.toFixed(6)}°`;
+        let azLun = 0, elLun = 0;
+        if(lunData) {
+            azLun = (lunData.instant_present.azimut_vrai_deg + (lunData.cinematique_instantanee.vitesse_angulaire_azimut_deg_s * (deltaMs / 1000))) % 360;
+            if(azLun < 0) azLun += 360;
+            elLun = lunData.instant_present.elevation_refractee_corrigee_deg;
+            document.getElementById('td-lun-az').innerText = `${azLun.toFixed(6)}°`;
+            document.getElementById('td-lun-el').innerText = `${elLun.toFixed(6)}°`;
+        }
+
+        // PROTECTION DE SÉCURITÉ CONTRE LE CRASH SI LES PLANETES NE SONT PAS ENCORE GÉRÉES PAR PYTHON
+        if(FluxJsonDistant.DATA_STREAMS.venus) {
+            let azVen = FluxJsonDistant.DATA_STREAMS.venus.instant_present.azimut_vrai_deg;
+            let elVen = FluxJsonDistant.DATA_STREAMS.venus.instant_present.elevation_refractee_corrigee_deg;
+            document.getElementById('td-ven-az').innerText = `${azVen.toFixed(6)}°`;
+            document.getElementById('td-ven-el').innerText = `${elVen.toFixed(6)}°`;
+        }
+        if(FluxJsonDistant.DATA_STREAMS.mars) {
+            let azMar = FluxJsonDistant.DATA_STREAMS.mars.instant_present.azimut_vrai_deg;
+            let elMar = FluxJsonDistant.DATA_STREAMS.mars.instant_present.elevation_refractee_corrigee_deg;
+            document.getElementById('td-mar-az').innerText = `${azMar.toFixed(6)}°`;
+            document.getElementById('td-mar-el').innerText = `${elMar.toFixed(6)}°`;
+        }
 
         dessinerRadarDouble(azSol, elSol, azLun, elLun);
     }
@@ -280,7 +302,6 @@
         ctx.font = "9px Courier New";
         ctx.fillText("N 0°", cx - 10, cy - rMax - 8);
 
-        // Projection et traçage du Soleil
         if (elSol >= -0.833) {
             const rSol = rMax * (1 - (Math.max(0, elSol) / 90));
             const xSol = cx + rSol * Math.sin((azSol * Math.PI) / 180);
@@ -290,7 +311,6 @@
             ctx.fillText("SOL", xSol + 10, ySol + 3);
         }
 
-        // Projection et traçage de la Lune
         if (elLun >= -0.833) {
             const rLun = rMax * (1 - (Math.max(0, elLun) / 90));
             const xLun = cx + rLun * Math.sin((azLun * Math.PI) / 180);
@@ -315,4 +335,4 @@
     };
 </script>
 </body>
-                            </html>
+    </html>
