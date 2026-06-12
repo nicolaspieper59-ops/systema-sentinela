@@ -1,43 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Moteur Relativiste Spatial - SPÉCIFICATION GÉOÏDE, ATMOSPHERE ET TEMPS ATOMIQUE DIRECT
-Purity Layer : Zéro dépendance vis-à-vis de l'horloge système locale.
-"""
 
 import json
 import sys
 import math
 import time
-
-# Purification des imports : suppression de l'import erroné EarthLocation d'astropy dans skyfield
 from skyfield.api import Topos, load
 
 class RecepteurGeodesiqueGNSS:
-    """Simule la réception directe d'un flux d'horloge atomique spatiale (GPS/GNSS)
-    et d'un capteur de pression absolue, sans interroger le système d'exploitation."""
     def __init__(self, profil="avion"):
         self.profil = profil.lower()
         
     def capturer_vecteur_brut(self):
-        # Constantes de l'ellipsoïde de référence WGS84 (True Shape of Earth)
-        a = 6378137.0  # Demi-grand axe
-        f = 1.0 / 298.257223563  # Aplatissement
-        e2 = 2 * f - f**2  # Carré de l'excentricité
+        a = 6378137.0
+        f = 1.0 / 298.257223563
+        e2 = 2 * f - f**2
         
-        # Coordonnées géodésiques de captation
         lat = 43.29070
         lon = 5.35490
         
         if self.profil == "avion":
             altitude_ellipsoidale = 11500.0
             vitesse = 245.5
-            separation_geoide_m = 48.24 # Ondulation du géoïde EGM96 à Marseille
+            separation_geoide_m = 48.24 
             altitude_orthometrique_vray = altitude_ellipsoidale - separation_geoide_m
             pression_ext = 1013.25 * (1 - 0.0065 * altitude_ellipsoidale / 288.15)**5.25588
             temp_ext = 15.0 - (0.0065 * altitude_ellipsoidale)
             temp_interieure_c = 21.0
-            pression_interieure_hpa = pression_ext + 200.0 # Cabine pressurisée
+            pression_interieure_hpa = pression_ext + 200.0
         else:
             altitude_ellipsoidale = 48.0
             vitesse = 0.0
@@ -48,7 +38,6 @@ class RecepteurGeodesiqueGNSS:
             temp_interieure_c = 20.8
             pression_interieure_hpa = 1012.4
 
-        # Calcul trigonométrique rigoureux du vecteur tridimensionnel ECEF [X, Y, Z]
         lat_rad = math.radians(lat)
         lon_rad = math.radians(lon)
         N = a / math.sqrt(1.0 - e2 * math.sin(lat_rad)**2)
@@ -57,9 +46,7 @@ class RecepteurGeodesiqueGNSS:
         Y = (N + altitude_ellipsoidale) * math.cos(lat_rad) * math.sin(lon_rad)
         Z = (N * (1.0 - e2) + altitude_ellipsoidale) * math.sin(lat_rad)
 
-        # Génération d'une base de temps atomique pure déconnectée de l'horloge système
-        # Époque de référence arbitraire fixe incrémentée mathématiquement (Simulation GNSS Epoch)
-        timestamp_atomique = 1779862000.0 + time.get_clock_info('monotonic').resolution
+        timestamp_atomique = time.time() + 37.0 
 
         return {
             "timestamp_coaxial_tai": timestamp_atomique, 
@@ -84,28 +71,23 @@ def executer_calcul_absolu(profil="laboratoire"):
     eph = load('de440.bsp')
     ts = load.timescale()
     
-    # Établissement de la coordonnée de temps atomique (Conversion en jour julien de l'échelle TAI)
     t = ts.tai_bn(jd=2440587.5 + (sat["timestamp_coaxial_tai"] / 86400.0))
     t_plus_1s = ts.tai_bn(jd=2440587.5 + ((sat["timestamp_coaxial_tai"] + 1.0) / 86400.0))
     
-    # Relativité Restreinte et Générale
     c = 299792458.0
     beta = sat["vitesse_m_s"] / c
     gamma_lorentz = 1.0 / math.sqrt(1.0 - beta**2) if beta < 1 else 1.0
     rg_shift = (9.81 * sat["alt_wgs84_m"] / c**2) - (beta**2 / 2.0)
 
-    # Définition topocentrique de l'observateur sur l'ellipsoïde réel
     observer = eph['earth'] + Topos(latitude_degrees=sat["lat_deg"],
                                     longitude_degrees=sat["lon_deg"],
                                     elevation_m=sat["alt_wgs84_m"])
     
-    # Thermodynamique moléculaire de l'air intérieur ( Gladstone-Dale & équation d'état )
     r_specifique_air = 287.058
     temp_k = sat["temperature_interieure_C"] + 273.15
     rho_air = (sat["pression_interieure_hPa"] * 100.0) / (r_specifique_air * temp_k)
     n_gladstone = 1.0 + (0.226e-3 * rho_air)
 
-    # Calcul des vecteurs N-Corps JPL DE440
     corps_celestes = {
         "soleil": eph['sun'],
         "lune": eph['moon']
@@ -114,18 +96,14 @@ def executer_calcul_absolu(profil="laboratoire"):
     streams_output = {}
     
     for nom, corps in corps_celestes.items():
-        # Position instantanée t
         position_astrométrique = observer.at(t).observe(corps).apparent()
         alt_geo, az_geo, dist = position_astrométrique.altaz()
         
-        # Position décalée de +1s pour déduire la cinématique réelle
         pos_plus_1s = observer.at(t_plus_1s).observe(corps).apparent()
         _, az_geo_1s, _ = pos_plus_1s.altaz()
         
-        # Calcul de la vitesse angulaire réelle en azimut (gérant le passage par 360°)
         vitesse_angulaire = (az_geo_1s.degrees - az_geo.degrees + 180) % 360 - 180
         
-        # Réfraction physique atmosphérique réelle
         alt_ref, _, _ = position_astrométrique.altaz(temperature_C=sat["temperature_exterieure_C"], pressure_mbar=sat["pression_exterieure_hPa"])
         delta_refraction = max(0.0, alt_ref.degrees - alt_geo.degrees)
         
