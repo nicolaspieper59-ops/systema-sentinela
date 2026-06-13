@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>SYSTEMA SENTINELA v7.1 — Flux Pur NASA JPL Horizons</title>
+    <title>SYSTEMA SENTINELA v7.2 — Console Réalignée NASA DE440</title>
     <style>
         :root { 
             --bg-base: #020617; --bg-surface: #0f172a; --border-color: #1e293b; 
@@ -22,45 +22,46 @@
         th, td { border: 1px solid var(--border-color); padding: 6px 10px; text-align: left; }
         th { background: var(--bg-surface); color: var(--sky); }
         #radar { background: #01040d; border: 1px solid var(--border-color); width: 100%; height: 360px; }
-        .status-badge { font-weight: bold; padding: 2px 6px; border-radius: 2px; }
+        .status-badge { font-weight: bold; padding: 4px 8px; border-radius: 2px; font-size: 11px; }
     </style>
 </head>
 <body>
 <div class="container">
-    <div class="card" style="margin-bottom:20px; color: var(--sky); font-weight:bold; font-size:14px;">
-        SYSTEMA SENTINELA // CORE MULTIPHYSIQUE EXCLUSIF — RECOLEMENT STRICT VIA NASA JPL HORIZONS
+    <div class="card" style="margin-bottom:20px; color: var(--sky); font-weight:bold; font-size:14px; display: flex; justify-content: space-between; align-items: center;">
+        <span>SYSTEMA SENTINELA // CORE MULTIPHYSIQUE METROLOGIQUE v7.2</span>
+        <span id="flux-date" style="color: #64748b; font-size: 11px;">ÉPOQUE FLUX : EN ATTENTE</span>
     </div>
 
     <div class="grid-layout">
         <div class="card">
-            <div class="title-panel">1. Calage de la Station Topocentrique</div>
-            <div class="row-data"><span>Quartz Matériel :</span><span id="q-status" style="color:var(--rose);">STANDBY (CLIQUER POUR ACTIVER)</span></div>
+            <div class="title-panel">1. Paramètres Physiques Station Gps</div>
+            <div class="row-data"><span>Quartz Matériel :</span><span id="q-status" style="color:var(--rose); font-weight: bold;">HORS LIGNE (CLIQUER)</span></div>
             <div class="row-data"><span>Latitude ($\phi$) :</span><span>43.284356° N</span></div>
             <div class="row-data"><span>Longitude ($\lambda$) :</span><span>5.358507° E</span></div>
-            <div class="row-data"><span>Altitude ($h$) :</span><span>99.31 m</span></div>
+            <div class="row-data"><span>Altitude ellipsoïdale ($h$) :</span><span>99.31 m</span></div>
             
-            <div class="title-panel" style="margin-top:20px; border-color: var(--neon-green);">Matrice Cartésienne 3D ECEF Real</div>
+            <div class="title-panel" style="margin-top:20px; border-color: var(--neon-green);">Matrice Cartésienne 3D ECEF Réelle</div>
             <div class="row-data"><span>Axe Terrestre X :</span><span class="val-highlight">4630100.57 m</span></div>
             <div class="row-data"><span>Axe Terrestre Y :</span><span class="val-highlight">434290.60 m</span></div>
             <div class="row-data"><span>Axe Terrestre Z :</span><span class="val-highlight">4350620.22 m</span></div>
 
-            <div class="title-panel" style="margin-top:20px; border-color: var(--amber);">Correction Optique Gladstone-Dale</div>
-            <div class="row-data"><span>Indice Réfraction Standard ($n$) :</span><span style="color:var(--amber);">1.000273</span></div>
+            <div class="title-panel" style="margin-top:20px; border-color: var(--amber);">Réfraction Gladstone-Dale</div>
+            <div class="row-data"><span>Indice Réfraction Constaté ($n$) :</span><span style="color:var(--amber);">1.000273</span></div>
         </div>
 
         <div class="card">
-            <div class="title-panel">2. Éphémérides Uniques (Données Brutes de la NASA)</div>
-            <div class="row-data" style="background: rgba(56,189,248,0.08); padding: 8px; margin-bottom:15px;">
-                <span>Canal de Liaison Télécom :</span>
-                <span id="source-active" class="status-badge" style="background: var(--rose); color: #000;">VERIFICATION DU FLUX...</span>
+            <div class="title-panel">2. Éphémérides Uniques (Données Brutes Réelles de la NASA JPL)</div>
+            <div class="row-data" style="background: rgba(56,189,248,0.06); padding: 8px; margin-bottom:15px; display: flex; justify-content: space-between; align-items: center;">
+                <span>Canal de Liaison CI/CD GitHub Actions :</span>
+                <span id="source-active" class="status-badge" style="background: var(--rose); color: #fff;">FLUX ABSENT</span>
             </div>
             <table>
                 <thead>
                     <tr>
                         <th>CORPS CÉLESTE</th>
                         <th>AZIMUT (VRAI)</th>
-                        <th>ÉLÉVATION (NASA)</th>
-                        <th>DÉCLINAISON (UNIQUE)</th>
+                        <th>ÉLÉVATION COMPENSÉE</th>
+                        <th>DÉCLINAISON COORDONNÉE</th>
                     </tr>
                 </thead>
                 <tbody id="tbody-sentinela">
@@ -82,7 +83,7 @@
     let audioStartTime = 0;
     let fluxJPLUnifie = null;
 
-    // Construction de la grille d'affichage
+    // Construction structurelle de la grille d'affichage
     const tbody = document.getElementById('tbody-sentinela');
     ASTRES_LISTE.forEach(a => {
         tbody.innerHTML += `
@@ -94,23 +95,29 @@
             </tr>`;
     });
 
-    // Requête HTTP d'acquisition du fichier d'échange généré en amont par le Python
-    async function acquerirFluxJPL() {
+    // Lecture directe et exclusive du flux JSON généré toutes les 10 min par le Workflow
+    async function acquerirFluxLiveWorfklow() {
         try {
-            const reponse = await fetch('./flux_live.json?prevent_cache=' + Date.now());
+            const reponse = await fetch('./flux_live.json?cache_bypass=' + Date.now());
             if (reponse.ok) {
                 const flux_json = await reponse.json();
-                fluxJPLUnifie = flux_json.DATA_STREAMS;
                 
-                const badge = document.getElementById('source-active');
-                badge.innerText = "SÉCURISÉ — STREAM DIRECT EN LIGNE (NASA JPL)";
-                badge.style.background = "var(--neon-green)";
-                badge.style.color = "#000";
+                if(flux_json.METADATA && flux_json.METADATA.synchronisation === "STRICT_EPHEMERIS_DE440") {
+                    fluxJPLUnifie = flux_json.DATA_STREAMS;
+                    document.getElementById('flux-date').innerText = "ÉPOQUE FLUX (UTC) : " + flux_json.METADATA.epoch_utc;
+                    
+                    const badge = document.getElementById('source-active');
+                    badge.innerText = "VERIFIED — FLUX EN LIGNE (NASA JPL DE440)";
+                    badge.style.background = "var(--neon-green)";
+                    badge.style.color = "#000";
+                } else {
+                    interrompreAffichage("STRUCTURE DE FLUX CORROMPUE");
+                }
             } else {
-                interrompreAffichage("ERREUR CANAL (FLUX INVALIDE)");
+                interrompreAffichage("ERREUR FLUX ACTIONS (PROBLÈME SERVEUR)");
             }
         } catch (e) {
-            interrompreAffichage("ERREUR LIAISON FLUX_LIVE.JSON HORS LIGNE");
+            interrompreAffichage("FICHIER 'FLUX_LIVE.JSON' INTROUVABLE");
         }
     }
 
@@ -119,7 +126,7 @@
         badge.innerText = message;
         badge.style.background = "var(--rose)";
         badge.style.color = "#fff";
-        fluxJPLUnifie = null; // Coupe l'affichage sur la grille et le radar
+        fluxJPLUnifie = null; 
     }
 
     function rafraichirInterfaceGraphique() {
@@ -131,7 +138,7 @@
         const cy = canvas.height / 2; 
         const rMax = cx - 20;
 
-        // Tracé topocentrique du dôme radar
+        // Tracé géométrique du dôme radar topocentrique
         ctx.strokeStyle = "var(--border-color)";
         ctx.lineWidth = 1;
         [40, 80, 120, 160].forEach(r => {
@@ -139,21 +146,21 @@
         });
 
         ASTRES_LISTE.forEach(a => {
-            // Si le flux de la NASA contient des données valides pour l'astre
-            if (fluxJPLUnifie && fluxJPLUnifie[a] && fluxJPLUnifie[a].statut === "VERIFIED_JPL_DATA") {
+            // Affichage strict s'il y a des données de la NASA valides pour l'astre
+            if (fluxJPLUnifie && fluxJPLUnifie[a] && fluxJPLUnifie[a].statut === "VERIFIED_JPL_DE440") {
                 const az = fluxJPLUnifie[a].azimut_deg;
                 const el = fluxJPLUnifie[a].elevation_deg;
                 const dec = fluxJPLUnifie[a].declinaison_deg;
 
-                // Mise à jour de la table sans aucune équation locale ou de secours
+                // Remplissage de la table sans aucune équation simulée
                 document.getElementById(`az-${a}`).innerText = az.toFixed(4) + "°";
                 document.getElementById(`el-${a}`).innerText = el.toFixed(4) + "°";
                 document.getElementById(`dec-${a}`).innerText = (dec >= 0 ? "+" : "") + dec.toFixed(4) + "°";
 
-                // Gestion de l'opacité selon le niveau géométrique de l'horizon
+                // Gestion d'opacité (Estompage sous l'horizon géométrique)
                 document.getElementById(`r-${a}`).style.opacity = el > 0 ? "1.0" : "0.35";
 
-                // Projection photonique sur le plan 400x400 (Seuil de l'horizon physique -0.833°)
+                // Projection graphique sur le dôme radar (Seuil de réfraction de l'horizon physique à -0.833°)
                 if (el >= -0.833) {
                     const rayon = rMax * (1 - (Math.max(0, el) / 90));
                     const angleRad = (az * Math.PI) / 180;
@@ -168,10 +175,10 @@
                     ctx.fillText(a.substring(0, 3).toUpperCase(), x + 7, y + 3);
                 }
             } else {
-                // Remise à zéro stricte des champs si aucune donnée NASA n'est disponible
-                document.getElementById(`az-${a}`).innerText = "DÉCONNECTÉ";
-                document.getElementById(`el-${a}`).innerText = "DÉCONNECTÉ";
-                document.getElementById(`dec-${a}`).innerText = "DÉCONNECTÉ";
+                // Si aucune donnée n'est présente dans le flux JSON, l'affichage passe à zéro
+                document.getElementById(`az-${a}`).innerText = "ATTENTE DATA";
+                document.getElementById(`el-${a}`).innerText = "ATTENTE DATA";
+                document.getElementById(`dec-${a}`).innerText = "ATTENTE DATA";
                 document.getElementById(`r-${a}`).style.opacity = "0.2";
             }
         });
@@ -179,21 +186,21 @@
         requestAnimationFrame(rafraichirInterfaceGraphique);
     }
 
-    // Engagement du quartz matériel audio pour stabiliser le fil de rafraîchissement
+    // Engagement de l'horloge matérielle par clic utilisateur pour empêcher la mise en veille navigateur
     window.addEventListener('click', () => {
         if (!audioContext) {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             audioStartTime = audioContext.currentTime;
             baseTime = Date.now();
-            document.getElementById('q-status').innerText = "AUDIO-QUARTZ ENGAGÉ (VERROUILLÉ ACQUISITION)";
+            document.getElementById('q-status').innerText = "AUDIO-QUARTZ ENGAGÉ";
             document.getElementById('q-status').style.color = "var(--neon-green)";
         }
     });
 
-    // Cycles de collecte télécom (toutes les 4 secondes pour coller au rythme du script de calcul)
-    setInterval(acquerirFluxJPL, 4000);
-    acquerirFluxJPL();
+    // Fréquence d'acquisition régulière du flux généré par l'infrastructure CI/CD
+    setInterval(acquerirFluxLiveWorfklow, 10000);
+    acquerirFluxLiveWorfklow();
     requestAnimationFrame(rafraichirInterfaceGraphique);
 </script>
 </body>
-                                                                                                                               </html>
+    </html>
