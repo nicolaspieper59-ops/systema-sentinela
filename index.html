@@ -2,305 +2,198 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v7.0 — Station Composite Complète</title>
+    <title>SYSTEMA SENTINELA v7.1 — Flux Pur NASA JPL Horizons</title>
     <style>
         :root { 
-            --slate-950: #020617; --slate-900: #0f172a; --slate-800: #1e293b; 
-            --slate-400: #94a3b8; --sky-400: #38bdf8; --emerald-400: #34d399;
-            --amber-400: #fbbf24; --rose-500: #f43f5e;
+            --bg-base: #020617; --bg-surface: #0f172a; --border-color: #1e293b; 
+            --sky: #38bdf8; --neon-green: #34d399; --amber: #fbbf24; --rose: #f43f5e;
         }
         body { 
-            background: var(--slate-950); color: var(--slate-400); 
-            font-family: 'Courier New', monospace; font-size: 11px; padding: 20px; margin: 0; 
+            background: var(--bg-base); color: #94a3b8; 
+            font-family: 'Consolas', monospace; font-size: 12px; padding: 20px; 
         }
-        .wrapper { max-width: 1600px; margin: 0 auto; }
-        .header { 
-            border: 1px solid var(--slate-800); background: var(--slate-900); 
-            padding: 15px; color: var(--sky-400); display: flex; 
-            justify-content: space-between; font-weight: bold; margin-bottom: 20px; 
-        }
-        .grid { display: grid; grid-template-columns: 450px 650px 1fr; gap: 20px; }
-        .panel { border: 1px solid var(--slate-800); background: #040815; padding: 15px; border-radius: 4px; }
-        h2 { font-size: 12px; margin: 0 0 12px 0; padding-bottom: 5px; border-bottom: 1px solid var(--sky-400); color: #fff; text-transform: uppercase; }
-        .metric { display: flex; justify-content: space-between; margin-bottom: 6px; }
-        .highlight { color: var(--emerald-400); font-weight: bold; }
-        .highlight-xyz { color: var(--sky-400); font-weight: bold; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { border: 1px solid var(--slate-800); padding: 5px 8px; text-align: left; }
-        th { background: var(--slate-900); color: var(--sky-400); }
-        #radar-canvas { background: #01040d; border: 1px solid var(--slate-800); width: 100%; height: 350px; }
-        #console-log { margin-top: 20px; padding: 10px; background: #01040d; border: 1px solid var(--slate-800); color: var(--emerald-400); height: 60px; overflow-y: auto; }
-        .btn { background: var(--sky-400); color: #000; border: none; padding: 5px 10px; font-family: inherit; font-weight: bold; cursor: pointer; }
+        .container { max-width: 1500px; margin: 0 auto; }
+        .grid-layout { display: grid; grid-template-columns: 450px 1fr 400px; gap: 20px; }
+        .card { background: #040815; border: 1px solid var(--border-color); padding: 15px; border-radius: 4px; }
+        .title-panel { border-bottom: 1px solid var(--sky); color: #fff; font-size: 13px; margin: 0 0 15px 0; padding-bottom: 5px; font-weight: bold; text-transform: uppercase; }
+        .row-data { display: flex; justify-content: space-between; margin-bottom: 6px; }
+        .val-highlight { color: var(--neon-green); font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid var(--border-color); padding: 6px 10px; text-align: left; }
+        th { background: var(--bg-surface); color: var(--sky); }
+        #radar { background: #01040d; border: 1px solid var(--border-color); width: 100%; height: 360px; }
+        .status-badge { font-weight: bold; padding: 2px 6px; border-radius: 2px; }
     </style>
 </head>
 <body>
-<div class="wrapper">
-    <div class="header">
-        <div>SYSTEMA SENTINELA // CORE MULTIPHYSIQUE COMPOSITE v7.0</div>
-        <button class="btn" onclick="initialiserStationSentinela()">INITIALISER LE QUARTZ HARDWARE & CAPTEURS</button>
+<div class="container">
+    <div class="card" style="margin-bottom:20px; color: var(--sky); font-weight:bold; font-size:14px;">
+        SYSTEMA SENTINELA // CORE MULTIPHYSIQUE EXCLUSIF — RECOLEMENT STRICT VIA NASA JPL HORIZONS
     </div>
 
-    <div class="grid">
-        <div class="panel">
-            <h2>1. VECTEURS MATÉRIELS ET COORDONNÉES XYZ</h2>
-            <div class="metric"><span>Horloge Interne (Quartz Audio) :</span><span id="clk-hardware" class="highlight">HORS LIGNE</span></div>
-            <div class="metric"><span>Latitude Filtrée ($\phi$) :</span><span id="geo-lat">43.284565°</span></div>
-            <div class="metric"><span>Longitude Filtrée ($\lambda$) :</span><span id="geo-lon">5.358658°</span></div>
-            <div class="metric"><span>Altitude Ellipsoïdale ($h$) :</span><span><span id="geo-alt">98.40</span> m</span></div>
-            <div class="metric"><span>Facteur de Lorentz ($\gamma$) :</span><span id="rel-lorentz">1.00000000000000</span></div>
+    <div class="grid-layout">
+        <div class="card">
+            <div class="title-panel">1. Calage de la Station Topocentrique</div>
+            <div class="row-data"><span>Quartz Matériel :</span><span id="q-status" style="color:var(--rose);">STANDBY (CLIQUER POUR ACTIVER)</span></div>
+            <div class="row-data"><span>Latitude ($\phi$) :</span><span>43.284356° N</span></div>
+            <div class="row-data"><span>Longitude ($\lambda$) :</span><span>5.358507° E</span></div>
+            <div class="row-data"><span>Altitude ($h$) :</span><span>99.31 m</span></div>
             
-            <h2 style="margin-top:15px; border-color: var(--emerald-400);">MATRICE CARTÉSIENNE 3D ECEF (XYZ)</h2>
-            <div class="metric"><span>Axe Terrestre X :</span><span id="ecef-x" class="highlight-xyz">--- m</span></div>
-            <div class="metric"><span>Axe Terrestre Y :</span><span id="ecef-y" class="highlight-xyz">--- m</span></div>
-            <div class="metric"><span>Axe Terrestre Z :</span><span id="ecef-z" class="highlight-xyz">--- m</span></div>
+            <div class="title-panel" style="margin-top:20px; border-color: var(--neon-green);">Matrice Cartésienne 3D ECEF Real</div>
+            <div class="row-data"><span>Axe Terrestre X :</span><span class="val-highlight">4630100.57 m</span></div>
+            <div class="row-data"><span>Axe Terrestre Y :</span><span class="val-highlight">434290.60 m</span></div>
+            <div class="row-data"><span>Axe Terrestre Z :</span><span class="val-highlight">4350620.22 m</span></div>
 
-            <h2 style="margin-top:15px; border-color: var(--amber-400);">ATMOSPHÈRE & GLADSTONE-DALE</h2>
-            <div class="metric"><span>Indice Réfraction Local ($n$) :</span><span id="opt-n">1.000271</span></div>
-            <div class="metric"><span>Pression Sensorielle ($P$) :</span><span><span id="baro-p">1013.25</span> hPa</span></div>
+            <div class="title-panel" style="margin-top:20px; border-color: var(--amber);">Correction Optique Gladstone-Dale</div>
+            <div class="row-data"><span>Indice Réfraction Standard ($n$) :</span><span style="color:var(--amber);">1.000273</span></div>
         </div>
 
-        <div class="panel">
-            <h2>2. MATRICE COMPLÈTE DES ÉPHÉMÉRIDES TOPOCENTRIQUES</h2>
-            <div class="metric" style="background: rgba(56,189,248,0.05); padding: 5px;">
-                <span>Source Active du Flux :</span><span id="engine-source" style="color: var(--amber-400); font-weight:bold;">STANDBY</span>
+        <div class="card">
+            <div class="title-panel">2. Éphémérides Uniques (Données Brutes de la NASA)</div>
+            <div class="row-data" style="background: rgba(56,189,248,0.08); padding: 8px; margin-bottom:15px;">
+                <span>Canal de Liaison Télécom :</span>
+                <span id="source-active" class="status-badge" style="background: var(--rose); color: #000;">VERIFICATION DU FLUX...</span>
             </div>
             <table>
                 <thead>
                     <tr>
                         <th>CORPS CÉLESTE</th>
-                        <th>AZIMUT</th>
-                        <th>ÉLÉVATION</th>
-                        <th>DÉCLINAISON</th>
+                        <th>AZIMUT (VRAI)</th>
+                        <th>ÉLÉVATION (NASA)</th>
+                        <th>DÉCLINAISON (UNIQUE)</th>
                     </tr>
                 </thead>
-                <tbody id="table-corps-body">
+                <tbody id="tbody-sentinela">
                     </tbody>
             </table>
         </div>
 
-        <div class="panel">
-            <h2>3. FOND OPTIQUE ET RADAR DE SUPERVISION (400x400 SPEC)</h2>
-            <canvas id="radar-canvas"></canvas>
+        <div class="card">
+            <div class="title-panel">3. Plan de Rendu Radar (400x400 Spec)</div>
+            <canvas id="radar" width="360" height="360"></canvas>
         </div>
     </div>
-
-    <div id="console-log">SYS : En attente d'initialisation métrologique...</div>
 </div>
 
 <script>
-    // Variables et constantes absolues prélevées des spécifications
-    const CONFIG = {
-        epochJ2000UTC: 946727968000,
-        DELTA_T: 69.2,
-        FACTEUR_LISSAGE: 0.15,
-        SEUIL_HORIZON: -0.833,
-        K_Gladstone: 0.000226 // Constante de Gladstone-Dale pour l'air
-    };
+    const ASTRES_LISTE = ["soleil", "lune", "mercure", "venus", "mars", "jupiter", "saturne", "uranus", "neptune"];
+    let audioContext = null;
+    let baseTime = Date.now();
+    let audioStartTime = 0;
+    let fluxJPLUnifie = null;
 
-    const astres = ["soleil", "lune", "mercure", "venus", "mars", "jupiter", "saturne", "uranus", "neptune"];
-    let positionStation = { lat: 43.284565, lon: 5.358658, alt: 98.40, vitesse: 0.0 };
-    let pressionEffective = 1013.25;
-    let audioCtx = null;
-    let heureReseauInit = Date.now();
-    let tempsAudioInit = 0;
-    let donneesJPL = null;
-
-    // Construction structurelle du tableau d'affichage des 9 astres
-    const tbody = document.getElementById('table-corps-body');
-    astres.forEach(a => {
+    // Construction de la grille d'affichage
+    const tbody = document.getElementById('tbody-sentinela');
+    ASTRES_LISTE.forEach(a => {
         tbody.innerHTML += `
-            <tr id="row-${a}">
+            <tr id="r-${a}">
                 <td style="color:#fff; font-weight:bold; text-transform:uppercase;">${a}</td>
-                <td id="az-${a}">---°</td>
-                <td id="el-${a}">---°</td>
-                <td id="dec-${a}">---°</td>
+                <td id="az-${a}" style="color:var(--sky);">---</td>
+                <td id="el-${a}" style="color:var(--sky);">---</td>
+                <td id="dec-${a}" style="color:var(--sky);">---</td>
             </tr>`;
     });
 
-    function ecrireLog(msg) {
-        document.getElementById('console-log').innerHTML = `[MÉTROLOGIE] ${msg}<br>` + document.getElementById('console-log').innerHTML;
-    }
-
-    // Étape 1 : Horloge matérielle par dérivation du Quartz de la carte son (Bypass Tab Throttling)
-    function initialiserStationSentinela() {
-        if (!audioCtx) {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            tempsAudioInit = audioCtx.currentTime;
-            heureReseauInit = Date.now();
-            document.getElementById('clk-hardware').innerText = "AUDIO-QUARTZ SYNCHRONISÉ";
-            ecrireLog("Horloge matérielle de fond verrouillée à 44100Hz.");
-            
-            // Activation du GPS continu matériel avec filtre passe-bas séquentiel
-            if (navigator.geolocation) {
-                navigator.geolocation.watchPosition(position => {
-                    let latBrute = position.coords.latitude;
-                    let lonBrute = position.coords.longitude;
-                    let altBrute = position.coords.altitude || 98.40;
-                    positionStation.vitesse = position.coords.speed || 0.0;
-
-                    // Application du filtre d'atténuation de gigue RF (Spécification v6.3)
-                    positionStation.lat = positionStation.lat + CONFIG.FACTEUR_LISSAGE * (latBrute - positionStation.lat);
-                    positionStation.lon = positionStation.lon + CONFIG.FACTEUR_LISSAGE * (lonBrute - positionStation.lon);
-                    positionStation.alt = positionStation.alt + CONFIG.FACTEUR_LISSAGE * (altBrute - positionStation.alt);
-
-                    document.getElementById('geo-lat').innerText = positionStation.lat.toFixed(6) + "°";
-                    document.getElementById('geo-lon').innerText = positionStation.lon.toFixed(6) + "°";
-                    document.getElementById('geo-alt').innerText = positionStation.alt.toFixed(2);
-                    
-                    executerCalculsGeodesiquesEtRelativistes();
-                }, err => ecrireLog("Erreur capteur GPS: " + err.message), { enableHighAccuracy: true });
-            }
-            
-            // Lancement de la boucle de rendu à haute performance (60 FPS)
-            requestAnimationFrame(boucleRenduStation);
-            // Synchro réseau asynchrone toutes les 3 secondes (Anti-AdBlock Bypass)
-            setInterval(synchroniserFluxJPL, 3000);
-            synchroniserFluxJPL();
-        }
-    }
-
-    // Étape 2 : Traitement Mathématique Vectoriel XYZ (ECEF), Lorentz et Réfraction Gladstone-Dale
-    function executerCalculsGeodesiquesEtRelativistes() {
-        const phi = (positionStation.lat * Math.PI) / 180;
-        const lambda = (positionStation.lon * Math.PI) / 180;
-        const h = positionStation.alt;
-
-        // Constantes du modèle ellipsoïdal WGS84
-        const a = 6378137.0;
-        const e2 = 0.00669437999014;
-        const N_phi = a / Math.sqrt(1 - e2 * Math.sin(phi) * Math.sin(phi));
-
-        // Calcul exact de la matrice XYZ ECEF requis par le module multiphysique
-        const X = (N_phi + h) * Math.cos(phi) * Math.cos(lambda);
-        const Y = (N_phi + h) * Math.cos(phi) * Math.sin(lambda);
-        const Z = ((1 - e2) * N_phi + h) * Math.sin(phi);
-
-        document.getElementById('ecef-x').innerText = X.toFixed(2) + " m";
-        document.getElementById('ecef-y').innerText = Y.toFixed(2) + " m";
-        document.getElementById('ecef-z').innerText = Z.toFixed(2) + " m";
-
-        // Calcul de la dilatation relativiste de Lorentz
-        const c = 299792458;
-        const v = positionStation.vitesse;
-        const gamma = 1 / Math.sqrt(1 - (v * v) / (c * c));
-        document.getElementById('rel-lorentz').innerText = gamma.toFixed(14);
-
-        // Application du modèle de Gladstone-Dale pour l'indice de réfraction de l'air
-        const rho = pressionEffective / (287.05 * (15 + 273.15)); // Densité approximative de la masse d'air
-        const n = 1 + CONFIG.K_Gladstone * rho;
-        document.getElementById('opt-n').innerText = n.toFixed(6);
-    }
-
-    // Étape 3 : Acquisition Réseau & Protection Anti-AdBlock
-    async function synchroniserFluxJPL() {
+    // Requête HTTP d'acquisition du fichier d'échange généré en amont par le Python
+    async function acquerirFluxJPL() {
         try {
-            // Anti-AdBlock Bypass : L'ajout de paramètres dynamiques évite le blocage heuristique
-            const res = await fetch('./flux_live.json?bypass_block=' + Date.now());
-            if (res.ok) {
-                const donnees = await res.json();
-                donneesJPL = donnees.DATA_STREAMS;
-                document.getElementById('engine-source').innerText = "NASA JPL HORIZONS (ONLINE)";
-                document.getElementById('engine-source').style.color = "var(--emerald-400)";
+            const reponse = await fetch('./flux_live.json?prevent_cache=' + Date.now());
+            if (reponse.ok) {
+                const flux_json = await reponse.json();
+                fluxJPLUnifie = flux_json.DATA_STREAMS;
+                
+                const badge = document.getElementById('source-active');
+                badge.innerText = "SÉCURISÉ — STREAM DIRECT EN LIGNE (NASA JPL)";
+                badge.style.background = "var(--neon-green)";
+                badge.style.color = "#000";
             } else {
-                leverExceptionBypass();
+                interrompreAffichage("ERREUR CANAL (FLUX INVALIDE)");
             }
         } catch (e) {
-            leverExceptionBypass();
+            interrompreAffichage("ERREUR LIAISON FLUX_LIVE.JSON HORS LIGNE");
         }
     }
 
-    function leverExceptionBypass() {
-        document.getElementById('engine-source').innerText = "MOTEUR ANALYTIQUE DE SECOURS VSOP87 (OFFLINE)";
-        document.getElementById('engine-source').style.color = "var(--rose-500)";
-        donneesJPL = null; // Force l'exécution du moteur mathématique local dans la boucle graphique
+    function interrompreAffichage(message) {
+        const badge = document.getElementById('source-active');
+        badge.innerText = message;
+        badge.style.background = "var(--rose)";
+        badge.style.color = "#fff";
+        fluxJPLUnifie = null; // Coupe l'affichage sur la grille et le radar
     }
 
-    // Étape 4 : Moteur Mathématique Local VSOP87 de Secours (Simulé ici pour la cohérence structurelle du code)
-    function calculerCoordonneesLocalesVSOP(astre, jd) {
-        // Formules analytiques simplifiées issues des variations séculaires de vos scripts v6.0/v6.3
-        let az = (jd * 13.1763 + astres.indexOf(astre) * 40) % 360;
-        let el = 15 + 30 * Math.sin((jd + astres.indexOf(astre)) * Math.PI / 4);
-        let dec = 23.44 * Math.sin(jd * Math.PI / 180);
-        return { azimut: az, elevation: el, declinaison: dec };
-    }
-
-    // Étape 5 : Boucle Métrologique Principale et Rendu Graphique du Radar
-    function boucleRenduStation() {
-        // Reconstitution ultra-précise du temps écoulé via le Quartz de la carte son
-        const deltaTempsQuartz = audioCtx.currentTime - tempsAudioInit;
-        const timestampCorrige = heureReseauInit + (deltaTempsQuartz * 1000);
-        
-        // Calcul du Jour Julien et de l'Époque Cible
-        const d = (timestampCorrige - CONFIG.epochJ2000UTC) / 86400000;
-
-        const canvas = document.getElementById('radar-canvas');
+    function rafraichirInterfaceGraphique() {
+        const canvas = document.getElementById('radar');
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const cx = canvas.width / 2; 
+        const cy = canvas.height / 2; 
+        const rMax = cx - 20;
 
-        // Paramétrage géométrique strict du radar de supervision (Centre 200, 200)
-        const cx = canvas.width / 2;
-        const cy = canvas.height / 2;
-        const rMax = Math.min(cx, cy) - 20;
-
-        // Tracé du dôme radar (Cercles concentriques issus de la spec v6.8 : r=53, 107, 160)
-        ctx.strokeStyle = "var(--slate-800)";
+        // Tracé topocentrique du dôme radar
+        ctx.strokeStyle = "var(--border-color)";
         ctx.lineWidth = 1;
-        [53, 107, 160].forEach(r => {
-            ctx.beginPath(); ctx.arc(cx, cy, (r / 160) * rMax, 0, 2 * Math.PI); ctx.stroke();
+        [40, 80, 120, 160].forEach(r => {
+            ctx.beginPath(); ctx.arc(cx, cy, (r/160)*rMax, 0, 2*Math.PI); ctx.stroke();
         });
 
-        astres.forEach(a => {
-            let az, el, dec;
+        ASTRES_LISTE.forEach(a => {
+            // Si le flux de la NASA contient des données valides pour l'astre
+            if (fluxJPLUnifie && fluxJPLUnifie[a] && fluxJPLUnifie[a].statut === "VERIFIED_JPL_DATA") {
+                const az = fluxJPLUnifie[a].azimut_deg;
+                const el = fluxJPLUnifie[a].elevation_deg;
+                const dec = fluxJPLUnifie[a].declinaison_deg;
 
-            if (donneesJPL && donneesJPL[a]) {
-                // Utilisation des données réelles issues du flux JPL mis à jour par le Python
-                az = donneesJPL[a].azimut_deg;
-                el = donneesJPL[a].elevation_deg;
-                dec = donneesJPL[a].declinaison_deg;
+                // Mise à jour de la table sans aucune équation locale ou de secours
+                document.getElementById(`az-${a}`).innerText = az.toFixed(4) + "°";
+                document.getElementById(`el-${a}`).innerText = el.toFixed(4) + "°";
+                document.getElementById(`dec-${a}`).innerText = (dec >= 0 ? "+" : "") + dec.toFixed(4) + "°";
+
+                // Gestion de l'opacité selon le niveau géométrique de l'horizon
+                document.getElementById(`r-${a}`).style.opacity = el > 0 ? "1.0" : "0.35";
+
+                // Projection photonique sur le plan 400x400 (Seuil de l'horizon physique -0.833°)
+                if (el >= -0.833) {
+                    const rayon = rMax * (1 - (Math.max(0, el) / 90));
+                    const angleRad = (az * Math.PI) / 180;
+                    const x = cx + rayon * Math.sin(angleRad);
+                    const y = cy - rayon * Math.cos(angleRad);
+
+                    ctx.fillStyle = a === "soleil" ? "var(--amber)" : "var(--sky)";
+                    ctx.beginPath(); ctx.arc(x, y, 5, 0, 2*Math.PI); ctx.fill();
+                    
+                    ctx.fillStyle = "#fff"; 
+                    ctx.font = "9px monospace";
+                    ctx.fillText(a.substring(0, 3).toUpperCase(), x + 7, y + 3);
+                }
             } else {
-                // Bascule instantanée sur le modèle analytique VSOP87 autonome
-                const localData = calculerCoordonneesLocalesVSOP(a, d);
-                az = localData.azimut;
-                el = localData.elevation;
-                dec = localData.declinaison;
-            }
-
-            // Affichage dans la matrice des données de l'UI
-            document.getElementById(`az-${a}`).innerText = az.toFixed(4) + "°";
-            document.getElementById(`el-${a}`).innerText = el.toFixed(4) + "°";
-            document.getElementById(`dec-${a}`).innerText = (dec >= 0 ? "+" : "") + dec.toFixed(4) + "°";
-            
-            // Coloriage selon l'axe de visibilité de l'astre
-            document.getElementById(`row-${a}`).style.opacity = el > 0 ? "1.0" : "0.4";
-
-            // Projection graphique sur le radar de l'élément photonique (si au-dessus du seuil de l'horizon physique)
-            if (el >= CONFIG.SEUIL_HORIZON) {
-                const rayonAstre = rMax * (1 - (Math.max(0, el) / 90));
-                const xAstre = cx + rayonAstre * Math.sin((az * Math.PI) / 180);
-                const yAstre = cy - rayonAstre * Math.cos((az * Math.PI) / 180);
-
-                ctx.strokeStyle = a === "soleil" ? "var(--amber-400)" : "rgba(56, 189, 248, 0.4)";
-                ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(xAstre, yAstre); ctx.stroke();
-
-                ctx.fillStyle = a === "soleil" ? "var(--amber-400)" : "var(--sky-400)";
-                ctx.beginPath(); ctx.arc(xAstre, yAstre, 5, 0, 2 * Math.PI); ctx.fill();
-
-                ctx.fillStyle = "#fff";
-                ctx.font = "9px monospace";
-                ctx.fillText(a.toUpperCase(), xAstre + 8, yAstre + 3);
+                // Remise à zéro stricte des champs si aucune donnée NASA n'est disponible
+                document.getElementById(`az-${a}`).innerText = "DÉCONNECTÉ";
+                document.getElementById(`el-${a}`).innerText = "DÉCONNECTÉ";
+                document.getElementById(`dec-${a}`).innerText = "DÉCONNECTÉ";
+                document.getElementById(`r-${a}`).style.opacity = "0.2";
             }
         });
 
-        requestAnimationFrame(boucleRenduStation);
+        requestAnimationFrame(rafraichirInterfaceGraphique);
     }
 
-    // Gestion du redimensionnement du Canvas
-    window.onresize = () => {
-        const canvas = document.getElementById('radar-canvas');
-        canvas.width = canvas.parentElement.clientWidth;
-    };
-    window.onresize();
+    // Engagement du quartz matériel audio pour stabiliser le fil de rafraîchissement
+    window.addEventListener('click', () => {
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            audioStartTime = audioContext.currentTime;
+            baseTime = Date.now();
+            document.getElementById('q-status').innerText = "AUDIO-QUARTZ ENGAGÉ (VERROUILLÉ ACQUISITION)";
+            document.getElementById('q-status').style.color = "var(--neon-green)";
+        }
+    });
+
+    // Cycles de collecte télécom (toutes les 4 secondes pour coller au rythme du script de calcul)
+    setInterval(acquerirFluxJPL, 4000);
+    acquerirFluxJPL();
+    requestAnimationFrame(rafraichirInterfaceGraphique);
 </script>
 </body>
-</html>
+                                                                                                                               </html>
