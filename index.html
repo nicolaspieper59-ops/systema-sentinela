@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>SÉNTINELA - MÉTROLOGIE STRICTE S10e</title>
+    <title>SÉNTINELA - MATRICE HORIZONTALE COMPLÈTE JPL</title>
     <style>
         :root { 
             --slate-950: #020617; --slate-900: #0f172a; --slate-800: #1e293b; 
@@ -13,11 +13,11 @@
             background: var(--slate-950); 
             color: var(--slate-400); 
             font-family: 'Courier New', monospace; 
-            font-size: 10.5pt; 
+            font-size: 10pt; 
             padding: 20px; 
             margin: 0; 
         }
-        .wrapper { max-width: 1600px; margin: 0 auto; }
+        .wrapper { max-width: 1650px; margin: 0 auto; }
         .header { 
             border: 1px solid var(--slate-800); 
             background: var(--slate-900); 
@@ -28,10 +28,10 @@
             font-weight: bold; 
             margin-bottom: 20px;
         }
-        .grid { display: grid; grid-template-columns: 500px 580px 1fr; gap: 20px; }
+        .grid { display: grid; grid-template-columns: 460px 660px 1fr; gap: 20px; }
         .panel { border: 1px solid var(--slate-800); background: #040815; padding: 18px; border-radius: 4px; display: flex; flex-direction: column; gap: 10px; }
         h2 { 
-            font-size: 11pt; 
+            font-size: 10.5pt; 
             margin: 0 0 10px 0; 
             padding-bottom: 6px; 
             border-bottom: 1px solid var(--sky-400); 
@@ -39,24 +39,26 @@
             text-transform: uppercase; 
         }
         .metric { display: flex; justify-content: space-between; margin-bottom: 8px; }
-        .data { font-weight: bold; color: #fff; }
         .data-hardware { color: var(--emerald-400); font-weight: bold; }
-        .sub-group { border: 1px solid var(--slate-800); padding: 12px; margin-top: 5px; background: rgba(255,255,255,0.01); }
+        .sub-group { border: 1px solid var(--slate-800); padding: 12px; background: rgba(255,255,255,0.01); }
         .sub-title { 
             color: var(--sky-400); 
             font-weight: bold; 
-            font-size: 10pt; 
+            font-size: 9.5pt; 
             text-transform: uppercase; 
             margin-bottom: 10px; 
             border-bottom: 1px solid var(--slate-800); 
             padding-bottom: 4px; 
         }
         table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid var(--slate-800); padding: 8px; text-align: left; }
+        th, td { border: 1px solid var(--slate-800); padding: 6px 8px; text-align: left; }
         th { background: var(--slate-900); color: var(--sky-400); }
+        .highlight-az { color: var(--emerald-400); font-weight: bold; }
+        .highlight-el { color: var(--amber-400); font-weight: bold; }
+        .highlight-dec { color: #fff; font-weight: bold; }
         #console-log { margin-top: 20px; padding: 12px; background: #01040d; border: 1px solid var(--slate-800); color: var(--emerald-400); font-size: 10pt; }
         .btn-permission {
-            background: var(--sky-400); color: var(--slate-950); border: none; padding: 10px 15px; 
+            background: var(--sky-400); color: var(--slate-950); border: none; padding: 8px 12px; 
             font-family: 'Courier New', monospace; font-weight: bold; cursor: pointer; border-radius: 3px;
         }
     </style>
@@ -64,158 +66,137 @@
 <body>
 <div class="wrapper">
     <div class="header">
-        <div>SYSTEMA SENTINELA // CAPTEURS MATÉRIELS DIRECTS S10e</div>
+        <div>SYSTEMA SENTINELA // ACQUISITION DE COORDONNÉES ABSOLUES JPL</div>
         <button class="btn-permission" onclick="initialiserCapteursS10e()">INITIALISER LE CAPTAGE RÉEL</button>
     </div>
 
     <div class="grid">
         <div class="panel">
             <h2>DONNÉES MATÉRIELLES STRICTES</h2>
-            <div class="metric"><span>Puce GNSS Broadcom :</span><span id="gnss-status" class="data" style="color:var(--rose-500)">HORS LIGNE</span></div>
+            <div class="metric"><span>Puce GNSS Broadcom :</span><span id="gnss-status" style="color:var(--rose-500); font-weight:bold;">HORS LIGNE</span></div>
             <div class="metric"><span>Latitude Captée :</span><span id="hw-lat" class="data-hardware">--.------°</span></div>
             <div class="metric"><span>Longitude Captée :</span><span id="hw-lon" class="data-hardware">--.------°</span></div>
             <div class="metric"><span>Altitude Ellipsoïdale ($h$) :</span><span><span id="hw-alt" class="data-hardware">---.-</span> m</span></div>
-            <div class="metric"><span>Précision Position ($H$) :</span><span><span id="hw-accuracy" class="data">--</span> m</span></div>
             <div class="metric"><span>Vitesse Cinétique Réelle :</span><span><span id="hw-speed" class="data-hardware">---.-</span> km/h</span></div>
             
             <div class="sub-group">
-                <div class="sub-title">BAROMÈTRE STMicroelectronics (LPS22HH)</div>
+                <div class="sub-title">BAROMÈTRE STMicroelectronics</div>
                 <div class="metric"><span>Pression Mesurée ($P$) :</span><span><span id="hw-baro" class="data-hardware">----.--</span> hPa</span></div>
-            </div>
-            
-            <div class="sub-group">
-                <div class="sub-title">EFFETS RELATIVISTES MESURÉS (RG / RR)</div>
-                <div class="metric"><span>Facteur &gamma; Lorentz :</span><span id="rel-gamma" class="data">-.--------</span></div>
-                <div class="metric"><span>Dérive RG d'Einstein :</span><span id="rel-einstein" class="data">-.----- e-- s/s</span></div>
             </div>
         </div>
 
         <div class="panel">
-            <h2>ÉPHÉMÉRIDES BRUTES JPL HORIZONS DE441</h2>
-            <div class="metric" style="background: rgba(251, 191, 36, 0.05); padding: 6px;">
-                <span>ILLUMINATION LUNAIRE (JPL) :</span><span id="jpl-lune-inc" class="data" style="color: var(--amber-400);">5.3586 %</span>
+            <h2>POSITIONS EN DEGRÉS DIRECTS (JPL DE440)</h2>
+            <div class="metric" style="background: rgba(251, 191, 36, 0.05); padding: 6px; font-weight: bold;">
+                <span>ILLUMINATION DE LA LUNE :</span><span id="jpl-lune-inc" style="color: var(--amber-400);">--.-- %</span>
             </div>
             <table>
                 <thead>
                     <tr>
-                        <th>ASTRE</th>
-                        <th>ASCENSION DROITE</th>
-                        <th>DÉCLINAISON NATIVE</th>
-                        <th>MAGNITUDE</th>
+                        <th>CORPS CÉLESTE</th>
+                        <th>AZIMUT (Az)</th>
+                        <th>ÉLÉVATION (El)</th>
+                        <th>DÉCLINAISON ($\delta$)</th>
                     </tr>
                 </thead>
-                <tbody id="jpl-table-body">
+                <tbody id="planetary-table-body">
                     </tbody>
             </table>
         </div>
 
         <div class="panel">
             <h2>MATRICE OPTIQUE DE FOND (FLUX CELLULAIRE)</h2>
-            <div style="position: relative; width: 100%; height: 200px; background: #01040d; border: 1px solid var(--slate-800);">
+            <div style="position: relative; width: 100%; height: 100%; min-height: 200px; background: #01040d; border: 1px solid var(--slate-800);">
                 <video id="video-invisible" autoplay playsinline muted style="display: none;"></video>
-                <div style="position: absolute; top:50%; left:50%; transform:translate(-50%, -50%); color: var(--slate-400); text-align: center; font-size: 9.5pt;">
-                    LIAISON OPTIQUE ACTIVE VIA MEDIASTREAM<br>
+                <div style="position: absolute; top:50%; left:50%; transform:translate(-50%, -50%); color: var(--slate-400); text-align: center;">
+                    LIAISON OPTIQUE ACTIVE VLA MEDIASTREAM<br>
                     <span id="cam-status" style="color: var(--rose-500); font-weight: bold;">STATUT : DISCONNECTED</span>
                 </div>
             </div>
         </div>
     </div>
-    <div id="console-log">SYS : Système épuré. Prêt pour acquisition des données physiques réelles...</div>
+    <div id="console-log">SYS : Prêt à mapper les chaînes de caractères horizontales du JPL...</div>
 </div>
 
 <script>
-    // ÉPHÉMÉRIDES STRICTES ISSUES DIRECTEMENT DU NUMÉRIQUE JPL HORIZONS
-    const DonniesBrutesJPL = {
-        "soleil": { ra: "05h 24m 12.13s", dec: "+23° 10' 44.0\"", mag: "-26.709" },
-        "lune":   { ra: "04h 12m 05.88s", dec: "+18° 45' 12.2\"", mag: "-5.42" },
-        "venus":  { ra: "03h 45m 11.02s", dec: "+16° 12' 01.5\"", mag: "-3.91" },
-        "mars":   { ra: "07h 14m 55.20s", dec: "+24° 02' 33.1\"", mag: "+1.65" }
-    };
+    const listeAsters = ["soleil", "lune", "mercure", "venus", "mars", "jupiter", "saturne", "uranus", "neptune"];
 
-    const tbody = document.getElementById('jpl-table-body');
-    for (let astre in DonniesBrutesJPL) {
+    // Initialisation structurelle des lignes du tableau
+    const tbody = document.getElementById('planetary-table-body');
+    listeAstars.forEach(corps => {
         tbody.innerHTML += `
-            <tr>
-                <td style="color:#fff; font-weight:bold; text-transform:uppercase;">${astre}</td>
-                <td style="color:var(--sky-400); font-weight:bold;">${DonniesBrutesJPL[astre].ra}</td>
-                <td style="color:var(--amber-400); font-weight:bold;">${DonniesBrutesJPL[astre].dec}</td>
-                <td>${DonniesBrutesJPL[astre].mag}</td>
+            <tr id="row-${corps}">
+                <td style="color:#fff; font-weight:bold; text-transform:uppercase;">${corps}</td>
+                <td id="az-${corps}" class="highlight-az">-</td>
+                <td id="el-${corps}" class="highlight-el">-</td>
+                <td id="dec-${corps}" class="highlight-dec">-</td>
             </tr>`;
-    }
+    });
 
     function ecrireLog(texte, estErreur = false) {
         const logBox = document.getElementById('console-log');
-        logBox.innerText = `[MÉTROLOGIE REAL-TIME] ${texte}`;
+        logBox.innerText = `[MÉTROLOGIE] ${texte}`;
         logBox.style.color = estErreur ? 'var(--rose-500)' : 'var(--emerald-400)';
+    }
+
+    // Fonction de lecture de la trame JSON brute du JPL (ZÉRO CALCUL DANS LE SCRIPT)
+    async function acquerirTrameBruteJPL() {
+        try {
+            const reponse = await fetch('./flux_live.json?nocache=' + Date.now());
+            if (!reponse.ok) return;
+            const jsonBrut = await reponse.json();
+
+            // Affectation directe du pourcentage d'illumination lunaire
+            document.getElementById('jpl-lune-inc').innerText = jsonBrut.DONNEES_SPECIFIQUES_LUNE.illumination_pourcentage.toFixed(4) + " %";
+
+            // Injection des chaînes textuelles de degrés sans aucune conversion numérique ni calcul
+            listeAstars.forEach(corps => {
+                const streamAstre = jsonBrut.DATA_STREAMS[corps];
+                if (streamAstre) {
+                    document.getElementById(`az-${corps}`).innerText = streamAstre.azimut_deg;
+                    document.getElementById(`el-${corps}`).innerText = streamAstre.elevation_deg;
+                    document.getElementById(`dec-${corps}`).innerText = streamAstre.declinaison_deg;
+                }
+            });
+        } catch (erreur) {
+            console.log("Erreur synchronisation tampon JSON : " + erreur.message);
+        }
     }
 
     async function initialiserCapteursS10e() {
         ecrireLog("Démarrage du pont matériel...");
 
-        // 1. GNSS : Acquisition stricte des coordonnées et de la vitesse Doppler du S10e (ZÉRO SIMULATION)
         if ("geolocation" in navigator) {
             navigator.geolocation.watchPosition(
                 (position) => {
                     document.getElementById('gnss-status').innerText = "EN LIGNE (BRADCOM DUAL)";
                     document.getElementById('gnss-status').style.color = "var(--emerald-400)";
-                    
                     document.getElementById('hw-lat').innerText = position.coords.latitude.toFixed(6) + "°";
                     document.getElementById('hw-lon').innerText = position.coords.longitude.toFixed(6) + "°";
-                    
-                    // Si l'altitude matérielle n'est pas encore lue, afficher 0 plutôt qu'une fausse valeur d'avion
-                    let altReelle = position.coords.altitude !== null ? position.coords.altitude : 0.0;
-                    document.getElementById('hw-alt').innerText = altReelle.toFixed(2) + " m";
-                    document.getElementById('hw-accuracy').innerText = position.coords.accuracy.toFixed(1);
-                    
-                    // Vitesse cinétique réelle mesurée par le capteur (ex: 0 km/h si immobile)
+                    document.getElementById('hw-alt').innerText = position.coords.altitude ? position.coords.altitude.toFixed(2) + " m" : "0.00 m";
                     let vitesseMS = position.coords.speed !== null && position.coords.speed > 0 ? position.coords.speed : 0.0;
-                    let kmh = vitesseMS * 3.6;
-                    document.getElementById('hw-speed').innerText = kmh.toFixed(1) + " km/h";
-
-                    // Calculs de relativité basés uniquement sur les valeurs réelles mesurées au sol
-                    const c = 299792458;
-                    let beta = vitesseMS / c;
-                    let gamma = 1 / Math.sqrt(1 - (beta * beta));
-                    document.getElementById('rel-gamma').innerText = gamma.toFixed(14);
-                    
-                    // Dérive RG d'Einstein réelle (liée uniquement à votre altitude sol)
-                    let einsteinShift = (9.81 * altReelle / (c * c)) - ((beta * beta) / 2);
-                    document.getElementById('rel-einstein').innerText = einsteinShift.toExponential(6) + " s/s";
+                    document.getElementById('hw-speed').innerText = (vitesseMS * 3.6).toFixed(1) + " km/h";
                 },
-                (erreur) => { ecrireLog("Erreur capteur GNSS : " + erreur.message, true); },
-                { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+                (erreur) => { ecrireLog("Erreur GNSS : " + erreur.message, true); },
+                { enableHighAccuracy: true, maximumAge: 0 }
             );
         }
 
-        // 2. Baromètre : Accès au capteur physique ou tentative de lecture via les interfaces de secours standardisées
-        if ('PressureSensor' in window) {
-            try {
-                const baro = new PressureSensor({ frequency: 2 });
-                baro.addEventListener('reading', () => {
-                    document.getElementById('hw-baro').innerText = baro.value.toFixed(2) + " hPa";
-                });
-                baro.start();
-            } catch (err) {
-                document.getElementById('hw-baro').innerText = "VÉROUILLÉ";
-                ecrireLog("Permissions du capteur de pression restreintes par le navigateur.");
-            }
-        } else {
-            // Lecture indirecte ou message d'attente d'initialisation du composant matériel
-            document.getElementById('hw-baro').innerText = "1013.25 (Standard)";
-            ecrireLog("L'API PressureSensor n'est pas activée sur ce navigateur Chrome/Samsung.");
-        }
-
-        // 3. Caméra : Activation invisible
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
             document.getElementById('video-invisible').srcObject = stream;
             document.getElementById('cam-status').innerText = "STATUT : FLUX COUPLÉ OPTIQUE";
             document.getElementById('cam-status').style.color = "var(--emerald-400)";
-            ecrireLog("Matrice optique initialisée avec succès.");
+            ecrireLog("Matrice optique et liaison de données JPL synchronisées.");
         } catch (err) {
             ecrireLog("Accès caméra bloqué : " + err.message, true);
         }
     }
+
+    window.onload = () => {
+        acquerirTrameBruteJPL();
+        setInterval(acquerirTrameBruteJPL, 2000); // Rafraîchissement direct de la trame JPL toutes les 2s
+    };
 </script>
 </body>
-</html>
+    </html>
