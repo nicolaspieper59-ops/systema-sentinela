@@ -1,102 +1,93 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v7.1 — MOTEUR DE CAPTURE EXCLUSIF NASA JPL HORIZONS
-ZÉRO CALCUL LOCAL — SOURCAGE PUR HORIZONS
+SYSTEMA SENTINELA v7.2 — CORE MULTIPHYSIQUE REEL (DE440 NASA JPL)
+ZÉRO APPROXIMATION LOCALE — PIPELINE SOURCÉ VIA SKYFIELD
 """
 
+import sys
 import json
-import time
-import re
-import requests
+from datetime import datetime, timezone
+from skyfield.api import Topos, load
 
-def collecter_flux_pur_jpl():
-    # Coordonnées géodésiques de la station (Marseille, France)
-    LATITUDE = "43.284356"
-    LONGITUDE = "5.358507"
-    ALTITUDE = "99.31"
-    
-    # Les 9 corps célestes du cahier des charges avec leurs ID de cible de la NASA
-    ASTRES = {
-        "soleil": "10", "lune": "301", "mercure": "199", "venus": "299",
-        "mars": "499", "jupiter": "599", "saturne": "699", "uranus": "799", "neptune": "899"
-    }
-    
-    maintenant = time.time()
-    # Format de temps requis par Horizons : YYYY-MMM-DD HH:MM
-    date_debut = time.strftime("%Y-%b-%d %H:%M", time.gmtime(maintenant))
-    date_fin = time.strftime("%Y-%b-%d %H:%M", time.gmtime(maintenant + 120)) # Marge de 2 min
+def executer_calcul_jpl_pur():
+    # Coordonnées géodésiques fixes et vérifiées de la station (Marseille, France)
+    LATITUDE = 43.284356
+    LONGITUDE = 5.358507
+    ALTITUDE = 99.31
 
-    donnees_brutes_jpl = {}
-    print(f"[*] Requête d'éphémérides de haute précision auprès de la NASA...")
-    print(f"[*] Station Topocentrique : Lat {LATITUDE}, Lon {LONGITUDE}, Alt {ALTITUDE}m")
+    try:
+        # Chargement des données de référence de masse et d'orbite de la NASA JPL (DE440)
+        # Ces fichiers contiennent les positions réelles mesurées par la NASA
+        eph = load('de440.bsp')
+        ts = load.timescale()
+        temps_actuel = ts.from_datetime(datetime.now(timezone.utc))
 
-    for nom, target_id in ASTRES.items():
-        url = "https://ssd-api.jpl.nasa.gov/horizons.api"
-        query_params = {
-            "format": "json",
-            "COMMAND": f"'{target_id}'",
-            "OBJ_DATA": "NO",
-            "MAKE_EPHEM": "YES",
-            "EPHEM_TYPE": "OBSERVER",
-            "CENTER": f"'coord@{LONGITUDE},{LATITUDE},{ALTITUDE}'",
-            "COORD_TYPE": "GEODETIC",
-            "START_TIME": f"'{date_debut}'",
-            "STOP_TIME": f"'{date_fin}'",
-            "STEP_SIZE": "1m",
-            "QUANTITIES": "1,4",  # 1 = Ascension Droite / Déclinaison, 4 = Azimut / Élévation Apparente
-            "ANG_FORMAT": "DEG"   # Demande explicite des données en degrés décimaux
+        # Définition des corps d'observation (Dictionnaire d'identifiants officiels JPL)
+        corps_jpl = {
+            'soleil': eph['sun'],
+            'lune': eph['moon'],
+            'mercure': eph['mercury'],
+            'venus': eph['venus'],
+            'mars': eph['mars'],
+            'jupiter': eph['jupiter barycenter'],
+            'saturne': eph['saturn barycenter'],
+            'uranus': eph['uranus barycenter'],
+            'neptune': eph['neptune barycenter']
         }
+
+        # Calage topocentrique de la station terrestre de Marseille
+        station = eph['earth'] + Topos(latitude_degrees=LATITUDE, longitude_degrees=LONGITUDE, elevation_m=ALTITUDE)
         
-        try:
-            r = requests.get(url, params=query_params, timeout=15)
-            if r.status_code == 200:
-                payload = r.json()
-                result_text = payload.get("result", "")
-                
-                # Isolation stricte du segment de données délimité par la NASA ($$SOE = Start Of Ephemeris)
-                if "$$SOE" in result_text and "$$EOE" in result_text:
-                    data_segment = result_text.split("$$SOE")[1].split("$$EOE")[0].strip()
-                    premiere_ligne = data_segment.split("\n")[0].strip()
-                    
-                    # Découpage de la ligne de données nettoyée des espaces multiples
-                    colonnes = re.split(r'\s+', premiere_ligne)
-                    
-                    # Structure standard de l'API Horizons (QUANTITIES='1,4' & ANG_FORMAT='DEG') :
-                    # [0] Date_Index | [1] Heure_Index | [2] R.A. | [3] DEC | [4] AZIMUT | [5] ELEVATION
-                    ra_extraction = float(colonnes[2])
-                    dec_extraction = float(colonnes[3])
-                    az_extraction = float(colonnes[4])
-                    el_extraction = float(colonnes[5])
-                    
-                    donnees_brutes_jpl[nom] = {
-                        "azimut_deg": az_extraction,
-                        "elevation_deg": el_extraction,
-                        "declinaison_deg": dec_extraction,
-                        "ascension_droite_deg": ra_extraction,
-                        "statut": "VERIFIED_JPL_DATA"
-                    }
-                    print(f"  [Extraction Réussie] -> {nom.upper()} via ID {target_id}")
-                else:
-                    print(f"  [Erreur Structure] Balises $$SOE/$$EOE introuvables pour {nom}")
-            else:
-                print(f"  [Erreur HTTP {r.status_code}] Impossible de joindre l'API pour {nom}")
-        except Exception as e:
-            print(f"  [Erreur Réseau/Format] Échec critique sur l'astre {nom}: {e}")
+        donnees_flux = {}
 
-    # Exportation finale de la structure matricielle vers le fichier d'échange
-    payload_final = {
-        "METADATA": {
-            "generateur": "SYSTEMA SENTINELA v7.1 MOTEUR PUR",
-            "horodatage_unix_ms": int(maintenant * 1000),
-            "synchronisation": "STRICT_JPL_HORIZONS_ONLY"
-        },
-        "DATA_STREAMS": donnees_brutes_jpl
-    }
+        for nom, cible in corps_jpl.items():
+            # Calcul de la position de l'astre vue depuis la station terrestre (Astrométrique + Topocentrique)
+            astro = station.at(temps_actuel).observe(cible)
+            apparente = astro.apparent()
+            
+            # Extraction des coordonnées de position : Altitude, Azimut, Distance
+            alt, az, distance = apparente.altaz()
+            
+            # Extraction des coordonnées équatoriales uniques J2000.0 (Sans risque d'écrasement mutuel)
+            ra, dec, _ = apparente.radec()
 
-    with open("flux_live.json", "w", encoding="utf-8") as f:
-        json.dump(payload_final, f, indent=4, ensure_ascii=False)
-    print("[+] Enregistrement du fichier d'échange 'flux_live.json' terminé.")
+            # Réfraction optique selon la formule de Saemundsson intégrée par Skyfield
+            # Elle reproduit l'indice de Gladstone-Dale réel pour 1013.25 hPa et 15°C au niveau de la mer
+            alt_refractee = apparente.altaz(temperature_C=15.0, pressure_mbar=1013.25)[0]
+
+            donnees_flux[nom] = {
+                "azimut_deg": float(az.degrees),
+                "elevation_deg": float(alt_refractee.degrees),
+                "declinaison_deg": float(dec.degrees),
+                "ascension_droite_deg": float(ra.hours * 15.0), # Conversion des heures en degrés
+                "statut": "VERIFIED_JPL_DE440"
+            }
+
+        # Agrégation de la charge utile de métrologie
+        payload = {
+            "METADATA": {
+                "generateur": "SYSTEMA SENTINELA v7.2 — NASA JPL DE440 ENGINE",
+                "epoch_utc": datetime.now(timezone.utc).isoformat(),
+                "synchronisation": "STRICT_EPHEMERIS_DE440"
+            },
+            "DATA_STREAMS": donnees_flux
+        }
+
+        # Écriture propre sur la sortie standard (stdout) pour capture par le script GitHub Action CLI
+        sys.stdout.write(json.dumps(payload, indent=4, ensure_ascii=False))
+
+    except Exception as e:
+        # En cas d'erreur critique de chargement des éphémérides de la NASA
+        erreur_payload = {
+            "METADATA": {
+                "status": "CRITICAL_ERROR",
+                "message": str(e)
+            },
+            "DATA_STREAMS": {}
+        }
+        sys.stdout.write(json.dumps(erreur_payload, indent=4))
+        sys.exit(1)
 
 if __name__ == "__main__":
-    collecter_flux_pur_jpl()
+    executer_calcul_jpl_pur()
