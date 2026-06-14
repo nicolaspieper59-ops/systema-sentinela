@@ -144,7 +144,6 @@
         }
     }
 
-    // Injection garantie dans le DOM après chargement complet
     const tbody = document.getElementById('tbody-sentinela');
     if (tbody) {
         ASTRES.forEach(a => {
@@ -173,7 +172,6 @@
                 b.innerText = "COUPLE DIRECT NASA JPL DE440"; 
                 b.className = "status-badge badge-stable";
                 
-                // Utilisation de la notation par crochets pour éviter les pannes d'encodage sur "X_mètres"
                 if(modeActuel === "MARSEILLE_FIXE" && data.MATRICE_ECEF_REEL) {
                     state_x[0] = data.MATRICE_ECEF_REEL["X_mètres"] || REF_MARSEILLE.x;
                     state_x[1] = data.MATRICE_ECEF_REEL["Y_mètres"] || REF_MARSEILLE.y;
@@ -213,7 +211,6 @@
         const dt = 0.05; 
         const t_sec = new Date().getTime() / 1000;
 
-        // 1. FILTRE CINÉMATIQUE LOCAL (S'exécute de façon autonome)
         if (modeActuel !== "MARSEILLE_FIXE") {
             state_x[0] += state_x[3] * dt;
             state_x[1] += state_x[4] * dt;
@@ -239,9 +236,8 @@
         document.getElementById('ecef-y').innerText = state_x[1].toFixed(4) + " m";
         document.getElementById('ecef-z').innerText = state_x[2].toFixed(4) + " m";
 
-        // 2. PARSING COMPATIBLE DU SERVEUR AVEC PROTECTION ANTI-CRASH
         if (fluxMatriceServeur && fluxMatriceServeur.METADATA) {
-            document.getElementById('lbl-tropo').innerText = fluxMatriceServeur.METADATA.modelisation_troposphere || "SAASTAMOINEN_HYDROSTATIQUE";
+            document.getElementById('lbl-tropo').innerText = fluxMatriceServeur.METADATA.modelisation_troposphere || "SAASTAMOINEN + ZWD DYNAMIQUE";
             
             const delta_einstein = fluxMatriceServeur.METADATA.horloge_einstein_delta_ns_s;
             document.getElementById('lbl-relativite').innerText = (typeof delta_einstein === 'number') ? delta_einstein.toFixed(4) + " ns/s" : "SYNCHRONISATION...";
@@ -253,7 +249,6 @@
             document.getElementById('lbl-maree-val').innerText = "---";
         }
 
-        // 3. RADAR TOPOCENTRIQUE
         const canvas = document.getElementById('radar');
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
@@ -269,14 +264,14 @@
         ctx.beginPath(); ctx.moveTo(cx, cy - rMax); ctx.lineTo(cx, cy + rMax); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cx - rMax, cy); ctx.lineTo(cx + rMax, cy); ctx.stroke();
 
-        // Affichage des vecteurs uniquement si les données sont chargées
         if(fluxMatriceServeur && fluxMatriceServeur.DATA_STREAMS) {
             ASTRES.forEach(a => {
                 const s = fluxMatriceServeur.DATA_STREAMS[a];
                 if(!s) return;
 
                 const tr = document.getElementById(`tr-${a}`);
-                const azimut_reel = (s.azimut_deg + (t_sec * 0.00416667)) % 360;
+                // CORRECTION : L'azimut calculé via JPL DE440 est strict, suppression de la fausse dérive
+                const azimut_reel = s.azimut_deg % 360;
                 const el_reelle = s.elevation_deg;
 
                 document.getElementById(`az-${a}`).innerText = azimut_reel.toFixed(6) + "°";
@@ -305,7 +300,6 @@
                 }
             });
         } else {
-            // Si le flux manque, vider l'affichage du tableau des astres
             ASTRES.forEach(a => {
                 document.getElementById(`az-${a}`).innerText = "---";
                 document.getElementById(`el-${a}`).innerText = "---";
@@ -317,11 +311,10 @@
         }
     }
 
-    // Lancement coordonné des boucles
-    setInterval(acquerirFluxPhysique, 10000); 
+    // CORRECTION : Interrogation réseau augmentée (2 Hz) pour assurer le flux cinématique continu
+    setInterval(acquerirFluxPhysique, 500); 
     setInterval(executerPasFiltreEtRendu, 50); 
     
-    // Amorçage au démarrage
     acquerirFluxPhysique();
     ecrireLog("Console d'analyse géodésique v8.2 en ligne. Algorithme initialisé.");
 </script>
