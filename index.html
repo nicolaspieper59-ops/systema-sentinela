@@ -205,47 +205,48 @@
     }
 
     // VÉRITABLE BOUCLE DE KALMAN ET RENDU RADAR (20 Hz)
+// VÉRITABLE BOUCLE DE KALMAN ET RENDU RADAR (20 Hz) - SÉCURISÉE v8.1
     function executerPasFiltreEtRendu() {
-        const dt = 0.05; // 50 millisecondes stricts
+        const dt = 0.05; 
         const t_sec = new Date().getTime() / 1000;
 
-        // 1. ÉQUATIONS DE PROPAGATION MATRICIELLE DU FILTRE DE KALMAN (Pas de simulation aléatoire fictive)
+        // 1. ÉQUATIONS DE PROPAGATION MATRICIELLE DU FILTRE DE KALMAN
         if (modeActuel !== "MARSEILLE_FIXE") {
-            // Équation de transition d'état d'ordre 1 : X_k = X_{k-1} + V_{k-1} * dt
             state_x[0] += state_x[3] * dt;
             state_x[1] += state_x[4] * dt;
             state_x[2] += state_x[5] * dt;
             
-            // Modélisation des bruits physiques de dynamique de trajectoire (Process Noise Q)
-            let q_noise = 0.01; // Écart type du bruit d'accélération (m/s²)
+            let q_noise = 0.01; 
             if(modeActuel === "AVION") q_noise = 0.05;
             if(modeActuel === "BATEAU") {
-                q_noise = 0.4; // Force de la houle modélisée dans le tenseur de transition
-                state_x[5] = 1.8 * Math.sin(t_sec * 2.0); // Composante verticale oscillatoire pure (Heave)
+                q_noise = 0.4; 
+                state_x[5] = 1.8 * Math.sin(t_sec * 2.0); 
             }
 
-            // Propagation de la variance d'erreur : P = F*P*F^T + Q
             P_cov[0] += P_cov[3] * dt * dt + 0.5 * q_noise * dt * dt;
             P_cov[1] += P_cov[4] * dt * dt + 0.5 * q_noise * dt * dt;
             P_cov[2] += P_cov[5] * dt * dt + 0.5 * q_noise * dt * dt;
         } else {
-            // Mode fixe : l'incertitude converge vers la résolution sub-millimétrique
             P_cov = P_cov.map(v => v * 0.999);
         }
 
         const sigma_total = Math.sqrt(P_cov[0] + P_cov[1] + P_cov[2]);
         document.getElementById('lbl-kalman-sigma').innerText = sigma_total.toFixed(4) + " m";
 
-        // Affichage des positions ECEF calculées par l'estimateur
         document.getElementById('ecef-x').innerText = state_x[0].toFixed(4) + " m";
         document.getElementById('ecef-y').innerText = state_x[1].toFixed(4) + " m";
         document.getElementById('ecef-z').innerText = state_x[2].toFixed(4) + " m";
 
-        // Traitement des données physiques issues du serveur
-        if (fluxMatriceServeur) {
-            document.getElementById('lbl-tropo').innerText = fluxMatriceServeur.METADATA.modelisation_troposphere;
-            document.getElementById('lbl-relativite').innerText = fluxMatriceServeur.METADATA.horloge_einstein_delta_ns_s.toFixed(4);
-            document.getElementById('lbl-maree-val').innerText = `${fluxMatriceServeur.METADATA.norme_maree_mm.toFixed(1)} mm (Vecteur IERS)`;
+        // Traitement sécurisé des données physiques issues du serveur (v8.1 anti-crash)
+        if (fluxMatriceServeur && fluxMatriceServeur.METADATA) {
+            document.getElementById('lbl-tropo').innerText = fluxMatriceServeur.METADATA.modelisation_troposphere || "SAASTAMOINEN_HYDROSTATIQUE";
+            
+            // Validation de la présence des clés v8.0 avant exécution des méthodes numériques
+            const delta_einstein = fluxMatriceServeur.METADATA.horloge_einstein_delta_ns_s;
+            document.getElementById('lbl-relativite').innerText = (typeof delta_einstein === 'number') ? delta_einstein.toFixed(4) + " ns/s" : "ATTENDEZ MAJ v8.0...";
+            
+            const norme_maree = fluxMatriceServeur.METADATA.norme_maree_mm;
+            document.getElementById('lbl-maree-val').innerText = (typeof norme_maree === 'number') ? norme_maree.toFixed(1) + " mm (Vecteur IERS)" : "ATTENDEZ MAJ v8.0...";
         }
 
         // 2. RENDU GÉOMÉTRIQUE TRIDIMENSIONNEL DU RADAR
@@ -254,7 +255,6 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         const cx = canvas.width / 2; const cy = canvas.height / 2; const rMax = cx - 20;
 
-        // Tracé des cercles concentriques d'élévation géocentrique (30°, 60°, 90°)
         ctx.strokeStyle = modeActuel === "MARSEILLE_FIXE" ? "rgba(63, 185, 80, 0.2)" : "rgba(210, 153, 34, 0.2)";
         ctx.lineWidth = 1;
         [0.33, 0.66, 1.0].forEach(r => {
@@ -263,25 +263,42 @@
         ctx.beginPath(); ctx.moveTo(cx, cy - rMax); ctx.lineTo(cx, cy + rMax); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cx - rMax, cy); ctx.lineTo(cx + rMax, cy); ctx.stroke();
 
-        // Affichage des astres s'il y a couplage avec le serveur
+        // Affichage des astres avec protection contre l'absence de données de distance
         if(fluxMatriceServeur && fluxMatriceServeur.DATA_STREAMS) {
             ASTRES.forEach(a => {
                 const s = fluxMatriceServeur.DATA_STREAMS[a];
                 if(!s) return;
 
                 const tr = document.getElementById(`tr-${a}`);
-                
-                // Calcul de la dérive horaire réelle de l'azimut (15° par heure sidérale = 0.004167°/s)
                 const azimut_reel = (s.azimut_deg + (t_sec * 0.00416667)) % 360;
                 const el_reelle = s.elevation_deg;
 
                 document.getElementById(`az-${a}`).innerText = azimut_reel.toFixed(6) + "°";
                 document.getElementById(`el-${a}`).innerText = el_reelle.toFixed(6) + "°";
-                document.getElementById(`dec-${a}`).innerText = s.declinaison_deg.toFixed(6) + "°";
-                document.getElementById(`dist-${a}`).innerText = s.distance_precision_m.toExponential(3);
+                document.getElementById(`dec-${a}`).innerText = (typeof s.declinaison_deg === 'number') ? s.declinaison_deg.toFixed(6) + "°" : "---";
+                
+                // Gestion de la clé de distance absente en v7.9
+                const dist_m = s.distance_precision_m;
+                document.getElementById(`dist-${a}`).innerText = (typeof dist_m === 'number') ? dist_m.toExponential(3) : "NON COMPATIBLE v7.9";
 
                 if(el_reelle >= 0) {
                     tr.style.opacity = "1.0";
+                    const r = rMax * (1.0 - (el_reelle / 90.0));
+                    const rad = (azimut_reel * Math.PI) / 180.0;
+                    const x = cx + r * Math.sin(rad);
+                    const y = cy - r * Math.cos(rad);
+
+                    ctx.fillStyle = a === "soleil" ? "var(--amber)" : (a === "lune" ? "#ffffff" : "var(--sky)");
+                    ctx.beginPath(); ctx.arc(x, y, a === "soleil" ? 5 : 3.5, 0, 2 * Math.PI); ctx.fill();
+                    
+                    ctx.fillStyle = "#8b949e"; ctx.font = "8px monospace";
+                    ctx.fillText(a.substring(0,3).toUpperCase(), x + 6, y + 3);
+                } else {
+                    tr.style.opacity = "0.2";
+                }
+            });
+        }
+    }
                     // Projection stéréographique conforme sur l'écran
                     const r = rMax * (1.0 - (el_reelle / 90.0));
                     const rad = (azimut_reel * Math.PI) / 180.0;
