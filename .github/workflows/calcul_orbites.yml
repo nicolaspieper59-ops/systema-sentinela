@@ -31,7 +31,7 @@ jobs:
 
     - name: Exécution du calcul physique JPL
       run: |
-        python dynamic_multiphysics_engine.py avion > flux_live.json
+        python dynamic_multiphysics_engine.py avion
 
     - name: Déploiement et sauvegarde du flux de données
       env:
