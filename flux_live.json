@@ -6,76 +6,76 @@
         "maree_solide_soustrait_m": 0.0,
         "modelisation_troposphere": "TROPO_STRATOSPHERE_MINIMALE",
         "indice_refraction_moyen": 1.0000241,
-        "epoch_utc": "2026-06-14T12:31:40.750214+00:00",
+        "epoch_utc": "2026-06-14T13:00:53.879603+00:00",
         "synchronisation": "STRICT_EPHEMERIS_DE440"
     },
     "MATRICE_ECEF_REEL": {
-        "X_mètres": -456312.62473645265,
-        "Y_mètres": 4634665.96005513,
-        "Z_mètres": 4358880.275617836
+        "X_mètres": -1043361.57903536,
+        "Y_mètres": 4537234.405266526,
+        "Z_mètres": 4360399.935443577
     },
     "DATA_STREAMS": {
         "soleil": {
-            "azimut_deg": 212.80980753185068,
-            "elevation_deg": 67.21497063897786,
-            "declinaison_deg": 23.255689009136034,
-            "ascension_droite_deg": 82.49282711375075,
+            "azimut_deg": 226.80105461690613,
+            "elevation_deg": 63.80116069172558,
+            "declinaison_deg": 23.256672144322195,
+            "ascension_droite_deg": 82.51367177465266,
             "statut": "VERIFIED_JPL_DE440_MM_ACCURATE"
         },
         "lune": {
-            "azimut_deg": 237.321611284048,
-            "elevation_deg": 65.101348301761,
-            "declinaison_deg": 27.10948705794305,
-            "ascension_droite_deg": 72.21845604739836,
+            "azimut_deg": 246.88462075672214,
+            "elevation_deg": 60.557336562150205,
+            "declinaison_deg": 27.12134918475677,
+            "ascension_droite_deg": 72.47290567892784,
             "statut": "VERIFIED_JPL_DE440_MM_ACCURATE"
         },
         "mercure": {
-            "azimut_deg": 146.40001239650704,
-            "elevation_deg": 67.25329859579249,
-            "declinaison_deg": 23.491063292942094,
-            "ascension_droite_deg": 109.18715963670954,
+            "azimut_deg": 163.60047780312055,
+            "elevation_deg": 69.50778545909115,
+            "declinaison_deg": 23.485271858200807,
+            "ascension_droite_deg": 109.20915447725801,
             "statut": "VERIFIED_JPL_DE440_MM_ACCURATE"
         },
         "venus": {
-            "azimut_deg": 123.90261258275568,
-            "elevation_deg": 58.498214837510275,
-            "declinaison_deg": 21.944724738518527,
-            "ascension_droite_deg": 123.5703979613192,
+            "azimut_deg": 134.89741295293197,
+            "elevation_deg": 62.6059488591768,
+            "declinaison_deg": 21.939525302991587,
+            "ascension_droite_deg": 123.59501115174446,
             "statut": "VERIFIED_JPL_DE440_MM_ACCURATE"
         },
         "mars": {
-            "azimut_deg": 253.17876260683164,
-            "elevation_deg": 41.41235420938859,
-            "declinaison_deg": 17.087178472638403,
-            "ascension_droite_deg": 47.012402834978,
+            "azimut_deg": 259.2202764598378,
+            "elevation_deg": 36.248677379757574,
+            "declinaison_deg": 17.0913732399397,
+            "ascension_droite_deg": 47.02714931094839,
             "statut": "VERIFIED_JPL_DE440_MM_ACCURATE"
         },
         "jupiter": {
-            "azimut_deg": 132.13276965799594,
-            "elevation_deg": 60.936000314853906,
-            "declinaison_deg": 21.29526124255956,
-            "ascension_droite_deg": 118.44536824296708,
+            "azimut_deg": 144.90159209466492,
+            "elevation_deg": 64.4735873188801,
+            "declinaison_deg": 21.29450679258785,
+            "ascension_droite_deg": 118.44967095586624,
             "statut": "VERIFIED_JPL_DE440_MM_ACCURATE"
         },
         "saturne": {
-            "azimut_deg": 267.4531888111628,
-            "elevation_deg": 7.2331229434807325,
-            "declinaison_deg": 2.964174172312382,
-            "ascension_droite_deg": 12.770266791916422,
+            "azimut_deg": 272.4784676433083,
+            "elevation_deg": 1.9039962329672833,
+            "declinaison_deg": 2.9646267153126487,
+            "ascension_droite_deg": 12.771546985956308,
             "statut": "VERIFIED_JPL_DE440_MM_ACCURATE"
         },
         "uranus": {
-            "azimut_deg": 243.62551714206415,
-            "elevation_deg": 52.86405914584114,
-            "declinaison_deg": 20.495387025035626,
-            "ascension_droite_deg": 60.42419011715047,
+            "azimut_deg": 251.13083807153288,
+            "elevation_deg": 47.9430486433263,
+            "declinaison_deg": 20.495609936044215,
+            "ascension_droite_deg": 60.42535431879833,
             "statut": "VERIFIED_JPL_DE440_MM_ACCURATE"
         },
         "neptune": {
-            "azimut_deg": 271.459375186088,
-            "elevation_deg": -0.8810858747119368,
-            "declinaison_deg": 0.31028757761841075,
-            "ascension_droite_deg": 4.11895842082185,
+            "azimut_deg": 276.507774655268,
+            "elevation_deg": -6.19837140750411,
+            "declinaison_deg": 0.31037080171258,
+            "ascension_droite_deg": 4.119187590099265,
             "statut": "VERIFIED_JPL_DE440_MM_ACCURATE"
         }
     }
