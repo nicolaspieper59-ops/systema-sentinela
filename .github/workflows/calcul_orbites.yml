@@ -20,23 +20,14 @@ jobs:
     - name: Configuration de Python
       uses: actions/setup-python@v5
       env:
-        # Forçage Node24 au niveau de l'étape pour éliminer les alertes de dépréciation
         FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       with:
         python-version: '3.10'
-        # Suppression de l'option cache: 'pip' qui causait le crash system-build
 
     - name: Installation des dépendances métrologiques JPL
       run: |
         python -m pip install --upgrade pip
         pip install numpy skyfield jplephem
-
-    - name: Vérification de la présence du script
-      run: |
-        if [ ! -f dynamic_multiphysics_engine.py ]; then
-          echo "[CRITICAL] Fichier d'ingénierie dynamic_multiphysics_engine.py introuvable à la racine !"
-          exit 1
-        fi
 
     - name: Exécution du calcul physique JPL
       run: |
@@ -55,5 +46,5 @@ jobs:
           git commit -m "Mise à jour métrologique JPL DE440 : $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref_name }}
         else
-          echo "Aucune variation métrologique détectée. Alignement déjà parfait."
+          echo "Aucune variation métrologique détectée."
         fi
