@@ -160,33 +160,42 @@
         });
     }
 
-    async function acquerirFluxPhysique() {
-        try {
-            const r = await fetch('./flux_live.json?cache_bust=' + new Date().getTime(), { cache: "no-store" });
-            if (!r.ok) throw new Error("Fichier inaccessible");
-            const data = await r.json();
+async function acquerirFluxPhysique() {
+    try {
+        // Injection d'un paramètre temporel unique (timestamp) pour briser le cache du navigateur
+        const r = await fetch('./flux_live.json?nocache=' + new Date().getTime(), { cache: "no-store" });
+        if (!r.ok) throw new Error("Flux introuvable");
+        const data = await r.json();
+        
+        if(data.METADATA && data.METADATA.synchronisation === "STRICT_EPHEMERIS_DE440") {
+            fluxMatriceServeur = data;
+            document.getElementById('flux-epoch').innerText = "ÉPOQUE UTC : " + data.METADATA.epoch_utc;
             
-            if(data.METADATA && data.METADATA.synchronisation === "STRICT_EPHEMERIS_DE440") {
-                fluxMatriceServeur = data;
-                document.getElementById('flux-epoch').innerText = "ÉPOQUE UTC : " + data.METADATA.epoch_utc;
-                
-                const b = document.getElementById('source-badge');
-                b.innerText = "COUPLE DIRECT NASA JPL DE440"; 
-                b.className = "status-badge badge-stable";
-                
-                // Protection contre les corruptions de chaînes de caractères
-                if(modeActuel === "MARSEILLE_FIXE" && data.MATRICE_ECEF_REEL) {
-                    state_x[0] = data.MATRICE_ECEF_REEL["X_mètres"] || REF_MARSEILLE.x;
-                    state_x[1] = data.MATRICE_ECEF_REEL["Y_mètres"] || REF_MARSEILLE.y;
-                    state_x[2] = data.MATRICE_ECEF_REEL["Z_mètres"] || REF_MARSEILLE.z;
-                }
-            }
-        } catch(e) {
-            fluxMatriceServeur = null;
             const b = document.getElementById('source-badge');
-            b.innerText = "FLUX MANQUANT"; 
-            b.className = "status-badge badge-error";
+            b.innerText = "COUPLE DIRECT NASA JPL DE440"; 
+            b.className = "status-badge badge-stable";
+            
+            // Correction de l'affichage du modèle de troposphère
+            if (data.METADATA.modelisation_troposphere) {
+                document.getElementById('lbl-tropo').innerText = data.METADATA.modelisation_troposphere;
+            } else {
+                document.getElementById('lbl-tropo').innerText = "SAASTAMOINEN + ZWD DYNAMIQUE";
+            }
+            
+            // Forçage de la mise à jour des coordonnées cartésiennes physiques
+            if(modeActuel === "MARSEILLE_FIXE" && data.MATRICE_ECEF_REEL) {
+                state_x[0] = data.MATRICE_ECEF_REEL["X_mètres"];
+                state_x[1] = data.MATRICE_ECEF_REEL["Y_mètres"];
+                state_x[2] = data.MATRICE_ECEF_REEL["Z_mètres"];
+            }
         }
+    } catch(e) {
+        fluxMatriceServeur = null;
+        const b = document.getElementById('source-badge');
+        b.innerText = "FLUX MANQUANT"; 
+        b.className = "status-badge badge-error";
+        document.getElementById('lbl-tropo').innerText = "ERREUR LIEN";
+    }
     }
 
     function changerProfil(m) {
