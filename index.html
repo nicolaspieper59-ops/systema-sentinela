@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.2 — Console Géodésique Monolithique</title>
+    <title>SYSTEMA SENTINELA v8.3.2 — Console Géodésique Monolithique</title>
     <style>
         :root {
             --bg-base: #02040a;
@@ -61,7 +61,7 @@
 <body>
 <div class="container">
     <div class="master-header">
-        <div class="system-title">SYSTEMA SENTINELA v8.2 // NOYAU GÉODÉSIQUE DÉTERMINISTE IERS</div>
+        <div class="system-title">SYSTEMA SENTINELA v8.3.2 // NOYAU GÉODÉSIQUE DÉTERMINISTE IERS</div>
         <div id="flux-epoch" style="color: var(--sky); font-weight:bold;">ATTENTE SIGNAL SERVEUR</div>
     </div>
 
@@ -94,7 +94,7 @@
 
             <div style="background:#01040a; border:1px solid var(--border-dim); padding:10px; border-radius:4px; margin-top:12px;">
                 <div class="title-panel" style="border:none; margin:0; padding:0; color:var(--amber);">Physique des Milieux Bas-Niveau</div>
-                <div class="row-data" style="margin-top:8px;"><span>Modèle Troposphère :</span><span id="lbl-tropo" style="color:var(--amber);">SAASTAMOINEN_HYDROSTATIQUE</span></div>
+                <div class="row-data" style="margin-top:8px;"><span>Modèle Troposphère :</span><span id="lbl-tropo" style="color:var(--amber);">SAASTAMOINEN + ZWD DYNAMIQUE</span></div>
                 <div class="row-data"><span>Marée de Love Solide :</span><span id="lbl-maree-val" style="color:var(--sky); font-weight:bold;">---</span></div>
                 <div class="row-data"><span>Dérive d'Horloge (Einstein) :</span><span id="lbl-relativite" style="color:var(--rose);">--- ns/s</span></div>
                 <div class="row-data"><span>Écart de Covariance Kalman (σ) :</span><span id="lbl-kalman-sigma" style="color:var(--neon-green);">0.0000 m</span></div>
@@ -132,7 +132,7 @@
     const ASTRES = ["soleil", "lune", "mercure", "venus", "mars", "jupiter", "saturne", "uranus", "neptune"];
     let modeActuel = "MARSEILLE_FIXE";
     
-    // REVERROUILLAGE GÉOMÉTRIQUE : Coordonnées cartésiennes WGS84 exactes de Marseille
+    // VERROUILLAGE PHYSIQUE IMPÉRATIF DE MARSEILLE (Évite les retours à l'ancienne matrice tampon)
     const REF_MARSEILLE = { lat: 43.284356, lon: 5.358507, alt: 99.3100, x: 4630100.5742, y: 434290.6011, z: 4350620.2235 };
     
     let state_x = [REF_MARSEILLE.x, REF_MARSEILLE.y, REF_MARSEILLE.z, 0, 0, 0]; 
@@ -160,42 +160,34 @@
         });
     }
 
-async function acquerirFluxPhysique() {
-    try {
-        // Injection d'un paramètre temporel unique (timestamp) pour briser le cache du navigateur
-        const r = await fetch('./flux_live.json?nocache=' + new Date().getTime(), { cache: "no-store" });
-        if (!r.ok) throw new Error("Flux introuvable");
-        const data = await r.json();
-        
-        if(data.METADATA && data.METADATA.synchronisation === "STRICT_EPHEMERIS_DE440") {
-            fluxMatriceServeur = data;
-            document.getElementById('flux-epoch').innerText = "ÉPOQUE UTC : " + data.METADATA.epoch_utc;
+    async function acquerirFluxPhysique() {
+        try {
+            // Utilisation d'un jeton cryptographique d'évitement de cache navigateur à la place de l'horloge système
+            const r = await fetch('./flux_live.json?nocache=' + crypto.randomUUID(), { cache: "no-store" });
+            if (!r.ok) throw new Error("Flux physique corrompu ou introuvable");
+            const data = await r.json();
             
+            if(data.METADATA && data.METADATA.synchronisation === "STRICT_EPHEMERIS_DE440") {
+                fluxMatriceServeur = data;
+                document.getElementById('flux-epoch').innerText = "ÉPOQUE UTC : " + data.METADATA.epoch_utc;
+                
+                const b = document.getElementById('source-badge');
+                b.innerText = "COUPLE DIRECT NASA JPL DE440"; 
+                b.className = "status-badge badge-stable";
+                
+                // Alignement forcé des registres cartésiens si stable au sol
+                if(modeActuel === "MARSEILLE_FIXE" && data.MATRICE_ECEF_REEL) {
+                    state_x[0] = data.MATRICE_ECEF_REEL["X_mètres"] || REF_MARSEILLE.x;
+                    state_x[1] = data.MATRICE_ECEF_REEL["Y_mètres"] || REF_MARSEILLE.y;
+                    state_x[2] = data.MATRICE_ECEF_REEL["Z_mètres"] || REF_MARSEILLE.z;
+                }
+            }
+        } catch(e) {
+            fluxMatriceServeur = null;
             const b = document.getElementById('source-badge');
-            b.innerText = "COUPLE DIRECT NASA JPL DE440"; 
-            b.className = "status-badge badge-stable";
-            
-            // Correction de l'affichage du modèle de troposphère
-            if (data.METADATA.modelisation_troposphere) {
-                document.getElementById('lbl-tropo').innerText = data.METADATA.modelisation_troposphere;
-            } else {
-                document.getElementById('lbl-tropo').innerText = "SAASTAMOINEN + ZWD DYNAMIQUE";
-            }
-            
-            // Forçage de la mise à jour des coordonnées cartésiennes physiques
-            if(modeActuel === "MARSEILLE_FIXE" && data.MATRICE_ECEF_REEL) {
-                state_x[0] = data.MATRICE_ECEF_REEL["X_mètres"];
-                state_x[1] = data.MATRICE_ECEF_REEL["Y_mètres"];
-                state_x[2] = data.MATRICE_ECEF_REEL["Z_mètres"];
-            }
+            b.innerText = "FLUX MANQUANT"; 
+            b.className = "status-badge badge-error";
         }
-    } catch(e) {
-        fluxMatriceServeur = null;
-        const b = document.getElementById('source-badge');
-        b.innerText = "FLUX MANQUANT"; 
-        b.className = "status-badge badge-error";
-        document.getElementById('lbl-tropo').innerText = "ERREUR LIEN";
-    }
     }
 
     function changerProfil(m) {
@@ -213,8 +205,6 @@ async function acquerirFluxPhysique() {
         } else {
             badge.innerText = "CINÉMATIQUE ACTIVE"; badge.className = "status-badge badge-kinematic";
             let v_init = m === "AVION" ? 250 : (m === "TRAIN" ? 83 : 20);
-            
-            // Re-initialisation cinématique à partir de la vraie position WGS84 de Marseille
             state_x = [REF_MARSEILLE.x, REF_MARSEILLE.y, REF_MARSEILLE.z, v_init, v_init * 0.1, 0];
             P_cov = [1.0, 1.0, 1.0, 0.1, 0.1, 0.1];
             ecrireLog(`Mode cinématique engagé : [${m}]. Initialisation EKF.`);
@@ -225,6 +215,7 @@ async function acquerirFluxPhysique() {
         const dt = 0.05; 
         const t_sec = new Date().getTime() / 1000;
 
+        // Prédiction du filtre de Kalman (Uniquement si cinématique engagée)
         if (modeActuel !== "MARSEILLE_FIXE") {
             state_x[0] += state_x[3] * dt;
             state_x[1] += state_x[4] * dt;
@@ -246,20 +237,25 @@ async function acquerirFluxPhysique() {
         const sigma_total = Math.sqrt(P_cov[0] + P_cov[1] + P_cov[2]);
         document.getElementById('lbl-kalman-sigma').innerText = sigma_total.toFixed(4) + " m";
 
+        // Injection temps réel des coordonnées filtrées dans le DOM
         document.getElementById('ecef-x').innerText = state_x[0].toFixed(4) + " m";
         document.getElementById('ecef-y').innerText = state_x[1].toFixed(4) + " m";
         document.getElementById('ecef-z').innerText = state_x[2].toFixed(4) + " m";
 
+        // Lecture sécurisée des métadonnées bas-niveau (Sans écrasement par 'undefined')
         if (fluxMatriceServeur && fluxMatriceServeur.METADATA) {
-            document.getElementById('lbl-tropo').innerText = fluxMatriceServeur.METADATA.modelisation_troposphere;
+            document.getElementById('lbl-tropo').innerText = fluxMatriceServeur.METADATA.modelisation_troposphere || "SAASTAMOINEN + ZWD DYNAMIQUE";
             
             const delta_einstein = fluxMatriceServeur.METADATA.horloge_einstein_delta_ns_s;
             document.getElementById('lbl-relativite').innerText = (typeof delta_einstein === 'number') ? delta_einstein.toFixed(4) + " ns/s" : "SYNCHRONISATION...";
             
             const norme_maree = fluxMatriceServeur.METADATA.norme_maree_mm;
             document.getElementById('lbl-maree-val').innerText = (typeof norme_maree === 'number') ? norme_maree.toFixed(1) + " mm (IERS)" : "SYNCHRONISATION...";
+        } else {
+            document.getElementById('lbl-tropo').innerText = "SAASTAMOINEN + ZWD DYNAMIQUE";
         }
 
+        // Rendu du Radar Topocentrique 2D
         const canvas = document.getElementById('radar');
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
@@ -312,15 +308,12 @@ async function acquerirFluxPhysique() {
         }
     }
 
+    // Double boucle asynchrone cadencée
     setInterval(acquerirFluxPhysique, 500); 
     setInterval(executerPasFiltreEtRendu, 50); 
     
     acquerirFluxPhysique();
-    ecrireLog("Console d'analyse géodésique v8.3 en ligne. Alignement et géométrie WGS84 corrigés.");
+    ecrireLog("Console d'analyse géodésique v8.3.2 en ligne. Alignement et géométrie WGS84 corrigés.");
 </script>
-
-
-
-
 </body>
-    </html>
+                                                                             </html>
