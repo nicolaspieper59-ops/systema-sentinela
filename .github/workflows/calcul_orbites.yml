@@ -4,6 +4,18 @@ on:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Sélection du profil d''espace-temps à calculer'
+        required: true
+        default: 'MARSEILLE_FIXE'
+        type: choice
+        options:
+          - MARSEILLE_FIXE
+          - AVION
+          - TRAIN
+          - VOITURE
+          - BATEAU
 
 jobs:
   run-engine:
@@ -31,7 +43,13 @@ jobs:
 
     - name: Exécution du calcul physique JPL
       run: |
-        python dynamic_multiphysics_engine.py avion
+        # Détermination du mode : Choix manuel via dispatch, sinon par défaut "MARSEILLE_FIXE" pour le cron
+        PROFILE_MODE="${{ github.event.inputs.profile }}"
+        if [ -z "$PROFILE_MODE" ]; then
+          PROFILE_MODE="MARSEILLE_FIXE"
+        fi
+        echo "[EXECUTION] Lancement du moteur v8.0 sous le profil : $PROFILE_MODE"
+        python dynamic_multiphysics_engine.py $PROFILE_MODE
 
     - name: Déploiement et sauvegarde du flux de données
       env:
@@ -43,8 +61,8 @@ jobs:
         
         git add flux_live.json
         if ! git diff-index --quiet HEAD --; then
-          git commit -m "Mise à jour métrologique JPL DE440 : $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          git commit -m "Mise à jour métrologique JPL DE440 v8.0 : $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref_name }}
         else
-          echo "Aucune variation métrologique détectée."
+          echo "La Terre n'a pas bougé de manière significative depuis le dernier tic d'horloge."
         fi
