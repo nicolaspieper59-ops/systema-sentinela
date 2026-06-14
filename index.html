@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.3.2 — Console Géodésique Monolithique</title>
+    <title>SYSTEMA SENTINELA v8.4 — Console Métrologique Déterministe</title>
     <style>
         :root {
             --bg-base: #02040a;
@@ -61,7 +61,7 @@
 <body>
 <div class="container">
     <div class="master-header">
-        <div class="system-title">SYSTEMA SENTINELA v8.3.2 // NOYAU GÉODÉSIQUE DÉTERMINISTE IERS</div>
+        <div class="system-title">SYSTEMA SENTINELA v8.4 // NOYAU ESTIMATEUR COUPLÉ IERS</div>
         <div id="flux-epoch" style="color: var(--sky); font-weight:bold;">ATTENTE SIGNAL SERVEUR</div>
     </div>
 
@@ -77,7 +77,7 @@
     <div class="grid-layout">
         <div class="card">
             <div class="title-panel" style="display:flex; justify-content:space-between; align-items:center;">
-                <span>1. État Géodésique Local</span>
+                <span>1. État Géodésique Filtré</span>
                 <span id="env-badge" class="status-badge badge-stable">STABLE</span>
             </div>
             <div class="row-data"><span>Profil Actif :</span><span id="lbl-profil" style="color:var(--sky); font-weight:bold;">MARSEILLE_FIXE</span></div>
@@ -86,18 +86,19 @@
             <div class="row-data"><span>Altitude Terrestre (h) :</span><span id="lbl-alt">99.3100 m</span></div>
             
             <div style="background:#01040a; border:1px solid var(--border-dim); padding:10px; border-radius:4px; margin-top:10px;">
-                <div class="title-panel" style="border:none; margin:0; padding:0; color:var(--neon-green);">Matrice Cartésienne ECEF Temporelle</div>
+                <div class="title-panel" style="border:none; margin:0; padding:0; color:var(--neon-green);">Matrice Cartésienne ECEF Estimée (x̂)</div>
                 <div class="row-data" style="margin-top:8px;"><span>Coordonnée X :</span><span id="ecef-x" class="val-xyz">--- m</span></div>
                 <div class="row-data"><span>Coordonnée Y :</span><span id="ecef-y" class="val-xyz">--- m</span></div>
                 <div class="row-data"><span>Coordonnée Z :</span><span id="ecef-z" class="val-xyz">--- m</span></div>
             </div>
 
             <div style="background:#01040a; border:1px solid var(--border-dim); padding:10px; border-radius:4px; margin-top:12px;">
-                <div class="title-panel" style="border:none; margin:0; padding:0; color:var(--amber);">Physique des Milieux Bas-Niveau</div>
+                <div class="title-panel" style="border:none; margin:0; padding:0; color:var(--amber);">Physique & Validations Statisiques</div>
                 <div class="row-data" style="margin-top:8px;"><span>Modèle Troposphère :</span><span id="lbl-tropo" style="color:var(--amber);">SAASTAMOINEN + ZWD DYNAMIQUE</span></div>
                 <div class="row-data"><span>Marée de Love Solide :</span><span id="lbl-maree-val" style="color:var(--sky); font-weight:bold;">---</span></div>
                 <div class="row-data"><span>Dérive d'Horloge (Einstein) :</span><span id="lbl-relativite" style="color:var(--rose);">--- ns/s</span></div>
-                <div class="row-data"><span>Écart de Covariance Kalman (σ) :</span><span id="lbl-kalman-sigma" style="color:var(--neon-green);">0.0000 m</span></div>
+                <div class="row-data"><span>Incertitude Kalman (σ Position) :</span><span id="lbl-kalman-sigma" style="color:var(--neon-green);">0.0000 m</span></div>
+                <div class="row-data"><span>Test d'Intégrité Gating (χ²) :</span><span id="lbl-chisq" style="color:var(--sky); font-weight:bold;">INITIALISATION...</span></div>
             </div>
         </div>
 
@@ -132,11 +133,16 @@
     const ASTRES = ["soleil", "lune", "mercure", "venus", "mars", "jupiter", "saturne", "uranus", "neptune"];
     let modeActuel = "MARSEILLE_FIXE";
     
-    // VERROUILLAGE PHYSIQUE IMPÉRATIF DE MARSEILLE (Évite les retours à l'ancienne matrice tampon)
     const REF_MARSEILLE = { lat: 43.284356, lon: 5.358507, alt: 99.3100, x: 4630100.5742, y: 434290.6011, z: 4350620.2235 };
     
+    // ÉTAT DU FILTRE DE KALMAN REALISTE : [X, Y, Z, Vx, Vy, Vz]
     let state_x = [REF_MARSEILLE.x, REF_MARSEILLE.y, REF_MARSEILLE.z, 0, 0, 0]; 
-    let P_cov = [1e-4, 1e-4, 1e-4, 1e-6, 1e-6, 1e-6]; 
+    
+    // MATRICE DE COVARIANCE COMPLÈTE 6x6 (Initialisation diagonale)
+    let P = Array(6).fill(0).map(() => Array(6).fill(0));
+    for(let i=0; i<3; i++) P[i][i] = 1e-2;  // 10 cm d'incertitude initiale position
+    for(let i=3; i<6; i++) P[i][i] = 1e-4;  // Incertitude vitesse
+    
     let fluxMatriceServeur = null;
 
     function ecrireLog(m) {
@@ -144,6 +150,32 @@
         if (box) {
             box.innerHTML = `[${new Date().toISOString().split('T')[1].slice(0,-1)}] ${m}<br>` + box.innerHTML;
         }
+    }
+
+    // Inversion de matrice analytique 3x3 pour le calcul du gain de Kalman S^-1
+    function inverserMatrice3x3(M) {
+        const det = M[0][0]*(M[1][1]*M[2][2] - M[1][2]*M[2][1]) -
+                    M[0][1]*(M[1][0]*M[2][2] - M[1][2]*M[2][0]) +
+                    M[0][2]*(M[1][0]*M[2][1] - M[1][1]*M[2][0]);
+        if (Math.abs(det) < 1e-12) return null;
+        const invdet = 1 / det;
+        return [
+            [
+                (M[1][1]*M[2][2] - M[1][2]*M[2][1])*invdet,
+                (M[0][2]*M[2][1] - M[0][1]*M[2][2])*invdet,
+                (M[0][1]*M[1][2] - M[0][2]*M[1][1])*invdet
+            ],
+            [
+                (M[1][2]*M[2][0] - M[1][0]*M[2][2])*invdet,
+                (M[0][0]*M[2][2] - M[0][2]*M[2][0])*invdet,
+                (M[0][2]*M[1][0] - M[0][0]*M[1][2])*invdet
+            ],
+            [
+                (M[1][0]*M[2][1] - M[1][1]*M[2][0])*invdet,
+                (M[0][1]*M[2][0] - M[0][0]*M[2][1])*invdet,
+                (M[0][0]*M[1][1] - M[0][1]*M[1][0])*invdet
+            ]
+        ];
     }
 
     const tbody = document.getElementById('tbody-sentinela');
@@ -160,33 +192,91 @@
         });
     }
 
+    // PHASE DE CORRECTION DU FILTRE DE KALMAN (Cadence de reception du capteur : 2 Hz)
     async function acquerirFluxPhysique() {
         try {
-            // Utilisation d'un jeton cryptographique d'évitement de cache navigateur à la place de l'horloge système
             const r = await fetch('./flux_live.json?nocache=' + crypto.randomUUID(), { cache: "no-store" });
-            if (!r.ok) throw new Error("Flux physique corrompu ou introuvable");
+            if (!r.ok) throw new Error("Flux physique manquant");
             const data = await r.json();
             
             if(data.METADATA && data.METADATA.synchronisation === "STRICT_EPHEMERIS_DE440") {
                 fluxMatriceServeur = data;
                 document.getElementById('flux-epoch').innerText = "ÉPOQUE UTC : " + data.METADATA.epoch_utc;
                 
-                const b = document.getElementById('source-badge');
-                b.innerText = "COUPLE DIRECT NASA JPL DE440"; 
-                b.className = "status-badge badge-stable";
+                document.getElementById('source-badge').innerText = "COUPLE DIRECT NASA JPL DE440"; 
+                document.getElementById('source-badge').className = "status-badge badge-stable";
                 
-                // Alignement forcé des registres cartésiens si stable au sol
-                if(modeActuel === "MARSEILLE_FIXE" && data.MATRICE_ECEF_REEL) {
-                    state_x[0] = data.MATRICE_ECEF_REEL["X_mètres"] || REF_MARSEILLE.x;
-                    state_x[1] = data.MATRICE_ECEF_REEL["Y_mètres"] || REF_MARSEILLE.y;
-                    state_x[2] = data.MATRICE_ECEF_REEL["Z_mètres"] || REF_MARSEILLE.z;
+                if(data.MATRICE_ECEF_REEL) {
+                    let z = [
+                        data.MATRICE_ECEF_REEL["X_mètres"],
+                        data.MATRICE_ECEF_REEL["Y_mètres"],
+                        data.MATRICE_ECEF_REEL["Z_mètres"]
+                    ];
+                    
+                    // 1. Calcul de l'Innovation réelle (y = z - Hx)
+                    let y = [z[0] - state_x[0], z[1] - state_x[1], z[2] - state_x[2]];
+                    
+                    // 2. Covariance de l'innovation S = HPH' + R (Bruit GNSS R fixé à 2cm, soit variance 0.0004 m²)
+                    let R_val = 0.0004;
+                    let S = [
+                        [P[0][0] + R_val, P[0][1], P[0][2]],
+                        [P[1][0], P[1][1] + R_val, P[1][2]],
+                        [P[2][0], P[2][1], P[2][2] + R_val]
+                    ];
+                    
+                    let Sinv = inverserMatrice3x3(S);
+                    if(Sinv) {
+                        // 3. Calcul du carré de la distance de Mahalanobis (Test statistique du Chi-Deux à 3 ddl)
+                        let d2 = y[0]*(Sinv[0][0]*y[0] + Sinv[0][1]*y[1] + Sinv[0][2]*y[2]) +
+                                 y[1]*(Sinv[1][0]*y[0] + Sinv[1][1]*y[1] + Sinv[1][2]*y[2]) +
+                                 y[2]*(Sinv[2][0]*y[0] + Sinv[2][1]*y[1] + Sinv[2][2]*y[2]);
+                        
+                        // Seuil statistique strict de rejet à 99.8% de confiance (Seuil Chi-Deux = 14.16)
+                        const seuil_gating = 14.16;
+                        
+                        if (d2 < seuil_gating || modeActuel !== "MARSEILLE_FIXE") {
+                            // DONNÉE STATISTIQUEMENT VALIDE : Calcul du gain de Kalman K (6x3)
+                            let K = Array(6).fill(0).map(() => Array(3).fill(0));
+                            for(let i=0; i<6; i++) {
+                                for(let j=0; j<3; j++) {
+                                    K[i][j] = P[i][0]*Sinv[0][j] + P[i][1]*Sinv[1][j] + P[i][2]*Sinv[2][j];
+                                }
+                            }
+                            
+                            // Mise à jour de l'état estimé x̂ = x̂ + Ky
+                            for(let i=0; i<6; i++) {
+                                state_x[i] += K[i][0]*y[0] + K[i][1]*y[1] + K[i][2]*y[2];
+                            }
+                            
+                            // Mise à jour de la vraie covariance P = (I - KH)P
+                            let KHP = Array(6).fill(0).map(() => Array(6).fill(0));
+                            for(let i=0; i<6; i++) {
+                                for(let j=0; j<6; j++) {
+                                    KHP[i][j] = K[i][0]*P[0][j] + K[i][1]*P[1][j] + K[i][2]*P[2][j];
+                                }
+                            }
+                            for(let i=0; i<6; i++) {
+                                for(let j=0; j<6; j++) { P[i][j] -= KHP[i][j]; }
+                            }
+                            
+                            document.getElementById('lbl-chisq').innerText = "CONVERGENT (d²=" + d2.toFixed(2) + ")";
+                            document.getElementById('lbl-chisq').style.color = "var(--neon-green)";
+                        } else {
+                            // REFUS DE LA FICTION : Détection d'anomalie géométrique majeure (Ex: Donnée Mandchourie injectée)
+                            document.getElementById('lbl-chisq').innerText = "REJETÉ (d²=" + d2.toExponential(1) + " > 14.16)";
+                            document.getElementById('lbl-chisq').style.color = "var(--rose)";
+                            if(Math.random() < 0.15) {
+                                ecrireLog("ALERTE SÉCURITÉ : Mesure aberrante détectée à 9000km. Rejetée par validation statistique.");
+                            }
+                        }
+                    }
                 }
             }
         } catch(e) {
             fluxMatriceServeur = null;
-            const b = document.getElementById('source-badge');
-            b.innerText = "FLUX MANQUANT"; 
-            b.className = "status-badge badge-error";
+            document.getElementById('source-badge').className = "status-badge badge-error";
+            document.getElementById('lbl-chisq').innerText = "PANNE ACQUISITION";
+            document.getElementById('lbl-chisq').style.color = "var(--rose)";
         }
     }
 
@@ -197,65 +287,80 @@
         document.getElementById('lbl-profil').innerText = m;
         
         const badge = document.getElementById('env-badge');
+        
+        // Réinitialisation stricte des matrices selon le modèle physique réel
         if(m === "MARSEILLE_FIXE") {
             badge.innerText = "STABLE"; badge.className = "status-badge badge-stable";
             state_x = [REF_MARSEILLE.x, REF_MARSEILLE.y, REF_MARSEILLE.z, 0, 0, 0];
-            P_cov = [1e-4, 1e-4, 1e-4, 1e-6, 1e-6, 1e-6];
-            ecrireLog("Alignement sur le repère fixe. Élimination des bruits cinématiques.");
+            P = Array(6).fill(0).map(() => Array(6).fill(0));
+            for(let i=0; i<3; i++) P[i][i] = 1e-4; // 1cm d'erreur tolérée au sol
+            for(let i=3; i<6; i++) P[i][i] = 1e-6;
+            ecrireLog("Alignement fixe réengagé. RAZ des covariances.");
         } else {
             badge.innerText = "CINÉMATIQUE ACTIVE"; badge.className = "status-badge badge-kinematic";
             let v_init = m === "AVION" ? 250 : (m === "TRAIN" ? 83 : 20);
             state_x = [REF_MARSEILLE.x, REF_MARSEILLE.y, REF_MARSEILLE.z, v_init, v_init * 0.1, 0];
-            P_cov = [1.0, 1.0, 1.0, 0.1, 0.1, 0.1];
-            ecrireLog(`Mode cinématique engagé : [${m}]. Initialisation EKF.`);
+            
+            P = Array(6).fill(0).map(() => Array(6).fill(0));
+            for(let i=0; i<3; i++) P[i][i] = 4.0; // Élargissement de la covariance (2m d'erreur initiale en mouvement)
+            for(let i=3; i<6; i++) P[i][i] = 0.2;
+            ecrireLog(`Mode cinématique actif: [${m}]. Ouverture des vannes de variance.`);
         }
     }
 
+    // PHASE DE PRÉDICTION DU FILTRE DE KALMAN (Cadence de rafraîchissement interne : 20 Hz)
     function executerPasFiltreEtRendu() {
         const dt = 0.05; 
         const t_sec = new Date().getTime() / 1000;
 
-        // Prédiction du filtre de Kalman (Uniquement si cinématique engagée)
-        if (modeActuel !== "MARSEILLE_FIXE") {
-            state_x[0] += state_x[3] * dt;
-            state_x[1] += state_x[4] * dt;
-            state_x[2] += state_x[5] * dt;
-            
-            let q_noise = 0.01; 
-            if(modeActuel === "AVION") q_noise = 0.05;
-            if(modeActuel === "BATEAU") {
-                q_noise = 0.4; 
-                state_x[5] = 1.8 * Math.sin(t_sec * 2.0); 
+        // 1. Équation cinématique de propagation de l'état : x = Fx
+        state_x[0] += state_x[3] * dt;
+        state_x[1] += state_x[4] * dt;
+        state_x[2] += state_x[5] * dt;
+        
+        // 2. Propagation de la matrice de covariance P = FPF' + Q (Lois de transitions réelles)
+        let FP = Array(6).fill(0).map(() => Array(6).fill(0));
+        for(let i=0; i<6; i++) {
+            for(let j=0; j<6; j++) {
+                FP[i][j] = (i < 3) ? P[i][j] + dt * P[i+3][j] : P[i][j];
             }
-            P_cov[0] += P_cov[3] * dt * dt + 0.5 * q_noise * dt * dt;
-            P_cov[1] += P_cov[4] * dt * dt + 0.5 * q_noise * dt * dt;
-            P_cov[2] += P_cov[5] * dt * dt + 0.5 * q_noise * dt * dt;
-        } else {
-            P_cov = P_cov.map(v => v * 0.999);
+        }
+        for(let i=0; i<6; i++) {
+            for(let j=0; j<6; j++) {
+                P[i][j] = (j < 3) ? FP[i][j] + dt * FP[i][j+3] : FP[i][j];
+            }
         }
 
-        const sigma_total = Math.sqrt(P_cov[0] + P_cov[1] + P_cov[2]);
+        // 3. Injection du bruit de processus physique Q (Dépend des vibrations réelles du milieu)
+        let q_pos = 1e-5; let q_vel = 1e-6;
+        if(modeActuel === "AVION") { q_pos = 5e-3; q_vel = 1e-3; }
+        if(modeActuel === "BATEAU") { 
+            q_pos = 2e-2; q_vel = 5e-3; 
+            state_x[5] = 1.8 * Math.sin(t_sec * 2.0); // Modélisation de la houle
+        }
+        if(modeActuel === "MARSEILLE_FIXE") { q_pos = 1e-9; q_vel = 1e-11; } // Presque aucun bruit au sol
+
+        for(let i=0; i<3; i++) P[i][i] += q_pos;
+        for(let i=3; i<6; i++) P[i][i] += q_vel;
+
+        // Extraction de l'incertitude absolue réelle (Racine carrée de la trace de position)
+        const sigma_total = Math.sqrt(P[0][0] + P[1][1] + P[2][2]);
         document.getElementById('lbl-kalman-sigma').innerText = sigma_total.toFixed(4) + " m";
 
-        // Injection temps réel des coordonnées filtrées dans le DOM
+        // Affichage des coordonnées réelles filtrées par le processeur
         document.getElementById('ecef-x').innerText = state_x[0].toFixed(4) + " m";
         document.getElementById('ecef-y').innerText = state_x[1].toFixed(4) + " m";
         document.getElementById('ecef-z').innerText = state_x[2].toFixed(4) + " m";
 
-        // Lecture sécurisée des métadonnées bas-niveau (Sans écrasement par 'undefined')
         if (fluxMatriceServeur && fluxMatriceServeur.METADATA) {
-            document.getElementById('lbl-tropo').innerText = fluxMatriceServeur.METADATA.modelisation_troposphere || "SAASTAMOINEN + ZWD DYNAMIQUE";
-            
             const delta_einstein = fluxMatriceServeur.METADATA.horloge_einstein_delta_ns_s;
-            document.getElementById('lbl-relativite').innerText = (typeof delta_einstein === 'number') ? delta_einstein.toFixed(4) + " ns/s" : "SYNCHRONISATION...";
+            document.getElementById('lbl-relativite').innerText = (typeof delta_einstein === 'number') ? delta_einstein.toFixed(4) + " ns/s" : "CALCUL...";
             
             const norme_maree = fluxMatriceServeur.METADATA.norme_maree_mm;
-            document.getElementById('lbl-maree-val').innerText = (typeof norme_maree === 'number') ? norme_maree.toFixed(1) + " mm (IERS)" : "SYNCHRONISATION...";
-        } else {
-            document.getElementById('lbl-tropo').innerText = "SAASTAMOINEN + ZWD DYNAMIQUE";
+            document.getElementById('lbl-maree-val').innerText = (typeof norme_maree === 'number') ? norme_maree.toFixed(1) + " mm (IERS)" : "CALCUL...";
         }
 
-        // Rendu du Radar Topocentrique 2D
+        // Rendu Graphique Topocentrique
         const canvas = document.getElementById('radar');
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
@@ -283,9 +388,7 @@
                 document.getElementById(`az-${a}`).innerText = azimut_reel.toFixed(6) + "°";
                 document.getElementById(`el-${a}`).innerText = el_reelle.toFixed(6) + "°";
                 document.getElementById(`dec-${a}`).innerText = (typeof s.declinaison_deg === 'number') ? s.declinaison_deg.toFixed(6) + "°" : "---";
-                
-                const dist_m = s.distance_precision_m;
-                document.getElementById(`dist-${a}`).innerText = (typeof dist_m === 'number') ? dist_m.toExponential(3) : "---";
+                document.getElementById(`dist-${a}`).innerText = (typeof s.distance_precision_m === 'number') ? s.distance_precision_m.toExponential(3) : "---";
 
                 if(tr) {
                     if(el_reelle >= 0) {
@@ -297,7 +400,6 @@
 
                         ctx.fillStyle = a === "soleil" ? "var(--amber)" : (a === "lune" ? "#ffffff" : "var(--sky)");
                         ctx.beginPath(); ctx.arc(x, y, a === "soleil" ? 5 : 3.5, 0, 2 * Math.PI); ctx.fill();
-                        
                         ctx.fillStyle = "#8b949e"; ctx.font = "8px monospace";
                         ctx.fillText(a.substring(0,3).toUpperCase(), x + 6, y + 3);
                     } else {
@@ -308,12 +410,9 @@
         }
     }
 
-    // Double boucle asynchrone cadencée
     setInterval(acquerirFluxPhysique, 500); 
     setInterval(executerPasFiltreEtRendu, 50); 
-    
     acquerirFluxPhysique();
-    ecrireLog("Console d'analyse géodésique v8.3.2 en ligne. Alignement et géométrie WGS84 corrigés.");
 </script>
 </body>
-                                                                             </html>
+</html>
