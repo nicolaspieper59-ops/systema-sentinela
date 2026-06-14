@@ -158,10 +158,18 @@
         consoleBox.innerHTML = `[${ts}] ${message}<br>` + consoleBox.innerHTML;
     }
 
-    // 1. LIEN D'INTERCONNEXION PHYSIQUE : Lecture du fichier généré par le Workflow
+    // Remplacement de la fonction d'acquisition réseau dans votre index.html
     async function acquerirDonneesJPL() {
         try {
-            const reponse = await fetch('./flux_live.json?nocache=' + Date.now());
+            // Utilisation d'un timestamp dynamique unique pour détruire le cache navigateur
+            const reponse = await fetch('./flux_live.json?v=' + new Date().getTime(), {
+                cache: "no-store",
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
+            });
+            
             if (reponse.ok) {
                 const jsonPayload = await reponse.json();
                 
@@ -174,7 +182,6 @@
                     badge.innerText = "VERIFIED — FLUX EN LIGNE (NASA JPL DE440)";
                     badge.className = "status-badge badge-stable";
                     
-                    // Forcer l'alignement sur le mode d'exécution du Workflow lors du premier chargement
                     const modeWorkflow = jsonPayload.METADATA.mode_environnement_execution;
                     if (modeWorkflow && modeActuel === "MARSEILLE_FIXE" && modeWorkflow !== "MARSEILLE_FIXE") {
                         ecrireLog(`Alignement automatique détecté depuis le serveur : Activation du mode [${modeWorkflow}]`);
@@ -184,10 +191,10 @@
                     leverAlerteFlux("STRUCTURE DE DONNÉES INVALIDE");
                 }
             } else {
-                leverAlerteFlux("ERREUR HTTP SERVEUR (FLUX ABSENT)");
+                leverAlerteFlux("ERREUR HTTP SERVEUR (404 FLUX ABSENT)");
             }
         } catch (err) {
-            leverAlerteFlux("FICHIER 'FLUX_LIVE.JSON' INTROUVABLE");
+            leverAlerteFlux("FICHIER 'FLUX_LIVE.JSON' EN COURS DE GENERATION");
         }
     }
 
