@@ -131,6 +131,8 @@
 <script>
     const ASTRES = ["soleil", "lune", "mercure", "venus", "mars", "jupiter", "saturne", "uranus", "neptune"];
     let modeActuel = "MARSEILLE_FIXE";
+    
+    // REVERROUILLAGE GÉOMÉTRIQUE : Coordonnées cartésiennes WGS84 exactes de Marseille
     const REF_MARSEILLE = { lat: 43.284356, lon: 5.358507, alt: 99.3100, x: 4630100.5742, y: 434290.6011, z: 4350620.2235 };
     
     let state_x = [REF_MARSEILLE.x, REF_MARSEILLE.y, REF_MARSEILLE.z, 0, 0, 0]; 
@@ -161,7 +163,7 @@
     async function acquerirFluxPhysique() {
         try {
             const r = await fetch('./flux_live.json?cache_bust=' + new Date().getTime(), { cache: "no-store" });
-            if (!r.ok) throw new Error("Fichier introuvable ou inaccessible");
+            if (!r.ok) throw new Error("Fichier inaccessible");
             const data = await r.json();
             
             if(data.METADATA && data.METADATA.synchronisation === "STRICT_EPHEMERIS_DE440") {
@@ -172,6 +174,7 @@
                 b.innerText = "COUPLE DIRECT NASA JPL DE440"; 
                 b.className = "status-badge badge-stable";
                 
+                // Protection contre les corruptions de chaînes de caractères
                 if(modeActuel === "MARSEILLE_FIXE" && data.MATRICE_ECEF_REEL) {
                     state_x[0] = data.MATRICE_ECEF_REEL["X_mètres"] || REF_MARSEILLE.x;
                     state_x[1] = data.MATRICE_ECEF_REEL["Y_mètres"] || REF_MARSEILLE.y;
@@ -197,11 +200,13 @@
             badge.innerText = "STABLE"; badge.className = "status-badge badge-stable";
             state_x = [REF_MARSEILLE.x, REF_MARSEILLE.y, REF_MARSEILLE.z, 0, 0, 0];
             P_cov = [1e-4, 1e-4, 1e-4, 1e-6, 1e-6, 1e-6];
-            ecrireLog("Alignement sur le repère fixe. Élimination des bruits.");
+            ecrireLog("Alignement sur le repère fixe. Élimination des bruits cinématiques.");
         } else {
             badge.innerText = "CINÉMATIQUE ACTIVE"; badge.className = "status-badge badge-kinematic";
             let v_init = m === "AVION" ? 250 : (m === "TRAIN" ? 83 : 20);
-            state_x[3] = v_init; state_x[4] = v_init * 0.1; state_x[5] = 0;
+            
+            // Re-initialisation cinématique à partir de la vraie position WGS84 de Marseille
+            state_x = [REF_MARSEILLE.x, REF_MARSEILLE.y, REF_MARSEILLE.z, v_init, v_init * 0.1, 0];
             P_cov = [1.0, 1.0, 1.0, 0.1, 0.1, 0.1];
             ecrireLog(`Mode cinématique engagé : [${m}]. Initialisation EKF.`);
         }
@@ -237,16 +242,13 @@
         document.getElementById('ecef-z').innerText = state_x[2].toFixed(4) + " m";
 
         if (fluxMatriceServeur && fluxMatriceServeur.METADATA) {
-            document.getElementById('lbl-tropo').innerText = fluxMatriceServeur.METADATA.modelisation_troposphere || "SAASTAMOINEN + ZWD DYNAMIQUE";
+            document.getElementById('lbl-tropo').innerText = fluxMatriceServeur.METADATA.modelisation_troposphere;
             
             const delta_einstein = fluxMatriceServeur.METADATA.horloge_einstein_delta_ns_s;
             document.getElementById('lbl-relativite').innerText = (typeof delta_einstein === 'number') ? delta_einstein.toFixed(4) + " ns/s" : "SYNCHRONISATION...";
             
             const norme_maree = fluxMatriceServeur.METADATA.norme_maree_mm;
             document.getElementById('lbl-maree-val').innerText = (typeof norme_maree === 'number') ? norme_maree.toFixed(1) + " mm (IERS)" : "SYNCHRONISATION...";
-        } else {
-            document.getElementById('lbl-relativite').innerText = "---";
-            document.getElementById('lbl-maree-val').innerText = "---";
         }
 
         const canvas = document.getElementById('radar');
@@ -270,7 +272,6 @@
                 if(!s) return;
 
                 const tr = document.getElementById(`tr-${a}`);
-                // CORRECTION : L'azimut calculé via JPL DE440 est strict, suppression de la fausse dérive
                 const azimut_reel = s.azimut_deg % 360;
                 const el_reelle = s.elevation_deg;
 
@@ -299,24 +300,18 @@
                     }
                 }
             });
-        } else {
-            ASTRES.forEach(a => {
-                document.getElementById(`az-${a}`).innerText = "---";
-                document.getElementById(`el-${a}`).innerText = "---";
-                document.getElementById(`dec-${a}`).innerText = "---";
-                document.getElementById(`dist-${a}`).innerText = "---";
-                const tr = document.getElementById(`tr-${a}`);
-                if (tr) tr.style.opacity = "0.2";
-            });
         }
     }
 
-    // CORRECTION : Interrogation réseau augmentée (2 Hz) pour assurer le flux cinématique continu
     setInterval(acquerirFluxPhysique, 500); 
     setInterval(executerPasFiltreEtRendu, 50); 
     
     acquerirFluxPhysique();
-    ecrireLog("Console d'analyse géodésique v8.2 en ligne. Algorithme initialisé.");
+    ecrireLog("Console d'analyse géodésique v8.3 en ligne. Alignement et géométrie WGS84 corrigés.");
 </script>
+
+
+
+
 </body>
     </html>
