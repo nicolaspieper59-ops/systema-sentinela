@@ -63,6 +63,7 @@ def ecef_vers_geodesique(x, y, z):
     return math.degrees(lat_rad), math.degrees(lon_rad), alt
 
 def calculer_marees_solides_iers(pos_station_ecef, pos_lune_ecef, m_lune, pos_soleil_ecef, m_soleil, m_terre):
+    """Estimation des déformations de la croûte terrestre (Marée de Love Solide)"""
     h2 = 0.6078
     l2 = 0.0847
     
@@ -95,43 +96,40 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
     G, M_TERRE, OMEGA_TERRE, R_EQ, J2, C, vitesse_propre_m_s, pression_surface, temperature_surface_k, e_vapeur_eau = constants
     m_terre, m_lune, m_soleil = 1.0, 0.0123000371, 332946.0487
     
-    # Extraction de l'état 3D strict et du temps déterministe
+    # Récupération des variables de l'état 3D et du temps figé
     pos_base_m = variables_mobiles['pos_ecef']
     sim_datetime = variables_mobiles['sim_time']
     
-    # Résolution géodésique inverse pour les besoins topocentriques
+    # Résolution inverse de Bowring pour obtenir les coordonnées géodésiques réelles
     lat_actuelle, lon_actuelle, alt_actuelle = ecef_vers_geodesique(pos_base_m[0], pos_base_m[1], pos_base_m[2])
     
     instant_utc = ts.from_datetime(sim_datetime)
     
-    # Résolution des éphémérides de position (UA vers mètres)
+    # Éphémérides de position absolue (UA -> Mètres)
     UA_EN_METRES = 149597870700.0
     terre_obj = eph['earth']
-    
     lune_pose = terre_obj.at(instant_utc).observe(eph['moon']).position.au * UA_EN_METRES
     soleil_pose = terre_obj.at(instant_utc).observe(eph['sun']).position.au * UA_EN_METRES
     
+    # Calcul des marées rocheuses dynamiques
     delta_marée_ecef = calculer_marees_solides_iers(pos_base_m, lune_pose, m_lune, soleil_pose, m_soleil, m_terre)
-    
-    # CORRECTIF GÉODÉSIQUE : Application de la marée élastique IERS sur les coordonnées réelles 3D
     pos_modifiee_ecef = pos_base_m + delta_marée_ecef
 
     x_r, y_r, z_r = pos_modifiee_ecef
     r_final = math.sqrt(x_r**2 + y_r**2 + z_r**2)
-    
     sin_lat = z_r / r_final if r_final > 0 else 0
     
+    # Calcul du géopotentiel avec prise en compte du terme d'aplatissement J2
     potentiel_nominal = (G * M_TERRE) / r_final if r_final > 0 else 0
     potentiel_j2 = potentiel_nominal * J2 * (R_EQ / r_final)**2 * 1.5 * (1.0 - 3.0 * sin_lat**2) if r_final > 0 else 0
     potentiel_total_u = potentiel_nominal + potentiel_j2
     
-    # CORRECTIF RELATIVISTE : Calcul vectoriel strict sur repère 3D tournant
+    # Calcul des effets de la relativité restreinte et générale (Dérive d'horloge Einstein)
     lat_rad = math.radians(lat_actuelle)
     lon_rad = math.radians(lon_actuelle)
-    
     v_rot_ecef = np.array([-OMEGA_TERRE * y_r, OMEGA_TERRE * x_r, 0.0])
     
-    # Transformation de la vitesse propre (Vitesse locale ENU -> ECEF)
+    # Transformation de la vitesse propre ENU (Locale) vers le référentiel 3D ECEF
     v_cap_rad = math.radians(45.0)
     v_est = vitesse_propre_m_s * math.sin(v_cap_rad)
     v_nord = vitesse_propre_m_s * math.cos(v_cap_rad)
@@ -144,9 +142,9 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
     
     vitesse_totale_ecef = v_rot_ecef + v_propre_ecef
     v2_scalaire = np.dot(vitesse_totale_ecef, vitesse_totale_ecef)
-    
     drift_relativiste_ns_s = ((-potentiel_total_u / C**2) - (v2_scalaire / (2.0 * C**2))) * 1e9
 
+    # Génération du flux topocentrique pour l'IHM
     station_inst = terre_obj + wgs84.latlon(lat_actuelle, lon_actuelle, elevation_m=alt_actuelle)
     flux_astres = {}
     
@@ -154,10 +152,10 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
         obs = station_inst.at(instant_utc).observe(cible).apparent()
         alt_brute, az, dist = obs.altaz()
         
+        # Réfraction troposphérique (Modèle Saastamoinen simplifié pour l'optique)
         tan_E = math.tan(math.radians(max(0.1, alt_brute.degrees)))
         refraction_deg = (0.0002967 / tan_E) if alt_brute.degrees > 5.0 else 0.0
         elevation_corrigee = alt_brute.degrees + refraction_deg
-        
         ra, dec = obs.radec()[:2]
         
         flux_astres[nom] = {
@@ -170,7 +168,7 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
 
     payload_v852 = {
         "METADATA": {
-            "infrastructure": "SYSTEMA SENTINELA v8.5.2 — NOYAU MOBILE TRIDIMENSIONNEL DET",
+            "infrastructure": "SYSTEMA SENTINELA v8.5.2 — NOYAU TRIDIMENSIONNEL DET",
             "mode_environnement_execution": mode_recouvrement,
             "epoch_utc": sim_datetime.isoformat().replace("+00:00", "Z"),
             "maree_solide_composante_xyz_m": [float(delta_marée_ecef[0]), float(delta_marée_ecef[1]), float(delta_marée_ecef[2])],
@@ -195,7 +193,7 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
         json.dump(payload_v852, f, indent=4, ensure_ascii=False)
     os.replace(tmp_file, target_file)
     
-    print(f"[SUCCESS DET] Epoch:{sim_datetime.strftime('%H:%M:%S.%f')[:-3]} — XYZ:[{x_r:.3f}, {y_r:.3f}, {z_r:.3f}] — Drv:{drift_relativiste_ns_s:.6f} ns/s")
+    print(f"[SUCCESS] Epoch: {sim_datetime.strftime('%Y-%m-%dT%H:%M:%S.%fZ')} -> XYZ enregistré.")
 
 def executer_moteur_v852():
     mode_recouvrement = "MARSEILLE_FIXE"
@@ -205,13 +203,11 @@ def executer_moteur_v852():
     G, M_TERRE, OMEGA_TERRE, R_EQ, J2, C = 6.67430e-11, 5.9722e24, 7.292115e-5, 6378137.0, 1.08263e-3, 299792458.0
     LATITUDE_INITIALE, LONGITUDE_INITIALE, ALTITUDE_NOMINALE = 43.284356, 5.358507, 99.3100
 
-    print(f"[INIT] Activation du Noyau Géodésique Déterministe 3D v8.5.2 [{mode_recouvrement}]")
-    
     try:
         eph = load('de440.bsp')
         ts = load.timescale()
     except Exception as e:
-        sys.stderr.write(f"[FATAL] Impossible de localiser la base d'éphémérides JPL DE440 : {str(e)}\n")
+        sys.stderr.write(f"[FATAL] Éphémérides DE440 introuvables : {str(e)}\n")
         sys.exit(1)
 
     vitesse_propre_m_s, pression_surface, temperature_surface_k, e_vapeur_eau = 0.0, 1013.25, 288.15, 12.0
@@ -233,12 +229,13 @@ def executer_moteur_v852():
     }
 
     constants = (G, M_TERRE, OMEGA_TERRE, R_EQ, J2, C, vitesse_propre_m_s, pression_surface, temperature_surface_k, e_vapeur_eau)
-    
-    # INITIALISATION VECTORIELLE TRIDIMENSIONNELLE INITIALE
     pos_init_ecef = coordonnees_geodesiques_vers_ecef(LATITUDE_INITIALE, LONGITUDE_INITIALE, altitude_geo)
     
-    # SYNC CLOCK INITIALE DÉTERMINISTE (Épouse l'époque exacte transmise par la console)
-    epoch_initiale = datetime(2026, 6, 15, 13, 39, 8, 448000, tzinfo=timezone.utc)
+    # Synchro temporelle : Prise en compte de l'heure d'exécution du Workflow CI/CD pour éviter le gel des données
+    if os.environ.get('GITHUB_ACTIONS') == 'true':
+        epoch_initiale = datetime.now(timezone.utc)
+    else:
+        epoch_initiale = datetime(2026, 6, 15, 13, 39, 8, 448000, tzinfo=timezone.utc)
 
     variables_mobiles = {
         'pos_ecef': pos_init_ecef,
@@ -247,52 +244,38 @@ def executer_moteur_v852():
 
     pas_temps = 0.5
     if os.environ.get('GITHUB_ACTIONS') == 'true':
+        # En mode GitHub Actions, une seule itération exacte est requise pour mettre à jour le dépôt
         generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, constants, variables_mobiles)
     else:
-        print(f"[CONFIG] Générateur STRICT cadencé à dt = {pas_temps}s sans dérive système.")
-        
+        print(f"[RUN LOCAL] Cadencement strict à dt = {pas_temps}s.")
         while True:
             try:
                 t_debut = time.time()
                 
-                # MISE À JOUR CINÉMATIQUE PAR PROJECTION VECTORIELLE TRIDIMENSIONNELLE DIRECTE
+                # Évolution cinématique vectorielle directe en espace 3D ECEF
                 if vitesse_propre_m_s > 0:
-                    # Extraction des coordonnées géodésiques actuelles de l'état 3D pour la matrice de passage ENU -> ECEF
                     lat_act, lon_act, _ = ecef_vers_geodesique(variables_mobiles['pos_ecef'][0], variables_mobiles['pos_ecef'][1], variables_mobiles['pos_ecef'][2])
                     lat_r = math.radians(lat_act)
                     lon_r = math.radians(lon_act)
                     
-                    # Composantes locales ENU (Cap invariant à 45° Nord-Est)
                     v_cap_rad = math.radians(45.0)
                     v_est = vitesse_propre_m_s * math.sin(v_cap_rad)
                     v_nord = vitesse_propre_m_s * math.cos(v_cap_rad)
                     
-                    # Matrice de rotation instantanée locale vers l'espace Cartésien 3D ECEF
                     v_propre_ecef = np.array([
                         -math.sin(lon_r)*v_est - math.sin(lat_r)*math.cos(lon_r)*v_nord,
                          math.cos(lon_r)*v_est - math.sin(lat_r)*math.sin(lon_r)*v_nord,
                          math.cos(lat_r)*v_nord
                     ])
-                    
-                    # Intégration tridimensionnelle stricte du vecteur de position
                     variables_mobiles['pos_ecef'] += v_propre_ecef * pas_temps
                 
-                # Exécution de la métrologie physique sur la base de l'état 3D et du temps simulé
                 generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, constants, variables_mobiles)
-                
-                # Progression de l'horloge interne (Abandon total de l'horloge PC cliente)
                 variables_mobiles['sim_time'] += timedelta(seconds=pas_temps)
                 
                 t_execution = time.time() - t_debut
-                temps_sommeil = max(0.01, pas_temps - t_execution)
-                time.sleep(temps_sommeil)
-                
+                time.sleep(max(0.01, pas_temps - t_execution))
             except KeyboardInterrupt:
-                print("\n[SHUTDOWN] Arrêt propre du moteur déterministe 3D.")
                 break
-            except Exception as e:
-                sys.stderr.write(f"[ERREUR COMPORTEMENTALE EN BOUCLE] {str(e)}\n")
-                time.sleep(2.0)
 
 if __name__ == "__main__":
     executer_moteur_v852()
