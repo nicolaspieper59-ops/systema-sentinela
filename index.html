@@ -176,6 +176,7 @@
         ];
     }
 
+    // Génération initiale de la structure du tableau
     const tbody = document.getElementById('tbody-sentinela');
     if (tbody) {
         tbody.innerHTML = "";
@@ -199,22 +200,8 @@
             
             if(data.METADATA && data.METADATA.synchronisation === "STRICT_EPHEMERIS_DE440") {
                 fluxMatriceServeur = data;
-                document.getElementById('flux-epoch').innerText = "ÉPOQUE UTC BASE : " + data.METADATA.epoch_utc;
-                document.getElementById('source-badge').innerText = "COUPLE DIRECT NASA JPL DE440"; 
-                document.getElementById('source-badge').className = "status-badge badge-stable";
                 
-                if(data.DATA_STREAMS) {
-                    ASTRES.forEach(a => {
-                        const stream = data.DATA_STREAMS[a];
-                        if(stream) {
-                            document.getElementById(`az-${a}`).innerText = stream.azimut_deg.toFixed(6) + "°";
-                            document.getElementById(`el-${a}`).innerText = stream.elevation_deg.toFixed(6) + "°";
-                            document.getElementById(`dec-${a}`).innerText = stream.declinaison_deg.toFixed(6) + "°";
-                            document.getElementById(`dist-${a}`).innerText = stream.distance_precision_m.toExponential(3);
-                        }
-                    });
-                }
-
+                // Calcul du filtre de Kalman basé sur la trame reçue
                 if(data.MATRICE_ECEF_REEL) {
                     let z = [
                         data.MATRICE_ECEF_REEL["X_mètres"],
@@ -339,10 +326,16 @@
         }
     }
 
+    // --- BOUCLE TEMPORELLE PRINCIPALE CADENCÉE À 20 HZ ---
     function executerPasFiltreEtRendu() {
         const dt = 0.05; 
-        const t_sec = new Date().getTime() / 1000;
+        const maintenant = new Date();
+        const t_sec = maintenant.getTime() / 1000;
 
+        // Mise à jour de l'horloge supérieure en temps réel strict
+        document.getElementById('flux-epoch').innerText = "ÉPOQUE UTC LIVE : " + maintenant.toISOString();
+
+        // Évolution temporelle autonome du vecteur d'état cinématique
         state_x[0] += state_x[3] * dt;
         state_x[1] += state_x[4] * dt;
         state_x[2] += state_x[5] * dt;
@@ -361,7 +354,7 @@
 
         let q_pos = 1e-5; let q_vel = 1e-6;
      
-if (modeActuel === "AUTO") {
+        if (modeActuel === "AUTO") {
             let v_scalaire = Math.sqrt(state_x[3]**2 + state_x[4]**2 + state_x[5]**2);
             let displayTxt = "AUTO : STATIONNAIRE";
             let badgeTxt = "STABLE";
@@ -410,10 +403,41 @@ if (modeActuel === "AUTO") {
         document.getElementById('ecef-y').innerText = state_x[1].toFixed(4) + " m";
         document.getElementById('ecef-z').innerText = state_x[2].toFixed(4) + " m";
 
+        // Traitement dynamique des données issues du serveur
         if (fluxMatriceServeur && fluxMatriceServeur.METADATA) {
             const delta_einstein = fluxMatriceServeur.METADATA.horloge_einstein_delta_ns_s;
             document.getElementById('lbl-relativite').innerText = delta_einstein ? delta_einstein.toFixed(6) + " ns/s" : "---";
             document.getElementById('lbl-maree-val').innerText = fluxMatriceServeur.METADATA.norme_maree_mm ? fluxMatriceServeur.METADATA.norme_maree_mm.toFixed(2) + " mm" : "---";
+            
+            // Calcul du delta de temps écoulé entre le client et l'époque de la trame reçue
+            const t_epoch = new Date(fluxMatriceServeur.METADATA.epoch_utc).getTime() / 1000;
+            const delta_t_flux = t_sec - t_epoch;
+
+            if (Math.abs(delta_t_flux) > 1.5) {
+                document.getElementById('source-badge').innerText = "DE440 INTERPOLÉ VIA V_DIURNE";
+                document.getElementById('source-badge').className = "status-badge badge-kinematic";
+            } else {
+                document.getElementById('source-badge').innerText = "COUPLE DIRECT NASA JPL DE440";
+                document.getElementById('source-badge').className = "status-badge badge-stable";
+            }
+
+            // Interpolation et mise à jour dynamique du tableau de données célestes à 20 Hz
+            if(fluxMatriceServeur.DATA_STREAMS) {
+                ASTRES.forEach(a => {
+                    const stream = fluxMatriceServeur.DATA_STREAMS[a];
+                    if(stream) {
+                        // Vitesse de rotation terrestre moyenne (360° en 86164.1 secondes sidérales)
+                        const omega_terre = 360 / 86164.1; 
+                        let azimut_dynamique = (stream.azimut_deg + (delta_t_flux * omega_terre)) % 360;
+                        if(azimut_dynamique < 0) azimut_dynamique += 360;
+
+                        document.getElementById(`az-${a}`).innerText = azimut_dynamique.toFixed(6) + "°";
+                        document.getElementById(`el-${a}`).innerText = stream.elevation_deg.toFixed(6) + "°";
+                        document.getElementById(`dec-${a}`).innerText = stream.declinaison_deg.toFixed(6) + "°";
+                        document.getElementById(`dist-${a}`).innerText = stream.distance_precision_m.toExponential(3);
+                    }
+                });
+            }
         }
         
         dessinerRadar();
@@ -437,11 +461,17 @@ if (modeActuel === "AUTO") {
         ctx.beginPath(); ctx.moveTo(cx, cy - r_max); ctx.lineTo(cx, cy + r_max); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cx - r_max, cy); ctx.lineTo(cx + r_max, cy); ctx.stroke();
 
-        if (fluxMatriceServeur && fluxMatriceServeur.DATA_STREAMS) {
+        if (fluxMatriceServeur && fluxMatriceServeur.METADATA && fluxMatriceServeur.DATA_STREAMS) {
+            const t_epoch = new Date(fluxMatriceServeur.METADATA.epoch_utc).getTime() / 1000;
+            const delta_t_flux = (new Date().getTime() / 1000) - t_epoch;
+            const omega_terre = 360 / 86164.1;
+
             ASTRES.forEach(a => {
                 const stream = fluxMatriceServeur.DATA_STREAMS[a];
                 if(stream && stream.elevation_deg > 0) { 
-                    const az_rad = (stream.azimut_deg - 90) * (Math.PI / 180);
+                    // Projection radar utilisant l'azimut interpolé en temps réel
+                    let azimut_live = (stream.azimut_deg + (delta_t_flux * omega_terre)) % 360;
+                    const az_rad = (azimut_live - 90) * (Math.PI / 180);
                     const dist_centre = r_max * (1.0 - (stream.elevation_deg / 90.0));
                     const px = cx + dist_centre * Math.cos(az_rad);
                     const py = cy + dist_centre * Math.sin(az_rad);
@@ -462,6 +492,7 @@ if (modeActuel === "AUTO") {
     ecrireLog("Noyau métrologique AKF initialisé en mode AUTOMATIQUE.");
     acquerirFluxPhysique();
     
+    // Découplage des boucles temporelles : Acquisition lente / Interpolation et Rendu rapide
     setInterval(acquerirFluxPhysique, 5000);       
     setInterval(executerPasFiltreEtRendu, 50);    
 </script>
