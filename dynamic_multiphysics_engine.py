@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v8.5.0 — MOTEUR GÉODÉSIQUE ET MULTIPHYSIQUE TEMPS RÉEL
-CONFORME AUX CONVENTIONS IERS & CONFIGURATION NASA JPL DE440
-ÉCRITURE ATOMIQUE ANTICORRUPTION ET SIMULATION CINÉMATIQUE ACTIVE
+SYSTEMA SENTINELA v8.5.2 — MOTEUR GÉODÉSIQUE ET MULTIPHYSIQUE TEMPS RÉEL
+CORRECTION DES VECTEURS DE COUPLAGE RELATIVISTES ET DES RAYONS DE COURBURE WGS84
+ÉCRITURE ATOMIQUE ANTICORRUPTION SECURE
 """
 
 import os
@@ -15,26 +15,32 @@ from datetime import datetime, timezone
 import numpy as np
 from skyfield.api import load, wgs84
 
+# Constantes de l'ellipsoïde de référence WGS84
+A_WGS84 = 6378137.0           
+F_WGS84 = 1.0 / 298.257223563 
+E2_WGS84 = 2.0 * F_WGS84 - F_WGS84**2
+
+def calculer_rayons_courbure(lat_rad):
+    """Calcule les rayons de courbure méridiens (M) et transverses (N) WGS84"""
+    denom = 1.0 - E2_WGS84 * math.sin(lat_rad)**2
+    sqrt_denom = math.sqrt(denom)
+    M = A_WGS84 * (1.0 - E2_WGS84) / (denom * sqrt_denom)
+    N = A_WGS84 / sqrt_denom
+    return M, N
+
 def coordonnees_geodésiques_vers_ecef(lat_deg, lon_deg, alt_m):
-    a = 6378137.0           
-    f = 1.0 / 298.257223563 
-    e2 = 2.0*f - f**2       
-    
     lat = math.radians(lat_deg)
     lon = math.radians(lon_deg)
-    
-    N = a / math.sqrt(1.0 - e2 * math.sin(lat)**2)
+    _, N = calculer_rayons_courbure(lat)
     
     x = (N + alt_m) * math.cos(lat) * math.cos(lon)
     y = (N + alt_m) * math.cos(lat) * math.sin(lon)
-    z = (N * (1.0 - e2) + alt_m) * math.sin(lat)
-    
+    z = (N * (1.0 - E2_WGS84) + alt_m) * math.sin(lat)
     return np.array([x, y, z])
 
 def calculer_marees_solides_iers(pos_station_ecef, pos_lune_ecef, m_lune, pos_soleil_ecef, m_soleil, m_terre):
     h2 = 0.6078
     l2 = 0.0847
-    R_E = 6378137.0
     
     r_station = np.linalg.norm(pos_station_ecef)
     if r_station < 1e-6: return np.zeros(3)
@@ -53,8 +59,8 @@ def calculer_marees_solides_iers(pos_station_ecef, pos_lune_ecef, m_lune, pos_so
         
         cos_theta = np.dot(u_station, u_c)
         
-        disp_v = h2 * (R_E * c['mass_ratio'] * (R_E / r_c)**3) * (1.5 * cos_theta**2 - 0.5)
-        disp_h = 3.0 * l2 * (R_E * c['mass_ratio'] * (R_E / r_c)**3) * cos_theta
+        disp_v = h2 * (A_WGS84 * c['mass_ratio'] * (A_WGS84 / r_c)**3) * (1.5 * cos_theta**2 - 0.5)
+        disp_h = 3.0 * l2 * (A_WGS84 * c['mass_ratio'] * (A_WGS84 / r_c)**3) * cos_theta
         
         vecteur_corps = disp_v * u_station + disp_h * (u_c - cos_theta * u_station)
         delta_r_total += vecteur_corps
@@ -65,26 +71,23 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
     G, M_TERRE, OMEGA_TERRE, R_EQ, J2, C, altitude_geo, vitesse_propre_m_s, pression_surface, temperature_surface_k, e_vapeur_eau = constants
     m_terre, m_lune, m_soleil = 1.0, 0.0123000371, 332946.0487
     
-    # Extraction et incrémentation des coordonnées dynamiques du véhicule
     lat_actuelle = variables_mobiles['latitude']
     lon_actuelle = variables_mobiles['longitude']
     
     instant_utc = ts.from_datetime(datetime.now(timezone.utc))
     pos_base_m = coordonnees_geodésiques_vers_ecef(lat_actuelle, lon_actuelle, altitude_geo)
     
-    # Résolution des éphémérides de position en mètres (conversion depuis UA de Skyfield)
+    # Résolution des éphémérides de position (UA vers mètres)
     UA_EN_METRES = 149597870700.0
     terre_obj = eph['earth']
     
-    lune_pose = Point_pos = visions_pos = terre_obj.at(instant_utc).observe(eph['moon']).position.au * UA_EN_METRES
+    lune_pose = terre_obj.at(instant_utc).observe(eph['moon']).position.au * UA_EN_METRES
     soleil_pose = terre_obj.at(instant_utc).observe(eph['sun']).position.au * UA_EN_METRES
     
     delta_marée_ecef = calculer_marees_solides_iers(pos_base_m, lune_pose, m_lune, soleil_pose, m_soleil, m_terre)
     
-    if mode_recouvrement == "MARSEILLE_FIXE":
-        pos_modifiee_ecef = pos_base_m + delta_marée_ecef
-    else:
-        pos_modifiee_ecef = pos_base_m
+    # CORRECTIF GÉODÉSIQUE : Application universelle de la marée élastique IERS sur la station
+    pos_modifiee_ecef = pos_base_m + delta_marée_ecef
 
     x_r, y_r, z_r = pos_modifiee_ecef
     r_final = math.sqrt(x_r**2 + y_r**2 + z_r**2)
@@ -96,8 +99,28 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
     potentiel_j2 = potentiel_nominal * J2 * (R_EQ / r_final)**2 * 1.5 * (1.0 - 3.0 * sin_lat**2) if r_final > 0 else 0
     potentiel_total_u = potentiel_nominal + potentiel_j2
     
-    vitesse_totale_m_s = (OMEGA_TERRE * p_m) + vitesse_propre_m_s
-    drift_relativiste_ns_s = ((-potentiel_total_u / C**2) - (vitesse_totale_m_s**2 / (2.0 * C**2))) * 1e9
+    # CORRECTIF RELATIVISTE : Calcul vectoriel strict de la vitesse (entraînement + cinématique)
+    # Cap fixé à 45° Nord-Est
+    lat_rad = math.radians(lat_actuelle)
+    lon_rad = math.radians(lon_actuelle)
+    
+    v_rot_ecef = np.array([-OMEGA_TERRE * y_r, OMEGA_TERRE * x_r, 0.0])
+    
+    # Transformation de la vitesse propre (Vitesse locale ENU -> ECEF)
+    v_cap_rad = math.radians(45.0)
+    v_est = vitesse_propre_m_s * math.sin(v_cap_rad)
+    v_nord = vitesse_propre_m_s * math.cos(v_cap_rad)
+    
+    v_propre_ecef = np.array([
+        -math.sin(lon_rad)*v_est - math.sin(lat_rad)*math.cos(lon_rad)*v_nord,
+         math.cos(lon_rad)*v_est - math.sin(lat_rad)*math.sin(lon_rad)*v_nord,
+         math.cos(lat_rad)*v_nord
+    ])
+    
+    vitesse_totale_ecef = v_rot_ecef + v_propre_ecef
+    v2_scalaire = np.dot(vitesse_totale_ecef, vitesse_totale_ecef)
+    
+    drift_relativiste_ns_s = ((-potentiel_total_u / C**2) - (v2_scalaire / (2.0 * C**2))) * 1e9
 
     station_inst = terre_obj + wgs84.latlon(lat_actuelle, lon_actuelle, elevation_m=altitude_geo)
     flux_astres = {}
@@ -120,9 +143,9 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
             "distance_precision_m": float(dist.m)
         }
 
-    payload_v85 = {
+    payload_v852 = {
         "METADATA": {
-            "infrastructure": "SYSTEMA SENTINELA v8.5.0 — NOYAU MOBILE COMPENSÉ",
+            "infrastructure": "SYSTEMA SENTINELA v8.5.2 — NOYAU MOBILE COMPENSÉ",
             "mode_environnement_execution": mode_recouvrement,
             "epoch_utc": datetime.now(timezone.utc).isoformat(),
             "maree_solide_composante_xyz_m": [float(delta_marée_ecef[0]), float(delta_marée_ecef[1]), float(delta_marée_ecef[2])],
@@ -141,16 +164,15 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
         "DATA_STREAMS": flux_astres
     }
 
-    # SÉCURISATION IO : Écriture atomique pour éviter les corruptions de lecture Web
     tmp_file = "flux_live.tmp"
     target_file = "flux_live.json"
     with open(tmp_file, "w", encoding="utf-8") as f:
-        json.dump(payload_v85, f, indent=4, ensure_ascii=False)
+        json.dump(payload_v852, f, indent=4, ensure_ascii=False)
     os.replace(tmp_file, target_file)
     
-    print(f"[SUCCESS] v8.5.0 — Pos:[{lat_actuelle:.5f}°, {lon_actuelle:.5f}°] — Trame synchrone générée.")
+    print(f"[SUCCESS] v8.5.2 — Pos:[{lat_actuelle:.6f}°, {lon_actuelle:.6f}°] — Drv Relat:{drift_relativiste_ns_s:.6f} ns/s")
 
-def executer_moteur_v85():
+def executer_moteur_v852():
     mode_recouvrement = "MARSEILLE_FIXE"
     if len(sys.argv) > 1:
         mode_recouvrement = sys.argv[1].upper()
@@ -158,7 +180,7 @@ def executer_moteur_v85():
     G, M_TERRE, OMEGA_TERRE, R_EQ, J2, C = 6.67430e-11, 5.9722e24, 7.292115e-5, 6378137.0, 1.08263e-3, 299792458.0
     LATITUDE_INITIALE, LONGITUDE_INITIALE, ALTITUDE_NOMINALE = 43.284356, 5.358507, 99.3100
 
-    print(f"[INIT] Activation du Noyau Géodésique Continu v8.5.0 [{mode_recouvrement}]")
+    print(f"[INIT] Activation du Noyau Géodésique Continu v8.5.2 [{mode_recouvrement}]")
     
     try:
         eph = load('de440.bsp')
@@ -187,7 +209,6 @@ def executer_moteur_v85():
 
     constants = (G, M_TERRE, OMEGA_TERRE, R_EQ, J2, C, altitude_geo, vitesse_propre_m_s, pression_surface, temperature_surface_k, e_vapeur_eau)
     
-    # Dictionnaire de suivi de la position cinématique
     variables_mobiles = {
         'latitude': LATITUDE_INITIALE,
         'longitude': LONGITUDE_INITIALE
@@ -197,26 +218,31 @@ def executer_moteur_v85():
         generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, constants, variables_mobiles)
     else:
         print("[LOCAL CONFIG] Boucle Haute Fréquence active (Intervalle strict : 0.5s).")
-        R_TERRE = 6371000.0
         
         while True:
             try:
                 t_debut = time.time()
                 
-                # Mise à jour de la position géographique en fonction de la vitesse propre (Cap Nord-Est fixe pour dérive)
+                # CORRECTIF CINÉMATIQUE : Utilisation des rayons de courbure WGS84 réels
                 if vitesse_propre_m_s > 0:
                     pas_temps = 0.5
                     distance_parcourue = vitesse_propre_m_s * pas_temps
-                    # Approximation linéaire locale (1 degré lat ≈ 111km)
-                    delta_lat = (distance_parcourue * math.cos(math.radians(45))) / R_TERRE * (180.0 / math.pi)
-                    delta_lon = (distance_parcourue * math.sin(math.radians(45))) / (R_TERRE * math.cos(math.radians(variables_mobiles['latitude']))) * (180.0 / math.pi)
+                    
+                    lat_rad = math.radians(variables_mobiles['latitude'])
+                    M, N = calculer_rayons_courbure(lat_rad)
+                    
+                    # Composantes ENU de l'avancement (Cap à 45° Nord-Est)
+                    d_est = distance_parcourue * math.sin(math.radians(45))
+                    d_nord = distance_parcourue * math.cos(math.radians(45))
+                    
+                    delta_lat = (d_nord / (M + altitude_geo)) * (180.0 / math.pi)
+                    delta_lon = (d_est / ((N + altitude_geo) * math.cos(lat_rad))) * (180.0 / math.pi)
                     
                     variables_mobiles['latitude'] += delta_lat
                     variables_mobiles['longitude'] += delta_lon
                 
                 generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, constants, variables_mobiles)
                 
-                # Compensation du temps d'exécution pour maintenir 2 Hz strict
                 t_execution = time.time() - t_debut
                 temps_sommeil = max(0.01, 0.5 - t_execution)
                 time.sleep(temps_sommeil)
@@ -229,4 +255,4 @@ def executer_moteur_v85():
                 time.sleep(2.0)
 
 if __name__ == "__main__":
-    executer_moteur_v85()
+    executer_moteur_v852()
