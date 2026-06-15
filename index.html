@@ -403,7 +403,50 @@ if (modeActuel === "AUTO") {
         for(let i=0; i<3; i++) P[i][i] += q_pos;
         for(let i=3; i<6; i++) P[i][i] += q_vel;
 
-    ctx.fillStyle = a === "soleil" ? "#d29922" : (a === "lune" ? "#58a6ff" : "#3fb950");
+        const sigma_total = Math.sqrt(P[0][0] + P[1][1] + P[2][2]);
+        document.getElementById('lbl-kalman-sigma').innerText = sigma_total.toFixed(4) + " m";
+
+        document.getElementById('ecef-x').innerText = state_x[0].toFixed(4) + " m";
+        document.getElementById('ecef-y').innerText = state_x[1].toFixed(4) + " m";
+        document.getElementById('ecef-z').innerText = state_x[2].toFixed(4) + " m";
+
+        if (fluxMatriceServeur && fluxMatriceServeur.METADATA) {
+            const delta_einstein = fluxMatriceServeur.METADATA.horloge_einstein_delta_ns_s;
+            document.getElementById('lbl-relativite').innerText = delta_einstein ? delta_einstein.toFixed(6) + " ns/s" : "---";
+            document.getElementById('lbl-maree-val').innerText = fluxMatriceServeur.METADATA.norme_maree_mm ? fluxMatriceServeur.METADATA.norme_maree_mm.toFixed(2) + " mm" : "---";
+        }
+        
+        dessinerRadar();
+    }
+
+    function dessinerRadar() {
+        const canvas = document.getElementById('radar');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        const r_max = canvas.width / 2 - 10;
+        
+        ctx.strokeStyle = varColor('--border-dim', '#21262d');
+        ctx.lineWidth = 1;
+        for (let r = 50; r <= r_max; r += 50) {
+            ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2*Math.PI); ctx.stroke();
+        }
+        ctx.beginPath(); ctx.moveTo(cx, cy - r_max); ctx.lineTo(cx, cy + r_max); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx - r_max, cy); ctx.lineTo(cx + r_max, cy); ctx.stroke();
+
+        if (fluxMatriceServeur && fluxMatriceServeur.DATA_STREAMS) {
+            ASTRES.forEach(a => {
+                const stream = fluxMatriceServeur.DATA_STREAMS[a];
+                if(stream && stream.elevation_deg > 0) { 
+                    const az_rad = (stream.azimut_deg - 90) * (Math.PI / 180);
+                    const dist_centre = r_max * (1.0 - (stream.elevation_deg / 90.0));
+                    const px = cx + dist_centre * Math.cos(az_rad);
+                    const py = cy + dist_centre * Math.sin(az_rad);
+                    
+                    ctx.fillStyle = a === "soleil" ? "var(--amber)" : (a === "lune" ? "var(--sky)" : "var(--neon-green)");
                     ctx.beginPath(); ctx.arc(px, py, 4, 0, 2*Math.PI); ctx.fill();
                     ctx.fillStyle = "#8b949e";
                     ctx.fillText(a.substring(0,3).toUpperCase(), px + 6, py + 4);
@@ -415,9 +458,6 @@ if (modeActuel === "AUTO") {
     function varColor(name, fallback) {
         return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
     }
-    
-    var math = math || {};
-    math.radians = function(deg) { return deg * (Math.PI / 180); };
 
     ecrireLog("Noyau métrologique AKF initialisé en mode AUTOMATIQUE.");
     acquerirFluxPhysique();
