@@ -61,17 +61,18 @@
 <body>
 <div class="container">
     <div class="master-header">
-        <div class="system-title">SYSTEMA SENTINELA v8.4 // NOYAU ESTIMATEUR COUPLÉ IERS</div>
+        <div class="system-title">SYSTEMA SENTINELA v8.4 // NOYAU ESTIMATEUR ADAPTATIF AKF</div>
         <div id="flux-epoch" style="color: var(--sky); font-weight:bold;">ATTENTE SIGNAL SERVEUR</div>
     </div>
 
     <div class="selector-panel">
-        <span style="font-weight: bold; color: #f0f6fc; font-size: 10px; text-transform: uppercase;">Repère Espace-Temps :</span>
-        <button class="btn-mode active" id="btn-MARSEILLE_FIXE" onclick="changerProfil('MARSEILLE_FIXE')">Marseille Fixe (Strict IERS)</button>
-        <button class="btn-mode" id="btn-AVION" onclick="changerProfil('AVION')">Avion (PPP Stratosphère)</button>
-        <button class="btn-mode" id="btn-TRAIN" onclick="changerProfil('TRAIN')">Train TGV (Kalman Constraint)</button>
-        <button class="btn-mode" id="btn-VOITURE" onclick="changerProfil('VOITURE')">Voiture (Urbain Dense 3DMA)</button>
-        <button class="btn-mode" id="btn-BATEAU" onclick="changerProfil('BATEAU')">Bateau (Inertiel Houle IMU)</button>
+        <span style="font-weight: bold; color: #f0f6fc; font-size: 10px; text-transform: uppercase;">Contrôle Dynamique :</span>
+        <button class="btn-mode active" id="btn-AUTO" onclick="changerProfil('AUTO')">Mode Adaptatif Automatique (AKF)</button>
+        <button class="btn-mode" id="btn-MARSEILLE_FIXE" onclick="changerProfil('MARSEILLE_FIXE')">Forcer Marseille Fixe</button>
+        <button class="btn-mode" id="btn-AVION" onclick="changerProfil('AVION')">Forcer Avion</button>
+        <button class="btn-mode" id="btn-TRAIN" onclick="changerProfil('TRAIN')">Forcer Train TGV</button>
+        <button class="btn-mode" id="btn-VOITURE" onclick="changerProfil('VOITURE')">Forcer Voiture</button>
+        <button class="btn-mode" id="btn-BATEAU" onclick="changerProfil('BATEAU')">Forcer Bateau</button>
     </div>
 
     <div class="grid-layout">
@@ -80,7 +81,7 @@
                 <span>1. État Géodésique Filtré</span>
                 <span id="env-badge" class="status-badge badge-stable">STABLE</span>
             </div>
-            <div class="row-data"><span>Profil Actif :</span><span id="lbl-profil" style="color:var(--sky); font-weight:bold;">MARSEILLE_FIXE</span></div>
+            <div class="row-data"><span>Profil Actif :</span><span id="lbl-profil" style="color:var(--sky); font-weight:bold;">AUTO</span></div>
             <div class="row-data"><span>Latitude (φ) :</span><span id="lbl-lat">43.28435600°</span></div>
             <div class="row-data"><span>Longitude (λ) :</span><span id="lbl-lon">5.35850700°</span></div>
             <div class="row-data"><span>Altitude Terrestre (h) :</span><span id="lbl-alt">99.3100 m</span></div>
@@ -93,7 +94,7 @@
             </div>
 
             <div style="background:#01040a; border:1px solid var(--border-dim); padding:10px; border-radius:4px; margin-top:12px;">
-                <div class="title-panel" style="border:none; margin:0; padding:0; color:var(--amber);">Physique & Validations Statisiques</div>
+                <div class="title-panel" style="border:none; margin:0; padding:0; color:var(--amber);">Physique & Validations Statistiques</div>
                 <div class="row-data" style="margin-top:8px;"><span>Modèle Troposphère :</span><span id="lbl-tropo" style="color:var(--amber);">SAASTAMOINEN + ZWD DYNAMIQUE</span></div>
                 <div class="row-data"><span>Marée de Love Solide :</span><span id="lbl-maree-val" style="color:var(--sky); font-weight:bold;">---</span></div>
                 <div class="row-data"><span>Dérive d'Horloge (Einstein) :</span><span id="lbl-relativite" style="color:var(--rose);">--- ns/s</span></div>
@@ -131,7 +132,6 @@
 
 <script>
     const ASTRES = ["soleil", "lune", "mercure", "venus", "mars", "jupiter", "saturne", "uranus", "neptune"];
-    // Le système démarre désormais par défaut en mode Adaptatif Automatique
     let modeActuel = "AUTO"; 
     
     const REF_MARSEILLE = { lat: 43.284356, lon: 5.358507, alt: 99.3100, x: 4630100.5742, y: 434290.6011, z: 4350620.2235 };
@@ -139,7 +139,7 @@
     let state_x = [REF_MARSEILLE.x, REF_MARSEILLE.y, REF_MARSEILLE.z, 0, 0, 0]; 
     
     let P = Array(6).fill(0).map(() => Array(6).fill(0));
-    for(let i=0; i<3; i++) P[i][i] = 1.0;  // Incertitude initiale modérée pour laisser l'AKF converger
+    for(let i=0; i<3; i++) P[i][i] = 1.0;  
     for(let i=3; i<6; i++) P[i][i] = 0.1;  
     
     let fluxMatriceServeur = null;
@@ -223,7 +223,7 @@
                     ];
                     
                     let y = [z[0] - state_x[0], z[1] - state_x[1], z[2] - state_x[2]];
-                    let R_val = 0.0004; // Variance de base (2cm)²
+                    let R_val = 0.0004; 
                     
                     let S = [
                         [P[0][0] + R_val, P[0][1], P[0][2]],
@@ -241,14 +241,11 @@
 
                         if (modeActuel === "AUTO") {
                             const SEUIL_OPTIMAL = 3.0;
-                            const SEUIL_REJET_CRITIQUE = 60.0; // Protection absolue contre les anomalies aberrantes
+                            const SEUIL_REJET_CRITIQUE = 60.0; 
                             
                             if (d2 > SEUIL_OPTIMAL && d2 < SEUIL_REJET_CRITIQUE) {
-                                // Rglissant : On ouvre la variance de mesure pour absorber le bruit (ex: arbres, trajets multiples)
                                 let facteur_echelle = d2 / SEUIL_OPTIMAL;
                                 R_val = 0.0004 * facteur_echelle;
-                                
-                                // Recalcul immédiat du résidu avec la nouvelle matrice R gonflée
                                 S = [
                                     [P[0][0] + R_val, P[0][1], P[0][2]],
                                     [P[1][0], P[1][1] + R_val, P[1][2]],
@@ -259,18 +256,15 @@
                                 document.getElementById('lbl-chisq').style.color = "var(--amber)";
                                 miseAJourAutorisee = true;
                             } else if (d2 >= SEUIL_REJET_CRITIQUE) {
-                                // Rupture trop violente : rejet de sécurité
                                 document.getElementById('lbl-chisq').innerText = "REJETÉ (Anomalie d²=" + d2.toExponential(1) + ")";
                                 document.getElementById('lbl-chisq').style.color = "var(--rose)";
                                 miseAJourAutorisee = false;
                             } else {
-                                // Signal nominal parfait
                                 document.getElementById('lbl-chisq').innerText = "STRICT (d²=" + d2.toFixed(2) + ")";
                                 document.getElementById('lbl-chisq').style.color = "var(--neon-green)";
                                 miseAJourAutorisee = true;
                             }
                         } else {
-                            // Rétrocompatibilité avec le gating fixe du profil d'origine
                             const seuil_gating = 14.16;
                             if (d2 < seuil_gating || modeActuel !== "MARSEILLE_FIXE") {
                                 document.getElementById('lbl-chisq').innerText = "CONVERGENT (d²=" + d2.toFixed(2) + ")";
@@ -283,7 +277,6 @@
                             }
                         }
                         
-                        // Phase d'exécution de la correction (Update) si validée
                         if (miseAJourAutorisee && Sinv) {
                             let K = Array(6).fill(0).map(() => Array(3).fill(0));
                             for(let i=0; i<6; i++) {
@@ -350,12 +343,10 @@
         const dt = 0.05; 
         const t_sec = new Date().getTime() / 1000;
 
-        // Équation cinématique de propagation de l'état
         state_x[0] += state_x[3] * dt;
         state_x[1] += state_x[4] * dt;
         state_x[2] += state_x[5] * dt;
         
-        // Propagation analytique de la covariance : P = FPF'
         let FP = Array(6).fill(0).map(() => Array(6).fill(0));
         for(let i=0; i<6; i++) {
             for(let j=0; j<6; j++) {
@@ -368,122 +359,5 @@
             }
         }
 
-        // ÉVALUATION ADAPTATIVE CONTINU DE Q (Bruit de Processus)
         let q_pos = 1e-5; let q_vel = 1e-6;
-        
-        if (modeActuel === "AUTO") {
-            let v_scalaire = Math.sqrt(state_x[3]**2 + state_x[4]**2 + state_x[5]**2);
-            let displayTxt = "AUTO : STATIONNAIRE";
-            let badgeTxt = "STABLE";
-            let badgeClass = "status-badge badge-stable";
-
-            if (v_scalaire < 0.1) {
-                // Verrouillage de précision au repos
-                q_pos = 1e-9; 
-                q_vel = 1e-11;
-            } else {
-                badgeTxt = "CINÉMATIQUE ACTIVE";
-                badgeClass = "status-badge badge-kinematic";
-                
-                if (v_scalaire < 8.3) { 
-                    // [MODE VÉLO / PIÉTON] (< 30 km/h) -> Haute variance pour compenser les oscillations du corps
-                    q_pos = 1e-3 * (1 + v_scalaire);
-                    q_vel = 5e-3 * (1 + v_scalaire);
-                    displayTxt = "AUTO : DYNAMIQUE FAIBLE (VÉLO)";
-                } else if (v_scalaire < 45.0) { 
-                    // [MODE DYNAMIQUE ROUTIÈRE] (< 162 km/h)
-                    q_pos = 1e-2 * v_scalaire;
-                    q_vel = 2e-2 * v_scalaire;
-                    displayTxt = "AUTO : DYNAMIQUE ROUTIÈRE";
-                } else { 
-                    // [MODE HAUTE VITESSE] (Aéro / TGV)
-                    q_pos = 1.0;
-                    q_vel = 0.5;
-                    displayTxt = "AUTO : HAUTE VITESSE (AÉRO)";
-                }
-            }
-            document.getElementById('lbl-profil').innerText = displayTxt;
-            const badgeElement = document.getElementById('env-badge');
-            if(badgeElement) { badgeElement.innerText = badgeTxt; badgeElement.className = badgeClass; }
-        } else {
-            // Rétrocompatibilité avec les profils manuels
-            if(modeActuel === "AVION") { q_pos = 5e-3; q_vel = 1e-3; }
-            if(modeActuel === "BATEAU") { 
-                q_pos = 2e-2; q_vel = 5e-3; 
-                state_x[5] = 1.8 * Math.sin(t_sec * 2.0); 
-            }
-            if(modeActuel === "MARSEILLE_FIXE") { q_pos = 1e-9; q_vel = 1e-11; } 
-        }
-
-        // Injection des bruits de processus calculés dans la diagonale de P
-        for(let i=0; i<3; i++) P[i][i] += q_pos;
-        for(let i=3; i<6; i++) P[i][i] += q_vel;
-
-        const sigma_total = Math.sqrt(P[0][0] + P[1][1] + P[2][2]);
-        document.getElementById('lbl-kalman-sigma').innerText = sigma_total.toFixed(4) + " m";
-
-        document.getElementById('ecef-x').innerText = state_x[0].toFixed(4) + " m";
-        document.getElementById('ecef-y').innerText = state_x[1].toFixed(4) + " m";
-        document.getElementById('ecef-z').innerText = state_x[2].toFixed(4) + " m";
-
-        if (fluxMatriceServeur && fluxMatriceServeur.METADATA) {
-            const delta_einstein = fluxMatriceServeur.METADATA.horloge_einstein_delta_ns_s;
-            document.getElementById('lbl-relativite').innerText = delta_einstein.toFixed(6) + " ns/s";
-            document.getElementById('lbl-maree-val').innerText = fluxMatriceServeur.METADATA.norme_maree_mm.toFixed(2) + " mm";
-        }
-        
-        dessinerRadar();
-    }
-
-    function dessinerRadar() {
-        const canvas = document.getElementById('radar');
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        const cx = canvas.width / 2;
-        const cy = canvas.height / 2;
-        const r_max = canvas.width / 2 - 10;
-        
-        ctx.strokeStyle = varColor('--border-dim', '#21262d');
-        ctx.lineWidth = 1;
-        for (let r = 50; r <= r_max; r += 50) {
-            ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2*Math.PI); ctx.stroke();
-        }
-        ctx.beginPath(); ctx.moveTo(cx, cy - r_max); ctx.lineTo(cx, cy + r_max); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx - r_max, cy); ctx.lineTo(cx + r_max, cy); ctx.stroke();
-
-        if (fluxMatriceServeur && fluxMatriceServeur.DATA_STREAMS) {
-            ASTRES.forEach(a => {
-                const stream = fluxMatriceServeur.DATA_STREAMS[a];
-                if(stream && stream.elevation_deg > 0) { 
-                    const az_rad = math.radians(stream.azimut_deg - 90);
-                    const dist_centre = r_max * (1.0 - (stream.elevation_deg / 90.0));
-                    const px = cx + dist_centre * Math.cos(az_rad);
-                    const py = cy + dist_centre * Math.sin(az_rad);
-                    
-                    ctx.fillStyle = a === "soleil" ? "#d29922" : (a === "lune" ? "#58a6ff" : "#3fb950");
-                    ctx.beginPath(); ctx.arc(px, py, 4, 0, 2*Math.PI); ctx.fill();
-                    ctx.fillStyle = "#8b949e";
-                    ctx.fillText(a.substring(0,3).toUpperCase(), px + 6, py + 4);
-                }
-            });
-        }
-    }
-
-    function varColor(name, fallback) {
-        return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-    }
-    
-    math.radians = function(deg) { return deg * (Math.PI / 180); };
-
-    ecrireLog("Noyau métrologique AKF initialisé en mode AUTOMATIQUE.");
-    acquerirFluxPhysique();
-    
-    setInterval(acquerirFluxPhysique, 5000);       
-    setInterval(executerPasFiltreEtRendu, 50);    
-    </script>
-
-                                
-</body>
-</html>
+     
