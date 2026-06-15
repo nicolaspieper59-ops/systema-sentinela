@@ -361,3 +361,69 @@
 
         let q_pos = 1e-5; let q_vel = 1e-6;
      
+if (modeActuel === "AUTO") {
+            let v_scalaire = Math.sqrt(state_x[3]**2 + state_x[4]**2 + state_x[5]**2);
+            let displayTxt = "AUTO : STATIONNAIRE";
+            let badgeTxt = "STABLE";
+            let badgeClass = "status-badge badge-stable";
+
+            if (v_scalaire < 0.1) {
+                q_pos = 1e-9; 
+                q_vel = 1e-11;
+            } else {
+                badgeTxt = "CINÉMATIQUE ACTIVE";
+                badgeClass = "status-badge badge-kinematic";
+                
+                if (v_scalaire < 8.3) { 
+                    q_pos = 1e-3 * (1 + v_scalaire);
+                    q_vel = 5e-3 * (1 + v_scalaire);
+                    displayTxt = "AUTO : DYNAMIQUE FAIBLE (VÉLO)";
+                } else if (v_scalaire < 45.0) { 
+                    q_pos = 1e-2 * v_scalaire;
+                    q_vel = 2e-2 * v_scalaire;
+                    displayTxt = "AUTO : DYNAMIQUE ROUTIÈRE";
+                } else { 
+                    q_pos = 1.0;
+                    q_vel = 0.5;
+                    displayTxt = "AUTO : HAUTE VITESSE (AÉRO)";
+                }
+            }
+            document.getElementById('lbl-profil').innerText = displayTxt;
+            const badgeElement = document.getElementById('env-badge');
+            if(badgeElement) { badgeElement.innerText = badgeTxt; badgeElement.className = badgeClass; }
+        } else {
+            if(modeActuel === "AVION") { q_pos = 5e-3; q_vel = 1e-3; }
+            if(modeActuel === "BATEAU") { 
+                q_pos = 2e-2; q_vel = 5e-3; 
+                state_x[5] = 1.8 * Math.sin(t_sec * 2.0); 
+            }
+            if(modeActuel === "MARSEILLE_FIXE") { q_pos = 1e-9; q_vel = 1e-11; } 
+        }
+
+        for(let i=0; i<3; i++) P[i][i] += q_pos;
+        for(let i=3; i<6; i++) P[i][i] += q_vel;
+
+    ctx.fillStyle = a === "soleil" ? "#d29922" : (a === "lune" ? "#58a6ff" : "#3fb950");
+                    ctx.beginPath(); ctx.arc(px, py, 4, 0, 2*Math.PI); ctx.fill();
+                    ctx.fillStyle = "#8b949e";
+                    ctx.fillText(a.substring(0,3).toUpperCase(), px + 6, py + 4);
+                }
+            });
+        }
+    }
+
+    function varColor(name, fallback) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+    }
+    
+    var math = math || {};
+    math.radians = function(deg) { return deg * (Math.PI / 180); };
+
+    ecrireLog("Noyau métrologique AKF initialisé en mode AUTOMATIQUE.");
+    acquerirFluxPhysique();
+    
+    setInterval(acquerirFluxPhysique, 5000);       
+    setInterval(executerPasFiltreEtRendu, 50);    
+</script>
+</body>
+</html>
