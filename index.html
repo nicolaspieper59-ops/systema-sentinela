@@ -519,23 +519,24 @@ function changerProfil(m) {
             }
         }
         
-        dessinerRadar();
-    }
-
-    function dessinerRadar() {
-        const canvas = document.getElementById('radar');
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        const cx = canvas.width / 2;
-        const cy = canvas.height / 2;
-        const r_max = canvas.width / 2 - 10;
-        
-        ctx.strokeStyle = varColor('--border-dim', '#21262d');
-        ctx.lineWidth = 1;
-        for (let r = 50; r <= r_max; r += 50) {
-            ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2*Math.PI); ctx.stroke();
+// Remplacement à effectuer dans le composant de dessin du radar de votre code index.html
+if (fluxMatriceServeur && fluxMatriceServeur.DATA_STREAMS) {
+    ASTRES.forEach(a => {
+        const stream = fluxMatriceServeur.DATA_STREAMS[a];
+        if(stream && stream.elevation_deg > 0) { 
+            // Lecture directe de la position calculée par le noyau sans sur-correction
+            const az_rad = (stream.azimut_deg - 90) * (Math.PI / 180);
+            const dist_centre = r_max * (1.0 - (stream.elevation_deg / 90.0));
+            const px = cx + dist_centre * Math.cos(az_rad);
+            const py = cy + dist_centre * Math.sin(az_rad);
+            
+            ctx.fillStyle = a === "soleil" ? "var(--amber)" : (a === "lune" ? "var(--sky)" : "var(--neon-green)");
+            ctx.beginPath(); ctx.arc(px, py, 4, 0, 2*Math.PI); ctx.fill();
+            ctx.fillStyle = "#8b949e";
+            ctx.fillText(a.substring(0,3).toUpperCase(), px + 6, py + 4);
+        }
+    });
+    };
         }
         ctx.beginPath(); ctx.moveTo(cx, cy - r_max); ctx.lineTo(cx, cy + r_max); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cx - r_max, cy); ctx.lineTo(cx + r_max, cy); ctx.stroke();
