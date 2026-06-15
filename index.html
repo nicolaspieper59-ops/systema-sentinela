@@ -415,12 +415,7 @@ function changerProfil(m) {
             for(let j=0; j<6; j++) {
                 FP[i][j] = (i < 3) ? P[i][j] + dt * P[i+3][j] : P[i][j];
             }
-        }
-        for(let i=0; i<6; i++) {
-            for(let j=0; j<6; j++) {
-                P[i][j] = (j < 3) ? FP[i][j] + dt * FP[i][j+3] : FP[i][j];
-            }
-        }
+    }
 
         let q_pos = 1e-5; let q_vel = 1e-6;
      
