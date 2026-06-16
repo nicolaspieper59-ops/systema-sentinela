@@ -329,6 +329,23 @@
     function varColor(n, f) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim() || f; }
     ecrireLog("Noyau métrologique AKF couplé de façon déterministe au moteur physique en production.");
     acquerirFluxPhysique();
+    // Remplacement de la fonction acquerirFluxPhysique() par un Socket Temps Réel
+const socketMetrologique = new WebSocket('ws://localhost:8765');
+
+socketMetrologique.onmessage = function(event) {
+    const data = JSON.parse(event.data);
+    
+    // Injection immédiate des données fraîches dans le filtre de Kalman
+    fluxMatriceServeur = data;
+    
+    // Exécuter l'étape de correction de Kalman immédiatement à la réception
+    executerCorrectionKalman(data);
+};
+
+socketMetrologique.onerror = function(error) {
+    document.getElementById('source-badge').className = "status-badge badge-error";
+    document.getElementById('source-badge').innerText = "ERREUR LIEN RÉSEAU";
+};
 </script>
 </body>
                             </html>
