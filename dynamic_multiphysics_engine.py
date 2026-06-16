@@ -112,10 +112,10 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
 
     x_r, y_r, z_r = pos_modifiee_ecef
     r_final = math.sqrt(x_r**2 + y_r**2 + z_r**2)
-    sin_lat = z_r / r_final if r_final > 0 else 0
+    skin_lat = z_r / r_final if r_final > 0 else 0
     
     potentiel_nominal = (G * M_TERRE) / r_final if r_final > 0 else 0
-    potentiel_j2 = potentiel_nominal * J2 * (R_EQ / r_final)**2 * 1.5 * (1.0 - 3.0 * sin_lat**2) if r_final > 0 else 0
+    potentiel_j2 = potentiel_nominal * J2 * (R_EQ / r_final)**2 * 1.5 * (1.0 - 3.0 * skin_lat**2) if r_final > 0 else 0
     potentiel_total_u = potentiel_nominal + potentiel_j2
     
     lat_rad = math.radians(lat_actuelle)
@@ -143,8 +143,19 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
         obs = station_inst.at(instant_utc).observe(cible).apparent()
         alt_brute, az, dist = obs.altaz()
         
-        tan_E = math.tan(math.radians(max(0.1, alt_brute.degrees)))
-        refraction_deg = (0.0002967 / tan_E) if alt_brute.degrees > 5.0 else 0.0
+        # MODELISATION RIGOUREUSE : Saastamoinen 3D Réel
+        E_deg = max(0.1, alt_brute.degrees)
+        E_rad = math.radians(E_deg)
+        tan_E = math.tan(E_rad)
+        
+        if E_deg > 0.0:
+            delay_dry = 0.002277 * pression_surface
+            delay_wet = 0.002277 * (1255.0 / temperature_surface_k + 0.05) * e_vapeur_eau
+            total_delay_m = (delay_dry + delay_wet) / tan_E
+            refraction_deg = math.degrees(total_delay_m / A_WGS84)
+        else:
+            refraction_deg = 0.0
+            
         elevation_corrigee = alt_brute.degrees + refraction_deg
         ra, dec = obs.radec()[:2]
         
@@ -156,7 +167,6 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
             "distance_precision_m": float(dist.m)
         }
 
-    # ... [Reste du code inchangé]
     payload_v852 = {
         "METADATA": {
             "infrastructure": "SYSTEMA SENTINELA v8.5.2 — NOYAU TRIDIMENSIONNEL DET",
@@ -167,10 +177,9 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
             "horloge_einstein_delta_ns_s": float(drift_relativiste_ns_s),
             "pression_base_hpa": float(pression_surface),
             "temperature_base_k": float(temperature_surface_k),
-            "modelisation_troposphere": "SAASTAMOINEN + ZWD DYNAMIQUE",
+            "modelisation_troposphere": "SAASTAMOINEN COMPLÈTE TRIDIMENSIONNELLE",
             "synchronisation": "STRICT_EPHEMERIS_DE440"
         },
-        # Double pontage de sécurité pour le Front-end :
         "EPOCH_UTC": sim_datetime.isoformat().replace("+00:00", "Z"),
         "MATRICE_ECEF_REEL": {
             "X_mètres": float(x_r),
@@ -185,8 +194,7 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
     with open(tmp_file, "w", encoding="utf-8") as f:
         json.dump(payload_v852, f, indent=4, ensure_ascii=False)
     os.replace(tmp_file, target_file)
-    
-    print(f"[SUCCESS] Epoch: {sim_datetime.strftime('%Y-%m-%dT%H:%M:%S.%fZ')} -> XYZ enregistré.")
+    print(f"[SUCCESS] Epoch: {sim_datetime.strftime('%Y-%m-%dT%H:%M:%S.%fZ')} -> Écritures JSON synchrones.")
 
 def executer_moteur_v852():
     mode_recouvrement = "MARSEILLE_FIXE"
@@ -223,8 +231,6 @@ def executer_moteur_v852():
 
     constants = (G, M_TERRE, OMEGA_TERRE, R_EQ, J2, C, vitesse_propre_m_s, pression_surface, temperature_surface_k, e_vapeur_eau)
     pos_init_ecef = coordonnees_geodesiques_vers_ecef(LATITUDE_INITIALE, LONGITUDE_INITIALE, altitude_geo)
-    
-    # Correction de la désynchronisation temporelle en mode Local
     epoch_initiale = datetime.now(timezone.utc)
 
     variables_mobiles = {
@@ -236,11 +242,10 @@ def executer_moteur_v852():
     if os.environ.get('GITHUB_ACTIONS') == 'true':
         generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, constants, variables_mobiles)
     else:
-        print(f"[RUN LOCAL] Cadencement strict à dt = {pas_temps}s.")
+        print(f"[RUN LOCAL] Cadencement sychronisé à dt = {pas_temps}s.")
         while True:
             try:
                 t_debut = time.time()
-                
                 if vitesse_propre_m_s > 0:
                     lat_act, lon_act, _ = ecef_vers_geodesique(variables_mobiles['pos_ecef'][0], variables_mobiles['pos_ecef'][1], variables_mobiles['pos_ecef'][2])
                     lat_r = math.radians(lat_act)
