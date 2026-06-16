@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v8.7.0-Alpha-Centauri — MOTEUR DE GÉODÉSIE ABSOLUE ET CONTINUUM
-ÉLIMINATION DES PROFILS DISCRETS — PARALLAXE DE GRADIENT ALTITUDINAL ET MODÈLE ISA DIRECT
+SYSTEMA SENTINELA v8.8.0-Proxima-Centauri — CORRECTION DU CONTINUUM ET GUIDAGE GNC
+SUPPRESSION DES SLIDERS MANUELS — ORDINATEUR DE TRAJECTOIRE AUTONOME ET REFRACTION DIRECTE
 """
 
 import os
@@ -50,8 +50,24 @@ def rotation_enu_vers_ecef(lat_deg, lon_deg):
     sl, cl, sn, cn = math.sin(lat), math.cos(lat), math.sin(lon), math.cos(lon)
     return np.array([[-sn, -sl*cn, cl*cn], [cn, -sl*sn, cl*sn], [0.0, cl, sl]])
 
+def guidage_ordinateur_gnc(temps_vol, alt_m):
+    """Générateur Automatique de Vecteur de Poussée Cinématique Exogène (GNC)"""
+    if temps_vol < 20.0:
+        phase = "LIFT_OFF_VERTICAL"
+        acc_enu = np.array([0.0, 0.5, 18.0])  # Forte poussée verticale, légère dérive Nord
+    elif temps_vol < 75.0:
+        phase = "GRAVITY_TURN_ATMOSPHERIC"
+        acc_enu = np.array([2.0, 12.0, 6.0])  # Inclinaison balistique vers le Nord-Est
+    elif temps_vol < 150.0:
+        phase = "EXOSPHERIC_ACCELERATION"
+        acc_enu = np.array([5.0, 15.0, -1.5]) # Accélération orbitale pure hors de l'atmosphère
+    else:
+        phase = "BALLISTIC_COASTING"          # Moteurs coupés, chute libre pure (soumise à la gravité terrestre)
+        acc_enu = np.array([0.0, 0.0, 0.0])
+        
+    return phase, acc_enu
+
 def intégration_rk4_dynamique(pos_ecef, v_enu, acc_enu, dt):
-    """Intégrateur RK4 cinématique prenant en compte le vecteur d'accélération instantané"""
     def f(p, v):
         lat, lon, _ = ecef_vers_geodesique(p[0], p[1], p[2])
         return rotation_enu_vers_ecef(lat, lon).dot(v)
@@ -69,20 +85,21 @@ def intégration_rk4_dynamique(pos_ecef, v_enu, acc_enu, dt):
     return pos_nouvelle, v_nouveau
 
 def thermo_atmosphere_isa(alt_m):
-    """Modèle d'Atmosphère Standard Internationale (ISA) continu jusqu'à la mésosphère"""
+    """Modèle étendu de l'Atmosphère Standard Internationale (ISA)"""
     h = max(0.0, alt_m)
-    if h <= 11000.0:  # Troposphère
+    if h <= 11000.0:
         T = 288.15 - 0.0065 * h
-        P = 1013.25 * math.pow(T / 288.15, 5.25588)
-    elif h <= 20000.0:  # Basse Stratosphère
+        P = 101.325 * math.pow(T / 288.15, 5.25588)
+    elif h <= 20000.0:
         T = 216.65
-        P = 226.32 * math.exp(-0.00015769 * (h - 11000.0))
-    else:  # Haute Stratosphère
+        P = 22.632 * math.exp(-0.00015769 * (h - 11000.0))
+    elif h <= 32000.0:
         T = 216.65 + 0.001 * (h - 20000.0)
-        P = 54.748 * math.pow(T / 216.65, -34.16319)
-    # Pression de vapeur saturante de l'eau (Goff-Gratch linéarisé continu)
-    e_vapeur = 6.112 * math.exp((17.67 * (T - 273.15)) / (T - 29.65)) * math.exp(-h / 2000.0)
-    return P, T, e_vapeur
+        P = 5.4748 * math.pow(T / 216.65, -34.16319)
+    else: # Très haute altitude (Mésosphère)
+        T = 228.65
+        P = 0.868 * math.exp(-0.000138 * (h - 32000.0))
+    return P, T
 
 def calculer_marees_solides_iers_complete(pos_station_ecef, pos_lune_ecef, pos_soleil_ecef):
     h2, l2, h3, l3 = 0.6078, 0.0847, 0.292, 0.015
@@ -102,10 +119,11 @@ def calculer_marees_solides_iers_complete(pos_station_ecef, pos_lune_ecef, pos_s
             delta_r += (f3 * h3 * (2.5*cos_t**3 - 1.5*cos_t)) * u_s + (l3 * f3 * (7.5*cos_t**2 - 1.5)) * (u_c - cos_t * u_s)
     return delta_r
 
-def generer_flux_metrologique_quantique(ts, eph, corps_observes, state_matrice):
+def generer_flux_metrologique_quantique(ts, eph, corps_observes, state_matrice, phase_gnc, acc_actuelle):
     pos_base_ecef = state_matrice['pos_ecef']
     v_enu_actuel = state_matrice['v_enu']
     sim_datetime = state_matrice['sim_time']
+    temps_vol = state_matrice['temps_vol']
     
     lat, lon, alt = ecef_vers_geodesique(pos_base_ecef[0], pos_base_ecef[1], pos_base_ecef[2])
     instant_utc = ts.from_datetime(sim_datetime)
@@ -118,7 +136,7 @@ def generer_flux_metrologique_quantique(ts, eph, corps_observes, state_matrice):
     delta_iers = calculer_marees_solides_iers_complete(pos_base_ecef, lune_p, soleil_p)
     pos_corrigee = pos_base_ecef + delta_iers
     
-    # Métrique Einstein J4 Relativiste Spécifique
+    # Métrique Relativiste J4 Spécifique
     r_mag = np.linalg.norm(pos_corrigee)
     sin_phi = pos_corrigee[2] / r_mag if r_mag > 0 else 0
     P2, P3, P4 = 0.5*(3*sin_phi**2-1), 0.5*(5*sin_phi**3-3*sin_phi), 0.125*(35*sin_phi**4-30*sin_phi**2+3)
@@ -127,24 +145,22 @@ def generer_flux_metrologique_quantique(ts, eph, corps_observes, state_matrice):
     v_tot = v_rot + v_enu_actuel
     drift_relativiste = ((-U_j / C**2) - (np.dot(v_tot, v_tot) / (2.0 * C**2))) * 1e9
 
-    # RESOLUTION DE LA PARALLAXE GÉOMÉTRIQUE STRICTE VIA ALTITUDE REELLE
     station_inst = terre_obj + wgs84.latlon(lat, lon, elevation_m=alt)
     flux_astres = {}
     
-    # Injection continue du modèle atmosphérique altitudinal ISA
-    P_surf, T_surf, e_vapeur = thermo_atmosphere_isa(alt)
+    # Extraction ISA stricte pour réfraction astronomique directe
+    P_kPa, T_K = thermo_atmosphere_isa(alt)
     
     for nom, cible in corps_observes.items():
         obs = station_inst.at(instant_utc).observe(cible).apparent()
         alt_brute, az, dist = obs.altaz()
         
-        # Mapping Saastamoinen-Kallio couplé au gradient de pression dynamique
-        E_rad = math.radians(max(0.001, alt_brute.degrees))
-        z_rad = (math.PI / 2.0) - E_rad
-        z_hydro = 0.0022768 * P_surf
-        z_wet = 0.002277 * ((1255.0 / T_surf) + 0.05) * e_vapeur
-        mapping_f = 1.0 / (math.cos(z_rad) + 0.0025 / (math.tan(E_rad) + 0.015))
-        refraction_deg = math.degrees((z_hydro + z_wet) * mapping_f * 0.0002967)
+        # Formule de réfraction astronomique directe (Bennett / Radau corrigée de l'altitude)
+        E_deg = max(0.001, alt_brute.degrees)
+        refraction_standard_minutes = 1.0 / math.tan(math.radians(E_deg + 7.31 / (E_deg + 4.4)))
+        # Ajustement rigoureux en fonction du gradient de densité atmosphérique local
+        correction_densite = (P_kPa / 101.325) * (288.15 / T_K)
+        refraction_deg = (refraction_standard_minutes / 60.0) * correction_densite
         
         flux_astres[nom] = {
             "azimut_deg": float(az.degrees),
@@ -158,19 +174,25 @@ def generer_flux_metrologique_quantique(ts, eph, corps_observes, state_matrice):
 
     payload = {
         "METADATA": {
-            "infrastructure": "SYSTEMA SENTINELA v8.7.0-Alpha-Centauri",
-            "statut_continuum": "PROFILES_DEPRECATED_ISA_ACTIVE",
+            "infrastructure": "SYSTEMA SENTINELA v8.8.0-Proxima-Centauri",
+            "statut_continuum": "GNC_AUTOMATIC_FLIGHT_ACTIVE",
+            "phase_vol": phase_gnc,
+            "temps_vol_s": float(temps_vol),
             "epoch_utc": sim_datetime.isoformat().replace("+00:00", "Z"),
             "altitude_calcul_m": float(alt),
-            "pression_isa_kPa": float(P_surf / 10.0), # conversion en kPa pour monitoring
+            "pression_isa_kPa": float(P_kPa),
+            "temperature_isa_K": float(T_K),
             "norme_maree_mm": float(np.linalg.norm(delta_iers) * 1000.0),
             "horloge_einstein_delta_ns_s": float(drift_relativiste)
         },
+        "GNC_VECTORS": {
+            "acc_est_m_s2": float(acc_actuelle[0]),
+            "acc_nord_m_s2": float(acc_actuelle[1]),
+            "acc_zenith_m_s2": float(acc_actuelle[2])
+        },
         "ANALYSE_LUNAIRE": {
             "illumination_calculee_pct": float(illumination_pct),
-            "verdict_oeil_nu": "VISIBLE STRICT" if (flux_astres['lune']['elevation_deg'] > 0 and (flux_astres['soleil']['elevation_deg'] < -6.0 or illumination_pct > 35)) else "INVISIBLE OMNISCIENT",
-            "verdict_jumelles_m7": "OPPORTUNITÉ OPTIQUE" if flux_astres['lune']['elevation_deg'] > 0 else "OCCULTATION TERRESTRE",
-            "verdict_s10e_seul": "CAPTEUR APTE" if (flux_astres['lune']['elevation_deg'] > 10 and flux_astres['soleil']['elevation_deg'] < -12) else "BRUIT THERMIQUE SIGNAL"
+            "verdict_oeil_nu": "VISIBLE STRICT" if (flux_astres['lune']['elevation_deg'] > 0 and (flux_astres['soleil']['elevation_deg'] < -6.0 or illumination_pct > 35)) else "INVISIBLE OMNISCIENT"
         },
         "MATRICE_ECEF_REEL": {
             "X_mètres": float(pos_corrigee[0]), "Y_mètres": float(pos_corrigee[1]), "Z_mètres": float(pos_corrigee[2]),
@@ -187,26 +209,28 @@ def main():
     eph = load('de440.bsp')
     ts = load.timescale()
     
-    # Vecteur d'état d'origine : Centre-ville de Marseille au niveau zéro de l'ellipsoïde
+    # Origine : Marseille WGS84
     pos_ecef = np.array([4630100.5742, 434290.6011, 4350620.2235])
-    v_enu = np.array([0.0, 0.0, 0.0]) # Vitesse initiale nulle
+    v_enu = np.array([0.0, 0.0, 0.0])
     
     state_matrice = {
         'pos_ecef': pos_ecef,
         'v_enu': v_enu,
-        'sim_time': datetime.now(timezone.utc)
+        'sim_time': datetime.now(timezone.utc),
+        'temps_vol': 0.0
     }
     
     dt = 0.05
-    print("Moteur de Continuum v8.7.0 initialisé. Ingestion de commandes dynamiques sur stdin.")
-    
-    # Configuration par défaut : simulation d'une ascension verticale balistique continue (sans profil)
-    acc_enu = np.array([0.0, 0.0, 15.0]) # 15 m/s² de poussée verticale constante vers le zénith
+    print("Moteur GNC Unifié v8.8.0 Opérationnel. Phase de guidage automatique lancée.")
     
     while True:
         t_start = time.time()
         
-        # Évolution dynamique par RK4 pure (sans conditions de profil)
+        _, _, alt_actuelle = ecef_vers_geodesique(state_matrice['pos_ecef'][0], state_matrice['pos_ecef'][1], state_matrice['pos_ecef'][2])
+        
+        # Ingestion automatique des forces exogènes via le calculateur GNC
+        phase_gnc, acc_enu = guidage_ordinateur_gnc(state_matrice['temps_vol'], alt_actuelle)
+        
         state_matrice['pos_ecef'], state_matrice['v_enu'] = intégration_rk4_dynamique(
             state_matrice['pos_ecef'], state_matrice['v_enu'], acc_enu, dt
         )
@@ -215,9 +239,10 @@ def main():
             'soleil': eph['sun'], 'lune': eph['moon'], 'mercure': eph['mercury'],
             'venus': eph['venus'], 'mars': eph['mars barycenter'], 'jupiter': eph['jupiter barycenter'],
             'saturne': eph['saturn barycenter'], 'uranus': eph['uranus barycenter'], 'neptune': eph['neptune barycenter']
-        }, state_matrice)
+        }, state_matrice, phase_gnc, acc_enu)
         
         state_matrice['sim_time'] += timedelta(seconds=dt)
+        state_matrice['temps_vol'] += dt
         time.sleep(max(0.001, dt - (time.time() - t_start)))
 
 if __name__ == "__main__":
