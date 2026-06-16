@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.7.0 — Continuum Métrologique Absolute</title>
+    <title>SYSTEMA SENTINELA v8.8.0 — Ordinateur GNC et Trajectoire Automatique</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -16,71 +16,71 @@
         .container { max-width: 1650px; margin: 0 auto; }
         .master-header {
             background: var(--bg-surface); border: 1px solid var(--border-dim);
-            border-left: 4px solid var(--rose); padding: 12px 20px; border-radius: 6px;
+            border-left: 4px solid var(--neon-green); padding: 12px 20px; border-radius: 6px;
             display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;
         }
         .grid-layout { display: grid; grid-template-columns: 440px 1fr 420px; gap: 15px; }
         .card { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 15px; }
         .title-panel { border-bottom: 1px solid var(--border-dim); color: #f0f6fc; font-size: 11px; margin: 0 0 12px 0; padding-bottom: 6px; font-weight: bold; text-transform: uppercase; }
         .row-data { display: flex; justify-content: space-between; margin-bottom: 6px; }
-        .val-xyz { color: var(--neon-green); font-weight: bold; }
         table { width: 100%; border-collapse: collapse; }
         th, td { border: 1px solid var(--border-dim); padding: 6px 8px; text-align: left; }
         th { background: #161b22; color: var(--sky); }
         #radar { background: #01040a; border: 1px solid var(--border-dim); width: 100%; height: 380px; border-radius: 4px; }
-        .slider-group { margin-top: 10px; background: #161b22; padding: 10px; border-radius: 4px; border: 1px solid var(--border-dim); }
-        .slider-group label { display: block; margin-bottom: 4px; color: var(--sky); font-weight: bold; }
-        input[type=range] { width: 100%; margin-bottom: 8px; }
+        .gnc-panel { background: #161b22; border: 1px solid var(--border-dim); border-radius: 4px; padding: 12px; margin-top: 10px; }
+        .badge-phase { background: var(--rose); color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 10px; }
     </style>
 </head>
 <body>
 <div class="container">
     <div class="master-header">
-        <div style="font-size: 13px; font-weight: bold;">SYSTEMA SENTINELA v8.7.0-Alpha-Centauri // PROPAGATEUR ISA CONTINU</div>
-        <div id="flux-epoch" style="color: var(--rose); font-weight:bold;">SYNCHRONISATION SPATIO-TEMPORELLE EN COURS...</div>
+        <div style="font-size: 13px; font-weight: bold;">SYSTEMA SENTINELA v8.8.0-Proxima-Centauri // SANS PROFIL DISCRET</div>
+        <div id="flux-epoch" style="color: var(--sky); font-weight:bold;">SYNCHRONISATION GNC EN COURS...</div>
     </div>
 
     <div class="grid-layout">
         <div class="card">
-            <div class="title-panel">1. Cinématique d'État Sans Profil</div>
+            <div class="title-panel">1. Cinématique d'État Topocentrique</div>
             <div class="row-data"><span>Latitude (φ) :</span><span id="lbl-lat" style="color:white; font-weight:bold;">---°</span></div>
             <div class="row-data"><span>Longitude (λ) :</span><span id="lbl-lon" style="color:white; font-weight:bold;">---°</span></div>
             <div class="row-data"><span>Altitude Géodésique (h) :</span><span id="lbl-alt" style="color:var(--sky); font-weight:bold;">--- m</span></div>
             <div class="row-data"><span>Pression Troposphérique :</span><span id="lbl-pression" style="color:var(--amber);">--- kPa</span></div>
+            <div class="row-data"><span>Température Locale :</span><span id="lbl-temp" style="color:var(--sky);">--- K</span></div>
             
-            <div class="slider-group">
-                <div style="color: #fff; margin-bottom: 8px; font-weight:bold;">Injecteur de Force Cinématique Exogène</div>
-                <label>Accélération Verticale (Zénith) : <span id="val-accZ">0</span> m/s²</label>
-                <input type="range" id="accZ" min="-20" max="50" value="0" step="0.5" oninput="mettreAJourAcc()">
-                
-                <label>Accélération Horizontale (Nord) : <span id="val-accN">0</span> m/s²</label>
-                <input type="range" id="accN" min="-20" max="20" value="0" step="0.5" oninput="mettreAJourAcc()">
+            <div class="gnc-panel">
+                <div style="color: #fff; margin-bottom: 8px; font-weight:bold; display:flex; justify-content:space-between; align-items:center;">
+                    <span>Calculateur Guidance GNC</span>
+                    <span id="badge-phase-vol" class="badge-phase">BOOT_UP</span>
+                </div>
+                <div class="row-data"><span>Temps de Vol :</span><span id="lbl-tvol" style="color:var(--neon-green);">0.00 s</span></div>
+                <div class="row-data"><span>Accélération Est :</span><span id="acc-e">0.0</span> m/s²</div>
+                <div class="row-data"><span>Accélération Nord :</span><span id="acc-n">0.0</span> m/s²</div>
+                <div class="row-data"><span>Accélération Zénith :</span><span id="acc-z">0.0</span> m/s²</div>
             </div>
 
             <div style="background:#01040a; border:1px solid var(--border-dim); padding:10px; border-radius:4px; margin-top:12px;">
-                <div class="title-panel" style="border:none; color:var(--amber); margin:0;">Verdict de Visibilité Lunaire Topocentrique</div>
+                <div class="title-panel" style="border:none; color:var(--amber); margin:0;">Verdict de Visibilité Lunaire</div>
                 <div class="row-data" style="margin-top:8px;"><span>Illumination Calculée :</span><span id="lune-pct">--- %</span></div>
-                <div class="row-data"><span>Œil Nu :</span><span id="v-oeil">---</span></div>
-                <div class="row-data"><span>Optique Jumelles M7 :</span><span id="v-jum">---</span></div>
+                <div class="row-data"><span>Verdict Œil Nu :</span><span id="v-oeil">---</span></div>
             </div>
         </div>
 
         <div class="card">
-            <div class="title-panel">2. Éphémérides DE440 à Correction de Parallaxe d'Altitude</div>
+            <div class="title-panel">2. Éphémérides DE440 à Réfraction Réelle Bennett-Radau</div>
             <table>
                 <thead>
                     <tr>
                         <th>CORPS</th>
                         <th>AZIMUT</th>
-                        <th>ÉLÉVATION DYNAMIQUE (ISA)</th>
+                        <th>ÉLÉVATION CORRIGÉE (ISA)</th>
                         <th>DISTANCE GÉOCENTRIQUE (M)</th>
                     </tr>
                 </thead>
                 <tbody id="tbody-sentinela"></tbody>
             </table>
             <div class="row-data" style="margin-top:12px; padding:8px; background:#161b22; border-radius:4px;">
-                <span>Marée Terrestre (IERS D3) : <strong id="lbl-maree-val" style="color:var(--sky);">---</strong></span>
-                <span>Métrique Einstein (J4) : <strong id="lbl-relativite" style="color:var(--rose);">---</strong></span>
+                <span>Marée Terrestre (IERS) : <strong id="lbl-maree-val" style="color:var(--sky);">---</strong></span>
+                <span>Décalage Einstein (J4) : <strong id="lbl-relativite" style="color:var(--rose);">---</strong></span>
             </div>
         </div>
 
@@ -93,20 +93,13 @@
 
 <script>
     const ASTRES = ["soleil", "lune", "mercure", "venus", "mars", "jupiter", "saturne", "uranus", "neptune"];
-    let state_x = [4630100.5742, 434290.6011, 4350620.2235, 0, 0, 0]; // [X, Y, Z, VX, VY, VZ] ECEF
-    let acc_enu = [0, 0, 0];
+    let state_x = [4630100.5742, 434290.6011, 4350620.2235, 0, 0, 0]; // ECEF: [X,Y,Z, VX,VY,VZ]
     let fluxMatriceServeur = null;
     let t_epoch_initial = null, t_mono_initial = null;
+    let dernier_timestamp_local = null;
 
     const canvas = document.getElementById('radar'); const ctx = canvas.getContext('2d');
     const cx = canvas.width / 2; const cy = canvas.height / 2; const r_max = Math.min(cx, cy) - 20;
-
-    function mettreAJourAcc() {
-        acc_enu[2] = parseFloat(document.getElementById('accZ').value);
-        acc_enu[1] = parseFloat(document.getElementById('accN').value);
-        document.getElementById('val-accZ').innerText = acc_enu[2];
-        document.getElementById('val-accN').innerText = acc_enu[1];
-    }
 
     function ecefVersGeodesique(x, y, z) {
         const a = 6378137.0; const f = 1 / 298.257223563; const e2 = 2 * f - f * f;
@@ -132,23 +125,43 @@
             t_epoch_initial = new Date(data.METADATA.epoch_utc).getTime() / 1000;
             t_mono_initial = performance.now() / 1000;
             
-            document.getElementById('lbl-alt').innerText = data.METADATA.altitude_calcul_m.toFixed(3) + " m";
-            document.getElementById('lbl-pression').innerText = data.METADATA.pression_isa_kPa.toFixed(2) + " kPa";
+            document.getElementById('lbl-pression').innerText = data.METADATA.pression_isa_kPa.toFixed(3) + " kPa";
+            document.getElementById('lbl-temp').innerText = data.METADATA.temperature_isa_K.toFixed(1) + " K";
             document.getElementById('lbl-relativite').innerText = data.METADATA.horloge_einstein_delta_ns_s.toFixed(6) + " ns/s";
             document.getElementById('lbl-maree-val').innerText = data.METADATA.norme_maree_mm.toFixed(4) + " mm";
             document.getElementById('lune-pct').innerText = data.ANALYSE_LUNAIRE.illumination_calculee_pct.toFixed(4) + " %";
             document.getElementById('v-oeil').innerText = data.ANALYSE_LUNAIRE.verdict_oeil_nu;
-            document.getElementById('v-jum').innerText = data.ANALYSE_LUNAIRE.verdict_jumelles_m7;
             
-            // Recalage de notre estimateur local sur la vérité terrain du solveur RK4 serveur
-            state_x = [data.MATRICE_ECEF_REEL.X_mètres, data.MATRICE_ECEF_REEL.Y_mètres, data.MATRICE_ECEF_REEL.Z_mètres, data.MATRICE_ECEF_REEL.VX_m_s, data.MATRICE_ECEF_REEL.VY_m_s, data.MATRICE_ECEF_REEL.VZ_m_s];
+            document.getElementById('badge-phase-vol').innerText = data.METADATA.phase_vol;
+            document.getElementById('lbl-tvol').innerText = data.METADATA.temps_vol_s.toFixed(2) + " s";
+            document.getElementById('acc-e').innerText = data.GNC_VECTORS.acc_est_m_s2.toFixed(2);
+            document.getElementById('acc-n').innerText = data.GNC_VECTORS.acc_nord_m_s2.toFixed(2);
+            document.getElementById('acc-z').innerText = data.GNC_VECTORS.acc_zenith_m_s2.toFixed(2);
+            
+            // Recalage de la vérité terrain ECEF du serveur
+            state_x = [
+                data.MATRICE_ECEF_REEL.X_mètres, data.MATRICE_ECEF_REEL.Y_mètres, data.MATRICE_ECEF_REEL.Z_mètres,
+                data.MATRICE_ECEF_REEL.VX_m_s, data.MATRICE_ECEF_REEL.VY_m_s, data.MATRICE_ECEF_REEL.VZ_m_s
+            ];
+            dernier_timestamp_local = performance.now();
         } catch(e) {}
     }
 
     function executerRenduBoucle() {
+        const maintenant = performance.now();
+        if (dernier_timestamp_local && state_x[3] !== 0) {
+            const dt_local = (maintenant - dernier_timestamp_local) / 1000;
+            // INTERPOLATION CINÉMATIQUE LOCALISÉE 60Hz ENTRE CHAQUE PACKET SERVEUR
+            state_x[0] += state_x[3] * dt_local;
+            state_x[1] += state_x[4] * dt_local;
+            state_x[2] += state_x[5] * dt_local;
+            dernier_timestamp_local = maintenant;
+        }
+
         const coordGeo = ecefVersGeodesique(state_x[0], state_x[1], state_x[2]);
         document.getElementById('lbl-lat').innerText = coordGeo.lat.toFixed(7) + "°";
         document.getElementById('lbl-lon').innerText = coordGeo.lon.toFixed(7) + "°";
+        document.getElementById('lbl-alt').innerText = coordGeo.alt.toFixed(3) + " m";
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.strokeStyle = "#21262d"; ctx.beginPath(); ctx.arc(cx, cy, r_max, 0, 2*Math.PI); ctx.stroke();
@@ -157,7 +170,7 @@
 
         if (fluxMatriceServeur && t_epoch_initial) {
             const delta_t = (performance.now() / 1000) - t_mono_initial;
-            document.getElementById('flux-epoch').innerText = "ÉPOQUE MONOTONE ISA : " + new Date((t_epoch_initial + delta_t) * 1000).toISOString();
+            document.getElementById('flux-epoch').innerText = "ÉPOQUE ABSOLUE GNC : " + new Date((t_epoch_initial + delta_t) * 1000).toISOString();
 
             ASTRES.forEach(a => {
                 const s = fluxMatriceServeur.DATA_STREAMS[a];
@@ -180,7 +193,7 @@
     }
 
     setInterval(acquerirFluxPhysique, 1000);
-    setInterval(executerRenduBoucle, 50);
+    setInterval(executerRenduBoucle, 16.67); // Rendu ultra-fluide cadencé à 60 FPS (16.67ms)
 </script>
 </body>
-                                                           </html>
+                    </html>
