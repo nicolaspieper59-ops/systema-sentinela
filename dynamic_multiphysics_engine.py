@@ -156,6 +156,7 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
             "distance_precision_m": float(dist.m)
         }
 
+    # ... [Reste du code inchangé]
     payload_v852 = {
         "METADATA": {
             "infrastructure": "SYSTEMA SENTINELA v8.5.2 — NOYAU TRIDIMENSIONNEL DET",
@@ -169,6 +170,8 @@ def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, consta
             "modelisation_troposphere": "SAASTAMOINEN + ZWD DYNAMIQUE",
             "synchronisation": "STRICT_EPHEMERIS_DE440"
         },
+        # Double pontage de sécurité pour le Front-end :
+        "EPOCH_UTC": sim_datetime.isoformat().replace("+00:00", "Z"),
         "MATRICE_ECEF_REEL": {
             "X_mètres": float(x_r),
             "Y_mètres": float(y_r),
