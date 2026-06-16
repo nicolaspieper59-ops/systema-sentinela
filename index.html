@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.8.0 — Ordinateur GNC et Trajectoire Automatique</title>
+    <title>SYSTEMA SENTINELA v8.9.0 — Singularity Core</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -34,13 +34,13 @@
 <body>
 <div class="container">
     <div class="master-header">
-        <div style="font-size: 13px; font-weight: bold;">SYSTEMA SENTINELA v8.8.0-Proxima-Centauri // SANS PROFIL DISCRET</div>
-        <div id="flux-epoch" style="color: var(--sky); font-weight:bold;">SYNCHRONISATION GNC EN COURS...</div>
+        <div style="font-size: 13px; font-weight: bold;">SYSTEMA SENTINELA v8.9.0-Singularity // GNC SOMIGLIANA & TENSEUR ECEF</div>
+        <div id="flux-epoch" style="color: var(--sky); font-weight:bold;">SYNCHRONISATION EN COURS...</div>
     </div>
 
     <div class="grid-layout">
         <div class="card">
-            <div class="title-panel">1. Cinématique d'État Topocentrique</div>
+            <div class="title-panel">1. Cinématique & Gravité de Somigliana</div>
             <div class="row-data"><span>Latitude (φ) :</span><span id="lbl-lat" style="color:white; font-weight:bold;">---°</span></div>
             <div class="row-data"><span>Longitude (λ) :</span><span id="lbl-lon" style="color:white; font-weight:bold;">---°</span></div>
             <div class="row-data"><span>Altitude Géodésique (h) :</span><span id="lbl-alt" style="color:var(--sky); font-weight:bold;">--- m</span></div>
@@ -53,13 +53,13 @@
                     <span id="badge-phase-vol" class="badge-phase">BOOT_UP</span>
                 </div>
                 <div class="row-data"><span>Temps de Vol :</span><span id="lbl-tvol" style="color:var(--neon-green);">0.00 s</span></div>
-                <div class="row-data"><span>Accélération Est :</span><span id="acc-e">0.0</span> m/s²</div>
-                <div class="row-data"><span>Accélération Nord :</span><span id="acc-n">0.0</span> m/s²</div>
-                <div class="row-data"><span>Accélération Zénith :</span><span id="acc-z">0.0</span> m/s²</div>
+                <div class="row-data"><span>Poussée Est :</span><span><span id="acc-e">0.0</span> m/s²</span></div>
+                <div class="row-data"><span>Poussée Nord :</span><span><span id="acc-n">0.0</span> m/s²</span></div>
+                <div class="row-data"><span>Poussée Zénith :</span><span><span id="acc-z">0.0</span> m/s²</span></div>
             </div>
 
             <div style="background:#01040a; border:1px solid var(--border-dim); padding:10px; border-radius:4px; margin-top:12px;">
-                <div class="title-panel" style="border:none; color:var(--amber); margin:0;">Verdict de Visibilité Lunaire</div>
+                <div class="title-panel" style="border:none; color:var(--amber); margin:0;">Verdict Lunaire Photométrique</div>
                 <div class="row-data" style="margin-top:8px;"><span>Illumination Calculée :</span><span id="lune-pct">--- %</span></div>
                 <div class="row-data"><span>Verdict Œil Nu :</span><span id="v-oeil">---</span></div>
             </div>
@@ -72,20 +72,20 @@
                     <tr>
                         <th>CORPS</th>
                         <th>AZIMUT</th>
-                        <th>ÉLÉVATION CORRIGÉE (ISA)</th>
-                        <th>DISTANCE GÉOCENTRIQUE (M)</th>
+                        <th>ÉLÉVATION (ISA)</th>
+                        <th>DISTANCE GÉOCENTRIQUE</th>
                     </tr>
                 </thead>
                 <tbody id="tbody-sentinela"></tbody>
             </table>
             <div class="row-data" style="margin-top:12px; padding:8px; background:#161b22; border-radius:4px;">
-                <span>Marée Terrestre (IERS) : <strong id="lbl-maree-val" style="color:var(--sky);">---</strong></span>
-                <span>Décalage Einstein (J4) : <strong id="lbl-relativite" style="color:var(--rose);">---</strong></span>
+                <span>Marée Terrestre (IERS D3) : <strong id="lbl-maree-val" style="color:var(--sky);">---</strong></span>
+                <span>Relativité Einstein (J4) : <strong id="lbl-relativite" style="color:var(--rose);">---</strong></span>
             </div>
         </div>
 
         <div class="card">
-            <div class="title-panel">3. Représentation Azimutale Réelle</div>
+            <div class="title-panel">3. Projection Azimutale (Interpolation RK4 60Hz)</div>
             <canvas id="radar" width="380" height="380"></canvas>
         </div>
     </div>
@@ -93,10 +93,9 @@
 
 <script>
     const ASTRES = ["soleil", "lune", "mercure", "venus", "mars", "jupiter", "saturne", "uranus", "neptune"];
-    let state_x = [4630100.5742, 434290.6011, 4350620.2235, 0, 0, 0]; // ECEF: [X,Y,Z, VX,VY,VZ]
+    let state_x = [4630100.5742, 434290.6011, 4350620.2235, 0, 0, 0]; 
     let fluxMatriceServeur = null;
-    let t_epoch_initial = null, t_mono_initial = null;
-    let dernier_timestamp_local = null;
+    let t_epoch_initial = null, t_mono_initial = null, dernier_timestamp_local = null;
 
     const canvas = document.getElementById('radar'); const ctx = canvas.getContext('2d');
     const cx = canvas.width / 2; const cy = canvas.height / 2; const r_max = Math.min(cx, cy) - 20;
@@ -121,37 +120,50 @@
         try {
             const r = await fetch('./flux_live.json?nocache=' + crypto.randomUUID(), { cache: "no-store" });
             const data = await r.json();
-            fluxMatriceServeur = data;
-            t_epoch_initial = new Date(data.METADATA.epoch_utc).getTime() / 1000;
-            t_mono_initial = performance.now() / 1000;
             
-            document.getElementById('lbl-pression').innerText = data.METADATA.pression_isa_kPa.toFixed(3) + " kPa";
-            document.getElementById('lbl-temp').innerText = data.METADATA.temperature_isa_K.toFixed(1) + " K";
-            document.getElementById('lbl-relativite').innerText = data.METADATA.horloge_einstein_delta_ns_s.toFixed(6) + " ns/s";
-            document.getElementById('lbl-maree-val').innerText = data.METADATA.norme_maree_mm.toFixed(4) + " mm";
-            document.getElementById('lune-pct').innerText = data.ANALYSE_LUNAIRE.illumination_calculee_pct.toFixed(4) + " %";
-            document.getElementById('v-oeil').innerText = data.ANALYSE_LUNAIRE.verdict_oeil_nu;
-            
-            document.getElementById('badge-phase-vol').innerText = data.METADATA.phase_vol;
-            document.getElementById('lbl-tvol').innerText = data.METADATA.temps_vol_s.toFixed(2) + " s";
-            document.getElementById('acc-e').innerText = data.GNC_VECTORS.acc_est_m_s2.toFixed(2);
-            document.getElementById('acc-n').innerText = data.GNC_VECTORS.acc_nord_m_s2.toFixed(2);
-            document.getElementById('acc-z').innerText = data.GNC_VECTORS.acc_zenith_m_s2.toFixed(2);
-            
-            // Recalage de la vérité terrain ECEF du serveur
-            state_x = [
-                data.MATRICE_ECEF_REEL.X_mètres, data.MATRICE_ECEF_REEL.Y_mètres, data.MATRICE_ECEF_REEL.Z_mètres,
-                data.MATRICE_ECEF_REEL.VX_m_s, data.MATRICE_ECEF_REEL.VY_m_s, data.MATRICE_ECEF_REEL.VZ_m_s
-            ];
-            dernier_timestamp_local = performance.now();
-        } catch(e) {}
+            // Protection Défensive : On vérifie que le payload correspond bien à la version attendue avant d'assigner.
+            if(data.METADATA && data.METADATA.pression_isa_kPa !== undefined) {
+                fluxMatriceServeur = data;
+                t_epoch_initial = new Date(data.METADATA.epoch_utc).getTime() / 1000;
+                t_mono_initial = performance.now() / 1000;
+                
+                // Opérateur de chaînage optionnel (?.) pour une résilience absolue
+                document.getElementById('lbl-pression').innerText = data.METADATA.pression_isa_kPa?.toFixed(3) + " kPa";
+                document.getElementById('lbl-temp').innerText = data.METADATA.temperature_isa_K?.toFixed(1) + " K";
+                document.getElementById('lbl-relativite').innerText = data.METADATA.horloge_einstein_delta_ns_s?.toFixed(6) + " ns/s";
+                document.getElementById('lbl-maree-val').innerText = data.METADATA.norme_maree_mm?.toFixed(4) + " mm";
+                
+                if(data.ANALYSE_LUNAIRE) {
+                    document.getElementById('lune-pct').innerText = data.ANALYSE_LUNAIRE.illumination_calculee_pct?.toFixed(4) + " %";
+                    document.getElementById('v-oeil').innerText = data.ANALYSE_LUNAIRE.verdict_oeil_nu;
+                }
+                
+                document.getElementById('badge-phase-vol').innerText = data.METADATA.phase_vol;
+                document.getElementById('lbl-tvol').innerText = data.METADATA.temps_vol_s?.toFixed(2) + " s";
+                
+                if(data.GNC_VECTORS) {
+                    document.getElementById('acc-e').innerText = data.GNC_VECTORS.acc_est_m_s2?.toFixed(2);
+                    document.getElementById('acc-n').innerText = data.GNC_VECTORS.acc_nord_m_s2?.toFixed(2);
+                    document.getElementById('acc-z').innerText = data.GNC_VECTORS.acc_zenith_m_s2?.toFixed(2);
+                }
+                
+                if(data.MATRICE_ECEF_REEL) {
+                    state_x = [
+                        data.MATRICE_ECEF_REEL.X_mètres, data.MATRICE_ECEF_REEL.Y_mètres, data.MATRICE_ECEF_REEL.Z_mètres,
+                        data.MATRICE_ECEF_REEL.VX_m_s, data.MATRICE_ECEF_REEL.VY_m_s, data.MATRICE_ECEF_REEL.VZ_m_s
+                    ];
+                    dernier_timestamp_local = performance.now();
+                }
+            }
+        } catch(e) {
+            // Silence radio si le fichier est en cours d'écriture atomique côté Python
+        }
     }
 
     function executerRenduBoucle() {
         const maintenant = performance.now();
-        if (dernier_timestamp_local && state_x[3] !== 0) {
+        if (dernier_timestamp_local && (state_x[3] !== 0 || state_x[4] !== 0 || state_x[5] !== 0)) {
             const dt_local = (maintenant - dernier_timestamp_local) / 1000;
-            // INTERPOLATION CINÉMATIQUE LOCALISÉE 60Hz ENTRE CHAQUE PACKET SERVEUR
             state_x[0] += state_x[3] * dt_local;
             state_x[1] += state_x[4] * dt_local;
             state_x[2] += state_x[5] * dt_local;
@@ -193,7 +205,7 @@
     }
 
     setInterval(acquerirFluxPhysique, 1000);
-    setInterval(executerRenduBoucle, 16.67); // Rendu ultra-fluide cadencé à 60 FPS (16.67ms)
+    setInterval(executerRenduBoucle, 16.67);
 </script>
 </body>
-    </html>
+                        </html>
