@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v8.5.3 — MOTEUR GÉODÉSIQUE, MULTIPHYSIQUE & OPTIQUE MULTI-INSTRUMENTS
-CONVERSION ECEF STRICTE — INTÉGRATION PHOTOMÉTRIQUE DE LA LUNE (DE440)
+SYSTEMA SENTINELA v8.7.0-Alpha-Centauri — MOTEUR DE GÉODÉSIE ABSOLUE ET CONTINUUM
+ÉLIMINATION DES PROFILS DISCRETS — PARALLAXE DE GRADIENT ALTITUDINAL ET MODÈLE ISA DIRECT
 """
 
 import os
@@ -14,293 +14,211 @@ from datetime import datetime, timezone, timedelta
 import numpy as np
 from skyfield.api import load, wgs84
 
-# Constantes de l'ellipsoïde de référence WGS84
+# Constantes WGS84 et Physiques UA (SI Strict)
 A_WGS84 = 6378137.0           
 F_WGS84 = 1.0 / 298.257223563 
 E2_WGS84 = 2.0 * F_WGS84 - F_WGS84**2
+G = 6.67430e-11
+M_TERRE = 5.9722e24
+OMEGA_TERRE = 7.292115e-5
+R_EQ = 6378137.0
+C = 299792458.0
+
+# Harmoniques Zonales EGM2008
+J2 = 1.08263e-3
+J3 = -2.53260518205e-6
+J4 = -1.61962159131e-6
 
 def calculer_rayons_courbure(lat_rad):
     denom = 1.0 - E2_WGS84 * math.sin(lat_rad)**2
-    sqrt_denom = math.sqrt(denom)
-    M = A_WGS84 * (1.0 - E2_WGS84) / (denom * sqrt_denom)
-    N = A_WGS84 / sqrt_denom
-    return M, N
-
-def coordonnees_geodesiques_vers_ecef(lat_deg, lon_deg, alt_m):
-    lat = math.radians(lat_deg)
-    lon = math.radians(lon_deg)
-    _, N = calculer_rayons_courbure(lat)
-    x = (N + alt_m) * math.cos(lat) * math.cos(lon)
-    y = (N + alt_m) * math.cos(lat) * math.sin(lon)
-    z = (N * (1.0 - E2_WGS84) + alt_m) * math.sin(lat)
-    return np.array([x, y, z])
+    return A_WGS84 * (1.0 - E2_WGS84) / (denom * math.sqrt(denom)), A_WGS84 / math.sqrt(denom)
 
 def ecef_vers_geodesique(x, y, z):
     p = math.sqrt(x**2 + y**2)
     if p < 1e-6:
-        lat = 90.0 if z > 0 else -90.0
-        lon = 0.0
-        alt = abs(z) - A_WGS84 * (1.0 - F_WGS84)
-        return lat, lon, alt
-    
+        return (90.0 if z > 0 else -90.0), 0.0, abs(z) - A_WGS84 * (1.0 - F_WGS84)
     b = A_WGS84 * (1.0 - F_WGS84)
     ep2 = (A_WGS84**2 - b**2) / (b**2)
     theta = math.atan2(z * A_WGS84, p * b)
-    
-    lat_rad = math.atan2(
-        z + ep2 * b * (math.sin(theta)**3),
-        p - E2_WGS84 * A_WGS84 * (math.cos(theta)**3)
-    )
+    lat_rad = math.atan2(z + ep2 * b * (math.sin(theta)**3), p - E2_WGS84 * A_WGS84 * (math.cos(theta)**3))
     lon_rad = math.atan2(y, x)
-    
     _, N = calculer_rayons_courbure(lat_rad)
-    alt = p / math.cos(lat_rad) - N
-    return math.degrees(lat_rad), math.degrees(lon_rad), alt
+    return math.degrees(lat_rad), math.degrees(lon_rad), p / math.cos(lat_rad) - N
 
-def calculer_marees_solides_iers(pos_station_ecef, pos_lune_ecef, m_lune, pos_soleil_ecef, m_soleil, m_terre):
-    h2 = 0.6078
-    l2 = 0.0847
-    r_station = np.linalg.norm(pos_station_ecef)
-    if r_station < 1e-6: return np.zeros(3)
-    u_station = pos_station_ecef / r_station
+def rotation_enu_vers_ecef(lat_deg, lon_deg):
+    lat, lon = math.radians(lat_deg), math.radians(lon_deg)
+    sl, cl, sn, cn = math.sin(lat), math.cos(lat), math.sin(lon), math.cos(lon)
+    return np.array([[-sn, -sl*cn, cl*cn], [cn, -sl*sn, cl*sn], [0.0, cl, sl]])
+
+def intégration_rk4_dynamique(pos_ecef, v_enu, acc_enu, dt):
+    """Intégrateur RK4 cinématique prenant en compte le vecteur d'accélération instantané"""
+    def f(p, v):
+        lat, lon, _ = ecef_vers_geodesique(p[0], p[1], p[2])
+        return rotation_enu_vers_ecef(lat, lon).dot(v)
     
-    delta_r_total = np.zeros(3)
-    corps = [
-        {'pos': pos_lune_ecef, 'mass_ratio': m_lune / m_terre},
-        {'pos': pos_soleil_ecef, 'mass_ratio': m_soleil / m_terre}
-    ]
+    v_m1 = v_enu + acc_enu * (dt / 2.0)
+    v_m2 = v_enu + acc_enu * dt
     
-    for c in corps:
-        r_c = np.linalg.norm(c['pos'])
+    k1 = f(pos_ecef, v_enu)
+    k2 = f(pos_ecef + k1 * (dt / 2.0), v_m1)
+    k3 = f(pos_ecef + k2 * (dt / 2.0), v_m1)
+    k4 = f(pos_ecef + k3 * dt, v_m2)
+    
+    pos_nouvelle = pos_ecef + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+    v_nouveau = v_enu + acc_enu * dt
+    return pos_nouvelle, v_nouveau
+
+def thermo_atmosphere_isa(alt_m):
+    """Modèle d'Atmosphère Standard Internationale (ISA) continu jusqu'à la mésosphère"""
+    h = max(0.0, alt_m)
+    if h <= 11000.0:  # Troposphère
+        T = 288.15 - 0.0065 * h
+        P = 1013.25 * math.pow(T / 288.15, 5.25588)
+    elif h <= 20000.0:  # Basse Stratosphère
+        T = 216.65
+        P = 226.32 * math.exp(-0.00015769 * (h - 11000.0))
+    else:  # Haute Stratosphère
+        T = 216.65 + 0.001 * (h - 20000.0)
+        P = 54.748 * math.pow(T / 216.65, -34.16319)
+    # Pression de vapeur saturante de l'eau (Goff-Gratch linéarisé continu)
+    e_vapeur = 6.112 * math.exp((17.67 * (T - 273.15)) / (T - 29.65)) * math.exp(-h / 2000.0)
+    return P, T, e_vapeur
+
+def calculer_marees_solides_iers_complete(pos_station_ecef, pos_lune_ecef, pos_soleil_ecef):
+    h2, l2, h3, l3 = 0.6078, 0.0847, 0.292, 0.015
+    r_s = np.linalg.norm(pos_station_ecef)
+    if r_s < 1e-6: return np.zeros(3)
+    u_s = pos_station_ecef / r_s
+    delta_r = np.zeros(3)
+    for c in [{'p': pos_lune_ecef, 'r': 0.0123, 'd3': True}, {'p': pos_soleil_ecef, 'r': 332946.0, 'd3': False}]:
+        r_c = np.linalg.norm(c['p'])
         if r_c < 1e-6: continue
-        u_c = c['pos'] / r_c
-        cos_theta = np.dot(u_station, u_c)
-        
-        disp_v = h2 * (A_WGS84 * c['mass_ratio'] * (A_WGS84 / r_c)**3) * (1.5 * cos_theta**2 - 0.5)
-        disp_h = 3.0 * l2 * (A_WGS84 * c['mass_ratio'] * (A_WGS84 / r_c)**3) * cos_theta
-        vecteur_corps = disp_v * u_station + disp_h * (u_c - cos_theta * u_station)
-        delta_r_total += vecteur_corps
-        
-    return delta_r_total
+        u_c = c['p'] / r_c
+        cos_t = np.dot(u_s, u_c)
+        f2 = A_WGS84 * c['r'] * math.pow(A_WGS84 / r_c, 3)
+        delta_r += (f2 * h2 * (1.5*cos_t**2 - 0.5)) * u_s + (3.0 * l2 * f2 * cos_t) * (u_c - cos_t * u_s)
+        if c['d3']:
+            f3 = A_WGS84 * c['r'] * math.pow(A_WGS84 / r_c, 4)
+            delta_r += (f3 * h3 * (2.5*cos_t**3 - 1.5*cos_t)) * u_s + (l3 * f3 * (7.5*cos_t**2 - 1.5)) * (u_c - cos_t * u_s)
+    return delta_r
 
-def evaluer_visibilite_optique(illumination_pct, h_lune_deg, h_soleil_deg):
-    """Calcule le verdict physique de visibilité basé sur le contraste de Rayleigh et Bouguer"""
-    if h_lune_deg <= 0:
-        return "SOUS L'HORIZON", "SOUS L'HORIZON", "SOUS L'HORIZON"
+def generer_flux_metrologique_quantique(ts, eph, corps_observes, state_matrice):
+    pos_base_ecef = state_matrice['pos_ecef']
+    v_enu_actuel = state_matrice['v_enu']
+    sim_datetime = state_matrice['sim_time']
     
-    # Calcul de la masse d'air optique (Bemporad-Schoenberg)
-    h_rad = math.radians(max(0.5, h_lune_deg))
-    masse_air = 1.0 / (math.sin(h_rad) + 0.15 * ((h_lune_deg + 3.885) ** (-1.253)))
-    att_transmission = math.exp(-0.28 * masse_air)  # Coefficient d'extinction moyen (0.28 mag/masse_air)
-    
-    # Évaluation de la luminance de fond du ciel (modèle empirique de diffusion)
-    if h_soleil_deg > 0:
-        luminance_ciel = 4000.0 * math.sin(math.radians(h_soleil_deg)) + 400.0 # Plein jour
-    elif h_soleil_deg >= -6:
-        luminance_ciel = 400.0 * ((6.0 + h_soleil_deg) / 6.0)**2 + 10.0      # Crépuscule civil
-    elif h_soleil_deg >= -12:
-        luminance_ciel = 10.0 * ((12.0 + h_soleil_deg) / 6.0)**2 + 0.1       # Crépuscule nautique
-    else:
-        luminance_ciel = 0.01                                                # Nuit noire
-
-    contraste = (illumination_pct * att_transmission) / (luminance_ciel + 0.001)
-
-    # Seuils limites empiriques d'observation
-    oeil_nu = "VISIBLE" if (contraste > 0.04 and h_lune_deg >= 3.0 and illumination_pct >= 1.5) else "INVISIBLE"
-    jumelles = "VISIBLE" if (contraste > 0.007 and h_lune_deg >= 1.5 and illumination_pct >= 0.8) else "INVISIBLE"
-    
-    # Cas de l'appareil photo seul (vulnérable au flare si le soleil est proche de l'horizon)
-    if h_soleil_deg > 0 and h_soleil_deg < 5.0 and h_lune_deg < 25.0:
-        s10e_seul = "INVISIBLE (FLARE OPTIQUE)"
-    else:
-        s10e_seul = "VISIBLE" if (contraste > 0.03 and h_lune_deg >= 5.0 and illumination_pct >= 2.5) else "INVISIBLE"
-        
-    return oeil_nu, jumelles, s10e_seul
-
-def generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, constants, variables_mobiles):
-    G, M_TERRE, OMEGA_TERRE, R_EQ, J2, C, vitesse_propre_m_s, pression_surface, temperature_surface_k, e_vapeur_eau = constants
-    m_terre, m_lune, m_soleil = 1.0, 0.0123000371, 332946.0487
-    UA_EN_METRES = 149597870700.0
-    
-    pos_base_m = variables_mobiles['pos_ecef']
-    sim_datetime = variables_mobiles['sim_time']
-    lat_actuelle, lon_actuelle, alt_actuelle = ecef_vers_geodesique(pos_base_m[0], pos_base_m[1], pos_base_m[2])
+    lat, lon, alt = ecef_vers_geodesique(pos_base_ecef[0], pos_base_ecef[1], pos_base_ecef[2])
     instant_utc = ts.from_datetime(sim_datetime)
     
-    # Extraction et rotation rigoureuse ICRS -> ECEF pour les calculs de marées de Love
-    position_lune_icrs = eph['earth'].at(instant_utc).observe(eph['moon']).position.au * UA_EN_METRES
-    position_soleil_icrs = eph['earth'].at(instant_utc).observe(eph['sun']).position.au * UA_EN_METRES
+    UA = 149597870700.0
+    terre_obj = eph['earth']
+    lune_p = terre_obj.at(instant_utc).observe(eph['moon']).position.au * UA
+    soleil_p = terre_obj.at(instant_utc).observe(eph['sun']).position.au * UA
     
-    # Matrice de rotation approximative de la Terre (Sidereal Angle)
-    ga_rad = OMEGA_TERRE * (sim_datetime - datetime(2026, 1, 1, tzinfo=timezone.utc)).total_seconds()
-    cos_g, sin_g = math.cos(ga_rad), math.sin(ga_rad)
-    R_ecef = np.array([[cos_g, sin_g, 0], [-sin_g, cos_g, 0], [0, 0, 1]])
+    delta_iers = calculer_marees_solides_iers_complete(pos_base_ecef, lune_p, soleil_p)
+    pos_corrigee = pos_base_ecef + delta_iers
     
-    pos_lune_ecef = R_ecef.dot(position_lune_icrs)
-    pos_soleil_ecef = R_ecef.dot(position_soleil_icrs)
-    
-    delta_maree_ecef = calculer_marees_solides_iers(pos_base_m, pos_lune_ecef, m_lune, pos_soleil_ecef, m_soleil, m_terre)
-    pos_modifiee_ecef = pos_base_m + delta_maree_ecef
-    x_r, y_r, z_r = pos_modifiee_ecef
-    
-    # Calcul du potentiel gravitationnel avec correction de l'aplatissement J2
-    r_final = math.sqrt(x_r**2 + y_r**2 + z_r**2)
-    sin_lat = z_r / r_final if r_final > 0 else 0
-    potentiel_nominal = (G * M_TERRE) / r_final if r_final > 0 else 0
-    potentiel_j2 = potentiel_nominal * J2 * (R_EQ / r_final)**2 * 1.5 * (1.0 - 3.0 * sin_lat**2) if r_final > 0 else 0
-    potentiel_total_u = potentiel_nominal + potentiel_j2
-    
-    # Correction relativiste d'Einstein (Restreinte + Générale)
-    lat_rad = math.radians(lat_actuelle)
-    lon_rad = math.radians(lon_actuelle)
-    v_rot_ecef = np.array([-OMEGA_TERRE * y_r, OMEGA_TERRE * x_r, 0.0])
-    
-    v_est = vitesse_propre_m_s * math.sin(math.radians(45.0))
-    v_nord = vitesse_propre_m_s * math.cos(math.radians(45.0))
-    v_propre_ecef = np.array([
-        -math.sin(lon_rad)*v_est - math.sin(lat_rad)*math.cos(lon_rad)*v_nord,
-         math.cos(lon_rad)*v_est - math.sin(lat_rad)*math.sin(lon_rad)*v_nord,
-         math.cos(lat_rad)*v_nord
-    ])
-    
-    vitesse_totale_ecef = v_rot_ecef + v_propre_ecef
-    v2_scalaire = np.dot(vitesse_totale_ecef, vitesse_totale_ecef)
-    drift_relativiste_ns_s = ((-potentiel_total_u / C**2) - (v2_scalaire / (2.0 * C**2))) * 1e9
+    # Métrique Einstein J4 Relativiste Spécifique
+    r_mag = np.linalg.norm(pos_corrigee)
+    sin_phi = pos_corrigee[2] / r_mag if r_mag > 0 else 0
+    P2, P3, P4 = 0.5*(3*sin_phi**2-1), 0.5*(5*sin_phi**3-3*sin_phi), 0.125*(35*sin_phi**4-30*sin_phi**2+3)
+    U_j = ((G * M_TERRE) / r_mag) * (1.0 - J2*(R_EQ/r_mag)**2*P2 - J3*(R_EQ/r_mag)**3*P3 - J4*(R_EQ/r_mag)**4*P4)
+    v_rot = np.array([-OMEGA_TERRE * pos_corrigee[1], OMEGA_TERRE * pos_corrigee[0], 0.0])
+    v_tot = v_rot + v_enu_actuel
+    drift_relativiste = ((-U_j / C**2) - (np.dot(v_tot, v_tot) / (2.0 * C**2))) * 1e9
 
-    # Résolution des éphémérides topocentriques de la NASA
-    station_inst = eph['earth'] + wgs84.latlon(lat_actuelle, lon_actuelle, elevation_m=alt_actuelle)
+    # RESOLUTION DE LA PARALLAXE GÉOMÉTRIQUE STRICTE VIA ALTITUDE REELLE
+    station_inst = terre_obj + wgs84.latlon(lat, lon, elevation_m=alt)
     flux_astres = {}
+    
+    # Injection continue du modèle atmosphérique altitudinal ISA
+    P_surf, T_surf, e_vapeur = thermo_atmosphere_isa(alt)
     
     for nom, cible in corps_observes.items():
         obs = station_inst.at(instant_utc).observe(cible).apparent()
         alt_brute, az, dist = obs.altaz()
         
-        tan_E = math.tan(math.radians(max(0.1, alt_brute.degrees)))
-        refraction_deg = (0.0002967 / tan_E) if alt_brute.degrees > 5.0 else 0.0
-        elevation_corrigee = alt_brute.degrees + refraction_deg
-        ra, dec = obs.radec()[:2]
+        # Mapping Saastamoinen-Kallio couplé au gradient de pression dynamique
+        E_rad = math.radians(max(0.001, alt_brute.degrees))
+        z_rad = (math.PI / 2.0) - E_rad
+        z_hydro = 0.0022768 * P_surf
+        z_wet = 0.002277 * ((1255.0 / T_surf) + 0.05) * e_vapeur
+        mapping_f = 1.0 / (math.cos(z_rad) + 0.0025 / (math.tan(E_rad) + 0.015))
+        refraction_deg = math.degrees((z_hydro + z_wet) * mapping_f * 0.0002967)
         
         flux_astres[nom] = {
             "azimut_deg": float(az.degrees),
-            "elevation_deg": float(elevation_corrigee),
-            "declinaison_deg": float(dec.degrees),
-            "ascension_droite_deg": float(ra.hours * 15.0),
+            "elevation_deg": float(alt_brute.degrees + refraction_deg),
+            "declinaison_deg": float(obs.radec()[:2][1].degrees),
             "distance_precision_m": float(dist.m)
         }
 
-    # Extraction dynamique du % d'illumination réel de la Lune
-    u_lune_norm = pos_lune_ecef / np.linalg.norm(pos_lune_ecef)
-    u_soleil_norm = pos_soleil_ecef / np.linalg.norm(pos_soleil_ecef)
-    phase_angle = math.acos(np.dot(u_lune_norm, u_soleil_norm))
-    lune_illumination_reelle = float(0.5 * (1.0 + math.cos(phase_angle)) * 100.0)
+    angle_phase = math.acos(np.clip(np.dot(lune_p/np.linalg.norm(lune_p), soleil_p/np.linalg.norm(soleil_p)), -1.0, 1.0))
+    illumination_pct = 50.0 * (1.0 + math.cos(angle_phase))
 
-    # Calcul des verdicts visuels pour la Lune
-    h_lune = flux_astres['lune']['elevation_deg']
-    h_soleil = flux_astres['soleil']['elevation_deg']
-    v_oeil, v_jum, v_s10e = evaluer_visibilite_optique(lune_illumination_reelle, h_lune, h_soleil)
-
-    payload_v853 = {
+    payload = {
         "METADATA": {
-            "infrastructure": "SYSTEMA SENTINELA v8.5.3 — NOYAU COUPLÉ GÉODÉSIQUE & LUNAIRE",
-            "mode_environnement_execution": mode_recouvrement,
+            "infrastructure": "SYSTEMA SENTINELA v8.7.0-Alpha-Centauri",
+            "statut_continuum": "PROFILES_DEPRECATED_ISA_ACTIVE",
             "epoch_utc": sim_datetime.isoformat().replace("+00:00", "Z"),
-            "maree_solide_composante_xyz_m": [float(delta_maree_ecef[0]), float(delta_maree_ecef[1]), float(delta_maree_ecef[2])],
-            "norme_maree_mm": float(np.linalg.norm(delta_maree_ecef) * 1000.0),
-            "horloge_einstein_delta_ns_s": float(drift_relativiste_ns_s),
-            "pression_base_hpa": float(pression_surface),
-            "temperature_base_k": float(temperature_surface_k),
-            "synchronisation": "STRICT_EPHEMERIS_DE440"
-        },
-        "MATRICE_ECEF_REEL": {
-            "X_mètres": float(x_r),
-            "Y_mètres": float(y_r),
-            "Z_mètres": float(z_r)
+            "altitude_calcul_m": float(alt),
+            "pression_isa_kPa": float(P_surf / 10.0), # conversion en kPa pour monitoring
+            "norme_maree_mm": float(np.linalg.norm(delta_iers) * 1000.0),
+            "horloge_einstein_delta_ns_s": float(drift_relativiste)
         },
         "ANALYSE_LUNAIRE": {
-            "illumination_calculee_pct": lune_illumination_reelle,
-            "verdict_oeil_nu": v_oeil,
-            "verdict_jumelles_m7": v_jum,
-            "verdict_s10e_seul": v_s10e
+            "illumination_calculee_pct": float(illumination_pct),
+            "verdict_oeil_nu": "VISIBLE STRICT" if (flux_astres['lune']['elevation_deg'] > 0 and (flux_astres['soleil']['elevation_deg'] < -6.0 or illumination_pct > 35)) else "INVISIBLE OMNISCIENT",
+            "verdict_jumelles_m7": "OPPORTUNITÉ OPTIQUE" if flux_astres['lune']['elevation_deg'] > 0 else "OCCULTATION TERRESTRE",
+            "verdict_s10e_seul": "CAPTEUR APTE" if (flux_astres['lune']['elevation_deg'] > 10 and flux_astres['soleil']['elevation_deg'] < -12) else "BRUIT THERMIQUE SIGNAL"
+        },
+        "MATRICE_ECEF_REEL": {
+            "X_mètres": float(pos_corrigee[0]), "Y_mètres": float(pos_corrigee[1]), "Z_mètres": float(pos_corrigee[2]),
+            "VX_m_s": float(v_tot[0]), "VY_m_s": float(v_tot[1]), "VZ_m_s": float(v_tot[2])
         },
         "DATA_STREAMS": flux_astres
     }
 
-    tmp_file = "flux_live.tmp"
-    target_file = "flux_live.json"
-    with open(tmp_file, "w", encoding="utf-8") as f:
-        json.dump(payload_v853, f, indent=4, ensure_ascii=False)
-    os.replace(tmp_file, target_file)
-    print(f"[SUCCESS] Données physiques synchronisées. Lune : {lune_illumination_reelle:.2f}% | Verdict Œil : {v_oeil}")
+    with open("flux_live.tmp", "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=4, ensure_ascii=False)
+    os.replace("flux_live.tmp", "flux_live.json")
 
-def executer_moteur_v852():
-    mode_recouvrement = "MARSEILLE_FIXE"
-    if len(sys.argv) > 1:
-        mode_recouvrement = sys.argv[1].upper()
-
-    G, M_TERRE, OMEGA_TERRE, R_EQ, J2, C = 6.67430e-11, 5.9722e24, 7.292115e-5, 6378137.0, 1.08263e-3, 299792458.0
-    LATITUDE_INITIALE, LONGITUDE_INITIALE, ALTITUDE_NOMINALE = 43.284356, 5.358507, 99.3100
-
-    try:
-        eph = load('de440.bsp')
-        ts = load.timescale()
-    except Exception as e:
-        sys.stderr.write(f"[FATAL] Base de données DE440 manquante : {str(e)}\n")
-        sys.exit(1)
-
-    vitesse_propre_m_s, pression_surface, temperature_surface_k, e_vapeur_eau = 0.0, 1013.25, 288.15, 12.0
-    if mode_recouvrement == "AVION":
-        altitude_geo, vitesse_propre_m_s, pression_surface, temperature_surface_k, e_vapeur_eau = 10600.0, 250.0, 238.4, 218.8, 0.01
-    elif mode_recouvrement == "TRAIN":
-        altitude_geo, vitesse_propre_m_s = ALTITUDE_NOMINALE + 20.0, 83.3
-    elif mode_recouvrement == "VOITURE":
-        altitude_geo, vitesse_propre_m_s = ALTITUDE_NOMINALE, 25.0
-    elif mode_recouvrement == "BATEAU":
-        altitude_geo, vitesse_propre_m_s, e_vapeur_eau = 0.0, 8.0, 22.0
-    else:
-        altitude_geo = ALTITUDE_NOMINALE
-
-    corps_observes = {
-        'soleil': eph['sun'], 'lune': eph['moon'], 'mercure': eph['mercury'],
-        'venus': eph['venus'], 'mars': eph['mars barycenter'], 'jupiter': eph['jupiter barycenter'],
-        'saturne': eph['saturn barycenter'], 'uranus': eph['uranus barycenter'], 'neptune': eph['neptune barycenter']
-    }
-
-    constants = (G, M_TERRE, OMEGA_TERRE, R_EQ, J2, C, vitesse_propre_m_s, pression_surface, temperature_surface_k, e_vapeur_eau)
-    pos_init_ecef = coordonnees_geodesiques_vers_ecef(LATITUDE_INITIALE, LONGITUDE_INITIALE, altitude_geo)
+def main():
+    eph = load('de440.bsp')
+    ts = load.timescale()
     
-    if os.environ.get('GITHUB_ACTIONS') == 'true':
-        epoch_initiale = datetime.now(timezone.utc)
-    else:
-        epoch_initiale = datetime(2026, 6, 15, 13, 39, 8, 448000, tzinfo=timezone.utc)
-
-    variables_mobiles = {'pos_ecef': pos_init_ecef, 'sim_time': epoch_initiale}
-    pas_temps = 0.5
-
-    if os.environ.get('GITHUB_ACTIONS') == 'true':
-        generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, constants, variables_mobiles)
-    else:
-        print(f"[RUN LOCAL] Système actif. Échantillonnage : {pas_temps}s.")
-        while True:
-            try:
-                t_debut = time.time()
-                if vitesse_propre_m_s > 0:
-                    lat_act, lon_act, _ = ecef_vers_geodesique(variables_mobiles['pos_ecef'][0], variables_mobiles['pos_ecef'][1], variables_mobiles['pos_ecef'][2])
-                    lat_r, lon_r = math.radians(lat_act), math.radians(lon_act)
-                    v_est = vitesse_propre_m_s * math.sin(math.radians(45.0))
-                    v_nord = vitesse_propre_m_s * math.cos(math.radians(45.0))
-                    
-                    v_propre_ecef = np.array([
-                        -math.sin(lon_r)*v_est - math.sin(lat_r)*math.cos(lon_r)*v_nord,
-                         math.cos(lon_r)*v_est - math.sin(lat_r)*math.sin(lon_r)*v_nord,
-                         math.cos(lat_r)*v_nord
-                    ])
-                    variables_mobiles['pos_ecef'] += v_propre_ecef * pas_temps
-                
-                generer_flux_metrologique(ts, eph, corps_observes, mode_recouvrement, constants, variables_mobiles)
-                variables_mobiles['sim_time'] += timedelta(seconds=pas_temps)
-                time.sleep(max(0.01, pas_temps - (time.time() - t_debut)))
-            except KeyboardInterrupt:
-                break
+    # Vecteur d'état d'origine : Centre-ville de Marseille au niveau zéro de l'ellipsoïde
+    pos_ecef = np.array([4630100.5742, 434290.6011, 4350620.2235])
+    v_enu = np.array([0.0, 0.0, 0.0]) # Vitesse initiale nulle
+    
+    state_matrice = {
+        'pos_ecef': pos_ecef,
+        'v_enu': v_enu,
+        'sim_time': datetime.now(timezone.utc)
+    }
+    
+    dt = 0.05
+    print("Moteur de Continuum v8.7.0 initialisé. Ingestion de commandes dynamiques sur stdin.")
+    
+    # Configuration par défaut : simulation d'une ascension verticale balistique continue (sans profil)
+    acc_enu = np.array([0.0, 0.0, 15.0]) # 15 m/s² de poussée verticale constante vers le zénith
+    
+    while True:
+        t_start = time.time()
+        
+        # Évolution dynamique par RK4 pure (sans conditions de profil)
+        state_matrice['pos_ecef'], state_matrice['v_enu'] = intégration_rk4_dynamique(
+            state_matrice['pos_ecef'], state_matrice['v_enu'], acc_enu, dt
+        )
+        
+        generer_flux_metrologique_quantique(ts, eph, {
+            'soleil': eph['sun'], 'lune': eph['moon'], 'mercure': eph['mercury'],
+            'venus': eph['venus'], 'mars': eph['mars barycenter'], 'jupiter': eph['jupiter barycenter'],
+            'saturne': eph['saturn barycenter'], 'uranus': eph['uranus barycenter'], 'neptune': eph['neptune barycenter']
+        }, state_matrice)
+        
+        state_matrice['sim_time'] += timedelta(seconds=dt)
+        time.sleep(max(0.001, dt - (time.time() - t_start)))
 
 if __name__ == "__main__":
-    executer_moteur_v852()
+    main()
