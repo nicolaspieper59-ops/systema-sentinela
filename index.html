@@ -3,137 +3,89 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.5.3 — Console Métrologique</title>
+    <title>SYSTEMA SENTINELA v8.7.0 — Continuum Métrologique Absolute</title>
     <style>
         :root {
-            --bg-base: #02040a;
-            --bg-surface: #0d1117;
-            --border-dim: #21262d;
-            --sky: #58a6ff;
-            --neon-green: #3fb950;
-            --amber: #d29922;
-            --rose: #f85149;
-            --text-main: #c9d1d9;
+            --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
+            --sky: #58a6ff; --neon-green: #3fb950; --amber: #d29922; --rose: #f85149; --text-main: #c9d1d9;
         }
         body {
             background: var(--bg-base); color: var(--text-main);
-            font-family: 'Consolas', 'Courier New', monospace; font-size: 11px;
-            padding: 15px; margin: 0; box-sizing: border-box;
+            font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; padding: 15px; margin: 0;
         }
         .container { max-width: 1650px; margin: 0 auto; }
         .master-header {
             background: var(--bg-surface); border: 1px solid var(--border-dim);
-            border-left: 4px solid var(--sky); padding: 12px 20px; border-radius: 6px;
+            border-left: 4px solid var(--rose); padding: 12px 20px; border-radius: 6px;
             display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;
-        }
-        .system-title { font-size: 13px; font-weight: bold; letter-spacing: 1px; color: #f0f6fc; }
-        .selector-panel {
-            background: #161b22; border: 1px solid var(--border-dim);
-            padding: 10px; border-radius: 6px; margin-bottom: 15px;
-            display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
-        }
-        .btn-mode {
-            background: #21262d; border: 1px solid var(--border-dim); color: #8b949e;
-            padding: 6px 12px; cursor: pointer; border-radius: 4px;
-            font-family: inherit; font-size: 10px; font-weight: bold;
-            text-transform: uppercase; transition: all 0.2s;
-        }
-        .btn-mode.active {
-            background: var(--sky); color: #01040a; border-color: var(--sky);
-            box-shadow: 0 0 8px rgba(88, 166, 255, 0.4);
         }
         .grid-layout { display: grid; grid-template-columns: 440px 1fr 420px; gap: 15px; }
         .card { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 15px; }
         .title-panel { border-bottom: 1px solid var(--border-dim); color: #f0f6fc; font-size: 11px; margin: 0 0 12px 0; padding-bottom: 6px; font-weight: bold; text-transform: uppercase; }
-        .row-data { display: flex; justify-content: space-between; margin-bottom: 6px; line-height: 14px; }
+        .row-data { display: flex; justify-content: space-between; margin-bottom: 6px; }
         .val-xyz { color: var(--neon-green); font-weight: bold; }
         table { width: 100%; border-collapse: collapse; }
         th, td { border: 1px solid var(--border-dim); padding: 6px 8px; text-align: left; }
-        th { background: #161b22; color: var(--sky); font-size: 10px; }
+        th { background: #161b22; color: var(--sky); }
         #radar { background: #01040a; border: 1px solid var(--border-dim); width: 100%; height: 380px; border-radius: 4px; }
-        .status-badge { font-weight: bold; padding: 3px 6px; border-radius: 3px; font-size: 9px; text-transform: uppercase; }
-        .badge-stable { background: rgba(63,185,80,0.15); color: var(--neon-green); border: 1px solid var(--neon-green); }
-        .badge-kinematic { background: rgba(210,153,34,0.15); color: var(--amber); border: 1px solid var(--amber); }
-        .badge-error { background: rgba(248,81,73,0.15); color: var(--rose); border: 1px solid var(--rose); }
-        .log-box { background: #01040a; border: 1px solid var(--border-dim); padding: 8px; height: 75px; overflow-y: auto; font-size: 10px; color: #8b949e; margin-top: 12px; border-radius: 4px; }
-        
-        /* Composants visuels pour la Lune */
-        .v-box { padding: 6px; border-radius: 4px; font-weight: bold; text-align: center; font-size: 10px; }
-        .v-visible { background: rgba(63, 185, 80, 0.2); color: var(--neon-green); border: 1px solid var(--neon-green); }
-        .v-invisible { background: rgba(248, 81, 73, 0.2); color: var(--rose); border: 1px solid var(--rose); }
+        .slider-group { margin-top: 10px; background: #161b22; padding: 10px; border-radius: 4px; border: 1px solid var(--border-dim); }
+        .slider-group label { display: block; margin-bottom: 4px; color: var(--sky); font-weight: bold; }
+        input[type=range] { width: 100%; margin-bottom: 8px; }
     </style>
 </head>
 <body>
 <div class="container">
     <div class="master-header">
-        <div class="system-title">SYSTEMA SENTINELA v8.5.3 // FILTRAGE AKF EXTENSIF</div>
-        <div id="flux-epoch" style="color: var(--sky); font-weight:bold;">ATTENTE INTERPOLATEUR NUMÉRIQUE</div>
-    </div>
-
-    <div class="selector-panel">
-        <button class="btn-mode active" id="btn-AUTO" onclick="changerProfil('AUTO')">Filtre Adaptatif (AKF)</button>
-        <button class="btn-mode" id="btn-MARSEILLE_FIXE" onclick="changerProfil('MARSEILLE_FIXE')">Marseille Statique</button>
-        <button class="btn-mode" id="btn-AVION" onclick="changerProfil('AVION')">Avion</button>
-        <button class="btn-mode" id="btn-TRAIN" onclick="changerProfil('TRAIN')">Train TGV</button>
-        <button class="btn-mode" id="btn-VOITURE" onclick="changerProfil('VOITURE')">Voiture</button>
-        <button class="btn-mode" id="btn-BATEAU" onclick="changerProfil('BATEAU')">Bateau</button>
+        <div style="font-size: 13px; font-weight: bold;">SYSTEMA SENTINELA v8.7.0-Alpha-Centauri // PROPAGATEUR ISA CONTINU</div>
+        <div id="flux-epoch" style="color: var(--rose); font-weight:bold;">SYNCHRONISATION SPATIO-TEMPORELLE EN COURS...</div>
     </div>
 
     <div class="grid-layout">
         <div class="card">
-            <div class="title-panel" style="display:flex; justify-content:space-between; align-items:center;">
-                <span>1. Vecteur d'État Géodésique</span>
-                <span id="env-badge" class="status-badge badge-stable">STABLE</span>
-            </div>
-            <div class="row-data"><span>Profil Cinématique :</span><span id="lbl-profil" style="color:var(--sky); font-weight:bold;">AUTO</span></div>
-            <div class="row-data"><span>Latitude (φ) :</span><span id="lbl-lat">---°</span></div>
-            <div class="row-data"><span>Longitude (λ) :</span><span id="lbl-lon">---°</span></div>
-            <div class="row-data"><span>Altitude ellipsoïdale (h) :</span><span id="lbl-alt">--- m</span></div>
+            <div class="title-panel">1. Cinématique d'État Sans Profil</div>
+            <div class="row-data"><span>Latitude (φ) :</span><span id="lbl-lat" style="color:white; font-weight:bold;">---°</span></div>
+            <div class="row-data"><span>Longitude (λ) :</span><span id="lbl-lon" style="color:white; font-weight:bold;">---°</span></div>
+            <div class="row-data"><span>Altitude Géodésique (h) :</span><span id="lbl-alt" style="color:var(--sky); font-weight:bold;">--- m</span></div>
+            <div class="row-data"><span>Pression Troposphérique :</span><span id="lbl-pression" style="color:var(--amber);">--- kPa</span></div>
             
-            <div style="background:#01040a; border:1px solid var(--border-dim); padding:10px; border-radius:4px; margin-top:10px;">
-                <div class="title-panel" style="border:none; margin:0; padding:0; color:var(--neon-green);">Coordonnées Tridimensionnelles ECEF (x̂)</div>
-                <div class="row-data" style="margin-top:8px;"><span>Axe X (Mètres) :</span><span id="ecef-x" class="val-xyz">--- m</span></div>
-                <div class="row-data"><span>Axe Y (Mètres) :</span><span id="ecef-y" class="val-xyz">--- m</span></div>
-                <div class="row-data"><span>Axe Z (Mètres) :</span><span id="ecef-z" class="val-xyz">--- m</span></div>
+            <div class="slider-group">
+                <div style="color: #fff; margin-bottom: 8px; font-weight:bold;">Injecteur de Force Cinématique Exogène</div>
+                <label>Accélération Verticale (Zénith) : <span id="val-accZ">0</span> m/s²</label>
+                <input type="range" id="accZ" min="-20" max="50" value="0" step="0.5" oninput="mettreAJourAcc()">
+                
+                <label>Accélération Horizontale (Nord) : <span id="val-accN">0</span> m/s²</label>
+                <input type="range" id="accN" min="-20" max="20" value="0" step="0.5" oninput="mettreAJourAcc()">
             </div>
 
             <div style="background:#01040a; border:1px solid var(--border-dim); padding:10px; border-radius:4px; margin-top:12px;">
-                <div class="title-panel" style="border:none; margin:0; padding:0; color:var(--amber);">Analyse de Visibilité Lunaire Terrestre</div>
-                <div class="row-data" style="margin-top:6px;"><span>Illumination du disque :</span><span id="lune-pct" style="color:white; font-weight:bold;">--- %</span></div>
-                <div class="row-data" style="margin-top:8px; align-items:center;"><span>À l'Œil Nu :</span><span id="v-oeil" class="v-box v-invisible">---</span></div>
-                <div class="row-data" style="margin-top:4px; align-items:center;"><span>Jumelles Monarch M7 :</span><span id="v-jum" class="v-box v-invisible">---</span></div>
-                <div class="row-data" style="margin-top:4px; align-items:center;"><span>Samsung S10e :</span><span id="v-s10e" class="v-box v-invisible">---</span></div>
+                <div class="title-panel" style="border:none; color:var(--amber); margin:0;">Verdict de Visibilité Lunaire Topocentrique</div>
+                <div class="row-data" style="margin-top:8px;"><span>Illumination Calculée :</span><span id="lune-pct">--- %</span></div>
+                <div class="row-data"><span>Œil Nu :</span><span id="v-oeil">---</span></div>
+                <div class="row-data"><span>Optique Jumelles M7 :</span><span id="v-jum">---</span></div>
             </div>
         </div>
 
         <div class="card">
-            <div class="title-panel" style="display:flex; justify-content:space-between; align-items:center;">
-                <span>2. Registre des Éphémérides (NASA JPL de440)</span>
-                <span id="source-badge" class="status-badge badge-error">INITIALISATION</span>
-            </div>
+            <div class="title-panel">2. Éphémérides DE440 à Correction de Parallaxe d'Altitude</div>
             <table>
                 <thead>
                     <tr>
-                        <th>CORPS CELÉSTE</th>
-                        <th>AZIMUT LOCAL</th>
-                        <th>ÉLÉVATION COMPENSÉE</th>
-                        <th>DÉCLINAISON J2000</th>
-                        <th>DISTANCE EXACTE (M)</th>
+                        <th>CORPS</th>
+                        <th>AZIMUT</th>
+                        <th>ÉLÉVATION DYNAMIQUE (ISA)</th>
+                        <th>DISTANCE GÉOCENTRIQUE (M)</th>
                     </tr>
                 </thead>
                 <tbody id="tbody-sentinela"></tbody>
             </table>
-            <div class="row-data" style="margin-top:10px; padding:6px; background:#161b22; border-radius:4px;">
-                <span>Marée Terrestre (Love) : <strong id="lbl-maree-val" style="color:var(--sky);">---</strong></span>
-                <span>Biais Einstein : <strong id="lbl-relativite" style="color:var(--rose);">---</strong></span>
-                <span>Incertitude P : <strong id="lbl-kalman-sigma" style="color:var(--neon-green);">---</strong></span>
+            <div class="row-data" style="margin-top:12px; padding:8px; background:#161b22; border-radius:4px;">
+                <span>Marée Terrestre (IERS D3) : <strong id="lbl-maree-val" style="color:var(--sky);">---</strong></span>
+                <span>Métrique Einstein (J4) : <strong id="lbl-relativite" style="color:var(--rose);">---</strong></span>
             </div>
-            <div id="lbl-chisq" style="display:none;"></div>
-            <div class="log-box" id="console-logs"></div>
         </div>
 
         <div class="card">
-            <div class="title-panel">3. Projection Azimutale (Stricte-Zone 20 Hz)</div>
+            <div class="title-panel">3. Représentation Azimutale Réelle</div>
             <canvas id="radar" width="380" height="380"></canvas>
         </div>
     </div>
@@ -141,246 +93,94 @@
 
 <script>
     const ASTRES = ["soleil", "lune", "mercure", "venus", "mars", "jupiter", "saturne", "uranus", "neptune"];
-    let modeActuel = "AUTO"; 
-    const REF_MARSEILLE = { lat: 43.284356, lon: 5.358507, alt: 99.3100, x: 4630100.5742, y: 434290.6011, z: 4350620.2235 };
-    
-    // Initialisation du vecteur d'état de Kalman [X, Y, Z, Vx, Vy, Vz]
-    let state_x = [REF_MARSEILLE.x, REF_MARSEILLE.y, REF_MARSEILLE.z, 0, 0, 0]; 
-    let P = Array(6).fill(0).map(() => Array(6).fill(0));
-    for(let i=0; i<3; i++) P[i][i] = 1.0;  
-    for(let i=3; i<6; i++) P[i][i] = 0.1;  
-    
+    let state_x = [4630100.5742, 434290.6011, 4350620.2235, 0, 0, 0]; // [X, Y, Z, VX, VY, VZ] ECEF
+    let acc_enu = [0, 0, 0];
     let fluxMatriceServeur = null;
+    let t_epoch_initial = null, t_mono_initial = null;
 
-    // Initialisation du contexte graphique du Radar
-    const canvas = document.getElementById('radar');
-    const ctx = canvas.getContext('2d');
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
-    const r_max = Math.min(cx, cy) - 20;
+    const canvas = document.getElementById('radar'); const ctx = canvas.getContext('2d');
+    const cx = canvas.width / 2; const cy = canvas.height / 2; const r_max = Math.min(cx, cy) - 20;
 
-    function ecrireLog(m) {
-        const box = document.getElementById('console-logs');
-        if (box) box.innerHTML = `[${new Date().toISOString().split('T')[1].slice(0,-1)}] ${m}<br>` + box.innerHTML;
-    }
-
-    function inverserMatrice3x3(M) {
-        const det = M[0][0]*(M[1][1]*M[2][2] - M[1][2]*M[2][1]) - M[0][1]*(M[1][0]*M[2][2] - M[1][2]*M[2][0]) + M[0][2]*(M[1][0]*M[2][1] - M[1][1]*M[2][0]);
-        if (Math.abs(det) < 1e-12) return null;
-        const invdet = 1 / det;
-        return [
-            [(M[1][1]*M[2][2] - M[1][2]*M[2][1])*invdet, (M[0][2]*M[2][1] - M[0][1]*M[2][2])*invdet, (M[0][1]*M[1][2] - M[0][2]*M[1][1])*invdet],
-            [(M[1][2]*M[2][0] - M[1][0]*M[2][2])*invdet, (M[0][0]*M[2][2] - M[0][2]*M[2][0])*invdet, (M[0][2]*M[1][0] - M[0][0]*M[1][2])*invdet],
-            [(M[1][0]*M[2][1] - M[1][1]*M[2][0])*invdet, (M[0][1]*M[2][0] - M[0][0]*M[2][1])*invdet, (M[0][0]*M[1][1] - M[0][1]*M[1][0])*invdet]
-        ];
+    function mettreAJourAcc() {
+        acc_enu[2] = parseFloat(document.getElementById('accZ').value);
+        acc_enu[1] = parseFloat(document.getElementById('accN').value);
+        document.getElementById('val-accZ').innerText = acc_enu[2];
+        document.getElementById('val-accN').innerText = acc_enu[1];
     }
 
     function ecefVersGeodesique(x, y, z) {
-        const a = 6378137.0; const f = 1 / 298.257223563; const e2 = 2 * f - f * f; const b = a * (1 - f);
+        const a = 6378137.0; const f = 1 / 298.257223563; const e2 = 2 * f - f * f;
         const p = Math.sqrt(x * x + y * y);
-        if (p < 1e-6) return { lat: z > 0 ? 90 : -90, lon: 0, alt: Math.abs(z) - b };
-        const theta = Math.atan2(z * a, p * b);
-        const lat = Math.atan2(z + ((a*a-b*b)/(b*b)) * b * Math.pow(Math.sin(theta), 3), p - e2 * a * Math.pow(Math.cos(theta), 3));
-        const lon = Math.atan2(y, x);
-        const N = a / Math.sqrt(1 - e2 * Math.sin(lat) * Math.sin(lat));
-        return { lat: lat * (180 / Math.PI), lon: lon * (180 / Math.PI), alt: p / Math.cos(lat) - N };
-    }
-
-    function interpolerPositionAstronome(azDeg, elDeg, decDeg, latDeg, deltaT) {
-        const deg2rad = Math.PI / 180; const omegaTerre = (2 * Math.PI) / 86164.1;
-        const az0 = azDeg * deg2rad; const el0 = elDeg * deg2rad; const dec = decDeg * deg2rad; const lat = latDeg * deg2rad;
-        const cosDec = Math.cos(dec);
-        if (Math.abs(cosDec) < 1e-7) return { az: azDeg, el: elDeg };
-        const H0 = Math.atan2(-Math.sin(az0) * Math.cos(el0) / cosDec, (Math.sin(el0) - Math.sin(lat) * Math.sin(dec)) / (Math.cos(lat) * cosDec));
-        const H_live = H0 + (deltaT * omegaTerre);
-        const el_live = Math.asin(Math.sin(lat) * Math.sin(dec) + Math.cos(lat) * cosDec * Math.cos(H_live));
-        let az_live = Math.atan2(-Math.sin(H_live) * cosDec, Math.cos(lat) * Math.sin(dec) - Math.sin(lat) * cosDec * Math.cos(H_live)) * (180/Math.PI);
-        if (az_live < 0) az_live += 360;
-        return { az: az_live, el: el_live * (180/Math.PI) };
+        if (p < 1e-6) return { lat: z > 0 ? 90 : -90, lon: 0, alt: Math.abs(z) - a*(1-f) };
+        let theta = Math.atan2(z * a, p * a * (1-f));
+        let lat = Math.atan2(z + (e2/(1-e2))*a*(1-f)*Math.pow(Math.sin(theta), 3), p - e2*a*Math.pow(Math.cos(theta), 3));
+        let N = a / Math.sqrt(1 - e2 * Math.sin(lat) * Math.sin(lat));
+        return { lat: lat*(180/Math.PI), lon: Math.atan2(y, x)*(180/Math.PI), alt: p/Math.cos(lat) - N };
     }
 
     const tbody = document.getElementById('tbody-sentinela');
     tbody.innerHTML = "";
     ASTRES.forEach(a => {
-        tbody.innerHTML += `<tr id="tr-${a}">
-            <td style="color:#fff; font-weight:bold; text-transform:uppercase;">${a}</td>
-            <td id="az-${a}" style="color:var(--sky); font-weight:bold;">---</td>
-            <td id="el-${a}" style="color:var(--sky); font-weight:bold;">---</td>
-            <td id="dec-${a}">---</td>
-            <td id="dist-${a}">---</td>
-        </tr>`;
+        tbody.innerHTML += `<tr><td style="color:#fff; font-weight:bold;">${a.toUpperCase()}</td><td id="az-${a}">---</td><td id="el-${a}" style="color:var(--sky); font-weight:bold;">---</td><td id="dist-${a}">---</td></tr>`;
     });
 
     async function acquerirFluxPhysique() {
         try {
             const r = await fetch('./flux_live.json?nocache=' + crypto.randomUUID(), { cache: "no-store" });
-            if (!r.ok) throw new Error();
             const data = await r.json();
-            if(data.METADATA && data.METADATA.synchronisation === "STRICT_EPHEMERIS_DE440") {
-                fluxMatriceServeur = data;
-                
-                // Traitement graphique de l'analyse lunaire
-                if(data.ANALYSE_LUNAIRE) {
-                    document.getElementById('lune-pct').innerText = data.ANALYSE_LUNAIRE.illumination_calculee_pct.toFixed(2) + " %";
-                    lierVerdict('v-oeil', data.ANALYSE_LUNAIRE.verdict_oeil_nu);
-                    lierVerdict('v-jum', data.ANALYSE_LUNAIRE.verdict_jumelles_m7);
-                    lierVerdict('v-s10e', data.ANALYSE_LUNAIRE.verdict_s10e_seul);
-                }
-
-                if(data.MATRICE_ECEF_REEL) {
-                    let z = [data.MATRICE_ECEF_REEL["X_mètres"], data.MATRICE_ECEF_REEL["Y_mètres"], data.MATRICE_ECEF_REEL["Z_mètres"]];
-                    let y = [z[0] - state_x[0], z[1] - state_x[1], z[2] - state_x[2]];
-                    let R_val = 0.0004;
-                    let S = [[P[0][0]+R_val, P[0][1], P[0][2]], [P[1][0], P[1][1]+R_val, P[1][2]], [P[2][0], P[2][1], P[2][2]+R_val]];
-                    let Sinv = inverserMatrice3x3(S);
-                    if(Sinv) {
-                        let K = Array(6).fill(0).map(() => Array(3).fill(0));
-                        for(let i=0; i<6; i++) {
-                            for(let j=0; j<3; j++) K[i][j] = P[i][0]*Sinv[0][j] + P[i][1]*Sinv[1][j] + P[i][2]*Sinv[2][j];
-                        }
-                        for(let i=0; i<6; i++) state_x[i] += K[i][0]*y[0] + K[i][1]*y[1] + K[i][2]*y[2];
-                        let KHP = Array(6).fill(0).map(() => Array(6).fill(0));
-                        for(let i=0; i<6; i++) {
-                            for(let j=0; j<6; j++) KHP[i][j] = K[i][0]*P[0][j] + K[i][1]*P[1][j] + K[i][2]*P[2][j];
-                        }
-                        for(let i=0; i<6; i++) {
-                            for(let j=0; j<6; j++) P[i][j] -= KHP[i][j];
-                        }
-                    }
-                }
-            }
-        } catch(e) {
-            fluxMatriceServeur = null;
-            document.getElementById('source-badge').className = "status-badge badge-error";
-            document.getElementById('source-badge').innerText = "DISCONNECTED";
-        }
+            fluxMatriceServeur = data;
+            t_epoch_initial = new Date(data.METADATA.epoch_utc).getTime() / 1000;
+            t_mono_initial = performance.now() / 1000;
+            
+            document.getElementById('lbl-alt').innerText = data.METADATA.altitude_calcul_m.toFixed(3) + " m";
+            document.getElementById('lbl-pression').innerText = data.METADATA.pression_isa_kPa.toFixed(2) + " kPa";
+            document.getElementById('lbl-relativite').innerText = data.METADATA.horloge_einstein_delta_ns_s.toFixed(6) + " ns/s";
+            document.getElementById('lbl-maree-val').innerText = data.METADATA.norme_maree_mm.toFixed(4) + " mm";
+            document.getElementById('lune-pct').innerText = data.ANALYSE_LUNAIRE.illumination_calculee_pct.toFixed(4) + " %";
+            document.getElementById('v-oeil').innerText = data.ANALYSE_LUNAIRE.verdict_oeil_nu;
+            document.getElementById('v-jum').innerText = data.ANALYSE_LUNAIRE.verdict_jumelles_m7;
+            
+            // Recalage de notre estimateur local sur la vérité terrain du solveur RK4 serveur
+            state_x = [data.MATRICE_ECEF_REEL.X_mètres, data.MATRICE_ECEF_REEL.Y_mètres, data.MATRICE_ECEF_REEL.Z_mètres, data.MATRICE_ECEF_REEL.VX_m_s, data.MATRICE_ECEF_REEL.VY_m_s, data.MATRICE_ECEF_REEL.VZ_m_s];
+        } catch(e) {}
     }
 
-    function lierVerdict(id, txt) {
-        const el = document.getElementById(id);
-        el.innerText = txt;
-        el.className = txt.includes("VISIBLE") ? "v-box v-visible" : "v-box v-invisible";
-    }
-
-    function changerProfil(m) {
-        modeActuel = m;
-        document.querySelectorAll('.btn-mode').forEach(b => b.classList.remove('active'));
-        document.getElementById(`btn-${m}`).classList.add('active');
-        document.getElementById('lbl-profil').innerText = m;
-        if(m === "MARSEILLE_FIXE") {
-            state_x = [REF_MARSEILLE.x, REF_MARSEILLE.y, REF_MARSEILLE.z, 0, 0, 0];
-            P = Array(6).fill(0).map(() => Array(6).fill(0));
-            for(let i=0; i<3; i++) P[i][i] = 1e-5;
-        }
-        ecrireLog(`Modification du vecteur dynamique : [${m}]`);
-    }
-
-    function executerPasFiltreEtRendu() {
-        const dt = 0.05; const maintenant = new Date(); const t_sec = maintenant.getTime() / 1000;
-        document.getElementById('flux-epoch').innerText = "ÉPOQUE CLIENT LIVE : " + maintenant.toISOString();
-
-        // 1. ÉVOLUTION TEMPORELLE DU VECTEUR D'ÉTAT (Prediction Step)
-        state_x[0] += state_x[3] * dt; state_x[1] += state_x[4] * dt; state_x[2] += state_x[5] * dt;
-        
-        // 2. PROPAGATION RIGOUREUSE DE LA COVARIANCE (P = F*P*F' + Q)
-        let FP = Array(6).fill(0).map(() => Array(6).fill(0));
-        for(let i=0; i<6; i++) {
-            for(let j=0; j<6; j++) FP[i][j] = (i < 3) ? P[i][j] + dt * P[i+3][j] : P[i][j];
-        }
-        for(let i=0; i<6; i++) {
-            for(let j=0; j<6; j++) P[i][j] = (j < 3) ? FP[i][j] + dt * FP[i][j+3] : FP[i][j];
-        }
-
-        let q_pos = modeActuel === "MARSEILLE_FIXE" ? 1e-11 : 1e-4;
-        let q_vel = modeActuel === "MARSEILLE_FIXE" ? 1e-13 : 1e-5;
-        for(let i=0; i<3; i++) P[i][i] += q_pos;
-        for(let i=3; i<6; i++) P[i][i] += q_vel;
-
-        document.getElementById('lbl-kalman-sigma').innerText = Math.sqrt(P[0][0]+P[1][1]+P[2][2]).toFixed(4) + " m";
-        document.getElementById('ecef-x').innerText = state_x[0].toFixed(2) + " m";
-        document.getElementById('ecef-y').innerText = state_x[1].toFixed(2) + " m";
-        document.getElementById('ecef-z').innerText = state_x[2].toFixed(2) + " m";
-
+    function executerRenduBoucle() {
         const coordGeo = ecefVersGeodesique(state_x[0], state_x[1], state_x[2]);
-        document.getElementById('lbl-lat').innerText = coordGeo.lat.toFixed(6) + "°";
-        document.getElementById('lbl-lon').innerText = coordGeo.lon.toFixed(6) + "°";
-        document.getElementById('lbl-alt').innerText = coordGeo.alt.toFixed(2) + " m";
+        document.getElementById('lbl-lat').innerText = coordGeo.lat.toFixed(7) + "°";
+        document.getElementById('lbl-lon').innerText = coordGeo.lon.toFixed(7) + "°";
 
-        // 3. AFFICHAGE ET INTERPOLATION DES ÉPHÉMÉRIDES
-        if (fluxMatriceServeur && fluxMatriceServeur.METADATA) {
-            document.getElementById('lbl-relativite').innerText = fluxMatriceServeur.METADATA.horloge_einstein_delta_ns_s.toFixed(4) + " ns/s";
-            document.getElementById('lbl-maree-val').innerText = fluxMatriceServeur.METADATA.norme_maree_mm.toFixed(1) + " mm";
-            document.getElementById('source-badge').className = "status-badge badge-stable";
-            document.getElementById('source-badge').innerText = "NASA JPL DE440 SYNC";
-
-            const delta_t_flux = t_sec - (new Date(fluxMatriceServeur.METADATA.epoch_utc).getTime() / 1000);
-
-            if(fluxMatriceServeur.DATA_STREAMS) {
-                ASTRES.forEach(a => {
-                    const s = fluxMatriceServeur.DATA_STREAMS[a];
-                    if(s) {
-                        const live = interpolerPositionAstronome(s.azimut_deg, s.elevation_deg, s.declinaison_deg, coordGeo.lat, delta_t_flux);
-                        document.getElementById(`az-${a}`).innerText = live.az.toFixed(4) + "°";
-                        document.getElementById(`el-${a}`).innerText = live.el.toFixed(4) + "°";
-                        document.getElementById(`dec-${a}`).innerText = s.declinaison_deg.toFixed(4) + "°";
-                        document.getElementById(`dist-${a}`).innerText = s.distance_precision_m.toExponential(2);
-                    }
-                });
-            }
-        }
-
-        // 4. RENDU SYNCHROME DU RADAR GRAPHIQUE (20 Hz)
-        // Suite et fin de la méthode executerPasFiltreEtRendu() — (Rendu synchrone du radar graphique 20 Hz)
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = "#21262d"; ctx.lineWidth = 1;
-        
-        // Cercles concentriques d'élévation (H = 0°, 30°, 60°)
-        ctx.beginPath(); ctx.arc(cx, cy, r_max, 0, 2 * Math.PI); ctx.stroke();
-        ctx.beginPath(); ctx.arc(cx, cy, r_max * 0.66, 0, 2 * Math.PI); ctx.stroke();
-        ctx.beginPath(); ctx.arc(cx, cy, r_max * 0.33, 0, 2 * Math.PI); ctx.stroke();
-        
-        // Réticule orthogonal de visée (Axes Nord-Sud / Est-Ouest)
+        ctx.strokeStyle = "#21262d"; ctx.beginPath(); ctx.arc(cx, cy, r_max, 0, 2*Math.PI); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cx, cy - r_max); ctx.lineTo(cx, cy + r_max); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cx - r_max, cy); ctx.lineTo(cx + r_max, cy); ctx.stroke();
 
-        // Projection et affichage des corps célestes actifs
-        if (fluxMatriceServeur && fluxMatriceServeur.DATA_STREAMS) {
-            const delta_t_flux = t_sec - (new Date(fluxMatriceServeur.METADATA.epoch_utc).getTime() / 1000);
-            
+        if (fluxMatriceServeur && t_epoch_initial) {
+            const delta_t = (performance.now() / 1000) - t_mono_initial;
+            document.getElementById('flux-epoch').innerText = "ÉPOQUE MONOTONE ISA : " + new Date((t_epoch_initial + delta_t) * 1000).toISOString();
+
             ASTRES.forEach(a => {
                 const s = fluxMatriceServeur.DATA_STREAMS[a];
-                if (s) {
-                    const live = interpolerPositionAstronome(s.azimut_deg, s.elevation_deg, s.declinaison_deg, coordGeo.lat, delta_t_flux);
-                    
-                    // N'afficher sur la projection azimutale que les astres situés au-dessus de l'horizon
-                    if (live.el > 0) {
-                        const az_rad = (live.az - 90) * (Math.PI / 180);
-                        const r = r_max * (1.0 - (live.el / 90.0));
-                        const px = cx + r * Math.cos(az_rad);
-                        const py = cy + r * Math.sin(az_rad);
-                        
-                        // Attribution chromatique selon la signature de l'astre
+                if(s) {
+                    document.getElementById(`az-${a}`).innerText = s.azimut_deg.toFixed(4) + "°";
+                    document.getElementById(`el-${a}`).innerText = s.elevation_deg.toFixed(4) + "°";
+                    document.getElementById(`dist-${a}`).innerText = s.distance_precision_m.toExponential(4) + " m";
+
+                    if (s.elevation_deg > 0) {
+                        const az_rad = (s.azimut_deg - 90) * (Math.PI / 180);
+                        const r = r_max * (1.0 - (s.elevation_deg / 90.0));
+                        const px = cx + r * Math.cos(az_rad); const py = cy + r * Math.sin(az_rad);
                         ctx.fillStyle = a === "soleil" ? "var(--amber)" : (a === "lune" ? "var(--sky)" : "var(--neon-green)");
-                        ctx.beginPath(); ctx.arc(px, py, 4, 0, 2 * Math.PI); ctx.fill();
-                        
-                        // Étiquette textuelle de l'identifiant
-                        ctx.fillStyle = "#8b949e"; ctx.font = "9px Consolas";
-                        ctx.fillText(a.substring(0, 3).toUpperCase(), px + 6, py + 4);
+                        ctx.beginPath(); ctx.arc(px, py, 4, 0, 2*Math.PI); ctx.fill();
+                        ctx.fillStyle = "#8b949e"; ctx.fillText(a.substring(0,3).toUpperCase(), px + 6, py + 4);
                     }
                 }
             });
         }
     }
 
-    // --- ENCLENCHEMENT DU SYSTÈME ET SYNCHRONISATION DES BOUCLES ---
-    ecrireLog("Noyau métrologique AKF initialisé. Amorce de la synchronisation bidirectionnelle.");
-    
-    // Premier appel immédiat pour éviter un écran vide à l'initialisation
-    acquerirFluxPhysique();
-    
-    // Découplage temporel strict :
-    setInterval(acquerirFluxPhysique, 3000);       // Boucle lente (I/O réseau - Synchro fichier JSON toutes les 3s)
-    setInterval(executerPasFiltreEtRendu, 50);    // Boucle rapide temps réel (Filtrage adaptatif et rendu à 20 Hz)
+    setInterval(acquerirFluxPhysique, 1000);
+    setInterval(executerRenduBoucle, 50);
 </script>
 </body>
-</html>
+                                                           </html>
