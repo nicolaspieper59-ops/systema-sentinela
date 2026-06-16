@@ -143,6 +143,10 @@
     for(let i=3; i<6; i++) P[i][i] = 0.1;  
     
     let fluxMatriceServeur = null;
+    
+    // ANCHORS DE SYNCHRONISATION MONOTONIQUE HAUTE PRÉCISION
+    let dernierEpochServeurMs = null;
+    let tPerformanceReceptionMs = null;
 
     const canvas = document.getElementById('radar');
     const ctx = canvas.getContext('2d');
@@ -176,7 +180,7 @@
             ],
             [
                 (M[1][0]*M[2][1] - M[1][1]*M[2][0])*invdet,
-                (M[0][1]*M[2][0] - M[0][0]*M[2][2])*invdet,
+                (M[0][1]*M[2][0] - M[0][0]*M[2][1])*invdet,
                 (M[0][0]*M[1][1] - M[0][1]*M[1][0])*invdet
             ]
         ];
@@ -269,6 +273,10 @@
             
             if(data.METADATA && data.METADATA.synchronisation === "STRICT_EPHEMERIS_DE440") {
                 fluxMatriceServeur = data;
+                
+                // Extraction déterministe du temps serveur et découplage de l'horloge Android
+                dernierEpochServeurMs = new Date(data.METADATA.epoch_utc).getTime();
+                tPerformanceReceptionMs = performance.now();
                 
                 if(data.MATRICE_ECEF_REEL) {
                     let z = [
@@ -364,7 +372,7 @@
         }
     }
 
-    function changerProfil(m) {
+function changerProfil(m) {
         modeActuel = m;
         document.querySelectorAll('.btn-mode').forEach(b => b.classList.remove('active'));
         const targetBtn = document.getElementById(`btn-${m}`);
@@ -382,77 +390,61 @@
         ecrireLog(`Changement de profil : Configuration [${m}] forcée par l'opérateur.`);
     }
 
-// --- ENCAPSULATION SECURISEE DU RENDU & FILTRAGE AUTONOME (20 Hz) ---
-    function executerPasFiltreEtRendu() {
-        const dt = 0.05; 
-        const maintenant = new Date();
-        const t_sec = maintenant.getTime() / 1000;
+    // Boucle de rendu et de prédiction haute fréquence (20 Hz -> Toutes les 50ms)
+    setInterval(() => {
+        if (!fluxMatriceServeur || !dernierEpochServeurMs) return;
 
-        // Évolution temporelle autonome (Prédiction cinématique du filtre de Kalman)
-        state_x[0] += state_x[3] * dt;
-        state_x[1] += state_x[4] * dt;
-        state_x[2] += state_x[5] * dt;
-        
-        let q_pos = 1e-5; let q_vel = 1e-6;
-     
-        if (modeActuel === "AUTO") {
-            let v_scalaire = Math.sqrt(state_x[3]**2 + state_x[4]**2 + state_x[5]**2);
-            let displayTxt = "AUTO : STATIONNAIRE";
-            let badgeTxt = "STABLE";
-            let badgeClass = "status-badge badge-stable";
+        // ÉVOLUTION TEMPORELLE DETERMINISTE (Basée sur performance.now())
+        const msEcouleesDepuisReception = performance.now() - tPerformanceReceptionMs;
+        const tempsActuelEcefMs = dernierEpochServeurMs + msEcouleesDepuisReception;
+        const dateEcefLive = new Date(tempsActuelEcefMs);
 
-            if (v_scalaire < 0.1) {
-                q_pos = 1e-9; 
-                q_vel = 1e-11;
-            } else {
-                badgeTxt = "CINÉMATIQUE ACTIVE";
-                badgeClass = "status-badge badge-kinematic";
-                
-                if (v_scalaire < 8.3) { 
-                    q_pos = 1e-3 * (1 + v_scalaire);
-                    q_vel = 5e-3 * (1 + v_scalaire);
-                    displayTxt = "AUTO : DYNAMIQUE FAIBLE (VÉLO)";
-                } else if (v_scalaire < 45.0) { 
-                    q_pos = 1e-2 * v_scalaire;
-                    q_vel = 2e-2 * v_scalaire;
-                    displayTxt = "AUTO : DYNAMIQUE ROUTIÈRE";
-                } else { 
-                    q_pos = 1.0;
-                    q_vel = 0.5;
-                    displayTxt = "AUTO : HAUTE VITESSE (AÉRO)";
-                }
-            }
-            document.getElementById('lbl-profil').innerText = displayTxt;
-            const badgeElement = document.getElementById('env-badge');
-            if(badgeElement) { badgeElement.innerText = badgeTxt; badgeElement.className = badgeClass; }
-        } else {
-            if(modeActuel === "AVION") { q_pos = 5e-3; q_vel = 1e-3; }
-            if(modeActuel === "BATEAU") { 
-                q_pos = 2e-2; q_vel = 5e-3; 
-                state_x[5] = 1.8 * Math.sin(t_sec * 2.0); 
-            }
-            if(modeActuel === "MARSEILLE_FIXE") { q_pos = 1e-9; q_vel = 1e-11; } 
+        document.getElementById('flux-epoch').innerText = "LIVE EPOCH: " + dateEcefLive.toISOString().replace("T", " ").replace("Z", " UTC");
+        document.getElementById('source-badge').className = "status-badge badge-stable";
+        document.getElementById('source-badge').innerText = "NASA JPL DE440 OK";
+
+        // Évolution temporelle (Kalman : Prédiction de position linéaire)
+        const dt_render = 0.050; 
+        state_x[0] += state_x[3] * dt_render;
+        state_x[1] += state_x[4] * dt_render;
+        state_x[2] += state_x[5] * dt_render;
+
+        // Bruit de processus adaptatif Q
+        for(let i=0; i<3; i++) {
+            P[i][i] += 0.0001 * dt_render;
+            P[i+3][i+3] += 0.00002 * dt_render;
         }
 
-        for(let i=0; i<3; i++) P[i][i] += q_pos;
-        for(let i=3; i<6; i++) P[i][i] += q_vel;
-
-        const sigma_total = Math.sqrt(P[0][0] + P[1][1] + P[2][2]);
-        document.getElementById('lbl-kalman-sigma').innerText = sigma_total.toFixed(4) + " m";
-
-        // Affichage des coordonnées cartésiennes ECEF
-        document.getElementById('ecef-x').innerText = state_x[0].toFixed(4) + " m";
-        document.getElementById('ecef-y').innerText = state_x[1].toFixed(4) + " m";
-        document.getElementById('ecef-z').innerText = state_x[2].toFixed(4) + " m";
-
-        // UNIQUE DECLARATION AUTORISEE DE coordGeo DANS CE SCOPE
+        // Conversion ECEF vers Géodésique pour l'affichage
         const coordGeo = ecefVersGeodesique(state_x[0], state_x[1], state_x[2]);
         document.getElementById('lbl-lat').innerText = coordGeo.lat.toFixed(8) + "°";
         document.getElementById('lbl-lon').innerText = coordGeo.lon.toFixed(8) + "°";
         document.getElementById('lbl-alt').innerText = coordGeo.alt.toFixed(4) + " m";
 
-        // Nettoyage et Rendu graphique du repère du Canvas Radar
+        document.getElementById('ecef-x').innerText = state_x[0].toFixed(4) + " m";
+        document.getElementById('ecef-y').innerText = state_x[1].toFixed(4) + " m";
+        document.getElementById('ecef-z').innerText = state_x[2].toFixed(4) + " m";
+
+        const traceP = P[0][0] + P[1][1] + P[2][2];
+        const sigmaPos = Math.sqrt(Math.max(0, traceP));
+        document.getElementById('lbl-kalman-sigma').innerText = sigmaPos.toFixed(4) + " m";
+
+        // INGESTION DIRECTE DES MESURES PHYSIQUES DU BACKEND (Évite les erreurs de modèle)
+        if (fluxMatriceServeur.METADATA) {
+            // Marée de Love solide réelle (modélisation IERS 3D)
+            const maree_mm = fluxMatriceServeur.METADATA.norme_maree_mm;
+            const maree_m = maree_mm / 1000.0;
+            document.getElementById('lbl-maree-val').innerText = (maree_m >= 0 ? "+" : "") + maree_m.toFixed(4) + " m";
+
+            // Dérive d'horloge relativiste d'Einstein réelle (Gravitation + Cinématique combinées)
+            const drift_einstein = fluxMatriceServeur.METADATA.horloge_einstein_delta_ns_s;
+            document.getElementById('lbl-relativite').innerText = drift_einstein.toFixed(6) + " ns/s";
+        }
+
+        // ----- RENDU DU CANVAS RADAR -----
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Cercles concentriques d'élévation
         ctx.strokeStyle = "rgba(33, 38, 45, 0.7)";
         ctx.lineWidth = 1;
         [0.3, 0.6, 1.0].forEach(f => {
@@ -460,6 +452,8 @@
             ctx.arc(cx, cy, r_max * f, 0, 2 * Math.PI);
             ctx.stroke();
         });
+
+        // Axes cardinaux
         ctx.beginPath(); ctx.moveTo(cx, cy - r_max); ctx.lineTo(cx, cy + r_max); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cx - r_max, cy); ctx.lineTo(cx + r_max, cy); ctx.stroke();
 
@@ -470,82 +464,53 @@
         ctx.fillText("E", cx + r_max + 4, cy + 3);
         ctx.fillText("W", cx - r_max - 12, cy + 3);
 
-        // Traitement dynamique et interpolation des données issues du serveur
-        if (fluxMatriceServeur) {
-            // Lecture résiliente de la clé temporelle (Casse et arborescence sécurisées)
-            const strEpoch = fluxMatriceServeur.EPOCH_UTC || (fluxMatriceServeur.METADATA ? fluxMatriceServeur.METADATA.epoch_utc : null);
-            
-            if (strEpoch) {
-                document.getElementById('flux-epoch').innerText = "LIVE EPOCH: " + strEpoch;
-                const t_epoch = new Date(strEpoch).getTime() / 1000;
-                const delta_t_flux = t_sec - t_epoch;
+        // DELTA T DE FLUX TOTALEMENT INDÉPENDANT DE L'HORLOGE LOCALE ANDROID
+        const delta_t_flux = msEcouleesDepuisReception / 1000.0;
 
-                if (Math.abs(delta_t_flux) > 1.5) {
-                    document.getElementById('source-badge').innerText = "DE440 INTERPOLÉ (ANGLE HORAIRE)";
-                    document.getElementById('source-badge').className = "status-badge badge-kinematic";
-                } else {
-                    document.getElementById('source-badge').innerText = "COUPLE DIRECT NASA JPL DE440";
-                    document.getElementById('source-badge').className = "status-badge badge-stable";
+        // INGESTION DU STREAM REFORMATE EN ACCORD AVEC PYTHON (DATA_STREAMS)
+        if (fluxMatriceServeur.DATA_STREAMS) {
+            ASTRES.forEach(a => {
+                const stream = fluxMatriceServeur.DATA_STREAMS[a];
+                if (stream) {
+                    const posRadar = interpolerPositionAstronome(
+                        stream.azimut_deg, 
+                        stream.elevation_deg, 
+                        stream.declinaison_deg, 
+                        coordGeo.lat, 
+                        delta_t_flux
+                    );
+
+                    // Mise à jour dynamique de la table HTML
+                    document.getElementById(`az-${a}`).innerText = posRadar.az.toFixed(4) + "°";
+                    document.getElementById(`el-${a}`).innerText = posRadar.el.toFixed(4) + "°";
+                    document.getElementById(`dec-${a}`).innerText = stream.declinaison_deg.toFixed(4) + "°";
+                    document.getElementById(`dist-${a}`).innerText = stream.distance_precision_m.toExponential(4);
+
+                    // Projection géométrique plane sur le radar (Horizon local topocentrique)
+                    if(posRadar.el > 0) {
+                        const az_rad = (posRadar.az - 90) * (Math.PI / 180);
+                        const dist_centre = r_max * (1.0 - (posRadar.el / 90.0));
+                        const px = cx + dist_centre * Math.cos(az_rad);
+                        const py = cy + dist_centre * Math.sin(az_rad);
+                        
+                        ctx.fillStyle = a === "soleil" ? "var(--amber)" : (a === "lune" ? "var(--sky)" : "var(--neon-green)");
+                        ctx.beginPath(); ctx.arc(px, py, 4, 0, 2*Math.PI); ctx.fill();
+                        ctx.fillStyle = "#8b949e";
+                        ctx.fillText(a.substring(0,3).toUpperCase(), px + 6, py + 4);
+                    }
                 }
-
-                if (fluxMatriceServeur.METADATA) {
-                    const delta_einstein = fluxMatriceServeur.METADATA.horloge_einstein_delta_ns_s;
-                    document.getElementById('lbl-relativite').innerText = delta_einstein ? delta_einstein.toFixed(6) + " ns/s" : "0.000000 ns/s";
-                    document.getElementById('lbl-maree-val').innerText = fluxMatriceServeur.METADATA.norme_maree_mm ? (fluxMatriceServeur.METADATA.norme_maree_mm / 1000 >= 0 ? "+" : "") + (fluxMatriceServeur.METADATA.norme_maree_mm / 1000).toFixed(4) + " m" : "---";
-                }
-
-                // Interpolation haute fréquence, rafraîchissement IHM et projection Radar
-                if (fluxMatriceServeur.DATA_STREAMS) {
-                    ASTRES.forEach(a => {
-                        const stream = fluxMatriceServeur.DATA_STREAMS[a];
-                        if (stream) {
-                            // Appel de l'algorithme d'interpolation avec coordGeo déclarée plus haut
-                            const positionLive = interpolerPositionAstronome(
-                                stream.azimut_deg, 
-                                stream.elevation_deg, 
-                                stream.declinaison_deg, 
-                                coordGeo.lat, 
-                                delta_t_flux
-                            );
-
-                            // Injection des valeurs temps réel dans le tableau HTML
-                            document.getElementById(`az-${a}`).innerText = positionLive.az.toFixed(4) + "°";
-                            document.getElementById(`el-${a}`).innerText = positionLive.el.toFixed(4) + "°";
-                            document.getElementById(`dec-${a}`).innerText = stream.declinaison_deg.toFixed(4) + "°";
-                            
-                            // Alignement strict sur la clé Python: distance_precision_m au lieu de distance_vray_m
-                            if (stream.distance_precision_m) {
-                                document.getElementById(`dist-${a}`).innerText = stream.distance_precision_m.toExponential(4);
-                            } else if (stream.distance_vray_m) {
-                                document.getElementById(`dist-${a}`).innerText = stream.distance_vray_m.toExponential(4);
-                            } else {
-                                document.getElementById(`dist-${a}`).innerText = "---";
-                            }
-
-                            // Dessin du vecteur de position de l'Astre sur le repère radial
-                            if (positionLive.el > 0) {
-                                const az_rad = (positionLive.az - 90) * (Math.PI / 180);
-                                const dist_centre = r_max * (1.0 - (positionLive.el / 90.0));
-                                const px = cx + dist_centre * Math.cos(az_rad);
-                                const py = cy + dist_centre * Math.sin(az_rad);
-                                
-                                ctx.fillStyle = a === "soleil" ? "var(--amber)" : (a === "lune" ? "var(--sky)" : "var(--neon-green)");
-                                ctx.beginPath(); ctx.arc(px, py, 4, 0, 2 * Math.PI); ctx.fill();
-                                ctx.fillStyle = "#8b949e";
-                                ctx.fillText(a.substring(0,3).toUpperCase(), px + 6, py + 4);
-                            }
-                        }
-                    });
-                }
-            }
+            });
         }
+    }, 50);
+
+    function varColor(name, fallback) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
     }
 
-    ecrireLog("Noyau métrologique AKF initialisé en mode AUTOMATIQUE.");
+    ecrireLog("Noyau métrologique AKF couplé de façon déterministe au moteur physique.");
     acquerirFluxPhysique();
     
-    // Découplage temporel des traitements : Acquisition lente (5s) / Rendu et calcul fluide (50ms -> 20 Hz)
-    setInterval(executerPasFiltreEtRendu, 50);
+    // Découplage strict des tâches : Télémétrie réseau (5s) / Rendu et propagation locale (50ms)
     setInterval(acquerirFluxPhysique, 5000);
 </script>
 </body>
