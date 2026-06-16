@@ -2,88 +2,88 @@
     "METADATA": {
         "infrastructure": "SYSTEMA SENTINELA v8.5.2 — NOYAU TRIDIMENSIONNEL DET",
         "mode_environnement_execution": "MARSEILLE_FIXE",
-        "epoch_utc": "2026-06-16T20:32:07.455434Z",
+        "epoch_utc": "2026-06-16T22:34:32.549959Z",
         "maree_solide_composante_xyz_m": [
-            -0.1194894824677791,
-            0.012600929213692207,
-            -0.0989917989586574
+            -0.11951671733797878,
+            0.010726234376376358,
+            -0.10042067237014532
         ],
-        "norme_maree_mm": 155.67882353916158,
-        "horloge_einstein_delta_ns_s": -0.6966198495904267,
+        "norme_maree_mm": 156.47239138715605,
+        "horloge_einstein_delta_ns_s": -0.6966198497135154,
         "pression_base_hpa": 1013.25,
         "temperature_base_k": 288.15,
         "modelisation_troposphere": "SAASTAMOINEN + ZWD DYNAMIQUE",
         "synchronisation": "STRICT_EPHEMERIS_DE440"
     },
-    "EPOCH_UTC": "2026-06-16T20:32:07.455434Z",
+    "EPOCH_UTC": "2026-06-16T22:34:32.549959Z",
     "MATRICE_ECEF_REEL": {
-        "X_mètres": 4630100.430804589,
-        "Y_mètres": 434290.57530270127,
-        "Z_mètres": 4350620.147424978
+        "X_mètres": 4630100.430777354,
+        "Y_mètres": 434290.57342800644,
+        "Z_mètres": 4350620.145996105
     },
     "DATA_STREAMS": {
         "soleil": {
-            "azimut_deg": 317.0707031574515,
-            "elevation_deg": -10.67520926867129,
-            "declinaison_deg": 23.351748177037372,
-            "ascension_droite_deg": 84.91753799940781,
-            "distance_precision_m": 151973604596.20624
+            "azimut_deg": 343.9904156463985,
+            "elevation_deg": -21.68650967352112,
+            "declinaison_deg": 23.354380913017174,
+            "ascension_droite_deg": 85.00678834835342,
+            "distance_precision_m": 151975848604.5461
         },
         "lune": {
-            "azimut_deg": 298.89913839636665,
-            "elevation_deg": 5.395642189360796,
-            "declinaison_deg": 24.553672391679846,
-            "ascension_droite_deg": 111.41337517410196,
-            "distance_precision_m": 359944369.6210575
+            "azimut_deg": 319.52477383563877,
+            "elevation_deg": -11.327278701975892,
+            "declinaison_deg": 24.14374171947546,
+            "ascension_droite_deg": 112.99842338411042,
+            "distance_precision_m": 362104215.55218685
         },
         "mercure": {
-            "azimut_deg": 297.5677286457636,
-            "elevation_deg": 4.232564335279057,
-            "declinaison_deg": 22.794694144044854,
-            "ascension_droite_deg": 111.56389128228105,
-            "distance_precision_m": 120373222426.033
+            "azimut_deg": 319.89886674011746,
+            "elevation_deg": -13.144454000654443,
+            "declinaison_deg": 22.768093494681523,
+            "ascension_droite_deg": 111.64414633959865,
+            "distance_precision_m": 120160744787.27806
         },
         "venus": {
-            "azimut_deg": 286.88556297372554,
-            "elevation_deg": 13.172895522909801,
-            "declinaison_deg": 21.31741482412613,
-            "ascension_droite_deg": 126.40355349226539,
-            "distance_precision_m": 171639837903.08276
+            "azimut_deg": 307.51513808976176,
+            "elevation_deg": -6.57460473137668,
+            "declinaison_deg": 21.293351284664162,
+            "ascension_droite_deg": 126.50642818591812,
+            "distance_precision_m": 171551078516.5546
         },
         "mars": {
-            "azimut_deg": 348.53919020027445,
-            "elevation_deg": -28.269960511109236,
-            "declinaison_deg": 17.56398556895505,
-            "ascension_droite_deg": 48.718949244500536,
-            "distance_precision_m": 321030452734.6718
+            "azimut_deg": 21.36545671092186,
+            "elevation_deg": -26.304999957163293,
+            "declinaison_deg": 17.581068440953327,
+            "ascension_droite_deg": 48.78162497450725,
+            "distance_precision_m": 320997186585.9038
         },
         "jupiter": {
-            "azimut_deg": 291.59481527754645,
-            "elevation_deg": 7.987107924985447,
-            "declinaison_deg": 21.206439812153462,
-            "ascension_droite_deg": 118.94592372841436,
-            "distance_precision_m": 914163794224.7606
+            "azimut_deg": 313.1875320581651,
+            "elevation_deg": -10.815925219123272,
+            "declinaison_deg": 21.20310821345551,
+            "ascension_droite_deg": 118.96429272805635,
+            "distance_precision_m": 914274055576.653
         },
         "saturne": {
-            "azimut_deg": 32.86976661295193,
-            "elevation_deg": -38.27359344502346,
-            "declinaison_deg": 3.014794162458352,
-            "ascension_droite_deg": 12.915392852680226,
-            "distance_precision_m": 1455053778760.2437
+            "azimut_deg": 62.88474303802247,
+            "elevation_deg": -21.659184812821,
+            "declinaison_deg": 3.016581283154845,
+            "ascension_droite_deg": 12.920637574051169,
+            "distance_precision_m": 1454850827284.6177
         },
         "uranus": {
-            "azimut_deg": 337.18687432093344,
-            "elevation_deg": -22.86043750018444,
-            "declinaison_deg": 20.5207964954829,
-            "ascension_droite_deg": 60.558976463523045,
-            "distance_precision_m": 3050802243448.5312
+            "azimut_deg": 8.569493660115166,
+            "elevation_deg": -25.658257212858363,
+            "declinaison_deg": 20.52170274436188,
+            "ascension_droite_deg": 60.56390666639115,
+            "distance_precision_m": 3050718803374.337
         },
         "neptune": {
-            "azimut_deg": 44.26391143208277,
-            "elevation_deg": -36.69292588812277,
-            "declinaison_deg": 0.3192899230155001,
-            "ascension_droite_deg": 4.144917987038455,
-            "distance_precision_m": 4490247529448.259
+            "azimut_deg": 71.71426539659947,
+            "elevation_deg": -17.765202963091845,
+            "declinaison_deg": 0.31959604765258337,
+            "ascension_droite_deg": 4.145858657557755,
+            "distance_precision_m": 4490033892835.172
         }
     }
 }
