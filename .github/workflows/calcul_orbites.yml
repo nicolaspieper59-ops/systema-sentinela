@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       profile:
-        description: 'Sélection du profil d''espace-temps'
+        description: "Sélection du profil d'espace-temps"
         required: true
         default: 'MARSEILLE_FIXE'
         type: choice
@@ -46,7 +46,8 @@ jobs:
           PROFILE_MODE="MARSEILLE_FIXE"
         fi
         echo "[EXECUTION] Lancement du moteur sous le profil : $PROFILE_MODE"
-        python dynamic_multiphysics_engine.py $PROFILE_MODE
+        # Correction ici : exécute le fichier nettoyé de ses parenthèses
+        python dynamic_multiphysics_engine.py "$PROFILE_MODE"
 
     - name: Déploiement et sauvegarde du flux de données
       env:
@@ -57,7 +58,7 @@ jobs:
         
         git add flux_live.json
         if ! git diff-index --quiet HEAD --; then
-          git commit -m "Mise à jour métrologique JPL DE440 v8.3.5 : $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          git commit -m "Mise à jour métrologique JPL DE440 v8.5.2 : $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref_name }}
         else
           echo "La Terre n'a pas bougé de manière significative depuis le dernier tic d'horloge."
