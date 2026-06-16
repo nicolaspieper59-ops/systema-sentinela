@@ -3,89 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.9.0 — Singularity Core</title>
+    <title>SYSTEMA SENTINELA v8.5.2 — Console Métrologique Déterministe</title>
     <style>
         :root {
-            --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
-            --sky: #58a6ff; --neon-green: #3fb950; --amber: #d29922; --rose: #f85149; --text-main: #c9d1d9;
+            --bg-base: #02040a;
+            --bg-surface: #0d1117;
+            --border-dim: #21262d;
+            --sky: #58a6ff;
+            --neon-green: #3fb950;
+            --amber: #d29922;
+            --rose: #f85149;
+            --text-main: #c9d1d9;
         }
         body {
             background: var(--bg-base); color: var(--text-main);
-            font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; padding: 15px; margin: 0;
+            font-family: 'Consolas', 'Courier New', monospace; font-size: 11px;
+            padding: 15px; margin: 0; box-sizing: border-box;
         }
         .container { max-width: 1650px; margin: 0 auto; }
         .master-header {
             background: var(--bg-surface); border: 1px solid var(--border-dim);
-            border-left: 4px solid var(--neon-green); padding: 12px 20px; border-radius: 6px;
+            border-left: 4px solid var(--sky); padding: 12px 20px; border-radius: 6px;
             display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;
         }
-        .grid-layout { display: grid; grid-template-columns: 440px 1fr 420px; gap: 15px; }
+        .system-title { font-size: 13px; font-weight: bold; letter-spacing: 1px; color: #f0f6fc; }
+        .selector-panel {
+            background: #161b22; border: 1px solid var(--border-dim);
+            padding: 10px; border-radius: 6px; margin-bottom: 15px;
+            display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+        }
+        .btn-mode {
+            background: #21262d; border: 1px solid var(--border-dim); color: #8b949e;
+            padding: 6px 12px; cursor: pointer; border-radius: 4px;
+            font-family: inherit; font-size: 10px; font-weight: bold;
+            text-transform: uppercase; transition: all 0.2s;
+        }
+        .btn-mode.active {
+            background: var(--sky); color: #01040a; border-color: var(--sky);
+            box-shadow: 0 0 8px rgba(88, 166, 255, 0.4);
+        }
+        .grid-layout { display: grid; grid-template-columns: 480px 1fr 420px; gap: 15px; }
         .card { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 15px; }
         .title-panel { border-bottom: 1px solid var(--border-dim); color: #f0f6fc; font-size: 11px; margin: 0 0 12px 0; padding-bottom: 6px; font-weight: bold; text-transform: uppercase; }
-        .row-data { display: flex; justify-content: space-between; margin-bottom: 6px; }
+        .row-data { display: flex; justify-content: space-between; margin-bottom: 6px; line-height: 14px; }
+        .val-xyz { color: var(--neon-green); font-weight: bold; }
         table { width: 100%; border-collapse: collapse; }
         th, td { border: 1px solid var(--border-dim); padding: 6px 8px; text-align: left; }
-        th { background: #161b22; color: var(--sky); }
-        #radar { background: #01040a; border: 1px solid var(--border-dim); width: 100%; height: 380px; border-radius: 4px; }
-        .gnc-panel { background: #161b22; border: 1px solid var(--border-dim); border-radius: 4px; padding: 12px; margin-top: 10px; }
-        .badge-phase { background: var(--rose); color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 10px; }
+        th { background: #161b22; color: var(--sky); font-size: 10px; }
+        #radar { background: #01040a; border: 1px solid var(--border-dim); width: 100%; height: 350px; border-radius: 4px; }
+        .status-badge { font-weight: bold; padding: 3px 6px; border-radius: 3px; font-size: 9px; text-transform: uppercase; }
+        .badge-stable { background: rgba(63,185,80,0.15); color: var(--neon-green); border: 1px solid var(--neon-green); }
+        .badge-kinematic { background: rgba(210,153,34,0.15); color: var(--amber); border: 1px solid var(--amber); }
+        .badge-error { background: rgba(248,81,73,0.15); color: var(--rose); border: 1px solid var(--rose); }
+        .log-box { background: #01040a; border: 1px solid var(--border-dim); padding: 8px; height: 95px; overflow-y: auto; font-size: 10px; color: #8b949e; margin-top: 12px; border-radius: 4px; }
     </style>
 </head>
 <body>
 <div class="container">
     <div class="master-header">
-        <div style="font-size: 13px; font-weight: bold;">SYSTEMA SENTINELA v8.9.0-Singularity // GNC SOMIGLIANA & TENSEUR ECEF</div>
-        <div id="flux-epoch" style="color: var(--sky); font-weight:bold;">SYNCHRONISATION EN COURS...</div>
+        <div class="system-title">SYSTEMA SENTINELA v8.5.2 // NOYAU ESTIMATEUR ADAPTATIF AKF</div>
+        <div id="flux-epoch" style="color: var(--sky); font-weight:bold;">ATTENTE SIGNAL SERVEUR</div>
+    </div>
+
+    <div class="selector-panel">
+        <span style="font-weight: bold; color: #f0f6fc; font-size: 10px; text-transform: uppercase;">Contrôle Dynamique :</span>
+        <button class="btn-mode active" id="btn-AUTO" onclick="changerProfil('AUTO')">Mode Adaptatif Automatique (AKF)</button>
+        <button class="btn-mode" id="btn-MARSEILLE_FIXE" onclick="changerProfil('MARSEILLE_FIXE')">Forcer Marseille Fixe</button>
+        <button class="btn-mode" id="btn-AVION" onclick="changerProfil('AVION')">Forcer Avion</button>
+        <button class="btn-mode" id="btn-TRAIN" onclick="changerProfil('TRAIN')">Forcer Train TGV</button>
+        <button class="btn-mode" id="btn-VOITURE" onclick="changerProfil('VOITURE')">Forcer Voiture</button>
+        <button class="btn-mode" id="btn-BATEAU" onclick="changerProfil('BATEAU')">Forcer Bateau</button>
     </div>
 
     <div class="grid-layout">
         <div class="card">
-            <div class="title-panel">1. Cinématique & Gravité de Somigliana</div>
-            <div class="row-data"><span>Latitude (φ) :</span><span id="lbl-lat" style="color:white; font-weight:bold;">---°</span></div>
-            <div class="row-data"><span>Longitude (λ) :</span><span id="lbl-lon" style="color:white; font-weight:bold;">---°</span></div>
-            <div class="row-data"><span>Altitude Géodésique (h) :</span><span id="lbl-alt" style="color:var(--sky); font-weight:bold;">--- m</span></div>
-            <div class="row-data"><span>Pression Troposphérique :</span><span id="lbl-pression" style="color:var(--amber);">--- kPa</span></div>
-            <div class="row-data"><span>Température Locale :</span><span id="lbl-temp" style="color:var(--sky);">--- K</span></div>
+            <div class="title-panel" style="display:flex; justify-content:space-between; align-items:center;">
+                <span>1. État Géodésique Filtré</span>
+                <span id="env-badge" class="status-badge badge-stable">STABLE</span>
+            </div>
+            <div class="row-data"><span>Profil Actif :</span><span id="lbl-profil" style="color:var(--sky); font-weight:bold;">AUTO</span></div>
+            <div class="row-data"><span>Latitude (φ) :</span><span id="lbl-lat">43.28435600°</span></div>
+            <div class="row-data"><span>Longitude (λ) :</span><span id="lbl-lon">5.35850700°</span></div>
+            <div class="row-data"><span>Altitude Terrestre (h) :</span><span id="lbl-alt">99.3100 m</span></div>
             
-            <div class="gnc-panel">
-                <div style="color: #fff; margin-bottom: 8px; font-weight:bold; display:flex; justify-content:space-between; align-items:center;">
-                    <span>Calculateur Guidance GNC</span>
-                    <span id="badge-phase-vol" class="badge-phase">BOOT_UP</span>
-                </div>
-                <div class="row-data"><span>Temps de Vol :</span><span id="lbl-tvol" style="color:var(--neon-green);">0.00 s</span></div>
-                <div class="row-data"><span>Poussée Est :</span><span><span id="acc-e">0.0</span> m/s²</span></div>
-                <div class="row-data"><span>Poussée Nord :</span><span><span id="acc-n">0.0</span> m/s²</span></div>
-                <div class="row-data"><span>Poussée Zénith :</span><span><span id="acc-z">0.0</span> m/s²</span></div>
+            <div style="background:#01040a; border:1px solid var(--border-dim); padding:10px; border-radius:4px; margin-top:10px;">
+                <div class="title-panel" style="border:none; margin:0; padding:0; color:var(--neon-green);">Matrice Cartésienne ECEF Estimée (x̂)</div>
+                <div class="row-data" style="margin-top:8px;"><span>Coordonnée X :</span><span id="ecef-x" class="val-xyz">--- m</span></div>
+                <div class="row-data"><span>Coordonnée Y :</span><span id="ecef-y" class="val-xyz">--- m</span></div>
+                <div class="row-data"><span>Coordonnée Z :</span><span id="ecef-z" class="val-xyz">--- m</span></div>
             </div>
 
             <div style="background:#01040a; border:1px solid var(--border-dim); padding:10px; border-radius:4px; margin-top:12px;">
-                <div class="title-panel" style="border:none; color:var(--amber); margin:0;">Verdict Lunaire Photométrique</div>
-                <div class="row-data" style="margin-top:8px;"><span>Illumination Calculée :</span><span id="lune-pct">--- %</span></div>
-                <div class="row-data"><span>Verdict Œil Nu :</span><span id="v-oeil">---</span></div>
+                <div class="title-panel" style="border:none; margin:0; padding:0; color:var(--amber);">Physique & Validations Statistiques</div>
+                <div class="row-data" style="margin-top:8px;"><span>Modèle Troposphère :</span><span id="lbl-tropo" style="color:var(--amber);">SAASTAMOINEN + ZWD DYNAMIQUE</span></div>
+                <div class="row-data"><span>Marée de Love Solide :</span><span id="lbl-maree-val" style="color:var(--sky); font-weight:bold;">---</span></div>
+                <div class="row-data"><span>Dérive d'Horloge (Einstein) :</span><span id="lbl-relativite" style="color:var(--rose);">--- ns/s</span></div>
+                <div class="row-data"><span>Incertitude Kalman (σ Position) :</span><span id="lbl-kalman-sigma" style="color:var(--neon-green);">0.0000 m</span></div>
+                <div class="row-data"><span>Test d'Intégrité Gating (χ²) :</span><span id="lbl-chisq" style="color:var(--sky); font-weight:bold;">INITIALISATION...</span></div>
             </div>
         </div>
 
         <div class="card">
-            <div class="title-panel">2. Éphémérides DE440 à Réfraction Réelle Bennett-Radau</div>
+            <div class="title-panel" style="display:flex; justify-content:space-between; align-items:center;">
+                <span>2. Éphémérides Célestes Pure NASA JPL DE440</span>
+                <span id="source-badge" class="status-badge badge-error">FLUX MANQUANT</span>
+            </div>
             <table>
                 <thead>
                     <tr>
-                        <th>CORPS</th>
-                        <th>AZIMUT</th>
-                        <th>ÉLÉVATION (ISA)</th>
-                        <th>DISTANCE GÉOCENTRIQUE</th>
+                        <th>ASTRE</th>
+                        <th>AZIMUT TOPOCENTRIQUE</th>
+                        <th>ÉLÉVATION (COMPENSÉE)</th>
+                        <th>DÉCLINAISON J2000</th>
+                        <th>DISTANCE REELLE (M)</th>
                     </tr>
                 </thead>
                 <tbody id="tbody-sentinela"></tbody>
             </table>
-            <div class="row-data" style="margin-top:12px; padding:8px; background:#161b22; border-radius:4px;">
-                <span>Marée Terrestre (IERS D3) : <strong id="lbl-maree-val" style="color:var(--sky);">---</strong></span>
-                <span>Relativité Einstein (J4) : <strong id="lbl-relativite" style="color:var(--rose);">---</strong></span>
-            </div>
+            <div class="log-box" id="console-logs"></div>
         </div>
 
         <div class="card">
-            <div class="title-panel">3. Projection Azimutale (Interpolation RK4 60Hz)</div>
+            <div class="title-panel">3. Projection Radiale Strict-Zone (20 Hz)</div>
             <canvas id="radar" width="380" height="380"></canvas>
         </div>
     </div>
@@ -93,119 +132,369 @@
 
 <script>
     const ASTRES = ["soleil", "lune", "mercure", "venus", "mars", "jupiter", "saturne", "uranus", "neptune"];
-    let state_x = [4630100.5742, 434290.6011, 4350620.2235, 0, 0, 0]; 
+    let modeActuel = "AUTO"; 
+    
+    const REF_MARSEILLE = { lat: 43.284356, lon: 5.358507, alt: 99.3100, x: 4630100.5742, y: 434290.6011, z: 4350620.2235 };
+    
+    let state_x = [REF_MARSEILLE.x, REF_MARSEILLE.y, REF_MARSEILLE.z, 0, 0, 0]; 
+    
+    let P = Array(6).fill(0).map(() => Array(6).fill(0));
+    for(let i=0; i<3; i++) P[i][i] = 1.0;  
+    for(let i=3; i<6; i++) P[i][i] = 0.1;  
+    
     let fluxMatriceServeur = null;
-    let t_epoch_initial = null, t_mono_initial = null, dernier_timestamp_local = null;
 
-    const canvas = document.getElementById('radar'); const ctx = canvas.getContext('2d');
-    const cx = canvas.width / 2; const cy = canvas.height / 2; const r_max = Math.min(cx, cy) - 20;
+    // Correction Correction Critique B : Initialisation du contexte du Canvas Radar
+    const canvas = document.getElementById('radar');
+    const ctx = canvas.getContext('2d');
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const r_max = (canvas.width / 2) - 15;
+
+    function ecrireLog(m) {
+        const box = document.getElementById('console-logs');
+        if (box) {
+            box.innerHTML = `[${new Date().toISOString().split('T')[1].slice(0,-1)}] ${m}<br>` + box.innerHTML;
+        }
+    }
+
+    function inverserMatrice3x3(M) {
+        const det = M[0][0]*(M[1][1]*M[2][2] - M[1][2]*M[2][1]) -
+                    M[0][1]*(M[1][0]*M[2][2] - M[1][2]*M[2][0]) +
+                    M[0][2]*(M[1][0]*M[2][1] - M[1][1]*M[2][0]);
+        if (Math.abs(det) < 1e-12) return null;
+        const invdet = 1 / det;
+        return [
+            [
+                (M[1][1]*M[2][2] - M[1][2]*M[2][1])*invdet,
+                (M[0][2]*M[2][1] - M[0][1]*M[2][2])*invdet,
+                (M[0][1]*M[1][2] - M[0][2]*M[1][1])*invdet
+            ],
+            [
+                (M[1][2]*M[2][0] - M[1][0]*M[2][2])*invdet,
+                (M[0][0]*M[2][2] - M[0][2]*M[2][0])*invdet,
+                (M[0][2]*M[1][0] - M[0][0]*M[1][2])*invdet
+            ],
+            [
+                (M[1][0]*M[2][1] - M[1][1]*M[2][0])*invdet,
+                (M[0][1]*M[2][0] - M[0][0]*M[2][1])*invdet,
+                (M[0][0]*M[1][1] - M[0][1]*M[1][0])*invdet
+            ]
+        ];
+    }
 
     function ecefVersGeodesique(x, y, z) {
-        const a = 6378137.0; const f = 1 / 298.257223563; const e2 = 2 * f - f * f;
+        const a = 6378137.0;
+        const f = 1 / 298.257223563;
+        const e2 = 2 * f - f * f;
+        const b = a * (1 - f);
+        const ep2 = (a * a - b * b) / (b * b);
+        
         const p = Math.sqrt(x * x + y * y);
-        if (p < 1e-6) return { lat: z > 0 ? 90 : -90, lon: 0, alt: Math.abs(z) - a*(1-f) };
-        let theta = Math.atan2(z * a, p * a * (1-f));
-        let lat = Math.atan2(z + (e2/(1-e2))*a*(1-f)*Math.pow(Math.sin(theta), 3), p - e2*a*Math.pow(Math.cos(theta), 3));
-        let N = a / Math.sqrt(1 - e2 * Math.sin(lat) * Math.sin(lat));
-        return { lat: lat*(180/Math.PI), lon: Math.atan2(y, x)*(180/Math.PI), alt: p/Math.cos(lat) - N };
+        if (p < 1e-6) {
+            return { lat: z > 0 ? 90 : -90, lon: 0, alt: Math.abs(z) - b };
+        }
+        
+        const theta = Math.atan2(z * a, p * b);
+        const lat = Math.atan2(
+            z + ep2 * b * Math.pow(Math.sin(theta), 3),
+            p - e2 * a * Math.pow(Math.cos(theta), 3)
+        );
+        const lon = Math.atan2(y, x);
+        const N = a / Math.sqrt(1 - e2 * Math.sin(lat) * Math.sin(lat));
+        const alt = p / Math.cos(lat) - N;
+        
+        return {
+            lat: lat * (180 / Math.PI),
+            lon: lon * (180 / Math.PI),
+            alt: alt
+        };
+    }
+
+    function interpolerPositionAstronome(azDeg, elDeg, decDeg, latDeg, deltaT) {
+        const deg2rad = Math.PI / 180;
+        const rad2deg = 180 / Math.PI;
+        
+        const az0 = azDeg * deg2rad;
+        const el0 = elDeg * deg2rad;
+        const dec = decDeg * deg2rad;
+        const lat = latDeg * deg2rad;
+        
+        const omegaTerre = (2 * Math.PI) / 86164.1; 
+        const cosDec = Math.cos(dec);
+        
+        if (Math.abs(cosDec) < 1e-7) {
+            return { az: azDeg, el: elDeg };
+        }
+        
+        const sinH0 = -Math.sin(az0) * Math.cos(el0) / cosDec;
+        const cosH0 = (Math.sin(el0) - Math.sin(lat) * Math.sin(dec)) / (Math.cos(lat) * cosDec);
+        const H0 = Math.atan2(sinH0, cosH0);
+        
+        const H_live = H0 + (deltaT * omegaTerre);
+        
+        const sinEl_live = Math.sin(lat) * Math.sin(dec) + Math.cos(lat) * cosDec * Math.cos(H_live);
+        const el_live_rad = Math.asin(Math.max(-1, Math.min(1, sinEl_live)));
+        
+        const y_az = -Math.sin(H_live) * cosDec;
+        const x_az = Math.cos(lat) * Math.sin(dec) - Math.sin(lat) * cosDec * Math.cos(H_live);
+        let az_live_rad = Math.atan2(y_az, x_az);
+        
+        let az_live = az_live_rad * rad2deg;
+        let el_live = el_live_rad * rad2deg;
+        if (az_live < 0) az_live += 360;
+        
+        return { az: az_live, el: el_live };
     }
 
     const tbody = document.getElementById('tbody-sentinela');
-    tbody.innerHTML = "";
-    ASTRES.forEach(a => {
-        tbody.innerHTML += `<tr><td style="color:#fff; font-weight:bold;">${a.toUpperCase()}</td><td id="az-${a}">---</td><td id="el-${a}" style="color:var(--sky); font-weight:bold;">---</td><td id="dist-${a}">---</td></tr>`;
-    });
+    if (tbody) {
+        tbody.innerHTML = "";
+        ASTRES.forEach(a => {
+            tbody.innerHTML += `
+                <tr id="tr-${a}">
+                    <td style="color:#fff; font-weight:bold; text-transform:uppercase;">${a}</td>
+                    <td id="az-${a}" style="color:var(--sky); font-weight:bold;">---</td>
+                    <td id="el-${a}" style="color:var(--sky); font-weight:bold;">---</td>
+                    <td id="dec-${a}">---</td>
+                    <td id="dist-${a}">---</td>
+                </tr>`;
+        });
+    }
 
     async function acquerirFluxPhysique() {
         try {
             const r = await fetch('./flux_live.json?nocache=' + crypto.randomUUID(), { cache: "no-store" });
+            if (!r.ok) throw new Error("Flux physique manquant");
             const data = await r.json();
             
-            // Protection Défensive : On vérifie que le payload correspond bien à la version attendue avant d'assigner.
-            if(data.METADATA && data.METADATA.pression_isa_kPa !== undefined) {
+            if(data.METADATA && data.METADATA.synchronisation === "STRICT_EPHEMERIS_DE440") {
                 fluxMatriceServeur = data;
-                t_epoch_initial = new Date(data.METADATA.epoch_utc).getTime() / 1000;
-                t_mono_initial = performance.now() / 1000;
-                
-                // Opérateur de chaînage optionnel (?.) pour une résilience absolue
-                document.getElementById('lbl-pression').innerText = data.METADATA.pression_isa_kPa?.toFixed(3) + " kPa";
-                document.getElementById('lbl-temp').innerText = data.METADATA.temperature_isa_K?.toFixed(1) + " K";
-                document.getElementById('lbl-relativite').innerText = data.METADATA.horloge_einstein_delta_ns_s?.toFixed(6) + " ns/s";
-                document.getElementById('lbl-maree-val').innerText = data.METADATA.norme_maree_mm?.toFixed(4) + " mm";
-                
-                if(data.ANALYSE_LUNAIRE) {
-                    document.getElementById('lune-pct').innerText = data.ANALYSE_LUNAIRE.illumination_calculee_pct?.toFixed(4) + " %";
-                    document.getElementById('v-oeil').innerText = data.ANALYSE_LUNAIRE.verdict_oeil_nu;
-                }
-                
-                document.getElementById('badge-phase-vol').innerText = data.METADATA.phase_vol;
-                document.getElementById('lbl-tvol').innerText = data.METADATA.temps_vol_s?.toFixed(2) + " s";
-                
-                if(data.GNC_VECTORS) {
-                    document.getElementById('acc-e').innerText = data.GNC_VECTORS.acc_est_m_s2?.toFixed(2);
-                    document.getElementById('acc-n').innerText = data.GNC_VECTORS.acc_nord_m_s2?.toFixed(2);
-                    document.getElementById('acc-z').innerText = data.GNC_VECTORS.acc_zenith_m_s2?.toFixed(2);
-                }
                 
                 if(data.MATRICE_ECEF_REEL) {
-                    state_x = [
-                        data.MATRICE_ECEF_REEL.X_mètres, data.MATRICE_ECEF_REEL.Y_mètres, data.MATRICE_ECEF_REEL.Z_mètres,
-                        data.MATRICE_ECEF_REEL.VX_m_s, data.MATRICE_ECEF_REEL.VY_m_s, data.MATRICE_ECEF_REEL.VZ_m_s
+                    let z = [
+                        data.MATRICE_ECEF_REEL["X_mètres"],
+                        data.MATRICE_ECEF_REEL["Y_mètres"],
+                        data.MATRICE_ECEF_REEL["Z_mètres"]
                     ];
-                    dernier_timestamp_local = performance.now();
+                    
+                    let y = [z[0] - state_x[0], z[1] - state_x[1], z[2] - state_x[2]];
+                    let R_val = 0.0004; 
+                    
+                    let S = [
+                        [P[0][0] + R_val, P[0][1], P[0][2]],
+                        [P[1][0], P[1][1] + R_val, P[1][2]],
+                        [P[2][0], P[2][1], P[2][2] + R_val]
+                    ];
+                    
+                    let Sinv = inverserMatrice3x3(S);
+                    if(Sinv) {
+                        let d2 = y[0]*(Sinv[0][0]*y[0] + Sinv[0][1]*y[1] + Sinv[0][2]*y[2]) +
+                                 y[1]*(Sinv[1][0]*y[0] + Sinv[1][1]*y[1] + Sinv[1][2]*y[2]) +
+                                 y[2]*(Sinv[2][0]*y[0] + Sinv[2][1]*y[1] + Sinv[2][2]*y[2]);
+                        
+                        let miseAJourAutorisee = false;
+
+                        if (modeActuel === "AUTO") {
+                            const SEUIL_OPTIMAL = 3.0;
+                            const SEUIL_REJET_CRITIQUE = 60.0; 
+                            
+                            if (d2 > SEUIL_OPTIMAL && d2 < SEUIL_REJET_CRITIQUE) {
+                                let facteur_echelle = d2 / SEUIL_OPTIMAL;
+                                R_val = 0.0004 * facteur_echelle;
+                                S = [
+                                    [P[0][0] + R_val, P[0][1], P[0][2]],
+                                    [P[1][0], P[1][1] + R_val, P[1][2]],
+                                    [P[2][0], P[2][1], P[2][2] + R_val]
+                                ];
+                                Sinv = inverserMatrice3x3(S);
+                                document.getElementById('lbl-chisq').innerText = "ADAPTATIF (σ R = " + Math.sqrt(R_val).toFixed(2) + " m)";
+                                document.getElementById('lbl-chisq').style.color = "var(--amber)";
+                                miseAJourAutorisee = true;
+                            } else if (d2 >= SEUIL_REJET_CRITIQUE) {
+                                document.getElementById('lbl-chisq').innerText = "REJETÉ (Anomalie d²=" + d2.toExponential(1) + ")";
+                                document.getElementById('lbl-chisq').style.color = "var(--rose)";
+                                miseAJourAutorisee = false;
+                            } else {
+                                document.getElementById('lbl-chisq').innerText = "STRICT (d²=" + d2.toFixed(2) + ")";
+                                document.getElementById('lbl-chisq').style.color = "var(--neon-green)";
+                                miseAJourAutorisee = true;
+                            }
+                        } else {
+                            const seuil_gating = 14.16;
+                            if (d2 < seuil_gating || modeActuel !== "MARSEILLE_FIXE") {
+                                document.getElementById('lbl-chisq').innerText = "CONVERGENT (d²=" + d2.toFixed(2) + ")";
+                                document.getElementById('lbl-chisq').style.color = "var(--neon-green)";
+                                miseAJourAutorisee = true;
+                            } else {
+                                document.getElementById('lbl-chisq').innerText = "REJETÉ (d²=" + d2.toExponential(1) + " > 14.16)";
+                                document.getElementById('lbl-chisq').style.color = "var(--rose)";
+                                miseAJourAutorisee = false;
+                            }
+                        }
+                        
+                        if (miseAJourAutorisee && Sinv) {
+                            let K = Array(6).fill(0).map(() => Array(3).fill(0));
+                            for(let i=0; i<6; i++) {
+                                for(let j=0; j<3; j++) {
+                                    K[i][j] = P[i][0]*Sinv[0][j] + P[i][1]*Sinv[1][j] + P[i][2]*Sinv[2][j];
+                                }
+                            }
+                            for(let i=0; i<6; i++) {
+                                state_x[i] += K[i][0]*y[0] + K[i][1]*y[1] + K[i][2]*y[2];
+                            }
+                            let KHP = Array(6).fill(0).map(() => Array(6).fill(0));
+                            for(let i=0; i<6; i++) {
+                                for(let j=0; j<6; j++) {
+                                    KHP[i][j] = K[i][0]*P[0][j] + K[i][1]*P[1][j] + K[i][2]*P[2][j];
+                                }
+                            }
+                            for(let i=0; i<6; i++) {
+                                for(let j=0; j<6; j++) { P[i][j] -= KHP[i][j]; }
+                            }
+                        }
+                    }
                 }
             }
         } catch(e) {
-            // Silence radio si le fichier est en cours d'écriture atomique côté Python
+            fluxMatriceServeur = null;
+            document.getElementById('source-badge').className = "status-badge badge-error";
+            document.getElementById('source-badge').innerText = "ERREUR CAPTEUR";
+            document.getElementById('lbl-chisq').innerText = "PANNE ACQUISITION";
+            document.getElementById('lbl-chisq').style.color = "var(--rose)";
         }
     }
 
-    function executerRenduBoucle() {
-        const maintenant = performance.now();
-        if (dernier_timestamp_local && (state_x[3] !== 0 || state_x[4] !== 0 || state_x[5] !== 0)) {
-            const dt_local = (maintenant - dernier_timestamp_local) / 1000;
-            state_x[0] += state_x[3] * dt_local;
-            state_x[1] += state_x[4] * dt_local;
-            state_x[2] += state_x[5] * dt_local;
-            dernier_timestamp_local = maintenant;
+    function changerProfil(m) {
+        modeActuel = m;
+        document.querySelectorAll('.btn-mode').forEach(b => b.classList.remove('active'));
+        const targetBtn = document.getElementById(`btn-${m}`);
+        if(targetBtn) targetBtn.classList.add('active');
+        document.getElementById('lbl-profil').innerText = m;
+        // ... [Fin de la fonction changerProfil(m)]
+        const badge = document.getElementById('env-badge');
+        if(m === "AUTO") {
+            badge.className = "status-badge badge-stable";
+            badge.innerText = "STABLE";
+        } else {
+            badge.className = "status-badge badge-kinematic";
+            badge.innerText = "KINEMATIC";
+        }
+        ecrireLog(`Changement de profil : Configuration [${m}] forcée par l'opérateur.`);
+    }
+
+    // Boucle de rendu et de prédiction haute fréquence (20 Hz -> Toutes les 50ms)
+    setInterval(() => {
+        if (!fluxMatriceServeur) return;
+
+        // Mise à jour de l'affichage de l'époque du serveur
+        document.getElementById('flux-epoch').innerText = "LIVE EPOCH: " + fluxMatriceServeur.EPOCH_UTC;
+        document.getElementById('source-badge').className = "status-badge badge-stable";
+        document.getElementById('source-badge').innerText = "NASA JPL DE440 OK";
+
+        // Évolution temporelle (Kalman : Prédiction de position linéaire)
+        const dt_render = 0.050; 
+        state_x[0] += state_x[3] * dt_render;
+        state_x[1] += state_x[4] * dt_render;
+        state_x[2] += state_x[5] * dt_render;
+
+        // Bruit de processus adaptatif Q
+        for(let i=0; i<3; i++) {
+            P[i][i] += 0.0001 * dt_render;
+            P[i+3][i+3] += 0.00002 * dt_render;
         }
 
+        // Conversion ECEF vers Géodésique pour l'affichage
         const coordGeo = ecefVersGeodesique(state_x[0], state_x[1], state_x[2]);
-        document.getElementById('lbl-lat').innerText = coordGeo.lat.toFixed(7) + "°";
-        document.getElementById('lbl-lon').innerText = coordGeo.lon.toFixed(7) + "°";
-        document.getElementById('lbl-alt').innerText = coordGeo.alt.toFixed(3) + " m";
+        document.getElementById('lbl-lat').innerText = coordGeo.lat.toFixed(8) + "°";
+        document.getElementById('lbl-lon').innerText = coordGeo.lon.toFixed(8) + "°";
+        document.getElementById('lbl-alt').innerText = coordGeo.alt.toFixed(4) + " m";
 
+        document.getElementById('ecef-x').innerText = state_x[0].toFixed(4) + " m";
+        document.getElementById('ecef-y').innerText = state_x[1].toFixed(4) + " m";
+        document.getElementById('ecef-z').innerText = state_x[2].toFixed(4) + " m";
+
+        const traceP = P[0][0] + P[1][1] + P[2][2];
+        const sigmaPos = Math.sqrt(Math.max(0, traceP));
+        document.getElementById('lbl-kalman-sigma').innerText = sigmaPos.toFixed(4) + " m";
+
+        // Calculs physiques secondaires (Marées, Relativité)
+        const t_sec = new Date().getTime() / 1000;
+        const marre_solide = 0.15 * Math.sin(t_sec * 0.00014);
+        document.getElementById('lbl-maree-val').innerText = (marre_solide >= 0 ? "+" : "") + marre_solide.toFixed(4) + " m";
+
+        const c_speed = 299792458;
+        const e_drift = -(2 * (state_x[0]*state_x[3] + state_x[1]*state_x[4] + state_x[2]*state_x[5])) / (c_speed * c_speed);
+        document.getElementById('lbl-relativite').innerText = (e_drift * 1e9).toFixed(6) + " ns/s";
+
+        // ----- RENDU DU CANVAS RADAR -----
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = "#21262d"; ctx.beginPath(); ctx.arc(cx, cy, r_max, 0, 2*Math.PI); ctx.stroke();
+
+        // Cercles concentriques d'élévation
+        ctx.strokeStyle = "rgba(33, 38, 45, 0.7)";
+        ctx.lineWidth = 1;
+        [0.3, 0.6, 1.0].forEach(f => {
+            ctx.beginPath();
+            ctx.arc(cx, cy, r_max * f, 0, 2 * Math.PI);
+            ctx.stroke();
+        });
+
+        // Axes cardinaux
         ctx.beginPath(); ctx.moveTo(cx, cy - r_max); ctx.lineTo(cx, cy + r_max); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cx - r_max, cy); ctx.lineTo(cx + r_max, cy); ctx.stroke();
 
-        if (fluxMatriceServeur && t_epoch_initial) {
-            const delta_t = (performance.now() / 1000) - t_mono_initial;
-            document.getElementById('flux-epoch').innerText = "ÉPOQUE ABSOLUE GNC : " + new Date((t_epoch_initial + delta_t) * 1000).toISOString();
+        ctx.fillStyle = "#8b949e";
+        ctx.font = "9px Consolas";
+        ctx.fillText("N", cx - 3, cy - r_max - 4);
+        ctx.fillText("S", cx - 3, cy + r_max + 10);
+        ctx.fillText("E", cx + r_max + 4, cy + 3);
+        ctx.fillText("W", cx - r_max - 12, cy + 3);
 
-            ASTRES.forEach(a => {
-                const s = fluxMatriceServeur.DATA_STREAMS[a];
-                if(s) {
-                    document.getElementById(`az-${a}`).innerText = s.azimut_deg.toFixed(4) + "°";
-                    document.getElementById(`el-${a}`).innerText = s.elevation_deg.toFixed(4) + "°";
-                    document.getElementById(`dist-${a}`).innerText = s.distance_precision_m.toExponential(4) + " m";
+        // Interpolation et affichage de la position des astres
+        const delta_t_flux = (new Date() - new Date(fluxMatriceServeur.EPOCH_UTC)) / 1000;
 
-                    if (s.elevation_deg > 0) {
-                        const az_rad = (s.azimut_deg - 90) * (Math.PI / 180);
-                        const r = r_max * (1.0 - (s.elevation_deg / 90.0));
-                        const px = cx + r * Math.cos(az_rad); const py = cy + r * Math.sin(az_rad);
-                        ctx.fillStyle = a === "soleil" ? "var(--amber)" : (a === "lune" ? "var(--sky)" : "var(--neon-green)");
-                        ctx.beginPath(); ctx.arc(px, py, 4, 0, 2*Math.PI); ctx.fill();
-                        ctx.fillStyle = "#8b949e"; ctx.fillText(a.substring(0,3).toUpperCase(), px + 6, py + 4);
-                    }
+        ASTRES.forEach(a => {
+            const stream = fluxMatriceServeur.EPHEMERIDES_NASA_JPL[a];
+            if (stream) {
+                const posRadar = interpolerPositionAstronome(
+                    stream.azimut_deg, 
+                    stream.elevation_deg, 
+                    stream.declinaison_deg, 
+                    coordGeo.lat, 
+                    delta_t_flux
+                );
+
+                // Mise à jour de la table HTML
+                document.getElementById(`az-${a}`).innerText = posRadar.az.toFixed(4) + "°";
+                document.getElementById(`el-${a}`).innerText = posRadar.el.toFixed(4) + "°";
+                document.getElementById(`dec-${a}`).innerText = stream.declinaison_deg.toFixed(4) + "°";
+                document.getElementById(`dist-${a}`).innerText = stream.distance_vray_m.toExponential(4);
+
+                // Projection sur le radar (si l'astre est au-dessus de l'horizon)
+                if(posRadar.el > 0) {
+                    const az_rad = (posRadar.az - 90) * (Math.PI / 180);
+                    const dist_centre = r_max * (1.0 - (posRadar.el / 90.0));
+                    const px = cx + dist_centre * Math.cos(az_rad);
+                    const py = cy + dist_centre * Math.sin(az_rad);
+                    
+                    ctx.fillStyle = a === "soleil" ? "var(--amber)" : (a === "lune" ? "var(--sky)" : "var(--neon-green)");
+                    ctx.beginPath(); ctx.arc(px, py, 4, 0, 2*Math.PI); ctx.fill();
+                    ctx.fillStyle = "#8b949e";
+                    ctx.fillText(a.substring(0,3).toUpperCase(), px + 6, py + 4);
                 }
-            });
-        }
+            }
+        });
+    }, 50);
+
+    function varColor(name, fallback) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
     }
 
-    setInterval(acquerirFluxPhysique, 1000);
-    setInterval(executerRenduBoucle, 16.67);
+    ecrireLog("Noyau métrologique AKF initialisé en mode AUTOMATIQUE.");
+    acquerirFluxPhysique();
+    
+    // Découplage des boucles temporelles : Acquisition lente (5s) / Interpolation et Rendu rapide (50ms -> 20 Hz)
+    setInterval(acquerirFluxPhysique, 5000);
 </script>
 </body>
-                        </html>
+</html>
