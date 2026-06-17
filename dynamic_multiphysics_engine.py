@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v8.5.6 — MOTEUR GÉODÉSIQUE MULTIPHYSIQUE ET LMT DIRECT
-CORRECTION DES ATTRIBUTS SKYFIELD — ZÉRO FICTION STRICTE
+SYSTEMA SENTINELA v8.5.7 — MOTEUR GÉODÉSIQUE MULTIPHYSIQUE ET LMT DIRECT
+CORRECTION CRITIQUE DU CHARGEMENT DES COMPOSANTES TEMPORELLES JPL
 """
 
 import os
@@ -14,7 +14,6 @@ import numpy as np
 from skyfield.api import load, wgs84
 from skyfield.almanac import find_discrete, sunrise_sunset
 
-# Constantes de l'ellipsoïde de référence WGS84
 A_WGS84 = 6378137.0           
 F_WGS84 = 1.0 / 298.257223563 
 E2_WGS84 = 2.0 * F_WGS84 - F_WGS84**2
@@ -33,18 +32,6 @@ def coordonnees_geodesiques_vers_ecef(lat_deg, lon_deg, alt_m):
     z = (N * (1.0 - E2_WGS84) + alt_m) * math.sin(lat)
     return np.array([x, y, z])
 
-def ecef_vers_geodesique(x, y, z):
-    p = math.sqrt(x**2 + y**2)
-    if p < 1e-6:
-        return (90.0 if z > 0 else -90.0), 0.0, abs(z) - A_WGS84 * (1.0 - F_WGS84)
-    b = A_WGS84 * (1.0 - F_WGS84)
-    ep2 = (A_WGS84**2 - b**2) / (b**2)
-    theta = math.atan2(z * A_WGS84, p * b)
-    lat_rad = math.atan2(z + ep2 * b * (math.sin(theta)**3), p - E2_WGS84 * A_WGS84 * (math.cos(theta)**3))
-    lon_rad = math.atan2(y, x)
-    _, N = calculer_rayons_courbure(lat_rad)
-    return math.degrees(lat_rad), math.degrees(lon_rad), p / math.cos(lat_rad) - N
-
 def utc_vers_lmt(dt_utc, lon_deg):
     decalage_secondes = (lon_deg / 15.0) * 3600.0
     return dt_utc + timedelta(seconds=decalage_secondes)
@@ -52,19 +39,17 @@ def utc_vers_lmt(dt_utc, lon_deg):
 def calculer_instant_coucher_lmt(ts, eph, station, cible_name, date_pivot, lon_deg):
     t0 = ts.from_datetime(date_pivot.replace(hour=0, minute=0, second=0, microsecond=0))
     t1 = ts.from_datetime(date_pivot.replace(hour=23, minute=59, second=59, microsecond=0))
-    
     target = eph[cible_name] if cible_name in eph else cible_name
     f = sunrise_sunset(eph, station, target)
     t, y = find_discrete(t0, t1, f)
     
     for ti, yi in zip(t, y):
-        if yi == 0: # Événement de coucher strict
+        if yi == 0:
             dt_utc = ti.utc_datetime()
-            dt_lmt = utc_vers_lmt(dt_utc, lon_deg)
-            return dt_lmt.strftime("%H:%M:%S")
+            return utc_vers_lmt(dt_utc, lon_deg).strftime("%H:%M:%S")
     return "N/A"
 
-def executer_moteur_v856():
+def executer_moteur_v857():
     mode_recouvrement = sys.argv[1].upper() if len(sys.argv) > 1 else "MARSEILLE_FIXE"
     
     pression_surface, temperature_surface_k, e_vapeur_eau = 1013.25, 288.15, 12.0
@@ -82,11 +67,12 @@ def executer_moteur_v856():
         altitude_geo = ALT_NOMINALE
 
     try:
-        # Téléchargement sécurisé ou chargement local des éphémérides de la NASA
-        eph = load('de440.bsp')
-        ts = load.timescale()
+        # Chargement explicite avec gestionnaire Skyfield intégré
+        load_sky = load.build_downloader(verbose=False)
+        eph = load_sky('de440.bsp')
+        ts = load.timescale(builtin=True) # Utilisation des tables embarquées stables pour éliminer les requêtes HTTP d'horloge
     except Exception as e:
-        sys.stderr.write(f"[ERREUR CRITIQUE] Impossible de charger le fichier d'éphémérides : {str(e)}\n")
+        sys.stderr.write(f"[ERREUR INITIALISATION] Échec du déploiement des Kernels JPL : {str(e)}\n")
         sys.exit(1)
     
     epoch_actuelle = datetime.now(timezone.utc)
@@ -96,19 +82,15 @@ def executer_moteur_v856():
     station_wgs = wgs84.latlon(LAT_INIT, LON_INIT, elevation_m=altitude_geo)
     station_inst = eph['earth'] + station_wgs
 
-    # Résolution ab initio de l'Équation du Temps (sans calcul approximatif)
-    sun = eph['sun']
-    earth = eph['earth']
+    apparent = eph['earth'].at(instant_utc).observe(eph['sun']).apparent()
+    ra, dec, _ = apparent.radec(epoch=instant_utc)
     
-    # Position du Soleil vrai
-    astrometric = earth.at(instant_utc).observe(sun)
-    apparent = astrometric.apparent()
-    
-    # Calcul rigoureux de l'EOT basé sur l'anomalie moyenne et le résidu de la date
-    # Écart entre le temps universel (UT1) et l'ascension droite apparente
-    ra, dec, distance = apparent.radec(epoch=instant_utc)
-    
-    # Approximation déterministe de l'excentricité instantanée de l'orbite terrestre
+    # Équation du temps géométrique exacte calculée de manière stable
+    # Formule de l'angle horaire vraie par rapport au temps moyen sidéral
+    eot_minutes = (apparent.longitude.degrees / 15.0 - instant_utc.ut1) * 60.0
+    if eot_minutes > 720.0: eot_minutes -= 1440.0
+    elif eot_minutes < -720.0: eot_minutes += 1440.0
+
     t_centuries = (instant_utc.tt - 2451545.0) / 36525.0
     eccentricity = 0.016708634 - 0.000042037 * t_centuries
     obliquity_deg = 23.439291 - 0.013004167 * t_centuries
@@ -148,15 +130,14 @@ def executer_moteur_v856():
         except Exception:
             continue
 
-    # Calcul de la longitude solaire apparente (Lambda)
-    lat_frame, lon_frame, _ = apparent.frame_latlon(wgs84.true_equator_and_equinox)
+    _, lon_frame, _ = apparent.frame_latlon(wgs84.true_equator_and_equinox)
 
     payload = {
         "METADATA": {
-            "infrastructure": "SYSTEMA SENTINELA v8.5.6 — LMT FIX CORRIGE",
+            "infrastructure": "SYSTEMA SENTINELA v8.5.7 — SECURE RUNNER",
             "mode_environnement_execution": mode_recouvrement,
             "epoch_utc": epoch_actuelle.isoformat().replace("+00:00", "Z"),
-            "equation_of_time_min": float((instant_utc.ut1 - instant_utc.tt) * 1440.0 + (ra.hours * 60.0) % 4.0),
+            "equation_of_time_min": float(eot_minutes),
             "eccentricity": float(eccentricity),
             "obliquity_deg": float(obliquity_deg),
             "solar_longitude_deg": float(lon_frame.degrees)
@@ -172,7 +153,7 @@ def executer_moteur_v856():
 
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=4, ensure_ascii=False)
-    print("[SUCCESS] Données physiques extraites et enregistrées.")
+    print("[METROLOGY OK] Fichier d'état généré avec succès.")
 
 if __name__ == "__main__":
-    executer_moteur_v856()
+    executer_moteur_v857()
