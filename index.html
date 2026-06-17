@@ -3,22 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v8.5.2 — Console Métrologique Déterministe GitHub</title>
+    <title>SYSTEMA SENTINELA v8.5.5 — Console Métrologique LMT Pure</title>
     <style>
         :root {
-            --bg-base: #02040a;
-            --bg-surface: #0d1117;
-            --border-dim: #21262d;
-            --sky: #58a6ff;
-            --neon-green: #3fb950;
-            --amber: #d29922;
-            --rose: #f85149;
-            --text-main: #c9d1d9;
+            --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
+            --sky: #58a6ff; --neon-green: #3fb950; --amber: #d29922; --rose: #f85149; --text-main: #c9d1d9;
         }
         body {
             background: var(--bg-base); color: var(--text-main);
-            font-family: 'Consolas', 'Courier New', monospace; font-size: 11px;
-            padding: 15px; margin: 0; box-sizing: border-box;
+            font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; padding: 15px; margin: 0;
         }
         .container { max-width: 1650px; margin: 0 auto; }
         .master-header {
@@ -30,7 +23,6 @@
         .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 10px; }
         .badge-ok { background: rgba(63,185,80,0.15); color: var(--neon-green); border: 1px solid var(--neon-green); }
         .badge-warn { background: rgba(210,153,34,0.15); color: var(--amber); border: 1px solid var(--amber); }
-        .badge-error { background: rgba(248,81,73,0.15); color: var(--rose); border: 1px solid var(--rose); }
         
         .grid-layout { display: grid; grid-template-columns: 430px 1fr; gap: 15px; }
         .panel { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 15px; }
@@ -42,24 +34,21 @@
         table { width: 100%; border-collapse: collapse; text-align: left; }
         th, td { padding: 8px; border-bottom: 1px solid var(--border-dim); }
         th { color: var(--sky); font-weight: normal; }
-        tr:hover { background: rgba(255,255,255,0.02); }
         
         .control-bar { display: flex; gap: 8px; margin-top: 15px; background: var(--bg-surface); border: 1px solid var(--border-dim); padding: 10px; border-radius: 6px; }
         button { background: #21262d; border: 1px solid var(--border-dim); color: var(--text-main); padding: 6px 12px; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 11px; }
-        button:hover { background: #30363d; border-color: #8b949e; }
         button.active { background: rgba(88,166,255,0.15); color: var(--sky); border-color: var(--sky); }
-        
-        .log-console { background: #000; border: 1px solid var(--border-dim); height: 120px; overflow-y: auto; padding: 10px; border-radius: 4px; margin-top: 15px; color: #8b949e; font-size: 10px; line-height: 14px; }
+        .log-console { background: #000; border: 1px solid var(--border-dim); height: 100px; overflow-y: auto; padding: 10px; border-radius: 4px; margin-top: 15px; color: #8b949e; font-size: 10px; }
     </style>
 </head>
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v8.5.2</div>
+        <div class="brand">SYSTEMA SENTINELA v8.5.5 — LMT PURE</div>
         <div style="display: flex; gap: 20px; align-items: center;">
-            <div>PROFIL REQUIS : <span id="lbl-mode" style="font-weight:bold; color:var(--sky);">MARSEILLE_FIXE</span></div>
-            <div>EPOCH UTC FLUX : <span id="lbl-epoch" style="color:var(--amber);">WAITING ACTION</span></div>
-            <span id="source-badge" class="status-badge badge-ok">GITHUB DEP ACTIVE</span>
+            <div>PROFIL : <span id="lbl-mode" style="font-weight:bold; color:var(--sky);">MARSEILLE_FIXE</span></div>
+            <div>EPOCH UTC : <span id="lbl-epoch" style="color:var(--amber);">WAITING SYNC</span></div>
+            <span id="source-badge" class="status-badge badge-warn">INITIALISATION</span>
         </div>
     </header>
 
@@ -68,22 +57,22 @@
             <h3 class="panel-title" style="width:100%;">RADAR TOPOCENTRIQUE LOCAL</h3>
             <canvas id="radarCanvas" width="380" height="380" style="background:#01040a; border-radius:50%; border: 1px solid var(--border-dim);"></canvas>
             <div style="width:100%; margin-top:15px;">
-                <div class="metric-row"><span>Gating &Chi;&sup2; (AKF)</span><span id="lbl-chisq" class="metric-val" style="color:var(--neon-green);">ALIGNEMENT HORLOGE</span></div>
-                <div class="metric-row"><span>Troposphère</span><span id="lbl-tropo" class="metric-val">--</span></div>
-                <div class="metric-row"><span>Horloge Einstein</span><span id="lbl-relativite" class="metric-val" style="color:var(--rose);">0.000000 ns/s</span></div>
-                <div class="metric-row"><span>Marée Terrestre</span><span id="lbl-maree-val" class="metric-val">0.00 mm</span></div>
+                <div class="metric-row"><span>Equation of Time</span><span id="lbl-eot" class="metric-val">--</span></div>
+                <div class="metric-row"><span>Eccentricity</span><span id="lbl-ecc" class="metric-val">--</span></div>
+                <div class="metric-row"><span>Obliquity</span><span id="lbl-obl" class="metric-val">--</span></div>
+                <div class="metric-row"><span>Solar Longitude</span><span id="lbl-solong" class="metric-val">--</span></div>
             </div>
         </div>
 
         <div class="panel">
-            <h3 class="panel-title">FLUX GITHUB ACTIONS — ÉPHÉMÉRIDES COUPLÉES</h3>
+            <h3 class="panel-title">FLUX DES ASTRES ET COUCHERS STRICTS (HEURE SOLAIRE MOYENNE LOCALE - LMT)</h3>
             <table>
                 <thead>
                     <tr>
                         <th>CORPS CÉLESTE</th>
                         <th>AZIMUT (deg)</th>
                         <th>ÉLÉVATION (deg)</th>
-                        <th>DÉCLINAISON (deg)</th>
+                        <th>COUCHER VRAI INTERSECTION (LMT)</th>
                         <th>DISTANCE PRÉCISION (m)</th>
                     </tr>
                 </thead>
@@ -93,12 +82,11 @@
     </div>
 
     <div class="control-bar">
-        <button id="btn-MARSEILLE_FIXE" class="active" onclick="changerProfil('MARSEILLE_FIXE')">MARSEILLE FIXE</button>
-        <button id="btn-AVION" onclick="changerProfil('AVION')">PROFIL AVION (250 m/s)</button>
-        <button id="btn-TRAIN" onclick="changerProfil('TRAIN')">PROFIL TRAIN (83 m/s)</button>
-        <button id="btn-VOITURE" onclick="changerProfil('VOITURE')">PROFIL VOITURE (25 m/s)</button>
-        <button id="btn-BATEAU" onclick="changerProfil('BATEAU')">PROFIL BATEAU (8 m/s)</button>
-        <button id="btn-AUTO" onclick="changerProfil('AUTO')">FILTRAGE ADAPTATIF AUTO</button>
+        <button id="btn-MARSEILLE_FIXE" class="active">MARSEILLE FIXE</button>
+        <button id="btn-AVION">PROFIL AVION</button>
+        <button id="btn-TRAIN">PROFIL TRAIN</button>
+        <button id="btn-VOITURE">PROFIL VOITURE</button>
+        <button id="btn-BATEAU">PROFIL BATEAU</button>
     </div>
 
     <div id="logConsole" class="log-console"></div>
@@ -106,14 +94,8 @@
 
 <script>
     const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
-    let modeActuel = "MARSEILLE_FIXE";
     let fluxMatriceServeur = null;
-    let derniereEpochLue = "";
-
-    // Repère ECEF initialisé à zéro. L'horloge déterministe va forcer l'alignement.
-    let state_x = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]; 
-    let P = Array(6).fill(0).map((_, i) => Array(6).fill(0).map((_, j) => i === j ? 1.0 : 0));
-
+    
     const tbody = document.getElementById('table-body');
     ASTRES.forEach(a => {
         tbody.innerHTML += `
@@ -121,8 +103,8 @@
                 <td style="font-weight:bold; color:var(--sky);">${a.toUpperCase()}</td>
                 <td id="az-${a}">--</td>
                 <td id="el-${a}">--</td>
-                <td id="dec-${a}">--</td>
-                <td id="dist-${a}" style="font-family:monospace; color:var(--amber);">--</td>
+                <td id="coucher-${a}" style="color:var(--amber); font-weight:bold;">--</td>
+                <td id="dist-${a}" style="font-family:monospace;">--</td>
             </tr>`;
     });
 
@@ -132,134 +114,70 @@
         c.scrollTop = c.scrollHeight;
     }
 
-    function inverserMatrice3x3(A) {
-        let det = A[0][0]*(A[1][1]*A[2][2] - A[1][2]*A[2][1]) -
-                  A[0][1]*(A[1][0]*A[2][2] - A[1][2]*A[2][0]) +
-                  A[0][2]*(A[1][0]*A[2][1] - A[1][1]*A[2][0]);
-        if (Math.abs(det) < 1e-12) return null;
-        let invdet = 1.0 / det;
-        return [
-            [(A[1][1]*A[2][2] - A[1][2]*A[2][1])*invdet, (A[0][2]*A[2][1] - A[0][1]*A[2][2])*invdet, (A[0][1]*A[1][2] - A[0][2]*A[1][1])*invdet],
-            [(A[1][2]*A[2][0] - A[1][0]*A[2][2])*invdet, (A[0][0]*A[2][2] - A[0][2]*A[2][0])*invdet, (A[0][2]*A[1][0] - A[0][0]*A[1][2])*invdet],
-            [(A[1][0]*A[2][1] - A[1][1]*A[2][0])*invdet, (A[0][1]*A[2][0] - A[0][0]*A[2][1])*invdet, (A[0][0]*A[1][1] - A[0][1]*A[2][0])*invdet]
-        ];
-    }
-
     async function acquerirFluxPhysique() {
         try {
-            // Lecture directe du fichier mis à jour par GitHub Actions
             const r = await fetch('./flux_live.json?nocache=' + crypto.randomUUID(), { cache: "no-store" });
             if (!r.ok) throw new Error("Flux absent");
             const data = await r.json();
             
-            if(data.METADATA && data.DATA_STREAMS) {
-                fluxMatriceServeur = data;
-                
-                // Vérifier s'il s'agit d'une nouvelle trame calculée par GitHub
-                if(data.EPOCH_UTC !== derniereEpochLue) {
-                    derniereEpochLue = data.EPOCH_UTC;
-                    ecrireLog(`Trame synchronisée détectée (Epoch: ${data.EPOCH_UTC})`);
-                    
-                    let z = [data.MATRICE_ECEF_REEL["X_mètres"], data.MATRICE_ECEF_REEL["Y_mètres"], data.MATRICE_ECEF_REEL["Z_mètres"]];
-                    
-                    // HORLOGE DÉTERMINISTE : Si le filtre est trop éloigné (décrochage), on le force à s'aligner
-                    let distance_actuelle = Math.sqrt(Math.pow(state_x[0]-z[0],2) + Math.pow(state_x[1]-z[1],2) + Math.pow(state_x[2]-z[2],2));
-                    if(distance_actuelle > 1000.0 || state_x[0] === 0.0) {
-                        state_x[0] = z[0]; state_x[1] = z[1]; state_x[2] = z[2];
-                        ecrireLog("Recouvrement automatique : Alignement déterministe sur les coordonnées de la trame.");
-                    }
+            fluxMatriceServeur = data;
+            document.getElementById('source-badge').className = "status-badge badge-ok";
+            document.getElementById('source-badge').innerText = "JPL DE440 STABLE";
+            
+            // Mise à jour des indicateurs fondamentaux sans extrapolation fictive
+            document.getElementById('lbl-epoch').innerText = data.METADATA.epoch_utc;
+            document.getElementById('lbl-mode').innerText = data.METADATA.mode_environnement_execution;
+            document.getElementById('lbl-eot').innerText = data.METADATA.equation_of_time_min.toFixed(6) + " min";
+            document.getElementById('lbl-ecc').innerText = data.METADATA.eccentricity.toFixed(7);
+            document.getElementById('lbl-obl').innerText = data.METADATA.obliquity_deg.toFixed(4) + "°";
+            document.getElementById('lbl-solong').innerText = data.METADATA.solar_longitude_deg.toFixed(4) + "°";
 
-                    let y = [z[0] - state_x[0], z[1] - state_x[1], z[2] - state_x[2]];
-                    let R_val = 0.01; 
-
-                    let S = [
-                        [P[0][0] + R_val, P[0][1], P[0][2]],
-                        [P[1][0], P[1][1] + R_val, P[1][2]],
-                        [P[2][0], P[2][1], P[2][2] + R_val]
-                    ];
-                    
-                    let Sinv = inverserMatrice3x3(S);
-                    if(Sinv) {
-                        let d2 = y[0]*(Sinv[0][0]*y[0] + Sinv[0][1]*y[1] + Sinv[0][2]*y[2]) +
-                                 y[1]*(Sinv[1][0]*y[0] + Sinv[1][1]*y[1] + Sinv[1][2]*y[2]) +
-                                 y[2]*(Sinv[2][0]*y[0] + Sinv[2][1]*y[1] + Sinv[2][2]*y[2]);
-                        
-                        // Affichage et validation
-                        const lbl = document.getElementById('lbl-chisq');
-                        lbl.innerText = `CONVERGENT (d²=${d2.toFixed(4)})`;
-                        lbl.style.color = "var(--neon-green)";
-
-                        // Mise à jour de Kalman
-                        let K = Array(6).fill(0).map(() => Array(3).fill(0));
-                        for(let i=0; i<6; i++) {
-                            for(let j=0; j<3; j++) { K[i][j] = P[i][0]*Sinv[0][j] + P[i][1]*Sinv[1][j] + P[i][2]*Sinv[2][j]; }
-                        }
-                        for(let i=0; i<6; i++) { state_x[i] += K[i][0]*y[0] + K[i][1]*y[1] + K[i][2]*y[2]; }
-                    }
-                }
-            }
+            renduRadar();
         } catch(e) {
-            document.getElementById('lbl-chisq').innerText = "ATTENTE CALCUL INITIAL PIPELINE";
-            document.getElementById('lbl-chisq').style.color = "var(--amber)";
+            document.getElementById('source-badge').className = "status-badge badge-error";
+            document.getElementById('source-badge').innerText = "ATTENTE ACQUISITION FLUX OBSERVE";
         }
     }
 
-    function changerProfil(m) {
-        document.querySelectorAll('.control-bar button').forEach(b => b.classList.remove('active'));
-        document.getElementById(`btn-${m}`).classList.add('active');
-        modeActuel = m;
-        document.getElementById('lbl-mode').innerText = m;
-    }
-
-    // Rendu IHM graphique et extrapolation mathématique locale
     const canvas = document.getElementById('radarCanvas');
     const ctx = canvas.getContext('2d');
     const cx = canvas.width / 2, cy = canvas.height / 2, r_max = canvas.width / 2 - 20;
 
-    setInterval(() => {
-        // Prédiction cinématique fluide locale (dt = 0.05s)
-        const dt = 0.05;
-        state_x[0] += state_x[3] * dt;
-        state_x[1] += state_x[4] * dt;
-        state_x[2] += state_x[5] * dt;
+    function renduRadar() {
+        if (!fluxMatriceServeur) return;
         
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
         for(let r = r_max/3; r <= r_max; r += r_max/3) { ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2*Math.PI); ctx.stroke(); }
         ctx.beginPath(); ctx.moveTo(cx, cy - r_max); ctx.lineTo(cx, cy + r_max); ctx.moveTo(cx - r_max, cy); ctx.lineTo(cx + r_max, cy); ctx.stroke();
 
-        if (fluxMatriceServeur) {
-            document.getElementById('lbl-epoch').innerText = fluxMatriceServeur.EPOCH_UTC;
-            document.getElementById('lbl-tropo').innerText = fluxMatriceServeur.METADATA.modelisation_troposphere;
-            document.getElementById('lbl-relativite').innerText = fluxMatriceServeur.METADATA.horloge_einstein_delta_ns_s.toFixed(6) + " ns/s";
-            document.getElementById('lbl-maree-val').innerText = fluxMatriceServeur.METADATA.norme_maree_mm.toFixed(2) + " mm";
+        ASTRES.forEach(a => {
+            const stream = fluxMatriceServeur.DATA_STREAMS[a];
+            const coucherLMT = fluxMatriceServeur.COUCHERS_LMT[a];
+            
+            if (stream) {
+                document.getElementById(`az-${a}`).innerText = stream.azimut_deg.toFixed(4) + "°";
+                document.getElementById(`el-${a}`).innerText = stream.elevation_deg.toFixed(4) + "°";
+                document.getElementById(`coucher-${a}`).innerText = coucherLMT + " LMT";
+                document.getElementById(`dist-${a}`).innerText = stream.distance_precision_m.toExponential(4);
 
-            ASTRES.forEach(a => {
-                const stream = fluxMatriceServeur.DATA_STREAMS[a];
-                if (stream) {
-                    document.getElementById(`az-${a}`).innerText = stream.azimut_deg.toFixed(4) + "°";
-                    document.getElementById(`el-${a}`).innerText = stream.elevation_deg.toFixed(4) + "°";
-                    document.getElementById(`dec-${a}`).innerText = stream.declinaison_deg.toFixed(4) + "°";
-                    document.getElementById(`dist-${a}`).innerText = stream.distance_precision_m.toExponential(4);
-
-                    if(stream.elevation_deg > 0) {
-                        const az_rad = (stream.azimut_deg - 90) * (Math.PI / 180);
-                        const dist_centre = r_max * (1.0 - (stream.elevation_deg / 90.0));
-                        const px = cx + dist_centre * Math.cos(az_rad);
-                        const py = cy + dist_centre * Math.sin(az_rad);
-                        
-                        ctx.fillStyle = a === "soleil" ? "var(--amber)" : (a === "lune" ? "var(--sky)" : "var(--neon-green)");
-                        ctx.beginPath(); ctx.arc(px, py, 4, 0, 2*Math.PI); ctx.fill();
-                        ctx.fillStyle = "#8b949e"; ctx.fillText(a.substring(0,3).toUpperCase(), px + 6, py + 4);
-                    }
+                if(stream.elevation_deg > -0.833) {
+                    const az_rad = (stream.azimut_deg - 90) * (Math.PI / 180);
+                    const dist_centre = r_max * (1.0 - (Math.max(0, stream.elevation_deg) / 90.0));
+                    const px = cx + dist_centre * Math.cos(az_rad);
+                    const py = cy + dist_centre * Math.sin(az_rad);
+                    
+                    ctx.fillStyle = a === "soleil" ? "var(--amber)" : (a === "lune" ? "var(--sky)" : "var(--neon-green)");
+                    ctx.beginPath(); ctx.arc(px, py, 4, 0, 2*Math.PI); ctx.fill();
+                    ctx.fillStyle = "#8b949e"; ctx.fillText(a.substring(0,3).toUpperCase(), px + 6, py + 4);
                 }
-            });
-        }
-    }, 50);
+            }
+        });
+    }
 
-    // Scrutation du fichier de télémétrie toutes les secondes (Adapté à GitHub Pages)
-    setInterval(acquerirFluxPhysique, 1000);
+    // Scrutation cyclique de la réalité physique à haute fréquence (sans extrapolation)
+    setInterval(acquerirFluxPhysique, 2000);
     acquerirFluxPhysique();
 </script>
 </body>
-                    </html>
+</html>
