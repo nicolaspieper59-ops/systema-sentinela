@@ -52,7 +52,11 @@ jobs:
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        
+
+        - name: Installation dépendances
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install numpy skyfield jplephem
         git add flux_live.json
         if ! git diff-index --quiet HEAD --; then
           git commit -m "Mise à jour métrologique JPL DE440 v8.5.7"
