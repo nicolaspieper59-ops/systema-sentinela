@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v8.7.0 — MOTEUR GÉODÉSIQUE MULTIPHYSIQUE
-EDITION OUTPASSED SSL — TOTALEMENT AUTONOME SANS DEPENDANCE EXTERNE CAFILE
+SYSTEMA SENTINELA v8.7.5 — MOTEUR GÉODÉSIQUE MULTIPHYSIQUE
+EDITION HEADLESS RUNNER — REPERTOIRE DE TRAVAIL EXPLICITE
 """
 
 import sys
@@ -12,13 +12,12 @@ import os
 from datetime import datetime, timezone, timedelta
 import numpy as np
 
-# Importations critiques sécurisées
 try:
     from skyfield.api import load, wgs84
     from skyfield import almanac
     from skyfield.almanac import find_discrete
 except ImportError as e:
-    sys.stderr.write(f"[CRITICAL] Dependances manquantes dans le runner: {str(e)}\n")
+    sys.stderr.write(f"[CRITICAL] Bibliothèques introuvables : {str(e)}\n")
     sys.exit(1)
 
 A_WGS84 = 6378137.0           
@@ -55,7 +54,7 @@ def calculer_coucher_soleil_lmt(ts, eph, station_wgs, date_pivot, lon_deg):
         pass
     return "N/A"
 
-def executer_moteur_v870():
+def executer_moteur_v875():
     mode_recouvrement = sys.argv[1].upper() if len(sys.argv) > 1 else "MARSEILLE_FIXE"
     
     pression_surface, temperature_surface_k, e_vapeur_eau = 1013.25, 288.15, 12.0
@@ -72,12 +71,14 @@ def executer_moteur_v870():
     else:
         altitude_geo = ALT_NOMINALE
 
-    # Étape 1 : Chargement standard sans surcouche SSL contextuelle (laisse Python utiliser le magasin natif d'Ubuntu)
+    # Forcer l'utilisation du dossier courant pour l'écriture des fichiers BSP de Skyfield
     try:
-        eph = load('de421.bsp')
-        ts = load.timescale(builtin=True)
+        repertoire_execution = os.getcwd()
+        load_local = load.build_downloader(directory=repertoire_execution, verbose=False)
+        eph = load_local('de421.bsp')
+        ts = load_local.timescale(builtin=True)
     except Exception as e:
-        sys.stderr.write(f"[FATAL BLOC NOMINAL] Echec de chargement direct de421 : {str(e)}\n")
+        sys.stderr.write(f"[FATAL IO] Impossible d'initialiser les éphémérides localement : {str(e)}\n")
         sys.exit(1)
     
     try:
@@ -136,7 +137,7 @@ def executer_moteur_v870():
 
         payload = {
             "METADATA": {
-                "infrastructure": "SYSTEMA SENTINELA v8.7.0 — OPERATIONAL",
+                "infrastructure": "SYSTEMA SENTINELA v8.7.5 — DE421 FIXED",
                 "mode_environnement_execution": mode_recouvrement,
                 "epoch_utc": epoch_actuelle.isoformat().replace("+00:00", "Z"),
                 "equation_of_time_min": float(eot_minutes),
@@ -153,13 +154,13 @@ def executer_moteur_v870():
             "DATA_STREAMS": flux_astres
         }
 
-        with open("flux_live.json", "w", encoding="utf-8") as f:
+        with open(os.path.join(repertoire_execution, "flux_live.json"), "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=4, ensure_ascii=False)
-        print("[METROLOGY OK] Fichier flux_live.json genere avec succes.")
+        print("[METROLOGY OK] Fichier écrit.")
         
     except Exception as e:
         sys.stderr.write(f"[ERREUR RUNTIME] : {str(e)}\n")
         sys.exit(1)
 
 if __name__ == "__main__":
-    executer_moteur_v870()
+    executer_moteur_v875()
