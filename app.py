@@ -1,116 +1,74 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v9.1.0 — API TELEMETRIE TEMPS RÉEL
+SYSTEMA SENTINELA v9.2.0 — BACKEND DE ROUTAGE ET CONTRÔLE MULTIPHYSIQUE
 """
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
-import json
 import os
+import json
+import sys
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse, FileResponse
+from pydantic import BaseModel
 
-app = FastAPI(title="SENTINELA CONTROL PANEL")
+app = FastAPI(title="SYSTEMA SENTINELA — ARCHITECTURE CENTRALISÉE")
 
-# Code HTML/JS de l'interface graphique embarqué
-HTML_INTERFACE = """
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <title>SYSTEMA SENTINELA — Live Control Panel</title>
-    <style>
-        body { background-color: #0d1117; color: #c9d1d9; font-family: 'Courier New', monospace; margin: 20px; }
-        h1 { color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
-        .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 15px; }
-        .card-title { color: #8b949e; font-size: 0.9em; text-transform: uppercase; margin-bottom: 10px; }
-        .value { font-size: 1.6em; color: #58a6ff; font-weight: bold; }
-        .status { color: #2ea44f; animation: blink 2s infinite; }
-        @keyframes blink { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
-    </style>
-</head>
-<body>
-    <h1>SYSTEMA SENTINELA <span class="status">● LIVE_STREAM</span></h1>
-    <div id="timestamp" style="color: #8b949e;">Initialisation du flux...</div>
+# Répertoire de travail
+BASE_DIR = os.getcwd()
+FLUX_PATH = os.path.join(BASE_DIR, "flux_live.json")
+INDEX_PATH = os.path.join(BASE_DIR, "index.html")
 
-    <div class="grid">
-        <div class="card">
-            <div class="card-title">Position Récepteur (GPS)</div>
-            <div id="gps-pos" class="value">0.0, 0.0</div>
-            <div id="ecef-pos" style="font-size: 0.8em; margin-top: 5px; color: #8b949e;">ECEF: -</div>
-        </div>
-        <div class="card">
-            <div class="card-title">Équation du Temps</div>
-            <div id="eot" class="value">0.0000 min</div>
-        </div>
-        <div class="card">
-            <div class="card-title">Azimut / Élévation Soleil</div>
-            <div id="sun-coords" class="value">0° / 0°</div>
-        </div>
-        <div class="card">
-            <div class="card-title">Distance Terre-Soleil</div>
-            <div id="sun-dist" class="value">0.00e+00 m</div>
-        </div>
-    </div>
-
-    <script>
-        async function updateDashboard() {
-            try {
-                const response = await fetch('/data');
-                const data = await response.json();
-                
-                document.getElementById('timestamp').innerText = "TRACÉ UTC : " + data.timestamp;
-                document.getElementById('gps-pos').innerText = data.position_recepteur.latitude.toFixed(5) + "°N , " + data.position_recepteur.longitude.toFixed(5) + "°E";
-                
-                const ecef = data.position_recepteur.ecef;
-                document.getElementById('ecef-pos').innerText = `X: ${ecef[0].toFixed(1)} | Y: ${ecef[1].toFixed(1)} | Z: ${ecef[2].toFixed(1)}`;
-                
-                document.getElementById('eot').innerText = data.astronomie.equation_of_time_min.toFixed(5) + " min";
-                
-                const sun = data.targets.soleil;
-                document.getElementById('sun-coords').innerText = sun.azimut + "° / " + sun.elevation + "°";
-                document.getElementById('sun-dist').innerText = sun.distance_m;
-            } catch (err) {
-                console.log("En attente du flux live...");
-            }
-        }
-        setInterval(updateDashboard, 500); // Rafraîchissement matériel à 2Hz (toutes les 500ms)
-    </script>
-</body>
-</html>
-"""
+class ProfileModel(BaseModel):
+    profile: str
 
 @app.get("/", response_class=HTMLResponse)
-def read_root():
-    return HTML_INTERFACE
+def read_dashboard():
+    """Sert l'interface de contrôle principale v8.5.8."""
+    if not os.path.exists(INDEX_PATH):
+        raise HTTPException(status_code=404, detail="Fichier index.html introuvable à la racine.")
+    with open(INDEX_PATH, "r", encoding="utf-8") as f:
+        return f.read()
 
-@app.get("/data")
-def get_data():
-    path_flux = os.path.join(os.getcwd(), "flux_live.json")
-    if os.path.exists(path_flux):
-        with open(path_flux, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {"status": "Waiting for stream engine"}
+@app.get("/flux_live.json")
+def get_flux_live():
+    """Route d'acquisition principale pour le script JS du tableau de bord."""
+    if not os.path.exists(FLUX_PATH):
+        # Renvoie une structure par défaut cohérente si le moteur n'a pas encore écrit
+        return {
+            "METADATA": {
+                "infrastructure": "SYSTEMA SENTINELA — INITIALISING",
+                "mode_environnement_execution": "OFFLINE_WAIT",
+                "epoch_utc": "ATTENTE NOYAU...",
+                "equation_of_time_min": 0.0,
+                "eccentricity": 0.0167,
+                "obliquity_deg": 23.44,
+                "solar_longitude_deg": 0.0
+            },
+            "COUCHERS_LMT": {},
+            "DATA_STREAMS": {}
+        }
+    with open(FLUX_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+@app.post("/set_profile")
+def set_profile(data: ProfileModel):
+    """Reçoit les ordres de changement de profil depuis la barre de contrôle HTML."""
+    target_profile = data.profile.upper()
+    valid_profiles = ["MARSEILLE_FIXE", "AVION", "TRAIN", "VOITURE", "BATEAU"]
+    
+    if target_profile not in valid_profiles:
+        raise HTTPException(status_code=400, detail="Profil de déplacement non valide.")
+    
+    print(f"[CONTRÔLE] Ordre de bascule reçu vers le profil : {target_profile}")
+    
+    # Écrit l'état du profil choisi pour que le moteur asynchrone puisse le lire
+    state_path = os.path.join(BASE_DIR, "active_profile.txt")
+    with open(state_path, "w", encoding="utf-8") as f:
+        f.write(target_profile)
+        
+    return {"status": "SUCCESS", "active_profile": target_profile}
 
 if __name__ == "__main__":
     import uvicorn
+    print("[ONLINE] Initialisation de l'API de routage sur http://127.0.0.1:8080")
     uvicorn.run(app, host="127.0.0.1", port=8080)
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-import os
-
-app = FastAPI()
-
-@app.get("/", response_class=HTMLResponse)
-def read_index():
-    # Lit directement votre fichier index.html du dépôt
-    with open("index.html", "r", encoding="utf-8") as f:
-        return f.read()
-
-@app.get("/data")
-def get_data():
-    if os.path.exists("flux_live.json"):
-        with open("flux_live.json", "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {"status": "offline"}
