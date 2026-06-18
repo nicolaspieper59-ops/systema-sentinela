@@ -96,3 +96,21 @@ def get_data():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8080)
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+import os
+
+app = FastAPI()
+
+@app.get("/", response_class=HTMLResponse)
+def read_index():
+    # Lit directement votre fichier index.html du dépôt
+    with open("index.html", "r", encoding="utf-8") as f:
+        return f.read()
+
+@app.get("/data")
+def get_data():
+    if os.path.exists("flux_live.json"):
+        with open("flux_live.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"status": "offline"}
