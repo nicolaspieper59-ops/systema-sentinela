@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v8.7.5 — MOTEUR GÉODÉSIQUE MULTIPHYSIQUE
-EDITION HEADLESS RUNNER — REPERTOIRE DE TRAVAIL EXPLICITE
+SYSTEMA SENTINELA v8.8.0 — MOTEUR GÉODÉSIQUE MULTIPHYSIQUE
+COMPOSANT DE TÉLÉCHARGEMENT SÉCURISÉ PAR FLUX REQUESTS AUTOMATIQUE
 """
 
 import sys
@@ -12,17 +12,41 @@ import os
 from datetime import datetime, timezone, timedelta
 import numpy as np
 
+# Vérification des dépendances de base
 try:
+    import requests
     from skyfield.api import load, wgs84
     from skyfield import almanac
     from skyfield.almanac import find_discrete
 except ImportError as e:
-    sys.stderr.write(f"[CRITICAL] Bibliothèques introuvables : {str(e)}\n")
+    sys.stderr.write(f"[CRITICAL] Dépendance manquante : {str(e)}\n")
     sys.exit(1)
 
 A_WGS84 = 6378137.0           
 F_WGS84 = 1.0 / 298.257223563 
 E2_WGS84 = 2.0 * F_WGS84 - F_WGS84**2
+
+def telecharger_fichier_bsp_force(nom_fichier="de421.bsp"):
+    """Télécharge directement le fichier depuis le miroir officiel via HTTPS stable si absent."""
+    if os.path.exists(nom_fichier) and os.path.getsize(nom_fichier) > 10000000:
+        print(f"[CACHE] {nom_fichier} détecté localement.")
+        return True
+    
+    url = f"https://rspa.s3.amazonaws.com/astronomy/{nom_fichier}"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    print(f"[RESEAU] Téléchargement sécurisé de {nom_fichier} depuis le miroir Sentinela...")
+    
+    try:
+        with requests.get(url, headers=headers, stream=True, timeout=30) as r:
+            r.raise_for_status()
+            with open(nom_fichier, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+        print(f"[RESEAU] Téléchargement terminé avec succès ({os.path.getsize(nom_fichier)} octets).")
+        return True
+    except Exception as e:
+        sys.stderr.write(f"[ERREUR TELECHARGEMENT BSP] Échec du miroir : {str(e)}\n")
+        return False
 
 def calculer_rayons_courbure(lat_rad):
     denom = 1.0 - E2_WGS84 * math.sin(lat_rad)**2
@@ -54,7 +78,7 @@ def calculer_coucher_soleil_lmt(ts, eph, station_wgs, date_pivot, lon_deg):
         pass
     return "N/A"
 
-def executer_moteur_v875():
+def executer_moteur_v880():
     mode_recouvrement = sys.argv[1].upper() if len(sys.argv) > 1 else "MARSEILLE_FIXE"
     
     pression_surface, temperature_surface_k, e_vapeur_eau = 1013.25, 288.15, 12.0
@@ -71,14 +95,17 @@ def executer_moteur_v875():
     else:
         altitude_geo = ALT_NOMINALE
 
-    # Forcer l'utilisation du dossier courant pour l'écriture des fichiers BSP de Skyfield
+    # Étape 1 : Récupération forcée du fichier binaire d'éphémérides
+    telecharger_fichier_bsp_force("de421.bsp")
+
+    # Étape 2 : Chargement local strict par Skyfield
     try:
-        repertoire_execution = os.getcwd()
-        load_local = load.build_downloader(directory=repertoire_execution, verbose=False)
+        repertoire_courant = os.getcwd()
+        load_local = load.build_downloader(directory=repertoire_courant, verbose=False)
         eph = load_local('de421.bsp')
         ts = load_local.timescale(builtin=True)
     except Exception as e:
-        sys.stderr.write(f"[FATAL IO] Impossible d'initialiser les éphémérides localement : {str(e)}\n")
+        sys.stderr.write(f"[FATAL NOYAU] Impossible de charger l'éphéméride locale : {str(e)}\n")
         sys.exit(1)
     
     try:
@@ -137,7 +164,7 @@ def executer_moteur_v875():
 
         payload = {
             "METADATA": {
-                "infrastructure": "SYSTEMA SENTINELA v8.7.5 — DE421 FIXED",
+                "infrastructure": "SYSTEMA SENTINELA v8.8.0 — FIXED",
                 "mode_environnement_execution": mode_recouvrement,
                 "epoch_utc": epoch_actuelle.isoformat().replace("+00:00", "Z"),
                 "equation_of_time_min": float(eot_minutes),
@@ -154,13 +181,13 @@ def executer_moteur_v875():
             "DATA_STREAMS": flux_astres
         }
 
-        with open(os.path.join(repertoire_execution, "flux_live.json"), "w", encoding="utf-8") as f:
+        with open("flux_live.json", "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=4, ensure_ascii=False)
-        print("[METROLOGY OK] Fichier écrit.")
+        print("[METROLOGY OK] flux_live.json mis à jour.")
         
     except Exception as e:
-        sys.stderr.write(f"[ERREUR RUNTIME] : {str(e)}\n")
+        sys.stderr.write(f"[ERREUR RUNTIME] Calcul interrompu : {str(e)}\n")
         sys.exit(1)
 
 if __name__ == "__main__":
-    executer_moteur_v875()
+    executer_moteur_v880()
