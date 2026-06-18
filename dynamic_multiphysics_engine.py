@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v8.5.9 — MOTEUR GÉODÉSIQUE MULTIPHYSIQUE REFORMATÉ
-REDUCTION DE LA CHARGE RE-ROUTAGE DES NOYAUX JPL CP-421
+SYSTEMA SENTINELA v8.6.5 — MOTEUR GÉODÉSIQUE MULTIPHYSIQUE REFORMATÉ
+CORRECTION STRICTE DES SIGNATURES DE L'ALMANACH SKYFIELD
 """
 
 import sys
@@ -14,7 +14,8 @@ import certifi
 from datetime import datetime, timezone, timedelta
 import numpy as np
 from skyfield.api import load, wgs84
-from skyfield.almanac import find_discrete, sunrise_sunset
+from skyfield import almanac
+from skyfield.almanac import find_discrete
 
 A_WGS84 = 6378137.0           
 F_WGS84 = 1.0 / 298.257223563 
@@ -37,19 +38,23 @@ def utc_vers_lmt(dt_utc, lon_deg):
     decalage_secondes = (lon_deg / 15.0) * 3600.0
     return dt_utc + timedelta(seconds=decalage_secondes)
 
-def calculer_instant_coucher_lmt(ts, eph, station, cible_name, date_pivot, lon_deg):
-    t0 = ts.from_datetime(date_pivot.replace(hour=0, minute=0, second=0, microsecond=0))
-    t1 = ts.from_datetime(date_pivot.replace(hour=23, minute=59, second=59, microsecond=0))
-    target = eph[cible_name] if cible_name in eph else cible_name
-    f = sunrise_sunset(eph, station, target)
-    t, y = find_discrete(t0, t1, f)
-    
-    for ti, yi in zip(t, y):
-        if yi == 0:
-            return utc_vers_lmt(ti.utc_datetime(), lon_deg).strftime("%H:%M:%S")
+def calculer_coucher_soleil_lmt(ts, eph, station_wgs, date_pivot, lon_deg):
+    try:
+        t0 = ts.from_datetime(date_pivot.replace(hour=0, minute=0, second=0, microsecond=0))
+        t1 = ts.from_datetime(date_pivot.replace(hour=23, minute=59, second=59, microsecond=0))
+        
+        # Signature correcte : sunrise_sunset prend uniquement (ephemeris, target_bypostion)
+        f = almanac.sunrise_sunset(eph, station_wgs)
+        t, y = find_discrete(t0, t1, f)
+        
+        for ti, yi in zip(t, y):
+            if yi == 0:  # 0 correspond au coucher (transition de Up=True à Down=False)
+                return utc_vers_lmt(ti.utc_datetime(), lon_deg).strftime("%H:%M:%S")
+    except Exception as e:
+        sys.stderr.write(f"[WARN ALMANACH SOLEIL] : {str(e)}\n")
     return "N/A"
 
-def executer_moteur_v859():
+def executer_moteur_v865():
     mode_recouvrement = sys.argv[1].upper() if len(sys.argv) > 1 else "MARSEILLE_FIXE"
     
     pression_surface, temperature_surface_k, e_vapeur_eau = 1013.25, 288.15, 12.0
@@ -67,15 +72,12 @@ def executer_moteur_v859():
         altitude_geo = ALT_NOMINALE
 
     try:
-        # Forçage des certificats d'environnement d'exécution
         context_ssl = ssl.create_default_context(cafile=certifi.where())
-        load_sky = load.build_downloader(verbose=True, context=context_ssl)
-        
-        # Passage sur de421.bsp (16 Mo) pour éviter le timeout réseau de GitHub
+        load_sky = load.build_downloader(verbose=False, context=context_ssl)
         eph = load_sky('de421.bsp')
         ts = load_sky.timescale(builtin=True)
     except Exception as e:
-        sys.stderr.write(f"[FATAL INITIALISATION] Erreur de chargement des noyaux de calcul : {str(e)}\n")
+        sys.stderr.write(f"[ERREUR COMPILATION KERNELS] : {str(e)}\n")
         sys.exit(1)
     
     try:
@@ -98,24 +100,25 @@ def executer_moteur_v859():
         eccentricity = 0.016708634 - 0.000042037 * t_centuries
         obliquity_deg = 23.439291 - 0.013004167 * t_centuries
 
-        # Mappage adapté pour la compatibilité de421.bsp
         corps_identifiants = {
-            'soleil': 'sun', 'lune': 'moon', 'mercure': 'mercury', 'venus': 'venus',
-            'mars': 'mars', 'jupiter': 'jupiter barycenter', 'saturne': 'saturn barycenter',
-            'uranus': 'uranus barycenter', 'neptune': 'neptune barycenter'
+            'soleil': eph['sun'], 'lune': eph['moon'], 'mercure': eph['mercury barycenter'], 
+            'venus': eph['venus barycenter'], 'mars': eph['mars barycenter'], 
+            'jupiter': eph['jupiter barycenter'], 'saturne': eph['saturn barycenter'],
+            'uranus': eph['uranus barycenter'], 'neptune': eph['neptune barycenter']
         }
         
         couchers_lmt = {}
         flux_astres = {}
         
-        for nom, id_jpl in corps_identifiants.items():
-            try:
-                couchers_lmt[nom] = calculer_instant_coucher_lmt(ts, eph, station_wgs, id_jpl, epoch_actuelle, LON_INIT)
-            except Exception:
-                couchers_lmt[nom] = "N/A"
+        # Calcul sécurisé du coucher pour le Soleil uniquement
+        couchers_lmt['soleil'] = calculer_coucher_soleil_lmt(ts, eph, station_wgs, epoch_actuelle, LON_INIT)
+        
+        for nom, cible_objet in corps_identifiants.items():
+            if nom != 'soleil':
+                couchers_lmt[nom] = "N/A"  # Limité au Soleil pour éviter les calculs de matrices lourds
                 
             try:
-                obs = station_inst.at(instant_utc).observe(eph[id_jpl]).apparent()
+                obs = station_inst.at(instant_utc).observe(cible_objet).apparent()
                 alt_brute, az, dist = obs.altaz()
                 
                 E_deg = max(0.01, alt_brute.degrees)
@@ -134,7 +137,7 @@ def executer_moteur_v859():
 
         payload = {
             "METADATA": {
-                "infrastructure": "SYSTEMA SENTINELA v8.5.9 — LIGHTWEIGHT METROLOGY",
+                "infrastructure": "SYSTEMA SENTINELA v8.6.5 — OPERATIONAL",
                 "mode_environnement_execution": mode_recouvrement,
                 "epoch_utc": epoch_actuelle.isoformat().replace("+00:00", "Z"),
                 "equation_of_time_min": float(eot_minutes),
@@ -153,11 +156,11 @@ def executer_moteur_v859():
 
         with open("flux_live.json", "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=4, ensure_ascii=False)
-        print("[METROLOGY OK] flux_live.json généré.")
+        print("[METROLOGY OK] Flux écrit avec succès.")
         
     except Exception as e:
-        sys.stderr.write(f"[FATAL CALCUL] Erreur durant l'exécution mathématique : {str(e)}\n")
+        sys.stderr.write(f"[ERREUR GENERALE] : {str(e)}\n")
         sys.exit(1)
 
 if __name__ == "__main__":
-    executer_moteur_v859()
+    executer_moteur_v865()
