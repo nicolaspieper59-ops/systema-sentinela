@@ -53,9 +53,11 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
         
+        # Sécurité pour éviter le crash si le fichier n'existe pas encore au premier build vert
+        touch flux_live.json 
         git add flux_live.json
         if ! git diff-index --quiet HEAD --; then
-          git commit -m "Mise à jour métrologique JPL DE440 v8.5.8"
+          git commit -m "Mise à jour métrologique JPL DE421 v8.7.5"
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref_name }}
         else
           echo "Aucune modification structurelle détectée sur le flux."
