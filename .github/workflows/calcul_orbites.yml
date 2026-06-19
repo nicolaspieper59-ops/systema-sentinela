@@ -1,27 +1,28 @@
-name: Moteur Multiphysique Éphémérides
+name: Moteur Multiphysique Éphémérides v10
 
 on:
   schedule:
-    - cron: '*/10 * * * *' # Calcul automatique toutes les 10 minutes
+    - cron: '*/10 * * * *'
   workflow_dispatch:
     inputs:
-      profile:
-        description: "Profil d'espace-temps à injecter"
+      latitude:
+        description: "Latitude Géodésique WGS84 (deg)"
         required: true
-        default: 'MARSEILLE_FIXE'
-        type: choice
-        options:
-          - MARSEILLE_FIXE
-          - AVION
-          - TRAIN
-          - VOITURE
-          - BATEAU
+        default: "43.284356"
+      longitude:
+        description: "Longitude Géodésique WGS84 (deg)"
+        required: true
+        default: "5.358507"
+      altitude:
+        description: "Altitude Ellipsoïdale Haute Précision (m)"
+        required: true
+        default: "99.3100"
 
 jobs:
   run-engine:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Autorise explicitement l'écriture sur le dépôt
+      contents: write
 
     steps:
     - name: Récupération du code source
@@ -33,31 +34,23 @@ jobs:
         python-version: '3.10'
 
     - name: Installation des dépendances métrologiques
-      run: |
-        python -m pip install --upgrade pip
-        pip install numpy skyfield
+      run: pip install numpy skyfield
 
-    - name: Exécution du calcul physique JPL
+    - name: Exécution du calcul vectoriel JPL DE421
       run: |
-        PROFILE_MODE="${{ github.event.inputs.profile }}"
-        if [ -z "$PROFILE_MODE" ]; then
-          PROFILE_MODE="MARSEILLE_FIXE"
-        fi
-        echo "[CLOUD EXEC] Lancement du moteur avec le profil : $PROFILE_MODE"
-        python dynamic_multiphysics_engine.py "$PROFILE_MODE"
+        python dynamic_multiphysics_engine.py \
+          "${{ github.event.inputs.latitude }}" \
+          "${{ github.event.inputs.longitude }}" \
+          "${{ github.event.inputs.altitude }}"
 
-    - name: Déploiement du Flux mis à jour sur GitHub Pages
+    - name: Déploiement Atomique du Flux
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        
         git add flux_live.json
         if ! git diff-index --quiet HEAD --; then
-          git commit -m "SENTINELA CLOUD : Synchro Automatique Profil [$PROFILE_MODE]"
+          git commit -m "SENTINELA v10: Update 3D Pos [Lat:${{ github.event.inputs.latitude }}]"
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref_name }}
-          echo "[SUCCESS] Flux de métrologie synchronisé."
-        else
-          echo "[INFO] Aucune modification orbitale détectée."
         fi
