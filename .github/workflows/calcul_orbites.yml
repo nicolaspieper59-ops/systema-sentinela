@@ -1,69 +1,42 @@
-name: Moteur Multiphysique Éphémérides
+// CONFIGURATION DE L'ACTIONNEUR CLOUD GITHUB
+const GITHUB_REPO = "nicolaspieper59-ops/systema-sentinela"; // Votre dépôt
+const WORKFLOW_ID = "sentinela.yml"; // Nom de votre fichier YAML
 
-on:
-  schedule:
-    - cron: '*/10 * * * *'
-  workflow_dispatch:
-    inputs:
-      profile:
-        description: "Sélection du profil d'espace-temps"
-        required: true
-        default: 'MARSEILLE_FIXE'
-        type: choice
-        options:
-          - MARSEILLE_FIXE
-          - AVION
-          - TRAIN
-          - VOITURE
-          - BATEAU
+async function basculerProfilSpatioTemporel(modeCible) {
+    let token = localStorage.getItem('git_sentinela_token');
+    
+    if (!token) {
+        token = prompt("Entrez votre jeton d'accès GitHub (Classic PAT ou Fine-Grained) pour valider l'action Cloud :");
+        if (!token) return;
+        localStorage.setItem('git_sentinela_token', token);
+    }
 
-jobs:
-  run-engine:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    ecrireLog(`[CLOUD] Demande d'activation du profil : ${modeCible}...`);
 
-    steps:
-    - name: Récupération du code source
-      uses: actions/checkout@v4
+    try {
+        const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/${WORKFLOW_ID}/dispatches`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/vnd.github+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                ref: 'main', // Branche d'exécution
+                inputs: { profile: modeCible }
+            })
+        });
 
-    - name: Configuration de Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-
-    - name: Installation des dépendances métrologiques JPL
-      run: |
-        python -m pip install --upgrade pip setuptools wheel
-        pip install numpy skyfield jplephem requests certifi
-
-    - name: Diagnostic de l'espace de travail
-      run: |
-        echo "[DIAGNOSTIC] Vérification de l'existence des fichiers :"
-        ls -la
-
-    - name: Exécution du calcul physique JPL
-      run: |
-        PROFILE_MODE="${{ github.event.inputs.profile }}"
-        if [ -z "$PROFILE_MODE" ]; then
-          PROFILE_MODE="MARSEILLE_FIXE"
-        fi
-        echo "[EXECUTION] Lancement du moteur sous le profil : $PROFILE_MODE"
-        # L'option -u empêche Python de mettre les erreurs en cache de tampon
-        python -u dynamic_multiphysics_engine.py "$PROFILE_MODE"
-
-    - name: Déploiement et sauvegarde du flux de données
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        
-        touch flux_live.json
-        git add flux_live.json
-        if ! git diff-index --quiet HEAD --; then
-          git commit -m "Mise à jour métrologique JPL v8.8.5"
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref_name }}
-        else
-          echo "Aucune modification structurelle détectée sur le flux."
-        fi
+        if (response.status === 204) {
+            ecrireLog(`[🚀 CLOUD OK] Ordre accepté par GitHub ! Lancement du Build Actions...`);
+        } else {
+            const errData = await response.json();
+            throw new Error(errData.message || "Erreur d'authentification");
+        }
+    } catch (err) {
+        ecrireLog(`[ÉCHEC CLOUD] : ${err.message}`);
+        if(err.message.includes("Bad credentials")) {
+            localStorage.removeItem('git_sentinela_token'); // Purge du mauvais token
+        }
+    }
+}
