@@ -1,20 +1,20 @@
-name: Moteur Multiphysique Éphémérides v10
+name: Noyau Multiphysique Éphémérides v10
 
 on:
   schedule:
-    - cron: '*/10 * * * *'  # Calcul automatique régulier
+    - cron: '*/10 * * * *'  # Exécution automatisée toutes les 10 minutes
   workflow_dispatch:
     inputs:
       latitude:
-        description: "Latitude Géodésique WGS84 (deg)"
+        description: "Latitude Géodésique WGS84 Station Base (deg)"
         required: true
         default: "43.284356"
       longitude:
-        description: "Longitude Géodésique WGS84 (deg)"
+        description: "Longitude Géodésique WGS84 Station Base (deg)"
         required: true
         default: "5.358507"
       altitude:
-        description: "Altitude Ellipsoïdale Haute Précision (m)"
+        description: "Altitude Ellipsoïdale Haute Précision Station Base (m)"
         required: true
         default: "99.3100"
 
@@ -38,15 +38,20 @@ jobs:
         python -m pip install --upgrade pip
         pip install numpy skyfield
 
-    - name: Exécution du calcul vectoriel JPL DE421
+    - name: Téléchargement ou Cache des Éphémérides de421.bsp
       run: |
-        # Les structures logiques "||" injectent la valeur par défaut si le déclencheur est le CRON automatisé
+        if [ ! -f de421.bsp ]; then
+          curl -O https://storage.googleapis.com/skyfield-ephemerides/de421.bsp
+        fi
+
+    - name: Exécution du calcul des tenseurs cartésiens ITRS
+      run: |
         python dynamic_multiphysics_engine.py \
           "${{ github.event.inputs.latitude || '43.284356' }}" \
           "${{ github.event.inputs.longitude || '5.358507' }}" \
           "${{ github.event.inputs.altitude || '99.3100' }}"
 
-    - name: Déploiement Atomique du Flux
+    - name: Déploiement Atomique du Flux JSON
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
@@ -54,7 +59,7 @@ jobs:
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git add flux_live.json
         if ! git diff-index --quiet HEAD --; then
-          git commit -m "SENTINELA v10.0.5: Synchronisation Automatique Espace-Temps"
+          git commit -m "SENTINELA v10.6.0: Recalcul des tenseurs vectoriels tridimensionnels ITRS"
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref_name }}
         else
           echo "Aucune déviation orbitale structurelle à enregistrer."
