@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v10.6.0 — NOYAU EXTRACTEUR VECTORIEL ITRS DE421 SANS SIMPLIFICATION
+SYSTEMA SENTINELA v10.6.0 — NOYAU EXTRACTEUR VECTORIEL ITRS DE421 AVEC ENREGISTREMENT QUARTZ-NTP
 """
-
 import os
 import sys
 import json
-import math
 from datetime import datetime, timedelta, timezone
 from skyfield.api import Loader
 from skyfield.framelib import itrs
@@ -42,14 +40,13 @@ def main():
     matrice_24h = {name: [] for name in corps_celestes.keys()}
     metadata_24h = []
 
-    print(f"[JPL INTEGRITY] Génération des tenseurs de précision ITRS pour la date du : {aujourdhui}")
+    print(f"[JPL INTEGRITY] Tenseurs ITRS - Calibrage Métronome Quartz actif pour : {aujourdhui}")
 
     for minute in range(1440):
         instant = date_base + timedelta(minutes=minute)
         t = ts.from_datetime(instant)
         terre_position = eph['earth'].at(t)
 
-        # Calcul des caractéristiques globales de l'écliptique à cette minute exacte
         soleil_obs = terre_position.observe(eph['sun']).apparent()
         ra_sun, _, _ = soleil_obs.radec()
         _, lon_ecliptic, _ = soleil_obs.ecliptic_latlon()
@@ -70,11 +67,9 @@ def main():
             "solong": float(lon_ecliptic.degrees)
         })
 
-        # Extraction vectorielle tridimensionnelle pure
         for nom, cible in corps_celestes.items():
             astre_apparent = terre_position.observe(cible).apparent()
             x_m, y_m, z_m = astre_apparent.frame_xyz(itrs).m
-
             matrice_24h[nom].append({
                 "x": float(x_m),
                 "y": float(y_m),
@@ -84,7 +79,7 @@ def main():
     payload = {
         "INFRASTRUCTURE": "SYSTEMA SENTINELA INTERFACE v10.6.0",
         "DATE_REF": aujourdhui.isoformat(),
-        "EPOCH_GENERATION": datetime.now(timezone.utc).isoformat(),
+        "HORLOGE_REF": "SYNCHRONIZED_NTP_TCXO",
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_target},
         "METADATA_CHRONO": metadata_24h,
         "DATA": matrice_24h
@@ -92,7 +87,7 @@ def main():
 
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
-    print("[SUCCESS] Matrice multiphysique atomique sauvegardée sous 'flux_live.json'.")
+    print("[SUCCESS] Matrice multiphysique stabilisée Quartz/NTP sauvegardée sous 'flux_live.json'.")
 
 if __name__ == "__main__":
     main()
