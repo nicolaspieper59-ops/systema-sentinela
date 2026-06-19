@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v9.3.5 — NOYAU CLOUD MULTIPHYSIQUE DYNAMIQUE
+SYSTEMA SENTINELA v10.0.0 — NOYAU DE COMPUTATION ASTROMÉTRIQUE PUR
 """
 
 import os
@@ -12,19 +12,28 @@ from datetime import datetime, timezone
 
 try:
     from skyfield.api import Loader, wgs84
+    from skyfield.data import mpc
 except ImportError:
-    sys.stderr.write("[ERROR] Skyfield manquant.\n")
     sys.exit(1)
 
-# Constantes de l'ellipsoïde de référence WGS84
-A_WGS84 = 6378137.0           
-F_WGS84 = 1.0 / 298.257223563 
+# Paramètres Ellipsoïde WGS84
+A_WGS84 = 6378137.0
+F_WGS84 = 1.0 / 298.257223563
 E2_WGS84 = 2.0 * F_WGS84 - F_WGS84**2
 
-def coordonnees_geodesiques_vers_ecef(lat_deg, lon_deg, alt_m):
-    """Calcule le vecteur de position géocentrique ECEF."""
-    lat = math.radians(lat_deg)
-    lon = math.radians(lon_deg)
+def generer_atmosphere_isa(alt_m):
+    """Calcule les conditions thermodynamiques réelles (Modèle standard ISA continu)."""
+    T0, L, P0 = 288.15, 0.0065, 1013.25
+    g, M, R = 9.80665, 0.0289644, 8.31447
+    
+    h = max(0.0, min(alt_m, 11000.0)) # Limite troposphérique
+    T = T0 - L * h
+    exponent = (g * M) / (R * L)
+    P = P0 * math.pow((1.0 - (L * h) / T0), exponent)
+    return P, T
+
+def geodesie_vers_ecef(lat_deg, lon_deg, alt_m):
+    lat, lon = math.radians(lat_deg), math.radians(lon_deg)
     denom = 1.0 - E2_WGS84 * math.sin(lat)**2
     N = A_WGS84 / math.sqrt(denom)
     x = (N + alt_m) * math.cos(lat) * math.cos(lon)
@@ -33,31 +42,14 @@ def coordonnees_geodesiques_vers_ecef(lat_deg, lon_deg, alt_m):
     return [x, y, z]
 
 def main():
-    # Récupération sécurisée de l'argument du profil injecté par GitHub Actions
-    if len(sys.argv) > 1:
-        mode_actuel = sys.argv[1].upper()
-    else:
-        mode_actuel = "MARSEILLE_FIXE"
-        
-    valid_modes = ["MARSEILLE_FIXE", "AVION", "TRAIN", "VOITURE", "BATEAU"]
-    if mode_actuel not in valid_modes:
-        mode_actuel = "MARSEILLE_FIXE"
+    # Parsing des coordonnées géodésiques réelles
+    lat_target = float(sys.argv[1]) if len(sys.argv) > 1 else 43.284356
+    lon_target = float(sys.argv[2]) if len(sys.argv) > 2 else 5.358507
+    alt_target = float(sys.argv[3]) if len(sys.argv) > 3 else 99.3100
 
-    # Coordonnées topocentriques de référence (Marseille)
-    LAT_INIT, LON_INIT, ALT_NOMINALE = 43.284356, 5.358507, 99.3100
-    alt_ajustee = ALT_NOMINALE
-    
-    # Paramétrage des couches physiques atmosphériques selon le profil
-    if mode_actuel == "AVION":
-        alt_ajustee = 10600.0
-    elif mode_actuel == "TRAIN":
-        alt_ajustee = ALT_NOMINALE + 20.0
-    elif mode_actuel == "VOITURE":
-        alt_ajustee = ALT_NOMINALE  # Profil urbain au niveau du sol
-    elif mode_actuel == "BATEAU":
-        alt_ajustee = 0.0           # Niveau moyen des mers
+    # Génération des conditions du milieu physique
+    pression, temperature = generer_atmosphere_isa(alt_target)
 
-    # Initialisation du chargeur Skyfield autonome
     loader = Loader(os.getcwd(), verbose=False)
     eph = loader('de421.bsp')
     ts = loader.timescale(builtin=True)
@@ -65,12 +57,11 @@ def main():
     instant_actuel = datetime.now(timezone.utc)
     t = ts.from_datetime(instant_actuel)
     
-    # Résolution mathématique des repères spatialisés
-    pos_ecef = coordonnees_geodesiques_vers_ecef(LAT_INIT, LON_INIT, alt_ajustee)
-    station_wgs = wgs84.latlon(LAT_INIT, LON_INIT, elevation_m=alt_ajustee)
+    pos_ecef = geodesie_vers_ecef(lat_target, lon_target, alt_target)
+    station_wgs = wgs84.latlon(lat_target, lon_target, elevation_m=alt_target)
     station_inst = eph['earth'] + station_wgs
 
-    # Équation du Temps et mécanique céleste globale
+    # Équation du temps et variables écliptiques rigoureuses
     soleil_obs = eph['earth'].at(t).observe(eph['sun']).apparent()
     ra_sun, _, _ = soleil_obs.radec()
     _, lon_ecliptic, _ = soleil_obs.ecliptic_latlon()
@@ -83,7 +74,6 @@ def main():
     eccentricity = 0.016708634 - 0.000042037 * t_centuries
     obliquity_deg = 23.439291 - 0.013004167 * t_centuries
 
-    # Matrice d'acquisition des astres du système solaire
     corps_celestes = {
         'soleil': eph['sun'], 'lune': eph['moon'], 'mercure': eph['mercury barycenter'],
         'venus': eph['venus barycenter'], 'mars': eph['mars barycenter'],
@@ -95,27 +85,34 @@ def main():
     couchers_lmt = {}
     
     for nom, cible in corps_celestes.items():
+        # .apparent() applique l'aberration, la déflexion relativiste et la précession/nutation
         obs_topocentre = station_inst.at(t).observe(cible).apparent()
         alt_brute, az, dist = obs_topocentre.altaz()
         
+        # Réfraction physique (Loi de Bennett corrigée en pression/température de la position)
+        alt_corrigee = alt_brute.degrees
+        if alt_brute.degrees > -0.833:
+            R0 = 1.02 / math.tan(math.radians(alt_brute.degrees + 10.3 / (alt_brute.degrees + 5.11)))
+            corr_atmo = R0 * (pression / 1013.25) * (283.15 / temperature)
+            alt_corrigee += corr_atmo / 60.0
+
         data_streams[nom] = {
             "azimut_deg": float(az.degrees),
-            "elevation_deg": float(alt_brute.degrees),
+            "elevation_deg": float(alt_corrigee),
             "distance_precision_m": float(dist.m)
         }
-        # Marqueur de synchronisation
         couchers_lmt[nom] = "SYNCHRONIZED" if nom == 'soleil' else "N/A"
 
-    # Construction du document de sortie
     payload = {
         "METADATA": {
-            "infrastructure": "SYSTEMA SENTINELA v9.3.5 — CLOUD-NATIVE",
-            "mode_environnement_execution": mode_actuel,
+            "infrastructure": "SYSTEMA SENTINELA v10.0.0 — 3D LIVE ENGINE",
+            "mode_environnement_execution": f"AUTOPOS_3D (H:{alt_target:.1f}m)",
             "epoch_utc": instant_actuel.isoformat().replace("+00:00", "Z"),
             "equation_of_time_min": float(eot_minutes),
             "eccentricity": float(eccentricity),
             "obliquity_deg": float(obliquity_deg),
-            "solar_longitude_deg": float(lon_ecliptic.degrees)
+            "solar_longitude_deg": float(lon_ecliptic.degrees),
+            "coordonnees_station": {"lat": lat_target, "lon": lon_target, "alt": alt_target}
         },
         "COUCHERS_LMT": couchers_lmt,
         "MATRICE_ECEF_REEL": {
@@ -124,10 +121,8 @@ def main():
         "DATA_STREAMS": data_streams
     }
 
-    # Écriture physique du fichier tampon
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=4, ensure_ascii=False)
-    print(f"[SUCCESS] Flux généré sous le profil {mode_actuel} à l'étape {payload['METADATA']['epoch_utc']}")
 
 if __name__ == "__main__":
     main()
