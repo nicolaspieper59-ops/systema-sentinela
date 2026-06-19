@@ -106,10 +106,14 @@
     let idWatchGPS = null;
     let jplMatriceDuJour = null;
     
+    // Variables de synchronisation temporelle étanches (Contre la dérive Android)
+    let baseServerTime = null;      
+    let basePerformanceTime = null; 
+
     // Coordonnées initiales par défaut de la station de base (Marseille Surface)
     let coordonneesActuelles = { lat: 43.284356, lon: 5.358507, alt: 99.3100, accuracy: 5.0 };
     
-    // Contexte environnemental multiphysique (philosophie pocket-devices.com)
+    // Contexte environnemental multiphysique
     let contextePhysique = {
         meteoSurface: { temp_c: 15.0, pression_hpa: 1013.25 },
         environnementLocal: "OPEN_SKY",
@@ -130,11 +134,12 @@
 
     function ecrireLog(m) {
         const c = document.getElementById('logConsole');
-        c.innerHTML += `[${new Date().toISOString().substring(11,19)}] ${m}<br>`;
-        c.scrollTop = c.scrollHeight;
+        if(c) {
+            c.innerHTML += `[${new Date().toISOString().substring(11,19)}] ${m}<br>`;
+            c.scrollTop = c.scrollHeight;
+        }
     }
 
-    // Capture de la luminosité ambiante pour la caractérisation de l'abri
     if ('AmbientLightSensor' in window) {
         try {
             const sensor = new AmbientLightSensor();
@@ -170,11 +175,23 @@
         }
     }
 
-    // Acquisition asynchrone sécurisée de la matrice d'origine de421.bsp générée par Python
+    // Extraction sécurisée de la matrice + acquisition du timestamp du serveur HTTP
     async function chargerMatriceFlux() {
         try {
             const response = await fetch('flux_live.json');
             if (!response.ok) throw new Error("Erreur de transfert HTTP du fichier de flux.");
+            
+            // Extraction de l'heure réseau de l'en-tête pour contourner l'horloge système Android
+            const dateServeurStr = response.headers.get('Date');
+            if (dateServeurStr) {
+                baseServerTime = new Date(dateServeurStr);
+                ecrireLog("[SUCCESS] Horloge UTC calibrée sur le serveur distant.");
+            } else {
+                baseServerTime = new Date(); // Repli de sécurité si proxy restrictif
+                ecrireLog("[WARN] En-tête de temps indisponible. Repli sur le composant local.");
+            }
+            basePerformanceTime = performance.now();
+
             jplMatriceDuJour = await response.json();
             
             document.getElementById('source-badge').innerText = "NOYAU MATRICIEL ITRS INTEGRAL";
@@ -189,7 +206,13 @@
         }
     }
 
-    // Algorithme rigoureux d'interpolation de Lagrange à coefficients d'ordre 5 (6 nœuds glissants)
+    // Calcul de l'heure UTC exacte via le différentiel matériel monotonique CPU
+    function obtenirHeureUTCSecurisee() {
+        if (!baseServerTime) return new Date();
+        const deltaMs = performance.now() - basePerformanceTime;
+        return new Date(baseServerTime.getTime() + deltaMs);
+    }
+
     function interp6Noeuds(vals, p) {
         const x = [-2, -1, 0, 1, 2, 3];
         let resultat = 0.0;
@@ -251,21 +274,20 @@
     }
 
     function rafraichirEspaceTemps() {
-        const maintenant = new Date();
+        // Remplacement de "new Date()" par l'horloge réseau insensibilisée aux dérives Android
+        const maintenant = obtenirHeureUTCSecurisee();
         document.getElementById('lbl-epoch').innerText = maintenant.toISOString();
 
         if (!jplMatriceDuJour) return;
 
         const minutes_utc = maintenant.getUTCHours() * 60 + maintenant.getUTCMinutes() + maintenant.getUTCSeconds() / 60 + maintenant.getUTCMilliseconds() / 60000;
         
-        // Extraction sans approximation des données globales issues du tenseur
         const meta = evaluerMetadataChrono(minutes_utc);
         document.getElementById('lbl-eot').innerText = meta.eot.toFixed(6) + " min";
         document.getElementById('lbl-ecc').innerText = meta.ecc.toFixed(7);
         document.getElementById('lbl-obl').innerText = meta.obl.toFixed(4) + "°";
         document.getElementById('lbl-solong').innerText = meta.solong.toFixed(4) + "°";
 
-        // Paramètres Géodésiques Éléments Constituants Ellipsoïde WGS84 Vrai
         const lat_rad = coordonneesActuelles.lat * Math.PI / 180.0;
         const lon_rad = coordonneesActuelles.lon * Math.PI / 180.0;
         const a_wgs84 = 6378137.0;
@@ -274,7 +296,6 @@
 
         const N_norm = a_wgs84 / Math.sqrt(1.0 - e2 * Math.sin(lat_rad) * Math.sin(lat_rad));
 
-        // Vecteur Cartésien de la Station WGS84 dans le repère rotatif de la Terre
         const station_X = (N_norm + coordonneesActuelles.alt) * Math.cos(lat_rad) * Math.cos(lon_rad);
         const station_Y = (N_norm + coordonneesActuelles.alt) * Math.cos(lat_rad) * Math.sin(lon_rad);
         const station_Z = (N_norm * (1.0 - e2) + coordonneesActuelles.alt) * Math.sin(lat_rad);
@@ -282,17 +303,14 @@
         let positions_instantanees = {};
 
         ASTRES.forEach(a => {
-            // Vecteur Géocentrique Apparent de l'astre interpolé par Lagrange d'ordre 5
             const astre_V = evaluerVecteurAstreITRS(a, minutes_utc);
 
-            // Soustraction Vectorielle Absolue : Élimination mathématique de la Parallaxe Topocentrique
             const topo_X = astre_V.x - station_X;
             const topo_Y = astre_V.y - station_Y;
             const topo_Z = astre_V.z - station_Z;
 
             const distance_reelle = Math.sqrt(topo_X * topo_X + topo_Y * topo_Y + topo_Z * topo_Z);
 
-            // Formulation des vecteurs directeurs unitaires locaux de l'horizon
             const u_Est_x = -Math.sin(lon_rad);
             const u_Est_y = Math.cos(lon_rad);
             const u_Est_z = 0;
@@ -305,7 +323,6 @@
             const u_Nord_y = -Math.sin(lat_rad) * Math.sin(lon_rad);
             const u_Nord_z = Math.cos(lat_rad);
 
-            // Projections par produits scalaires orthogonaux (Pas de singularité polaire)
             const comp_Est  = topo_X * u_Est_x  + topo_Y * u_Est_y  + topo_Z * u_Est_z;
             const comp_Nord = topo_X * u_Nord_x + topo_Y * u_Nord_y + topo_Z * u_Nord_z;
             const comp_Zen  = topo_X * u_Zen_x  + topo_Y * u_Zen_y  + topo_Z * u_Zen_z;
@@ -313,9 +330,7 @@
             let el_brute = Math.asin(comp_Zen / distance_reelle) * 180.0 / Math.PI;
             let az_deg = (Math.atan2(comp_Est, comp_Nord) * 180.0 / Math.PI + 360.0) % 360.0;
 
-            // Réfraction atmosphérique non-simplifiée basée sur le profil barométrique local calculé
             if (el_brute > -0.833) {
-                // Modélisation dynamique de la pression selon l'altitude mesurée
                 const pression = 1013.25 * Math.pow((1.0 - (0.0065 * coordonneesActuelles.alt) / 288.15), 5.255);
                 const temp_k = (288.15 - (0.0065 * coordonneesActuelles.alt));
                 const R0 = 1.02 / Math.tan((el_brute + 10.3 / (el_brute + 5.11)) * Math.PI / 180.0);
@@ -324,12 +339,10 @@
 
             positions_instantanees[a] = { az: az_deg, el: el_brute, dist: distance_reelle };
 
-            // Affichage dans le tableau
             document.getElementById(`az-${a}`).innerText = az_deg.toFixed(5) + "°";
             document.getElementById(`el-${a}`).innerText = el_brute.toFixed(5) + "°";
             document.getElementById(`dist-${a}`).innerText = distance_reelle.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) + " m";
 
-            // Détermination sans fiction de l'occlusion des parois structurelles
             const elTxt = document.getElementById(`el-${a}`);
             const vueCell = document.getElementById(`vue-${a}`);
 
@@ -355,9 +368,56 @@
         renduRadar(positions_instantanees);
     }
 
+    // Routine manquante de traçage graphique sur Canvas HTML5
+    function renduRadar(positions) {
+        const canvas = document.getElementById('radarCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        const rMax = cx - 15;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Cercles d'élévation concentriques
+        ctx.strokeStyle = '#21262d';
+        ctx.lineWidth = 1;
+        [0.33, 0.66, 1.0].forEach(scale => {
+            ctx.beginPath();
+            ctx.arc(cx, cy, rMax * scale, 0, 2 * Math.PI);
+            ctx.stroke();
+        });
+
+        // Axes cardinaux N-S / E-W
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - rMax); ctx.lineTo(cx, cy + rMax);
+        ctx.moveTo(cx - rMax, cy); ctx.lineTo(cx + rMax, cy);
+        ctx.stroke();
+
+        // Positionnement vectoriel de chaque astre visible
+        for (const astre in positions) {
+            const data = positions[astre];
+            if (data.el > 0) {
+                const r = rMax * (1.0 - data.el / 90.0);
+                const theta = (data.az - 90) * Math.PI / 180.0; // Alignement 0° sur le Nord (Axe ordonnées négatif)
+                const x = cx + r * Math.cos(theta);
+                const y = cy + r * Math.sin(theta);
+
+                ctx.fillStyle = astre === 'soleil' ? 'var(--amber)' : astre === 'lune' ? '#fff' : 'var(--sky)';
+                ctx.beginPath();
+                ctx.arc(x, y, 4, 0, 2 * Math.PI);
+                ctx.fill();
+
+                ctx.fillStyle = '#8b949e';
+                ctx.font = '9px Consolas';
+                ctx.fillText(astre.substring(0,3).toUpperCase(), x + 6, y + 3);
+            }
+        }
+    }
+
     function gestionnaireBasculeMode(checkbox) {
         if (checkbox.checked) {
-            ecrireLog("[GPS] Interconnexion active avec le récepteur matériel...");
+        ecrireLog("[GPS] Interconnexion active avec le récepteur matériel...");
             if ("geolocation" in navigator) {
                 idWatchGPS = navigator.geolocation.watchPosition(
                     (pos) => {
@@ -385,41 +445,24 @@
             analyserObstructionEnvironnement();
             if(jplMatriceDuJour) {
                 document.getElementById('coordonnees-courantes').innerText = 
-             `Station : Base Initiale Marseille (LAT: ${jplMatriceDuJour.STATION_BASE_GPS.lat}° | LON: ${jplMatriceDuJour.STATION_BASE_GPS.lon}° | ALT: ${jplMatriceDuJour.STATION_BASE_GPS.alt}m)`;
+                    `Station : Base Initiale Marseille (LAT: ${jplMatriceDuJour.STATION_BASE_GPS.lat}° | LON: ${jplMatriceDuJour.STATION_BASE_GPS.lon}° | ALT: ${jplMatriceDuJour.STATION_BASE_GPS.alt}m)`;
             }
         }
     }
 
-    const canvas = document.getElementById('radarCanvas');
-    const ctx = canvas.getContext('2d');
-    const cx = canvas.width / 2, cy = canvas.height / 2, r_max = canvas.width / 2 - 20;
-
-    function renduRadar(data) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
-        for(let r = r_max/3; r <= r_max; r += r_max/3) { ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2*Math.PI); ctx.stroke(); }
-        ctx.beginPath(); ctx.moveTo(cx, cy - r_max); ctx.lineTo(cx, cy + r_max); ctx.moveTo(cx - r_max, cy); ctx.lineTo(cx + r_max, cy); ctx.stroke();
-
-        ASTRES.forEach(a => {
-            const astre = data[a];
-            if (astre && astre.el > 0) {
-                const az_rad = (astre.az - 90) * (Math.PI / 180);
-                const dist_centre = r_max * (1.0 - (astre.el / 90.0));
-                const px = cx + dist_centre * Math.cos(az_rad);
-                const py = cy + dist_centre * Math.sin(az_rad);
-                
-                ctx.fillStyle = a === "soleil" ? "var(--amber)" : (a === "lune" ? "var(--sky)" : "var(--neon-green)");
-                ctx.beginPath(); ctx.arc(px, py, 4, 0, 2*Math.PI); ctx.fill();
-                ctx.fillStyle = "#8b949e"; ctx.fillText(a.substring(0,3).toUpperCase(), px + 6, py + 4);
-            }
-        });
+    // Gestionnaire d'exécution continue asynchrone
+    function boucleDeCalculContinue() {
+        rafraichirEspaceTemps();
+        requestAnimationFrame(boucleDeCalculContinue);
     }
 
-    // Chargement initial et synchronisation temporelle à haute récurrence (50ms pour une fluidité vectorielle)
+    // Amorçage au chargement du DOM
     chargerMatriceFlux().then(() => {
-        analyserObstructionEnvironnement();
-        setInterval(rafraichirEspaceTemps, 50);
+        boucleDeCalculContinue();
     });
+
+    // Recalibration de l'horloge réseau toutes les 5 minutes pour éviter la micro-dérive thermique du CPU
+    setInterval(chargerMatriceFlux, 5 * 60 * 1000);
 </script>
 </body>
 </html>
