@@ -2,7 +2,7 @@ name: Moteur Multiphysique Éphémérides
 
 on:
   schedule:
-    - cron: '*/10 * * * *' # Rafraîchissement automatique toutes les 10 minutes
+    - cron: '*/10 * * * *' # Calcul automatique toutes les 10 minutes
   workflow_dispatch:
     inputs:
       profile:
@@ -21,7 +21,7 @@ jobs:
   run-engine:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Autorise explicitement l'écriture sur le dépôt
 
     steps:
     - name: Récupération du code source
@@ -32,22 +32,21 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: Installation des dépendances
+    - name: Installation des dépendances métrologiques
       run: |
         python -m pip install --upgrade pip
-        pip install numpy skyfield requests
+        pip install numpy skyfield
 
     - name: Exécution du calcul physique JPL
       run: |
-        # Récupère le profil depuis l'action manuelle, sinon utilise la valeur par défaut
         PROFILE_MODE="${{ github.event.inputs.profile }}"
         if [ -z "$PROFILE_MODE" ]; then
           PROFILE_MODE="MARSEILLE_FIXE"
         fi
-        echo "[EXECUTION] Lancement du moteur sous le profil : $PROFILE_MODE"
+        echo "[CLOUD EXEC] Lancement du moteur avec le profil : $PROFILE_MODE"
         python dynamic_multiphysics_engine.py "$PROFILE_MODE"
 
-    - name: Déploiement du Flux sur GitHub Pages
+    - name: Déploiement du Flux mis à jour sur GitHub Pages
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
@@ -56,8 +55,9 @@ jobs:
         
         git add flux_live.json
         if ! git diff-index --quiet HEAD --; then
-          git commit -m "SENTINELA CLOUD : Synchro Profil [${{ github.event.inputs.profile }}]"
+          git commit -m "SENTINELA CLOUD : Synchro Automatique Profil [$PROFILE_MODE]"
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref_name }}
+          echo "[SUCCESS] Flux de métrologie synchronisé."
         else
-          echo "Aucune modification structurelle du flux."
+          echo "[INFO] Aucune modification orbitale détectée."
         fi
