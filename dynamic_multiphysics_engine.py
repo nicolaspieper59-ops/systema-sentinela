@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v11.3.0 — NOYAU EXTRACTEUR ITRS (SYNCHRONISATION ATOMIQUE)
+SYSTEMA SENTINELA v12.6.0 — NOYAU EXTRACTEUR ITRS (SYNCHRONISATION ANCRAGE INERTIEL)
+Fichier : dynamic_multiphysics_engine.py
 """
 import os
 import sys
@@ -20,7 +21,7 @@ def conversion_securisee_float(valeur_str, valeur_secours):
         return valeur_secours
 
 def main():
-    # Capture des coordonnées (Marseille par défaut)
+    # Capture des coordonnées géodésiques et thermiques (Marseille par défaut)
     lat_target = conversion_securisee_float(sys.argv[1] if len(sys.argv) > 1 else None, 43.284356)
     lon_target = conversion_securisee_float(sys.argv[2] if len(sys.argv) > 2 else None, 5.358507)
     alt_target = conversion_securisee_float(sys.argv[3] if len(sys.argv) > 3 else None, 99.3100)
@@ -30,6 +31,7 @@ def main():
     eph = loader('de421.bsp')
     ts = loader.timescale(builtin=True)
 
+    # Récupération de la date UTC courante
     aujourdhui = datetime.now(timezone.utc).date()
     date_base = datetime(aujourdhui.year, aujourdhui.month, aujourdhui.day, 0, 0, tzinfo=timezone.utc)
 
@@ -50,6 +52,7 @@ def main():
         t = ts.from_datetime(instant)
         terre_position = eph['earth'].at(t)
 
+        # Calcul des métadonnées chronométriques et de l'Équation du Temps (EoT)
         soleil_obs = terre_position.observe(eph['sun']).apparent()
         ra_sun, _, _ = soleil_obs.radec()
         _, lon_ecliptic, _ = soleil_obs.ecliptic_latlon()
@@ -70,6 +73,7 @@ def main():
             "solong": float(lon_ecliptic.degrees)
         })
 
+        # Extraction des coordonnées cartésiennes topocentriques / géocentriques ITRS
         for nom, cible in corps_celestes.items():
             astre_apparent = terre_position.observe(cible).apparent()
             x_m, y_m, z_m = astre_apparent.frame_xyz(itrs).m
@@ -77,12 +81,16 @@ def main():
                 "x": float(x_m), "y": float(y_m), "z": float(z_m)
             })
 
-    # Timestamp de clôture pour le calcul de latence réseau (NTP simulé)
+    # Génération des marqueurs temporels absolus pour la boucle d'asservissement front-end
+    now_utc = datetime.now(timezone.utc)
+    # Calcul du timestamp équivalent en millisecondes depuis le début de la journée UTC
+    reference_chrono_ms = int((now_utc - date_base).total_seconds() * 1000)
     timestamp_generation_ms = int(time.time() * 1000)
 
     payload = {
-        "INFRASTRUCTURE": "SYSTEMA SENTINELA v11.3.0",
+        "INFRASTRUCTURE": "SYSTEMA SENTINELA v12.6.0",
         "GENERATION_TIMESTAMP_MS": timestamp_generation_ms,
+        "REFERENCE_CHRONO_MS": reference_chrono_ms,  # Requis pour la boucle de suture inertielle du JS
         "DATE_REF": aujourdhui.isoformat(),
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_target},
         "STATION_BASE_THERMO": {"temp_celsius": temp_target},
@@ -90,9 +98,11 @@ def main():
         "DATA": matrice_24h
     }
 
+    # Écriture de la matrice stabilisée pour publication immédiate via le CI GitHub Actions
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
-    print(f"[SUCCESS] Matrice stabilisée (Epoch: {timestamp_generation_ms})")
+        
+    print(f"[SUCCESS] Matrice stabilisée (Epoch: {timestamp_generation_ms} | Ref Inertielle: {reference_chrono_ms}ms)")
 
 if __name__ == "__main__":
     main()
