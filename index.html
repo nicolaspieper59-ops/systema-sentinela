@@ -3,22 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v10.6.0 — ASSERVISSEMENT NTP / QUARTZ TCXO</title>
+    <title>SYSTEMA SENTINELA v11.0.0 — SUTRE INSTRUMENTALE & TSM OPTIMIZED</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
             --sky: #58a6ff; --neon-green: #3fb950; --amber: #d29922; --rose: #f85149; --text-main: #c9d1d9;
-            --dec1: #ff5733; /* Macro-visuel global (Unités et dixièmes) */
-            --dec2: #2ecc71; /* Limite absolue de l'œil humain */
-            --dec3: #3498db; /* Limite optique capteur caméra */
-            --dec4: #9b59b6; /* Limite turbulence atmosphérique (seeing) */
-            --dec5: #7f8c8d; /* Précision de calcul interne */
+            --dec1: #ff5733; /* Macro-visuel global */
+            --dec2: #2ecc71; /* Limite œil humain */
+            --dec3: #3498db; /* Limite capteur caméra */
+            --dec4: #9b59b6; /* Limite turbulence */
+            --dec5: #7f8c8d; /* Précision calcul interne */
         }
         body {
             background: var(--bg-base); color: var(--text-main);
             font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; padding: 15px; margin: 0;
         }
-        .container { max-width: 1650px; margin: 0 auto; }
+        .container { max-width: 1750px; margin: 0 auto; }
         .master-header {
             background: var(--bg-surface); border: 1px solid var(--border-dim);
             border-left: 4px solid var(--sky); padding: 12px 20px; border-radius: 6px;
@@ -37,7 +37,7 @@
         .metric-val { font-weight: bold; color: #fff; }
         
         table { width: 100%; border-collapse: collapse; text-align: left; }
-        th, td { padding: 8px; border-bottom: 1px solid var(--border-dim); }
+        th, td { padding: 8px; border-bottom: 1px solid var(--border-dim); font-size: 10.5px; }
         th { color: var(--sky); font-weight: normal; }
         
         .d-int { color: #fff; font-weight: bold; }
@@ -63,18 +63,18 @@
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v10.6.0 — ASSERVISSEMENT OPTOMÉTRIQUE</div>
+        <div class="brand">SYSTEMA SENTINELA v11.0.0 — ANALYSE EN HEURE SOLAIRE INTERNE</div>
         <div style="display: flex; gap: 20px; align-items: center;">
-            <div>CADENCE LOCAL : <span id="lbl-clock-source" style="font-weight:bold; color:var(--neon-green);">QUARTZ MATÉRIEL (TCXO)</span></div>
-            <div>STABILISATION DÉRIVE : <span id="lbl-meteo" style="font-weight:bold; color:var(--dec5);">TÉMOIN MATÉRIEL OFF</span></div>
-            <div>EPOCH UTC (NTP) : <span id="lbl-epoch" style="color:var(--amber);">REALTIME CALIBRATION</span></div>
+            <div>CADENCE LOCAL : <span id="lbl-clock-source" style="font-weight:bold; color:var(--neon-green);">TCXO (QUARTZ S10e)</span></div>
+            <div>STABILISATION MÉTÉO : <span id="lbl-meteo" style="font-weight:bold; color:var(--dec5);">OPTRONIQUE ARRIÈRE OFF</span></div>
+            <div>EPOCH UTC (SERVEUR) : <span id="lbl-epoch" style="color:var(--amber);">REALTIME LOCK</span></div>
             <span id="source-badge" class="status-badge badge-ok">INITIALISATION...</span>
         </div>
     </header>
 
     <div class="grid-layout">
         <div class="panel" style="display:flex; flex-direction:column; align-items:center;">
-            <h3 class="panel-title" style="width:100%;">RADAR TOPOCENTRIQUE LOCAL</h3>
+            <h3 class="panel-title" style="width:100%;">RADAR TOPOCENTRIQUE FILTRÉ</h3>
             <canvas id="radarCanvas" width="380" height="380" style="background:#01040a; border-radius:50%; border: 1px solid var(--border-dim);"></canvas>
             <div style="width:100%; margin-top:15px;">
                 <div class="metric-row"><span>Equation of Time (True)</span><span id="lbl-eot" class="metric-val">--</span></div>
@@ -87,14 +87,18 @@
         </div>
 
         <div class="panel">
-            <h3 class="panel-title">FLUX GÉODÉSIQUE DES ASTRES — INTERPOLATION DE LAGRANGE À 6 NŒUDS</h3>
+            <h3 class="panel-title">MATRICE OPTOMÉTRIQUE ET ÉPHÉMÉRIDES SANS FICTION (TSM MERCURIEL)</h3>
             <table>
                 <thead>
                     <tr>
                         <th>CORPS CÉLESTE</th>
-                        <th>AZIMUT (VRAI ITRS)</th>
-                        <th>ÉLÉVATION (RÉFRACTÉE)</th>
-                        <th>STATUT DE LA LIGNE DE VISÉE</th>
+                        <th>AZIMUT (ITRS)</th>
+                        <th>ÉLÉVATION (REF)</th>
+                        <th>ŒIL NU</th>
+                        <th>MONARCH M7</th>
+                        <th>GALAXY S10e</th>
+                        <th>LEVER (TSM)</th>
+                        <th>COUCHER (TSM)</th>
                         <th>DISTANCE TOPOCENTRIQUE (m)</th>
                     </tr>
                 </thead>
@@ -105,7 +109,7 @@
 
     <div class="control-bar">
         <div class="switch-container">
-            <span style="font-weight: bold;">TÉMOIN MATÉRIEL CAMÉRA (OCCULTATION MÉTÉO / ANALYSE CONTRASTE) :</span>
+            <span style="font-weight: bold;">TÉMOIN MATÉRIEL CAMÉRA (ANALYSE BRUTE DES PHOTONS) :</span>
             <label class="switch">
                 <input type="checkbox" id="toggle-camera" onchange="gestionnaireBasculeCamera(this)">
                 <span class="slider"></span>
@@ -120,11 +124,19 @@
 
 <script>
     const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
+    
+    // Constantes astrophysiques réelles (Magnitudes apparentes moyennes observées)
+    const MAGNITUDES = {
+        'soleil': -26.74, 'lune': -12.74, 'venus': -4.4, 'jupiter': -2.7,
+        'mars': -0.2, 'mercure': 0.2, 'saturne': 0.6, 'uranus': 5.5, 'neptune': 7.8
+    };
+
     let jplMatriceDuJour = null;
     let baseServerTime = null;
     let basePerformanceTime = null;
     let fluxMeteoCielClaire = true; 
     let coordonneesActuelles = { lat: 43.284356, lon: 5.358507, alt: 99.3100 };
+    let ephemeridesCalculees = {};
 
     const tbody = document.getElementById('table-body');
     ASTRES.forEach(a => {
@@ -133,7 +145,11 @@
                 <td style="font-weight:bold; color:var(--sky);">${a.toUpperCase()}</td>
                 <td id="az-${a}" style="font-family:monospace;">--</td>
                 <td id="el-${a}" style="font-family:monospace;">--</td>
-                <td id="vue-${a}" style="font-weight:bold;">--</td>
+                <td id="oeil-${a}" style="font-weight:bold; text-align:center;">--</td>
+                <td id="jumelle-${a}" style="font-weight:bold; text-align:center;">--</td>
+                <td id="s10e-${a}" style="font-weight:bold; text-align:center;">--</td>
+                <td id="lever-${a}" style="font-family:monospace; color:var(--amber);">--</td>
+                <td id="coucher-${a}" style="font-family:monospace; color:var(--amber);">--</td>
                 <td id="dist-${a}" style="font-family:monospace;">--</td>
             </tr>`;
     });
@@ -160,10 +176,10 @@
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
                 video.srcObject = stream;
-                ecrireLog("[MATÉRIEL] Analyse optique en direct activée.");
+                ecrireLog("[MATÉRIEL] Suture optronique activée sur la caméra du S10e.");
                 analyserFluxMeteo();
             } catch (err) {
-                ecrireLog(`[ERREUR] Liaison caméra impossible : ${err.message}`);
+                ecrireLog(`[ERREUR] Liaison matérielle interrompue : ${err.message}`);
                 checkbox.checked = false;
             }
         } else {
@@ -206,11 +222,11 @@
                 const lblMeteo = document.getElementById('lbl-meteo');
                 if (variance < 160) { 
                     fluxMeteoCielClaire = false;
-                    lblMeteo.innerText = "ALERTE : CIEL COUVERT / VISIBILITÉ NULLE";
+                    lblMeteo.innerText = "BARRIÈRE STRATIFORME (NUAGES DÉTECTÉS)";
                     lblMeteo.style.color = "var(--rose)";
                 } else {
                     fluxMeteoCielClaire = true;
-                    lblMeteo.innerText = "OPTRONIQUE : CIEL CLAIR";
+                    lblMeteo.innerText = "OPTRONIQUE : INDICE DE TRANSPARENCE OPTIMAL";
                     lblMeteo.style.color = "var(--neon-green)";
                 }
             }
@@ -230,11 +246,20 @@
             
             jplMatriceDuJour = await response.json();
             
+            coordonneesActuelles.lat = jplMatriceDuJour.STATION_BASE_GPS.lat;
+            coordonneesActuelles.lon = jplMatriceDuJour.STATION_BASE_GPS.lon;
+            coordonneesActuelles.alt = jplMatriceDuJour.STATION_BASE_GPS.alt;
+
             document.getElementById('source-badge').innerText = "VERROUILLAGE SANS DÉRIVE ANGULAIRE OK";
             document.getElementById('source-badge').className = "status-badge badge-ok";
             document.getElementById('coordonnees-courantes').innerText = 
-                `Station : LAT: ${jplMatriceDuJour.STATION_BASE_GPS.lat}° | LON: ${jplMatriceDuJour.STATION_BASE_GPS.lon}° | ALT: ${jplMatriceDuJour.STATION_BASE_GPS.alt}m`;
+                `Station : LAT: ${coordonneesActuelles.lat}° | LON: ${coordonneesActuelles.lon}° | ALT: ${coordonneesActuelles.alt}m`;
+            
             ecrireLog("[SUCCESS] Synchronisation temporelle stabilisée.");
+            
+            // Calculer instantanément les éphémérides de la journée en TSM pur (exécuté une seule fois par fichier)
+            precalculerEphemeridesTSM();
+            
             boucleDeCalculContinue();
         } catch (err) {
             document.getElementById('source-badge').innerText = "SYNCHRONISATION EN COURS...";
@@ -287,28 +312,85 @@
         };
     }
 
-    function boucleDeCalculContinue() {
+    // --- MOTEUR DE SCAN ALGORITHMIQUE DES HORIZONS (SANS FICTION) ---
+    function precalculerEphemeridesTSM() {
+        const lat_rad = coordonneesActuelles.lat * Math.PI / 180.0;
+        const lon_rad = coordonneesActuelles.lon * Math.PI / 180.0;
+        const N_norm = 6378137.0 / Math.sqrt(1.0 - 0.00669437999014 * Math.sin(lat_rad) * Math.sin(lat_rad));
+
+        const station_X = (N_norm + coordonneesActuelles.alt) * Math.cos(lat_rad) * Math.cos(lon_rad);
+        const station_Y = (N_norm + coordonneesActuelles.alt) * Math.cos(lat_rad) * Math.sin(lon_rad);
+        const station_Z = (N_norm * (1.0 - 0.00669437999014) + coordonneesActuelles.alt) * Math.sin(lat_rad);
+
+        ASTRES.forEach(a => {
+            let limitHorizon = (a === 'soleil' || a === 'lune') ? -0.833 : -0.566; // Ajustement réfraction + demi-diamètre apparent
+            let minuteLever = null;
+            let minuteCoucher = null;
+
+            // Échantillonnage de la journée minute par minute (0 à 1439 UTC) pour détecter les intersections de l'horizon géodésique
+            let vecteurInitial = evaluerVecteurAstreITRS(a, 0);
+            let prevEl = Math.asin((vecteurInitial.x * Math.cos(lat_rad) * Math.cos(lon_rad) + vecteurInitial.y * Math.cos(lat_rad) * Math.sin(lon_rad) + vecteurInitial.z * Math.sin(lat_rad) - station_Z) / Math.sqrt(Math.pow(vecteurInitial.x-station_X,2)+Math.pow(vecteurInitial.y-station_Y,2)+Math.pow(vecteurInitial.z-station_Z,2))) * 180.0 / Math.PI;
+
+            for (let m = 1; m <= 1440; m++) {
+                let mMod = m % 1440;
+                let v = evaluerVecteurAstreITRS(a, mMod);
+                let d = Math.sqrt(Math.pow(v.x-station_X,2) + Math.pow(v.y-station_Y,2) + Math.pow(v.z-station_Z,2));
+                let comp_Zen = v.x * (Math.cos(lat_rad) * Math.cos(lon_rad)) + v.y * (Math.cos(lat_rad) * Math.sin(lon_rad)) + v.z * Math.sin(lat_rad);
+                let currentEl = Math.asin(comp_Zen / d) * 180.0 / Math.PI;
+
+                if (prevEl <= limitHorizon && currentEl > limitHorizon) minuteLever = mMod;
+                if (prevEl >= limitHorizon && currentEl < limitHorizon) minuteCoucher = mMod;
+                
+                prevEl = currentEl;
+            }
+
+            ephemeridesCalculees[a] = {
+                lever: formaterMinutesEnTSM(minuteLever),
+                coucher: formaterMinutesEnTSM(minuteCoucher)
+            };
+        });
+        ecrireLog("[SUCCESS] Éphémérides calculées directement en Heure Solaire Moyenne.");
+    }
+
+    function formaterMinutesEnTSM(minutes_utc) {
+        if (minutes_utc === null) return "POLAIRE";
+        // TSM = UTC + (Longitude * 4 minutes) -> Totalement déconnecté de l'heure système Android
+        let minutes_tsm = (minutes_utc + (coordonneesActuelles.lon * 4) + 1440) % 1440;
+        let h = Math.floor(minutes_tsm / 60);
+        let m = Math.floor(minutes_tsm % 60);
+        let s = Math.floor((minutes_tsm * 60) % 60);
+        return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+
+function boucleDeCalculContinue() {
         if (!jplMatriceDuJour) return;
         
         const maintenant = obtenirHeureUTCSecurisee();
-        document.getElementById('lbl-epoch').innerText = maintenant.toISOString() + " [TCXO LOCK]";
+        document.getElementById('lbl-epoch').innerText = maintenant.toISOString() + " [TCXO SECURE]";
 
+        // Conversion en minutes UTC décimales (0.00000 à 1439.99999) pour l'interpolateur à 6 nœuds
         const minutes_utc = (maintenant.getUTCHours() * 60 + maintenant.getUTCMinutes() + maintenant.getUTCSeconds() / 60 + maintenant.getUTCMilliseconds() / 60000) % 1440;
         
+        // Extraction des métadonnées orbitales fondamentales du jour (IAU DE421)
         const meta = evaluerMetadataChrono(minutes_utc);
         document.getElementById('lbl-eot').innerText = meta.eot.toFixed(6) + " min";
         document.getElementById('lbl-ecc').innerText = meta.ecc.toFixed(7);
         document.getElementById('lbl-obl').innerText = meta.obl.toFixed(4) + "°";
         document.getElementById('lbl-solong').innerText = meta.solong.toFixed(4) + "°";
 
+        // --- CALCULS DU TEMPS SOLAIRE ABSOLU (IMMUNE COMPLÈTEMENT À L'OS) ---
+        // Temps Solaire Moyen (TSM) = UTC + Écart Méridien Pur (Longitude * 4 minutes)
         const tsm_ms = maintenant.getTime() + (coordonneesActuelles.lon * 4 * 60 * 1000);
         const date_tsm = new Date(tsm_ms);
+        
+        // Temps Solaire Vrai (TSV) = TSM + Équation du Temps calculée instantanément
         const tv_ms = tsm_ms + (meta.eot * 60 * 1000);
         const date_tsv = new Date(tv_ms);
 
         document.getElementById('lbl-tsm').innerText = date_tsm.toISOString().substring(11,19) + " TSM";
         document.getElementById('lbl-tsv').innerText = date_tsv.toISOString().substring(11,19) + " TSV";
 
+        // --- MATRICE DE TRANSFORMATION GÉODÉSIQUE ITRS ---
         const lat_rad = coordonneesActuelles.lat * Math.PI / 180.0;
         const lon_rad = coordonneesActuelles.lon * Math.PI / 180.0;
         const N_norm = 6378137.0 / Math.sqrt(1.0 - 0.00669437999014 * Math.sin(lat_rad) * Math.sin(lat_rad));
@@ -319,16 +401,21 @@
 
         let positions_instantanees = {};
         
+        // Calcul préalable du Soleil pour déterminer le fond de ciel Rayleigh (Diurne vs Nocturne)
         let soleilVecteur = evaluerVecteurAstreITRS('soleil', minutes_utc);
         let s_topo_Z = soleilVecteur.z - station_Z;
         let s_distance = Math.sqrt(Math.pow(soleilVecteur.x-station_X,2)+Math.pow(soleilVecteur.y-station_Y,2)+Math.pow(s_topo_Z,2));
         let elevationSoleilPourFiltre = Math.asin(s_topo_Z / s_distance) * 180.0 / Math.PI;
 
+        // Boucle d'évaluation physique sur la matrice des 9 corps célestes
         ASTRES.forEach(a => {
             const astre_V = evaluerVecteurAstreITRS(a, minutes_utc);
-            const topo_X = astre_V.x - station_X; const topo_Y = astre_V.y - station_Y; const topo_Z = astre_V.z - station_Z;
+            const topo_X = astre_V.x - station_X; 
+            const topo_Y = astre_V.y - station_Y; 
+            const topo_Z = astre_V.z - station_Z;
             const distance_reelle = Math.sqrt(topo_X * topo_X + topo_Y * topo_Y + topo_Z * topo_Z);
 
+            // Projection locale (Est, Nord, Zénith)
             const comp_Est  = topo_X * (-Math.sin(lon_rad)) + topo_Y * Math.cos(lon_rad);
             const comp_Nord = topo_X * (-Math.sin(lat_rad) * Math.cos(lon_rad)) + topo_Y * (-Math.sin(lat_rad) * Math.sin(lon_rad)) + topo_Z * Math.cos(lat_rad);
             const comp_Zen  = topo_X * (Math.cos(lat_rad) * Math.cos(lon_rad)) + topo_Y * (Math.cos(lat_rad) * Math.sin(lon_rad)) + topo_Z * Math.sin(lat_rad);
@@ -336,6 +423,7 @@
             let el_brute = Math.asin(comp_Zen / distance_reelle) * 180.0 / Math.PI;
             let az_deg = (Math.atan2(comp_Est, comp_Nord) * 180.0 / Math.PI + 360.0) % 360.0;
 
+            // Correction de réfraction atmosphérique dynamique (Loi thermodynamique locale sans interpolation)
             if (el_brute > -0.833) {
                 const pression = 1013.25 * Math.pow((1.0 - (0.0065 * coordonneesActuelles.alt) / 288.15), 5.255);
                 const temp_k = (288.15 - (0.0065 * coordonneesActuelles.alt));
@@ -343,27 +431,65 @@
                 el_brute += (R0 * (pression / 1013.25) * (283.15 / temp_k)) / 60.0;
             }
 
-            positions_instantanees[a] = { az: az_deg, el: el_brute, dist: distance_reelle };
+            positions_instantanees[a] = { az: az_deg, el: el_brute, dist: distance_reelle, visibleSurRadar: false };
 
-            document.getElementById(`az-${a}`).innerHTML = formaterChiffreCouleur(az_deg);
-            document.getElementById(`el-${a}`).innerHTML = formaterChiffreCouleur(el_brute);
-            document.getElementById(`dist-${a}`).innerText = distance_reelle.toLocaleString(undefined, {maximumFractionDigits:2}) + " m";
+            // --- PROTOCOLE OPTOMÉTRIQUE TRI-SYSTÈME EN CASCADE ---
+            const magAstre = MAGNITUDES[a];
+            let oeilVis = false; let jumelleVis = false; let s10eVis = false;
+            let raisonAbsolue = "";
 
-            const vueCell = document.getElementById(`vue-${a}`);
-
-            if (!fluxMeteoCielClaire) {
-                vueCell.innerText = "OPACITÉ MÉTÉO (NUAGES)";
-                vueCell.style.color = "var(--rose)";
-            } else if (el_brute <= 0) {
-                vueCell.innerText = "SOUS L'HORIZON";
-                vueCell.style.color = "#444";
-            } else if (a !== 'soleil' && a !== 'lune' && elevationSoleilPourFiltre > -6.0) {
-                vueCell.innerText = "ÉBLOUISSEMENT (SATURATION DIURNE)";
-                vueCell.style.color = "var(--amber)";
-            } else {
-                vueCell.innerText = "LIGNE DE VISÉE INFRA-MILLIMÉTRIQUE CLAIRE";
-                vueCell.style.color = "var(--neon-green)";
+            if (el_brute <= 0) {
+                raisonAbsolue = "HORIZON";
+            } else if (!fluxMeteoCielClaire) {
+                raisonAbsolue = "NUAGES";
             }
+
+            if (raisonAbsolue === "") {
+                if (elevationSoleilPourFiltre > -6.0) { 
+                    // Mode Diurne : Éblouissement par diffusion
+                    if (a === 'soleil' || a === 'lune') { oeilVis = true; jumelleVis = true; s10eVis = true; }
+                    else if (a === 'venus') { oeilVis = false; jumelleVis = true; s10eVis = false; }
+                } else {
+                    // Mode Nocturne : Limites photoniques physiques des objectifs
+                    if (magAstre <= 6.0) oeilVis = true;                 // Seuil de l'œil humain nu en milieu préservé
+                    if (magAstre <= 9.9) jumelleVis = true;             // Pouvoir collecteur des lentilles ED 42mm Monarch M7
+                    if (magAstre <= 1.5 || a === 'lune') s10eVis = true; // Capteur de base f/1.5 du S10e en exposition nominale
+                }
+            }
+
+            // --- SYNC AFFICHAGE ET GEL DES DÉCIMALES SI IMPOSSIBLE ---
+            const cellOeil = document.getElementById(`oeil-${a}`);
+            const cellJumelle = document.getElementById(`jumelle-${a}`);
+            const cellS10e = document.getElementById(`s10e-${a}`);
+
+            if (!oeilVis && !jumelleVis && !s10eVis) {
+                document.getElementById(`az-${a}`).innerHTML = `<span style="color:#223; font-weight:bold;">MASQUÉ</span>`;
+                document.getElementById(`el-${a}`).innerHTML = `<span style="color:#223; font-weight:bold;">MASQUÉ</span>`;
+                document.getElementById(`dist-${a}`).innerText = "HORS VUE";
+                positions_instantanees[a].visibleSurRadar = false;
+            } else {
+                document.getElementById(`az-${a}`).innerHTML = formaterChiffreCouleur(az_deg);
+                document.getElementById(`el-${a}`).innerHTML = formaterChiffreCouleur(el_brute);
+                document.getElementById(`dist-${a}`).innerText = distance_reelle.toLocaleString(undefined, {maximumFractionDigits:2}) + " m";
+                positions_instantanees[a].visibleSurRadar = true;
+            }
+
+            const appliquerRenduStatut = (cell, visible) => {
+                if (raisonAbsolue === "HORIZON") { cell.innerText = "SOUS HORIZON"; cell.style.color = "#2c3e50"; }
+                else if (raisonAbsolue === "NUAGES") { cell.innerText = "NUAGEUX"; cell.style.color = "var(--rose)"; }
+                else {
+                    cell.innerText = visible ? "DISCERNABLE" : "INDÉTECTABLE";
+                    cell.style.color = visible ? "var(--neon-green)" : "#22262d";
+                }
+            };
+
+            appliquerRenduStatut(cellOeil, oeilVis);
+            appliquerRenduStatut(cellJumelle, jumelleVis);
+            appliquerRenduStatut(cellS10e, s10eVis);
+
+            // Affichage des éphémérides calculées dès l'initialisation (Immunisées aux changements Android)
+            document.getElementById(`lever-${a}`).innerText = ephemeridesCalculees[a].lever;
+            document.getElementById(`coucher-${a}`).innerText = ephemeridesCalculees[a].coucher;
         });
 
         renduRadar(positions_instantanees);
@@ -374,17 +500,20 @@
         const canvas = document.getElementById('radarCanvas'); if (!canvas) return;
         const ctx = canvas.getContext('2d'); const cx = canvas.width / 2; const cy = canvas.height / 2; const rMax = cx - 15;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
         
+        // Tracé des cercles de hauteur radar (30°, 60°, 90°)
+        ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
         [0.33, 0.66, 1.0].forEach(scale => {
             ctx.beginPath(); ctx.arc(cx, cy, rMax * scale, 0, 2 * Math.PI); ctx.stroke();
         });
         
+        // Réticule d'axes cardinaux
         ctx.beginPath(); ctx.moveTo(cx, cy - rMax); ctx.lineTo(cx, cy + rMax); ctx.moveTo(cx - rMax, cy); ctx.lineTo(cx + rMax, cy); ctx.stroke();
 
+        // Dessin des positions physiques calculées
         for (const astre in positions) {
             const data = positions[astre];
-            if (data.el > 0) {
+            if (data.el > 0 && data.visibleSurRadar) {
                 const r = rMax * (1.0 - data.el / 90.0);
                 const theta = (data.az - 90) * Math.PI / 180.0;
                 const x = cx + r * Math.cos(theta); const y = cy + r * Math.sin(theta);
