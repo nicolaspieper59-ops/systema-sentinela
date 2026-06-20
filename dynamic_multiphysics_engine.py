@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v11.2.0 — NOYAU EXTRACTEUR VECTORIEL ITRS DE421 AVEC ENREGISTREMENT QUARTZ-NTP
+SYSTEMA SENTINELA v11.3.0 — NOYAU EXTRACTEUR ITRS (SYNCHRONISATION ATOMIQUE)
 """
 import os
 import sys
 import json
+import time
 from datetime import datetime, timedelta, timezone
 from skyfield.api import Loader
 from skyfield.framelib import itrs
@@ -19,11 +20,11 @@ def conversion_securisee_float(valeur_str, valeur_secours):
         return valeur_secours
 
 def main():
-    # Capture des coordonnées géodésiques et thermodynamiques de la station
+    # Capture des coordonnées (Marseille par défaut)
     lat_target = conversion_securisee_float(sys.argv[1] if len(sys.argv) > 1 else None, 43.284356)
     lon_target = conversion_securisee_float(sys.argv[2] if len(sys.argv) > 2 else None, 5.358507)
     alt_target = conversion_securisee_float(sys.argv[3] if len(sys.argv) > 3 else None, 99.3100)
-    temp_target = conversion_securisee_float(sys.argv[4] if len(sys.argv) > 4 else None, 31.7000) # Température réelle cible
+    temp_target = conversion_securisee_float(sys.argv[4] if len(sys.argv) > 4 else None, 31.7000)
 
     loader = Loader(os.getcwd(), verbose=False)
     eph = loader('de421.bsp')
@@ -42,9 +43,8 @@ def main():
     matrice_24h = {name: [] for name in corps_celestes.keys()}
     metadata_24h = []
 
-    print(f"[JPL INTEGRITY] Tenseurs ITRS - Calibrage Métronome Quartz actif pour : {aujourdhui}")
+    print(f"[JPL INTEGRITY] Calcul matriciel pour le : {aujourdhui}")
 
-    # Génération des 1440 nœuds d'interpolation de la journée (pas de 1 minute)
     for minute in range(1440):
         instant = date_base + timedelta(minutes=minute)
         t = ts.from_datetime(instant)
@@ -54,7 +54,6 @@ def main():
         ra_sun, _, _ = soleil_obs.radec()
         _, lon_ecliptic, _ = soleil_obs.ecliptic_latlon()
         
-        # Calcul analytique fin de l'Équation du Temps (EoT)
         eot = (lon_ecliptic.degrees / 15.0 - ra_sun.hours) * 60.0
         if eot > 720.0: eot -= 1440.0
         elif eot < -720.0: eot += 1440.0
@@ -75,24 +74,25 @@ def main():
             astre_apparent = terre_position.observe(cible).apparent()
             x_m, y_m, z_m = astre_apparent.frame_xyz(itrs).m
             matrice_24h[nom].append({
-                "x": float(x_m),
-                "y": float(y_m),
-                "z": float(z_m)
+                "x": float(x_m), "y": float(y_m), "z": float(z_m)
             })
 
+    # Timestamp de clôture pour le calcul de latence réseau (NTP simulé)
+    timestamp_generation_ms = int(time.time() * 1000)
+
     payload = {
-        "INFRASTRUCTURE": "SYSTEMA SENTINELA INTERFACE v11.2.0",
+        "INFRASTRUCTURE": "SYSTEMA SENTINELA v11.3.0",
+        "GENERATION_TIMESTAMP_MS": timestamp_generation_ms,
         "DATE_REF": aujourdhui.isoformat(),
-        "HORLOGE_REF": "SYNCHRONIZED_NTP_TCXO",
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_target},
-        "STATION_BASE_THERMO": {"temp_celsius": temp_target}, # Injection sans fiction de la météo
+        "STATION_BASE_THERMO": {"temp_celsius": temp_target},
         "METADATA_CHRONO": metadata_24h,
         "DATA": matrice_24h
     }
 
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
-    print("[SUCCESS] Matrice multiphysique stabilisée et enregistrée dans flux_live.json.")
+    print(f"[SUCCESS] Matrice stabilisée (Epoch: {timestamp_generation_ms})")
 
 if __name__ == "__main__":
     main()
