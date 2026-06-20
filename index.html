@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v12.5.0 — SUTURE ATOMIQUE PURE & POLY-LAGRANGE OPTIMISÉ</title>
+    <title>SYSTEMA SENTINELA v12.6.0 — ANCRAGE INERTIEL PUR & SUTURE LAGRANGE TOTAL</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -59,12 +59,12 @@
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v12.5.0 — VERROUILLAGE SATELLITAIRE & ARITHMÉTIQUE RELATIVISTE PURE</div>
+        <div class="brand">SYSTEMA SENTINELA v12.6.0 — VERROUILLAGE MONOLITHIQUE INTERNE SANS HORLOGE ANDROID</div>
         <div style="display: flex; gap: 20px; align-items: center;">
             <div>IMU (ASSIETTE) : <span id="lbl-imu" style="font-weight:bold; color:var(--sky);">CALIBRATION...</span></div>
             <div>STABILISATION MÉTÉO : <span id="lbl-meteo" style="font-weight:bold; color:var(--dec5);">OPTRONIQUE ARRIÈRE OFF</span></div>
-            <div>TEMPS ATOMIQUE GPS : <span id="lbl-epoch" style="color:var(--amber);">ATTENTE DU LOCK HARDWARE...</span></div>
-            <span id="source-badge" class="status-badge badge-warn">RECHERCHE SIGNAL GPS...</span>
+            <div>TEMPS ATOMIQUE VIRTUEL : <span id="lbl-epoch" style="color:var(--amber);">VERROUILLAGE FILTRE INERTIEL...</span></div>
+            <span id="source-badge" class="status-badge badge-warn">RECHERCHE CONVERGENCE...</span>
         </div>
     </header>
 
@@ -111,7 +111,7 @@
                 <span class="slider"></span>
             </label>
         </div>
-        <div id="coordonnees-courantes" style="font-family: monospace; color: var(--sky);">Vecteur ITRS : Acquisition satellites...</div>
+        <div id="coordonnees-courantes" style="font-family: monospace; color: var(--sky);">Vecteur ITRS : Constellation satellites...</div>
     </div>
 
     <video id="video-temoin" autoplay playsinline></video>
@@ -127,7 +127,7 @@
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
 
     let jplMatriceDuJour = null;
-    let clockOffset = 0;          // Décalage temporel lissé par le filtre de phase GNSS
+    let clockOffset = 0;          // Base de temps calibrée sur repère de flux
     let fluxMeteoCielClaire = true; 
     let elevationSoleilGlobale = 0;
     let ephemeridesCalculees = {};
@@ -178,7 +178,7 @@
     function ecrireLog(m) {
         const c = document.getElementById('logConsole');
         if(c) {
-            let prefix = clockOffset !== 0 ? formaterMsEnHeureSimple(performance.now() + clockOffset) : "ATTENTE";
+            let prefix = clockOffset !== 0 ? formaterMsEnHeureSimple(performance.now() + clockOffset) : "ANCRAGE";
             c.innerHTML += `[${prefix}] ${m}<br>`;
             c.scrollTop = c.scrollHeight;
         }
@@ -198,8 +198,8 @@
                 const baro = new Barometer({ frequency: 1 });
                 baro.addEventListener('reading', () => { station3D.pressionHpa = baro.pressure; });
                 baro.start();
-                ecrireLog("[MATÉRIEL] Baromètre S10e couplé.");
-            } catch (err) { ecrireLog("[SÉCURITÉ] Baromètre inaccessible."); }
+                ecrireLog("[MATÉRIEL] Couplage barométrique actif.");
+            } catch (err) { ecrireLog("[SÉCURITÉ] Baromètre indisponible."); }
         }
 
         if ('geolocation' in navigator) {
@@ -209,19 +209,23 @@
                     station3D.lon = pos.coords.longitude;
                     station3D.altGps = pos.coords.altitude || 99.31;
                     
-                    if (pos.timestamp) {
-                        let instantaneousOffset = pos.timestamp - performance.now();
+                    // SUTURE INERTIELLE PURE : Déduction du temps d'époque à partir du flux et de performance.now()
+                    // Neutralise complètement les modifications manuelle de l'heure d'Android par l'utilisateur
+                    if (jplMatriceDuJour && jplMatriceDuJour.REFERENCE_CHRONO_MS) {
+                        let interceptInertiel = performance.now();
+                        let targetOffset = jplMatriceDuJour.REFERENCE_CHRONO_MS - interceptInertiel;
+                        
                         if (clockOffset === 0) {
-                            clockOffset = instantaneousOffset;
-                            ecrireLog("[GNSS] Premier verrouillage de phase atomique effectué.");
+                            clockOffset = targetOffset;
+                            ecrireLog("[BASE DE TEMPS] Verrouillage de la phase sur matrice éphéméride stable.");
                         } else {
-                            // Filtre de phase à moyenne mobile exponentielle (Alpha = 0.05) pour éliminer le jitter Android
-                            clockOffset = (clockOffset * 0.95) + (instantaneousOffset * 0.05);
+                            // Filtre de phase hyper-lissé à réponse lente (Alpha = 0.01) anti-jitter d'exécution
+                            clockOffset = (clockOffset * 0.99) + (targetOffset * 0.01);
                         }
                         
                         const badge = document.getElementById('source-badge');
-                        if (badge.innerText !== "SYNC SATELLITE GPS OK") {
-                            badge.innerText = "SYNC SATELLITE GPS OK";
+                        if (badge.innerText !== "VERROUILLAGE FLUX OK") {
+                            badge.innerText = "VERROUILLAGE FLUX OK";
                             badge.className = "status-badge badge-ok";
                             
                             if (!isEphemeridesLoaded) {
@@ -232,7 +236,7 @@
                     }
                     actualiserVecteurStationITRS();
                 },
-                (err) => ecrireLog(`[GPS] Erreur Suture Matérielle: ${err.message}`),
+                (err) => ecrireLog(`[GPS] Perte signal géodésique: ${err.message}`),
                 { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
             );
         }
@@ -268,7 +272,7 @@
                 video.srcObject = stream;
                 analyserFluxMeteo();
             } catch (err) {
-                ecrireLog("[ERREUR] Capteur optronique indisponible.");
+                ecrireLog("[ERREUR] Capteur optronique défaillant.");
                 checkbox.checked = false;
             }
         } else {
@@ -286,7 +290,7 @@
         const lblMeteo = document.getElementById('lbl-meteo');
 
         if (elevationSoleilGlobale < -6.0) {
-            lblMeteo.innerText = "OPTRONIQUE ARRETEE (FILTRE NOCTURNE THERMIQUE ANTIMOUCHETAGE)";
+            lblMeteo.innerText = "OPTRONIQUE EN VEILLE (FILTRE SPECTRAL NOCTURNE ANTI-BRUIT)";
             lblMeteo.style.color = "var(--amber)";
             fluxMeteoCielClaire = true;
             setTimeout(analyserFluxMeteo, 4000);
@@ -312,11 +316,11 @@
 
             if (variance < 160) { 
                 fluxMeteoCielClaire = false;
-                lblMeteo.innerText = "BARRIÈRE STRATIFORME (NUAGES)";
+                lblMeteo.innerText = "COUVERTURE STRATIFORME DÉTECTÉE";
                 lblMeteo.style.color = "var(--rose)";
             } else {
                 fluxMeteoCielClaire = true;
-                lblMeteo.innerText = "CIEL CLAIR (VARIANCE OPTIMALE)";
+                lblMeteo.innerText = "CIEL CLAIR COMPLETE VISIBILITÉ";
                 lblMeteo.style.color = "var(--neon-green)";
             }
         }
@@ -325,7 +329,9 @@
 
     async function chargerMatriceFlux() {
         try {
-            const response = await fetch('flux_live.json?t=' + Date.now());
+            // Anti-cache matériel pur auto-généré sans utiliser l'horloge système
+            let antiCacheMonolithique = Math.floor(performance.now()) + "_" + Math.floor(Math.random() * 1000000);
+            const response = await fetch('flux_live.json?nocache=' + antiCacheMonolithique);
             jplMatriceDuJour = await response.json();
             
             station3D.lat = jplMatriceDuJour.STATION_BASE_GPS.lat;
@@ -338,21 +344,19 @@
             actualiserVecteurStationITRS();
             connecterCapteursMateriels();
 
-            ecrireLog("[SUCCESS] Flux JPL chargé. En attente de la suture matérielle GNSS...");
+            ecrireLog("[SUCCESS] Données Ephémérides chargées. Suture inertielle en cours...");
             boucleDeCalculContinue();
         } catch (err) {
             setTimeout(chargerMatriceFlux, 4000);
         }
     }
 
-    // Extraction arithmétique de la fraction du jour sans instancier d'objets intermédiaires
     function calculerMinutesUtcDepuisTimestamp(tsMs) {
         let msDansLaJournee = tsMs % 86400000;
         if (msDansLaJournee < 0) msDansLaJournee += 86400000;
         return msDansLaJournee / 60000;
     }
 
-    // Génération unique des polynômes de base de Lagrange pour l'instant t courant (O(1) global)
     function genererCoefficientsLagrange(p) {
         const x = [-2, -1, 0, 1, 2, 3];
         const coeffs = new Float64Array(6);
@@ -404,7 +408,6 @@
         };
     }
 
-    // Interpolation brute découplée pour la phase initiale d'ancrage
     function interp6NoeudsDirecte(vals, p) {
         const x = [-2, -1, 0, 1, 2, 3]; let resultat = 0.0;
         for (let i = 0; i < 6; i++) {
@@ -458,7 +461,7 @@
                 coucher: formaterMinutesEnTSM(minuteCoucher)
             };
         });
-        ecrireLog("[SUCCESS] Horizons géodésiques ancrés.");
+        ecrireLog("[SYSTEMA] Horizons de visibilité géodésique ancrés.");
     }
 
     function formaterMinutesEnTSM(minutes_utc) {
@@ -469,30 +472,26 @@
     }
 
     function boucleDeCalculContinue() {
-        // BARRIÈRE STRICTE : Bloque l'exécution continue si le filtre de phase GNSS n'est pas verrouillé
         if (!jplMatriceDuJour || clockOffset === 0) {
             requestAnimationFrame(boucleDeCalculContinue);
             return;
         }
         
-        // Base de temps matérielle lissée pure sans instanciation d'objets Date locales
         const maintenantMs = performance.now() + clockOffset;
-        document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs) + " [GNSS ATOMIC SUTURE]";
+        document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs) + " [REPÈRE INERTIEL PUR]";
 
         const minutes_utc = calculerMinutesUtcDepuisTimestamp(maintenantMs);
         const t0 = Math.floor(minutes_utc) % 1440;
         const p = minutes_utc - Math.floor(minutes_utc);
         
-        // FACTORISATION : Génération unique des polynômes de Lagrange pour toute la frame active
         const coefficientsLagrange = genererCoefficientsLagrange(p);
-        
         const meta = evaluerMetadataChronoOptimise(t0, coefficientsLagrange);
+        
         document.getElementById('lbl-eot').innerText = meta.eot.toFixed(6) + " min";
         document.getElementById('lbl-ecc').innerText = meta.ecc.toFixed(7);
         document.getElementById('lbl-obl').innerText = meta.obl.toFixed(4) + "°";
         document.getElementById('lbl-solong').innerText = meta.solong.toFixed(4) + "°";
 
-        // Décalages solaires arithmétiques pures
         const decallageTsmMs = station3D.lon * 4 * 60 * 1000;
         const tsm_ms = (maintenantMs + decallageTsmMs) % 86400000;
         const tv_ms = (tsm_ms + (meta.eot * 60 * 1000)) % 86400000;
