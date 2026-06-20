@@ -30,11 +30,11 @@ jobs:
       uses: actions/cache@v4
       with:
         path: de421.bsp
-        key: bsp-de421-v1 # Conserve le fichier entre les exécutions pour économiser la bande passante
+        key: bsp-de421-v1
 
     - name: Exécution du Moteur Multiphysique
       run: |
-        python dynamic_multiphysics_engine.py
+        python dynamic_multiphysics_engine.py 43.284356 5.358507 99.3100
 
     - name: Commit et Push des résultats
       run: |
