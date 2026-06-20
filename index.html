@@ -209,8 +209,6 @@
                     station3D.lon = pos.coords.longitude;
                     station3D.altGps = pos.coords.altitude || 99.31;
                     
-                    // SUTURE INERTIELLE PURE : Déduction du temps d'époque à partir du flux et de performance.now()
-                    // Neutralise complètement les modifications manuelle de l'heure d'Android par l'utilisateur
                     if (jplMatriceDuJour && jplMatriceDuJour.REFERENCE_CHRONO_MS) {
                         let interceptInertiel = performance.now();
                         let targetOffset = jplMatriceDuJour.REFERENCE_CHRONO_MS - interceptInertiel;
@@ -219,7 +217,6 @@
                             clockOffset = targetOffset;
                             ecrireLog("[BASE DE TEMPS] Verrouillage de la phase sur matrice éphéméride stable.");
                         } else {
-                            // Filtre de phase hyper-lissé à réponse lente (Alpha = 0.01) anti-jitter d'exécution
                             clockOffset = (clockOffset * 0.99) + (targetOffset * 0.01);
                         }
                         
@@ -329,7 +326,6 @@
 
     async function chargerMatriceFlux() {
         try {
-            // Anti-cache matériel pur auto-généré sans utiliser l'horloge système
             let antiCacheMonolithique = Math.floor(performance.now()) + "_" + Math.floor(Math.random() * 1000000);
             const response = await fetch('flux_live.json?nocache=' + antiCacheMonolithique);
             jplMatriceDuJour = await response.json();
@@ -380,21 +376,6 @@
         const indices = [(t0-2+1440)%1440, (t0-1+1440)%1440, t0, (t0+1)%1440, (t0+2)%1440, (t0+3)%1440];
         const dataAstre = jplMatriceDuJour.DATA[astre];
         
-        let nx = [dataAstre[indices[0]].x, dataAstre[indices[1]].x, dataAstre[indices[2]].x, dataAstre[indices[3]].x, dataAstre[indices[4]].x, dataAstre[indices[5]].x];
-        let ny = [dataAstre[indices[0]].y, dataAstre[indices[1]].y, dataAstre[indices[2]].y, dataAstre[indices[3]].y, dataAstre[indices[4]].y, dataAstre[indices[5]].y];
-        let nz = [dataAstre[indices[0]].z, dataAstre[indices[1]].z, dataAstre[indices[2]].z, dataAstre[indices[3]].z, dataAstre[indices[4]].z, dataAstre[indices[5]].z];
-
-        return {
-            x: appliquerLagrange(nx, coeffs),
-            y: appliquerLagrange(ny, coeffs),
-            z: appliquerLagrange(nz, coeffs)
-        };
-    }
-
-    function evaluerMetadataChronoOptimise(t0, coeffs) {
-        const indices = [(t0-2+1440)%1440, (t0-1+1440)%1440, t0, (t0+1)%1440, (t0+2)%1440, (t0+3)%1440];
-        const metaData = jplMatriceDuJour.METADATA_CHRONO;
-
         let neot = [metaData[indices[0]].eot, metaData[indices[1]].eot, metaData[indices[2]].eot, metaData[indices[3]].eot, metaData[indices[4]].eot, metaData[indices[5]].eot];
         let necc = [metaData[indices[0]].ecc, metaData[indices[1]].ecc, metaData[indices[2]].ecc, metaData[indices[3]].ecc, metaData[indices[4]].ecc, metaData[indices[5]].ecc];
         let nobl = [metaData[indices[0]].obl, metaData[indices[1]].obl, metaData[indices[2]].obl, metaData[indices[3]].obl, metaData[indices[4]].obl, metaData[indices[5]].obl];
