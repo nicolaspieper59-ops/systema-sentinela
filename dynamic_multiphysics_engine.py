@@ -19,6 +19,7 @@ def conversion_securisee_float(valeur_str, valeur_secours):
         return valeur_secours
 
 def main():
+    # Capture des coordonnées géodésiques de la station d'ancrage
     lat_target = conversion_securisee_float(sys.argv[1] if len(sys.argv) > 1 else None, 43.284356)
     lon_target = conversion_securisee_float(sys.argv[2] if len(sys.argv) > 2 else None, 5.358507)
     alt_target = conversion_securisee_float(sys.argv[3] if len(sys.argv) > 3 else None, 99.3100)
@@ -42,6 +43,7 @@ def main():
 
     print(f"[JPL INTEGRITY] Tenseurs ITRS - Calibrage Métronome Quartz actif pour : {aujourdhui}")
 
+    # Génération des 1440 nœuds d'interpolation de la journée (pas de 1 minute)
     for minute in range(1440):
         instant = date_base + timedelta(minutes=minute)
         t = ts.from_datetime(instant)
@@ -51,6 +53,7 @@ def main():
         ra_sun, _, _ = soleil_obs.radec()
         _, lon_ecliptic, _ = soleil_obs.ecliptic_latlon()
         
+        # Calcul analytique fin de l'Équation du Temps (EoT)
         eot = (lon_ecliptic.degrees / 15.0 - ra_sun.hours) * 60.0
         if eot > 720.0: eot -= 1440.0
         elif eot < -720.0: eot += 1440.0
@@ -87,7 +90,7 @@ def main():
 
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
-    print("[SUCCESS] Matrice multiphysique stabilisée Quartz/NTP sauvegardée sous 'flux_live.json'.")
+    print("[SUCCESS] Matrice multiphysique stabilisée et enregistrée dans flux_live.json.")
 
 if __name__ == "__main__":
     main()
