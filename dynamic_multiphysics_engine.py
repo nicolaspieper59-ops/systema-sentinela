@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v10.6.0 — NOYAU EXTRACTEUR VECTORIEL ITRS DE421 AVEC ENREGISTREMENT QUARTZ-NTP
+SYSTEMA SENTINELA v11.2.0 — NOYAU EXTRACTEUR VECTORIEL ITRS DE421 AVEC ENREGISTREMENT QUARTZ-NTP
 """
 import os
 import sys
@@ -19,10 +19,11 @@ def conversion_securisee_float(valeur_str, valeur_secours):
         return valeur_secours
 
 def main():
-    # Capture des coordonnées géodésiques de la station d'ancrage
+    # Capture des coordonnées géodésiques et thermodynamiques de la station
     lat_target = conversion_securisee_float(sys.argv[1] if len(sys.argv) > 1 else None, 43.284356)
     lon_target = conversion_securisee_float(sys.argv[2] if len(sys.argv) > 2 else None, 5.358507)
     alt_target = conversion_securisee_float(sys.argv[3] if len(sys.argv) > 3 else None, 99.3100)
+    temp_target = conversion_securisee_float(sys.argv[4] if len(sys.argv) > 4 else None, 31.7000) # Température réelle cible
 
     loader = Loader(os.getcwd(), verbose=False)
     eph = loader('de421.bsp')
@@ -80,10 +81,11 @@ def main():
             })
 
     payload = {
-        "INFRASTRUCTURE": "SYSTEMA SENTINELA INTERFACE v10.6.0",
+        "INFRASTRUCTURE": "SYSTEMA SENTINELA INTERFACE v11.2.0",
         "DATE_REF": aujourdhui.isoformat(),
         "HORLOGE_REF": "SYNCHRONIZED_NTP_TCXO",
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_target},
+        "STATION_BASE_THERMO": {"temp_celsius": temp_target}, # Injection sans fiction de la météo
         "METADATA_CHRONO": metadata_24h,
         "DATA": matrice_24h
     }
