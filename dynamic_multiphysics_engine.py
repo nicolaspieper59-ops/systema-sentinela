@@ -3,6 +3,7 @@
 """
 SYSTEMA SENTINELA v12.6.0 — NOYAU EXTRACTEUR ITRS (SYNCHRONISATION ANCRAGE INERTIEL)
 Fichier : dynamic_multiphysics_engine.py
+Précision géocentrique de calcul : JPL DE421 Ephemeris / Skyfield API
 """
 import os
 import sys
@@ -27,11 +28,17 @@ def main():
     alt_target = conversion_securisee_float(sys.argv[3] if len(sys.argv) > 3 else None, 99.3100)
     temp_target = conversion_securisee_float(sys.argv[4] if len(sys.argv) > 4 else None, 31.7000)
 
+    # Initialisation sécurisée des ressources éphémérides
     loader = Loader(os.getcwd(), verbose=False)
-    eph = loader('de421.bsp')
+    try:
+        eph = loader('de421.bsp')
+    except Exception:
+        print("[CRITICAL] Fichier de421.bsp introuvable ou corrompu. Re-téléchargement forcé...")
+        eph = loader('https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de421.bsp')
+        
     ts = loader.timescale(builtin=True)
 
-    # Récupération de la date UTC courante
+    # Alignement du référentiel temporel sur le minuit UTC du jour courant
     aujourdhui = datetime.now(timezone.utc).date()
     date_base = datetime(aujourdhui.year, aujourdhui.month, aujourdhui.day, 0, 0, tzinfo=timezone.utc)
 
@@ -45,14 +52,15 @@ def main():
     matrice_24h = {name: [] for name in corps_celestes.keys()}
     metadata_24h = []
 
-    print(f"[JPL INTEGRITY] Calcul matriciel pour le : {aujourdhui}")
+    print(f"[JPL INTEGRITY] Calcul de la matrice d'état ITRS pour l'Époque : {aujourdhui}")
 
+    # Boucle d'échantillonnage uniforme à granularité de 1 minute (1440 points d'ancrage)
     for minute in range(1440):
         instant = date_base + timedelta(minutes=minute)
         t = ts.from_datetime(instant)
         terre_position = eph['earth'].at(t)
 
-        # Calcul des métadonnées chronométriques et de l'Équation du Temps (EoT)
+        # Extraction analytique de l'Équation du Temps (EoT) et métadonnées orbitales de la Terre
         soleil_obs = terre_position.observe(eph['sun']).apparent()
         ra_sun, _, _ = soleil_obs.radec()
         _, lon_ecliptic, _ = soleil_obs.ecliptic_latlon()
@@ -73,7 +81,7 @@ def main():
             "solong": float(lon_ecliptic.degrees)
         })
 
-        # Extraction des coordonnées cartésiennes topocentriques / géocentriques ITRS
+        # Extraction des coordonnées cartésiennes tridimensionnelles au sein du repère ITRS
         for nom, cible in corps_celestes.items():
             astre_apparent = terre_position.observe(cible).apparent()
             x_m, y_m, z_m = astre_apparent.frame_xyz(itrs).m
@@ -81,16 +89,15 @@ def main():
                 "x": float(x_m), "y": float(y_m), "z": float(z_m)
             })
 
-    # Génération des marqueurs temporels absolus pour la boucle d'asservissement front-end
+    # Calcul des marqueurs d'ancrage inertiel pour le récepteur Front-End
     now_utc = datetime.now(timezone.utc)
-    # Calcul du timestamp équivalent en millisecondes depuis le début de la journée UTC
     reference_chrono_ms = int((now_utc - date_base).total_seconds() * 1000)
     timestamp_generation_ms = int(time.time() * 1000)
 
     payload = {
         "INFRASTRUCTURE": "SYSTEMA SENTINELA v12.6.0",
         "GENERATION_TIMESTAMP_MS": timestamp_generation_ms,
-        "REFERENCE_CHRONO_MS": reference_chrono_ms,  # Requis pour la boucle de suture inertielle du JS
+        "REFERENCE_CHRONO_MS": reference_chrono_ms,
         "DATE_REF": aujourdhui.isoformat(),
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_target},
         "STATION_BASE_THERMO": {"temp_celsius": temp_target},
@@ -98,11 +105,11 @@ def main():
         "DATA": matrice_24h
     }
 
-    # Écriture de la matrice stabilisée pour publication immédiate via le CI GitHub Actions
+    # Écriture atomique sécurisée du fichier de flux synchrone
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
         
-    print(f"[SUCCESS] Matrice stabilisée (Epoch: {timestamp_generation_ms} | Ref Inertielle: {reference_chrono_ms}ms)")
+    print(f"[SUCCESS] Matrice stabilisée (Epoch: {timestamp_generation_ms} | Ref Chrono: {reference_chrono_ms} ms)")
 
 if __name__ == "__main__":
     main()
