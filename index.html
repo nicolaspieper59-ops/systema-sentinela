@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v12.6.0 — ANCRAGE INERTIEL PUR & SUTURE LAGRANGE TOTAL (CORRIGÉ)</title>
+    <title>SYSTEMA SENTINELA v12.6.1 — ANCRAGE INERTIEL PUR & SUTURE LAGRANGE TOTAL</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -59,11 +59,11 @@
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v12.6.0 — VERROUILLAGE MONOLITHIQUE INTERNE SANS HORLOGE ANDROID</div>
+        <div class="brand">SYSTEMA SENTINELA v12.6.1 — VERROUILLAGE UTC TEMPS PRÉSENT (ALIGNÉ TIMEANDDATE)</div>
         <div style="display: flex; gap: 20px; align-items: center;">
             <div>IMU (ASSIETTE) : <span id="lbl-imu" style="font-weight:bold; color:var(--sky);">CALIBRATION...</span></div>
             <div>STABILISATION MÉTÉO : <span id="lbl-meteo" style="font-weight:bold; color:var(--dec5);">OPTRONIQUE ARRIÈRE OFF</span></div>
-            <div>TEMPS ATOMIQUE VIRTUEL : <span id="lbl-epoch" style="color:var(--amber);">VERROUILLAGE FILTRE INERTIEL...</span></div>
+            <div>TEMPS ATOMIQUE VIRTUEL : <span id="lbl-epoch" style="color:var(--amber);">ATTENTE FLUX...</span></div>
             <span id="source-badge" class="status-badge badge-warn">RECHERCHE CONVERGENCE...</span>
         </div>
     </header>
@@ -127,7 +127,6 @@
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
 
     let jplMatriceDuJour = null;
-    let clockOffset = 0;          
     let fluxMeteoCielClaire = true; 
     let elevationSoleilGlobale = 0;
     let ephemeridesCalculees = {};
@@ -156,16 +155,6 @@
             </tr>`;
     });
 
-    function formaterMsEnHeureComplet(timestampMs) {
-        let totalSec = Math.floor(timestampMs / 1000);
-        let s = totalSec % 60;
-        let m = Math.floor(totalSec / 60) % 60;
-        let h = Math.floor(totalSec / 3600) % 24;
-        let ms = Math.floor(timestampMs % 1000);
-        if (h < 0) h += 24; if (m < 0) m += 60; if (s < 0) s += 60;
-        return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}Z`;
-    }
-
     function formaterMsEnHeureSimple(timestampMs) {
         let totalSec = Math.floor(timestampMs / 1000);
         let s = totalSec % 60;
@@ -178,7 +167,7 @@
     function ecrireLog(m) {
         const c = document.getElementById('logConsole');
         if(c) {
-            let prefix = clockOffset !== 0 ? formaterMsEnHeureSimple(performance.now() + clockOffset) : "ANCRAGE";
+            let prefix = new Date().toISOString().substring(11, 19);
             c.innerHTML += `[${prefix}] ${m}<br>`;
             c.scrollTop = c.scrollHeight;
         }
@@ -209,17 +198,8 @@
                     station3D.lon = pos.coords.longitude;
                     station3D.altGps = pos.coords.altitude || 99.31;
                     
-                    if (jplMatriceDuJour && jplMatriceDuJour.REFERENCE_CHRONO_MS) {
-                        let interceptInertiel = performance.now();
-                        let targetOffset = jplMatriceDuJour.REFERENCE_CHRONO_MS - interceptInertiel;
-                        
-                        if (clockOffset === 0) {
-                            clockOffset = targetOffset;
-                            ecrireLog("[BASE DE TEMPS] Verrouillage de la phase sur matrice éphéméride stable.");
-                        } else {
-                            clockOffset = (clockOffset * 0.99) + (targetOffset * 0.01);
-                        }
-                        
+                    // CORRECTION : Plus de blocage temporel ici, watchPosition ne gère QUE l'espace géodésique
+                    if (jplMatriceDuJour) {
                         const badge = document.getElementById('source-badge');
                         if (badge.innerText !== "VERROUILLAGE FLUX OK") {
                             badge.innerText = "VERROUILLAGE FLUX OK";
@@ -340,17 +320,11 @@
             actualiserVecteurStationITRS();
             connecterCapteursMateriels();
 
-            ecrireLog("[SUCCESS] Données Ephémérides chargées. Suture inertielle en cours...");
+            ecrireLog("[SUCCESS] Données Ephémérides chargées. Suture inertielle temps réel active.");
             boucleDeCalculContinue();
         } catch (err) {
             setTimeout(chargerMatriceFlux, 4000);
         }
-    }
-
-    function calculerMinutesUtcDepuisTimestamp(tsMs) {
-        let msDansLaJournee = tsMs % 86400000;
-        if (msDansLaJournee < 0) msDansLaJournee += 86400000;
-        return msDansLaJournee / 60000;
     }
 
     function genererCoefficientsLagrange(p) {
@@ -372,7 +346,6 @@
         return res;
     }
 
-    /* CORRECTION : Renvoie maintenant les coordonnées spatiales X, Y, Z de l'astre */
     function evaluerVecteurAstreITRSOptimise(astre, t0, coeffs) {
         const indices = [(t0-2+1440)%1440, (t0-1+1440)%1440, t0, (t0+1)%1440, (t0+2)%1440, (t0+3)%1440];
         const noeuds = indices.map(idx => jplMatriceDuJour.DATA[astre][idx]);
@@ -383,7 +356,7 @@
         };
     }
 
-    /* CORRECTION : Déclaration explicite de la fonction d'extraction métadata manquante */
+    // CORRECTION : Restauration complète de la fonction tronquée
     function evaluerMetadataChronoOptimise(t0, coeffs) {
         const indices = [(t0-2+1440)%1440, (t0-1+1440)%1440, t0, (t0+1)%1440, (t0+2)%1440, (t0+3)%1440];
         const noeuds = indices.map(idx => jplMatriceDuJour.METADATA_CHRONO[idx]);
@@ -424,6 +397,45 @@
                 y: interp6NoeudsDirecte(noeudsInit.map(n => n.y), 0),
                 z: interp6NoeudsDirecte(noeudsInit.map(n => n.z), 0)
             };
+            ecc: appliquerLagrange(noeuds.map(n => n.ecc), coeffs),
+            obl: appliquerLagrange(noeuds.map(n => n.obl), coeffs),
+            solong: appliquerLagrange(noeuds.map(n => n.solong), coeffs)
+        };
+    }
+
+    function interp6NoeudsDirecte(vals, p) {
+        const x = [-2, -1, 0, 1, 2, 3]; 
+        let resultat = 0.0;
+        for (let i = 0; i < 6; i++) {
+            let terme = vals[i];
+            for (let j = 0; j < 6; j++) { 
+                if (i !== j) terme *= (p - x[j]) / (x[i] - x[j]); 
+            }
+            resultat += terme;
+        }
+        return resultat;
+    }
+
+    function precalculerEphemeridesTSM() {
+        if (!jplMatriceDuJour) return;
+        const lat_rad = station3D.lat * Math.PI / 180.0;
+        const lon_rad = station3D.lon * Math.PI / 180.0;
+
+        const cosLat = Math.cos(lat_rad), sinLat = Math.sin(lat_rad);
+        const cosLon = Math.cos(lon_rad), sinLon = Math.sin(lon_rad);
+
+        ASTRES.forEach(a => {
+            let limitHorizon = (a === 'soleil' || a === 'lune') ? -0.833 : -0.566;
+            let minuteLever = null; 
+            let minuteCoucher = null;
+
+            let tInit = 0;
+            let noeudsInit = [(tInit-2+1440)%1440, (tInit-1+1440)%1440, tInit, (tInit+1)%1440, (tInit+2)%1440, (tInit+3)%1440].map(idx => jplMatriceDuJour.DATA[a][idx]);
+            let vInit = {
+                x: interp6NoeudsDirecte(noeudsInit.map(n => n.x), 0),
+                y: interp6NoeudsDirecte(noeudsInit.map(n => n.y), 0),
+                z: interp6NoeudsDirecte(noeudsInit.map(n => n.z), 0)
+            };
             let prevEl = Math.asin((vInit.x * cosLat * cosLon + vInit.y * cosLat * sinLon + vInit.z * sinLat - station3D.Z_itrs) / Math.sqrt(Math.pow(vInit.x-station3D.X_itrs,2)+Math.pow(vInit.y-station3D.Y_itrs,2)+Math.pow(vInit.z-station3D.Z_itrs,2))) * 180.0 / Math.PI;
 
             for (let m = 1; m <= 1440; m++) {
@@ -454,40 +466,34 @@
     function formaterMinutesEnTSM(minutes_utc) {
         if (minutes_utc === null) return "POLAIRE";
         let minutes_tsm = (minutes_utc + (station3D.lon * 4) + 1440) % 1440;
-        let h = Math.floor(minutes_tsm / 60); let m = Math.floor(minutes_tsm % 60); let s = Math.floor((minutes_tsm * 60) % 60);
+        let h = Math.floor(minutes_tsm / 60); 
+        let m = Math.floor(minutes_tsm % 60); 
+        let s = Math.floor((minutes_tsm * 60) % 60);
         return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
     }
 
     function boucleDeCalculContinue() {
-    if (!jplMatriceDuJour) {
-        requestAnimationFrame(boucleDeCalculContinue);
-        return;
-    }
-    
-    // 1. OBTENTION DU TEMPS PRÉSENT RÉEL (UNIX UTC)
-    const maintenantUnique = new Date();
-    
-    // 2. RECONSTITUTION DE LA DATE DE BASE UTC (Minuit du jour de la matrice)
-    const parts = jplMatriceDuJour.DATE_REF.split('-');
-    const annee = parseInt(parts[0]), mois = parseInt(parts[1]) - 1, jour = parseInt(parts[2]);
-    const dateBaseUtc = Date.UTC(annee, mois, jour, 0, 0, 0, 0);
-    
-    // 3. CALCUL DU TEMPS ÉCOULÉ DEPUIS MINUIT EN MS
-    const tempsEcouleMemeJourMs = maintenantUnique.getTime() - dateBaseUtc;
-    
-    // Affichage de l'horloge atomique virtuelle au présent
-    document.getElementById('lbl-epoch').innerText = maintenantUnique.toISOString() + " [REPÈRE INERTIEL PUR]";
+        if (!jplMatriceDuJour) {
+            requestAnimationFrame(boucleDeCalculContinue);
+            return;
+        }
+        
+        // ANCRAGE TOTAL SUR LE TEMPS PRÉSENT ABSOLU UTC (HORLOGE SYSTÈME)
+        const maintenantReel = new Date();
+        document.getElementById('lbl-epoch').innerText = maintenantReel.toISOString() + " [UTC SYSTEM PRESENT]";
 
-    // 4. CONVERSION EN MINUTES POUR LES POLYNÔMES DE LAGRANGE
-    const minutes_utc = tempsEcouleMemeJourMs / 60000;
-    
-    // Sécurité si on change de jour avant la mise à jour du JSON
-    const t0 = Math.floor(minutes_utc) % 1440; 
-    const p = minutes_utc - Math.floor(minutes_utc);
-    
-    // ... suite du code de calcul (Lagrange, ITRS, Azimut/Élévation) s'exécutera au présent réel ...
-    
-    
+        // Extraction de l'époque du fichier JSON pour sécuriser la timeline
+        const parts = jplMatriceDuJour.DATE_REF.split('-');
+        const baseZeroMs = Date.UTC(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 0, 0, 0, 0);
+        
+        // Calcul des ms écoulées depuis minuit UTC du jour de référence
+        const deltaMs = maintenantReel.getTime() - baseZeroMs;
+        const msDansLaJournee = ((deltaMs % 86400000) + 86400000) % 86400000;
+
+        const minutes_utc = msDansLaJournee / 60000;
+        const t0 = Math.floor(minutes_utc) % 1440;
+        const p = minutes_utc - Math.floor(minutes_utc);
+        
         const coefficientsLagrange = genererCoefficientsLagrange(p);
         const meta = evaluerMetadataChronoOptimise(t0, coefficientsLagrange);
         
@@ -496,9 +502,10 @@
         document.getElementById('lbl-obl').innerText = meta.obl.toFixed(4) + "°";
         document.getElementById('lbl-solong').innerText = meta.solong.toFixed(4) + "°";
 
+        // Traitement des déclinaisons solaires locales (TSM / TSV)
         const decallageTsmMs = station3D.lon * 4 * 60 * 1000;
-        const tsm_ms = (maintenantMs + decallageTsmMs) % 86400000;
-        const tv_ms = (tsm_ms + (meta.eot * 60 * 1000)) % 86400000;
+        const tsm_ms = (maintenantReel.getTime() + decallageTsmMs) % 86400000;
+        const tv_ms = (tsm_ms + (meta.eot * 60 * 1000) + 86400000) % 86400000;
 
         document.getElementById('lbl-tsm').innerText = formaterMsEnHeureSimple(tsm_ms) + " TSM";
         document.getElementById('lbl-tsv').innerText = formaterMsEnHeureSimple(tv_ms) + " TSV";
@@ -550,7 +557,9 @@
             positions_instantanees[a] = { az: az_deg, el: el_brute, dist: distance_reelle, visibleSurRadar: false };
 
             const magAstre = MAGNITUDES[a];
-            let oeilVis = false; let jumelleVis = false; let s10eVis = false;
+            let oeilVis = false; 
+            let jumelleVis = false; 
+            let s10eVis = false;
             let raisonAbsolue = "";
 
             if (el_brute <= 0) { raisonAbsolue = "HORIZON"; } 
