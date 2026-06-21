@@ -369,41 +369,6 @@
     }
 
     function interp6NoeudsDirecte(vals, p) {
-        const x = [-2, -1, 0, 1, 2, 3]; let resultat = 0.0;
-        for (let i = 0; i < 6; i++) {
-            let terme = vals[i];
-            for (let j = 0; j < 6; j++) { if (i !== j) terme *= (p - x[j]) / (x[i] - x[j]); }
-            resultat += terme;
-        }
-        return resultat;
-    }
-
-    function precalculerEphemeridesTSM() {
-        if (!jplMatriceDuJour) return;
-        const lat_rad = station3D.lat * Math.PI / 180.0;
-        const lon_rad = station3D.lon * Math.PI / 180.0;
-
-        const cosLat = Math.cos(lat_rad), sinLat = Math.sin(lat_rad);
-        const cosLon = Math.cos(lon_rad), sinLon = Math.sin(lon_rad);
-
-        ASTRES.forEach(a => {
-            let limitHorizon = (a === 'soleil' || a === 'lune') ? -0.833 : -0.566;
-            let minuteLever = null; let minuteCoucher = null;
-
-            let tInit = 0;
-            let noeudsInit = [(tInit-2+1440)%1440, (tInit-1+1440)%1440, tInit, (tInit+1)%1440, (tInit+2)%1440, (tInit+3)%1440].map(idx => jplMatriceDuJour.DATA[a][idx]);
-            let vInit = {
-                x: interp6NoeudsDirecte(noeudsInit.map(n => n.x), 0),
-                y: interp6NoeudsDirecte(noeudsInit.map(n => n.y), 0),
-                z: interp6NoeudsDirecte(noeudsInit.map(n => n.z), 0)
-            };
-            ecc: appliquerLagrange(noeuds.map(n => n.ecc), coeffs),
-            obl: appliquerLagrange(noeuds.map(n => n.obl), coeffs),
-            solong: appliquerLagrange(noeuds.map(n => n.solong), coeffs)
-        };
-    }
-
-    function interp6NoeudsDirecte(vals, p) {
         const x = [-2, -1, 0, 1, 2, 3]; 
         let resultat = 0.0;
         for (let i = 0; i < 6; i++) {
