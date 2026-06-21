@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v12.6.0 — ANCRAGE INERTIEL PUR & SUTURE LAGRANGE TOTAL</title>
+    <title>SYSTEMA SENTINELA v12.6.0 — ANCRAGE INERTIEL PUR & SUTURE LAGRANGE TOTAL (CORRIGÉ)</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -127,7 +127,7 @@
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
 
     let jplMatriceDuJour = null;
-    let clockOffset = 0;          // Base de temps calibrée sur repère de flux
+    let clockOffset = 0;          
     let fluxMeteoCielClaire = true; 
     let elevationSoleilGlobale = 0;
     let ephemeridesCalculees = {};
@@ -372,20 +372,26 @@
         return res;
     }
 
+    /* CORRECTION : Renvoie maintenant les coordonnées spatiales X, Y, Z de l'astre */
     function evaluerVecteurAstreITRSOptimise(astre, t0, coeffs) {
         const indices = [(t0-2+1440)%1440, (t0-1+1440)%1440, t0, (t0+1)%1440, (t0+2)%1440, (t0+3)%1440];
-        const dataAstre = jplMatriceDuJour.DATA[astre];
-        
-        let neot = [metaData[indices[0]].eot, metaData[indices[1]].eot, metaData[indices[2]].eot, metaData[indices[3]].eot, metaData[indices[4]].eot, metaData[indices[5]].eot];
-        let necc = [metaData[indices[0]].ecc, metaData[indices[1]].ecc, metaData[indices[2]].ecc, metaData[indices[3]].ecc, metaData[indices[4]].ecc, metaData[indices[5]].ecc];
-        let nobl = [metaData[indices[0]].obl, metaData[indices[1]].obl, metaData[indices[2]].obl, metaData[indices[3]].obl, metaData[indices[4]].obl, metaData[indices[5]].obl];
-        let nsolong = [metaData[indices[0]].solong, metaData[indices[1]].solong, metaData[indices[2]].solong, metaData[indices[3]].solong, metaData[indices[4]].solong, metaData[indices[5]].solong];
-
+        const noeuds = indices.map(idx => jplMatriceDuJour.DATA[astre][idx]);
         return {
-            eot: appliquerLagrange(neot, coeffs),
-            ecc: appliquerLagrange(necc, coeffs),
-            obl: appliquerLagrange(nobl, coeffs),
-            solong: appliquerLagrange(nsolong, coeffs)
+            x: appliquerLagrange(noeuds.map(n => n.x), coeffs),
+            y: appliquerLagrange(noeuds.map(n => n.y), coeffs),
+            z: appliquerLagrange(noeuds.map(n => n.z), coeffs)
+        };
+    }
+
+    /* CORRECTION : Déclaration explicite de la fonction d'extraction métadata manquante */
+    function evaluerMetadataChronoOptimise(t0, coeffs) {
+        const indices = [(t0-2+1440)%1440, (t0-1+1440)%1440, t0, (t0+1)%1440, (t0+2)%1440, (t0+3)%1440];
+        const noeuds = indices.map(idx => jplMatriceDuJour.METADATA_CHRONO[idx]);
+        return {
+            eot: appliquerLagrange(noeuds.map(n => n.eot), coeffs),
+            ecc: appliquerLagrange(noeuds.map(n => n.ecc), coeffs),
+            obl: appliquerLagrange(noeuds.map(n => n.obl), coeffs),
+            solong: appliquerLagrange(noeuds.map(n => n.solong), coeffs)
         };
     }
 
