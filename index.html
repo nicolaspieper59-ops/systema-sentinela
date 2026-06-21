@@ -459,18 +459,35 @@
     }
 
     function boucleDeCalculContinue() {
-        if (!jplMatriceDuJour || clockOffset === 0) {
-            requestAnimationFrame(boucleDeCalculContinue);
-            return;
-        }
-        
-        const maintenantMs = performance.now() + clockOffset;
-        document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs) + " [REPÈRE INERTIEL PUR]";
+    if (!jplMatriceDuJour) {
+        requestAnimationFrame(boucleDeCalculContinue);
+        return;
+    }
+    
+    // 1. OBTENTION DU TEMPS PRÉSENT RÉEL (UNIX UTC)
+    const maintenantUnique = new Date();
+    
+    // 2. RECONSTITUTION DE LA DATE DE BASE UTC (Minuit du jour de la matrice)
+    const parts = jplMatriceDuJour.DATE_REF.split('-');
+    const annee = parseInt(parts[0]), mois = parseInt(parts[1]) - 1, jour = parseInt(parts[2]);
+    const dateBaseUtc = Date.UTC(annee, mois, jour, 0, 0, 0, 0);
+    
+    // 3. CALCUL DU TEMPS ÉCOULÉ DEPUIS MINUIT EN MS
+    const tempsEcouleMemeJourMs = maintenantUnique.getTime() - dateBaseUtc;
+    
+    // Affichage de l'horloge atomique virtuelle au présent
+    document.getElementById('lbl-epoch').innerText = maintenantUnique.toISOString() + " [REPÈRE INERTIEL PUR]";
 
-        const minutes_utc = calculerMinutesUtcDepuisTimestamp(maintenantMs);
-        const t0 = Math.floor(minutes_utc) % 1440;
-        const p = minutes_utc - Math.floor(minutes_utc);
-        
+    // 4. CONVERSION EN MINUTES POUR LES POLYNÔMES DE LAGRANGE
+    const minutes_utc = tempsEcouleMemeJourMs / 60000;
+    
+    // Sécurité si on change de jour avant la mise à jour du JSON
+    const t0 = Math.floor(minutes_utc) % 1440; 
+    const p = minutes_utc - Math.floor(minutes_utc);
+    
+    // ... suite du code de calcul (Lagrange, ITRS, Azimut/Élévation) s'exécutera au présent réel ...
+    
+    
         const coefficientsLagrange = genererCoefficientsLagrange(p);
         const meta = evaluerMetadataChronoOptimise(t0, coefficientsLagrange);
         
