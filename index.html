@@ -443,15 +443,25 @@
             return;
         }
         
-        // ANCRAGE TOTAL SUR LE TEMPS PRÉSENT ABSOLU UTC (HORLOGE SYSTÈME)
-        const maintenantReel = new Date();
-        document.getElementById('lbl-epoch').innerText = maintenantReel.toISOString() + " [UTC SYSTEM PRESENT]";
+        // CORRECTION ANTI-ANDROID : On utilise performance.now() associé à un clockOffset statique
+        // calculé au chargement par rapport au serveur, bypassant l'horloge déréglée du smartphone.
+        if (clockOffset === 0 && jplMatriceDuJour.GENERATION_TIMESTAMP_MS) {
+            // Suture NTP : Calcul du décalage de l'appareil Android par rapport au timestamp serveur
+            clockOffset = jplMatriceDuJour.GENERATION_TIMESTAMP_MS - performance.now();
+            ecrireLog("[NTP VIRTUEL] Horloge interne Android isolée. Synchronisation sur flux réseau.");
+        }
 
-        // Extraction de l'époque du fichier JSON pour sécuriser la timeline
+        // Reconstitution du temps présent absolu corrigé des dérives Android
+        const maintenantInertielMs = performance.now() + clockOffset;
+        const maintenantReel = new Date(maintenantInertielMs);
+        
+        document.getElementById('lbl-epoch').innerText = maintenantReel.toISOString() + " [FLUX RÉSEAU SYNCHRO]";
+
+        // Extraction de la date du fichier JSON
         const parts = jplMatriceDuJour.DATE_REF.split('-');
         const baseZeroMs = Date.UTC(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 0, 0, 0, 0);
         
-        // Calcul des ms écoulées depuis minuit UTC du jour de référence
+        // Calcul de la minute UTC exacte de la journée sans interférence Android
         const deltaMs = maintenantReel.getTime() - baseZeroMs;
         const msDansLaJournee = ((deltaMs % 86400000) + 86400000) % 86400000;
 
@@ -467,7 +477,7 @@
         document.getElementById('lbl-obl').innerText = meta.obl.toFixed(4) + "°";
         document.getElementById('lbl-solong').innerText = meta.solong.toFixed(4) + "°";
 
-        // Traitement des déclinaisons solaires locales (TSM / TSV)
+        // Traitement TSM / TSV décorrélé de l'heure locale Android
         const decallageTsmMs = station3D.lon * 4 * 60 * 1000;
         const tsm_ms = (maintenantReel.getTime() + decallageTsmMs) % 86400000;
         const tv_ms = (tsm_ms + (meta.eot * 60 * 1000) + 86400000) % 86400000;
