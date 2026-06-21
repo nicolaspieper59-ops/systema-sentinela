@@ -362,7 +362,7 @@
         const noeuds = indices.map(idx => jplMatriceDuJour.METADATA_CHRONO[idx]);
         return {
             eot: appliquerLagrange(noeuds.map(n => n.eot), coeffs),
-            ecc: appliquerLagrange(noeuds.map(n => n.ecc), coeffs),
+ecc: appliquerLagrange(noeuds.map(n => n.ecc), coeffs),
             obl: appliquerLagrange(noeuds.map(n => n.obl), coeffs),
             solong: appliquerLagrange(noeuds.map(n => n.solong), coeffs)
         };
