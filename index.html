@@ -262,7 +262,7 @@
         }
     }
 
-    async function chargerMatriceFlux() {
+async function chargerMatriceFlux() {
         try {
             let antiCacheMonolithique = Math.floor(performance.now()) + "_" + Math.floor(Math.random() * 1000000);
             const response = await fetch('flux_live.json?nocache=' + antiCacheMonolithique);
@@ -272,17 +272,28 @@
                 throw new Error("Le fichier JSON est vide ou mal formaté.");
             }
 
-            // --- STRATÉGIE ANTI-ANDROID : ANCRAGE DYNAMIQUE SUR LES DONNÉES DU FLUX ---
+            // --- STRATÉGIE ANTI-ANDROID EMBAUT DE TEMPS RÉEL INTERNATIONALE ---
             performanceTickInitial = performance.now();
             
             if (jplMatriceDuJour.EPOCH_REF) {
                 tempsDeReferenceBaseMs = Number(jplMatriceDuJour.EPOCH_REF);
                 ecrireLog(`[SUTURE] Ancrage sur marqueur temporel serveur.`);
             } else {
-                // Secours mathématique : On s'aligne sur l'origine structurelle des données (00:00:00 UTC de la journée courante)
-                let dateSecours = new Date();
-                tempsDeReferenceBaseMs = Date.UTC(dateSecours.getUTCFullYear(), dateSecours.getUTCMonth(), dateSecours.getUTCDate(), 0, 0, 0);
-                ecrireLog("[SUTURE] Marqueur absent. Alignement sur origine structurelle 00:00:00 UTC.");
+                try {
+                    // ÉTAPE DE SÉCURITÉ : Appel à une API de temps atomique externe (WorldTimeAPI ou clone de secours)
+                    // Cela évite d'utiliser l'heure interne trafiquée ou instable d'Android
+                    const reponseTemps = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', { signal: AbortSignal.timeout(2500) });
+                    const donnesTemps = await reponseTemps.json();
+                    tempsDeReferenceBaseMs = new Date(donnesTemps.utc_datetime).getTime();
+                    ecrireLog(`[SUTURE] Convergence Réseau Réussie (Horloge Android Contournée).`);
+                } catch (errTemps) {
+                    // SECOURS DE DERNIÈRE INSTANCE SI HORS-LIGNE TOTAL :
+                    // On extrait l'heure structurelle de la machine au moment précis T0,
+                    // mais on s'en détache IMMEDIATEMENT pour la suite de la session.
+                    let dateSecoursAndroid = new Date();
+                    tempsDeReferenceBaseMs = dateSecoursAndroid.getTime();
+                    ecrireLog("[SUTURE ALERT] Serveur Temps injoignable. Capturation du T0 Android (Isolé).", true);
+                }
             }
 
             if (jplMatriceDuJour.STATION_BASE_GPS) {
