@@ -63,7 +63,7 @@
         <div style="display: flex; gap: 20px; align-items: center;">
             <div>INCLINOMÈTRE (PLATEFORME) : <span id="lbl-imu" style="font-weight:bold; color:var(--sky);">CALIBRATION...</span></div>
             <div>COUVERTURE NUAGEUSE : <span id="lbl-meteo" style="font-weight:bold; color:var(--dec5);">CAPTEUR OPTIQUE OFF</span></div>
-            <div>TEMPS UNIVERSEL COORDONNÉ : <span id="lbl-epoch" style="color:var(--amber);">SYNCHRONISATION HORLOGE...</span></div>
+            <div>TEMPS RATTACHÉ AU FLUX FLUIDE : <span id="lbl-epoch" style="color:var(--amber);">INITIALISATION...</span></div>
             <span id="source-badge" class="status-badge badge-warn">RECHERCHE SIGNAL...</span>
         </div>
     </header>
@@ -127,8 +127,8 @@
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
 
     let jplMatriceDuJour = null;
-    let clockOffset = 0;          
-    let performanceTickInitial = 0;
+    let baseTimeFluxMs = 0;        // Ancre temporelle absolue issue du serveur de données
+    let performanceTickInitial = 0; // Top d'exécution haute résolution interne pour le delta-t
     let fluxMeteoCielClaire = true; 
     let elevationSoleilGlobale = 0;
     let ephemeridesCalculees = {};
@@ -178,7 +178,7 @@
     function ecrireLog(m) {
         const c = document.getElementById('logConsole');
         if(c) {
-            let prefix = clockOffset !== 0 ? formaterMsEnHeureSimple(performance.now() + clockOffset) : "SYS";
+            let prefix = baseTimeFluxMs !== 0 ? formaterMsEnHeureSimple(baseTimeFluxMs + (performance.now() - performanceTickInitial)) : "SYS";
             c.innerHTML += `[${prefix}] ${m}<br>`;
             c.scrollTop = c.scrollHeight;
         }
@@ -324,13 +324,13 @@
                 throw new Error("Format JSON invalide ou inexistant.");
             }
 
+            // ANCRAGE CHRONOMÉTRIQUE AUTONOME EXCLUSIF SANS HEURE SYSTÈME ANDROID
             performanceTickInitial = performance.now();
             if (jplMatriceDuJour.REFERENCE_CHRONO_MS) {
-                clockOffset = Number(jplMatriceDuJour.REFERENCE_CHRONO_MS) - performanceTickInitial;
-                ecrireLog("[SUCCESS] Alignement temporel sur l'horloge réseau de référence.");
+                baseTimeFluxMs = Number(jplMatriceDuJour.REFERENCE_CHRONO_MS);
+                ecrireLog("[SUCCESS] Alignement et défilement temporel calés sur le marqueur d'éphéméride stable du flux.");
             } else {
-                clockOffset = performance.timing.navigationStart;
-                ecrireLog("[INFO] Utilisation du compteur de navigation matériel local.");
+                throw new Error("Absence de balise temporelle maîtresse dans le flux entrant. Interruption.");
             }
 
             if (jplMatriceDuJour.STATION_BASE_GPS) {
@@ -349,7 +349,7 @@
             connecterCapteursMateriels();
             boucleDeCalculContinue();
         } catch (err) {
-            ecrireLog("[ERREUR] Échec de la récupération des données. Nouvelle tentative dans 4s...");
+            ecrireLog(`[ERREUR] ${err.message} Nouvelle tentative dans 4s...`);
             setTimeout(chargerMatriceFlux, 4000);
         }
     }
@@ -391,7 +391,7 @@
         };
     }
 
-function evaluerMetadataChronoOptimise(t0, coeffs) {
+    function evaluerMetadataChronoOptimise(t0, coeffs) {
         const indices = [(t0 - 2 + 1440) % 1440, (t0 - 1 + 1440) % 1440, t0, (t0 + 1) % 1440, (t0 + 2) % 1440, (t0 + 3) % 1440];
         const tab = jplMatriceDuJour.METADATA_CHRONO;
         if (!tab) throw new Error("Données de chronométrie absentes du flux.");
