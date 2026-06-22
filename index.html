@@ -59,11 +59,11 @@
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v12.6.2 — BLINDAGE ANTI-CRASH TEMPS RÉEL</div>
+        <div class="brand">SYSTEMA SENTINELA v12.6.2 — SUTURE INTERNE ABSOLUE</div>
         <div style="display: flex; gap: 20px; align-items: center;">
             <div>IMU (ASSIETTE) : <span id="lbl-imu" style="font-weight:bold; color:var(--sky);">CALIBRATION...</span></div>
-            <div>STABILISATION MÉTÉO : <span id="lbl-meteo" style="font-weight:bold; color:var(--dec5);">OPTRONIQUE ARRIÈRE OFF</span></div>
-            <div>TEMPS ATOMIQUE VIRTUEL : <span id="lbl-epoch" style="color:var(--amber);">ATTENTE FLUX INITIAL...</span></div>
+            <div>STABILISATION MÉTÉO : <span id="lbl-meteo" style="font-weight:bold; color:var(--dec5);">DÉMARRAGE...</span></div>
+            <div>TEMPS ATOMIQUE VIRTUEL : <span id="lbl-epoch" style="color:var(--amber);">ATTENTE FLUX...</span></div>
             <span id="source-badge" class="status-badge badge-warn">RECHERCHE CONVERGENCE...</span>
         </div>
     </header>
@@ -127,13 +127,16 @@
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
 
     let jplMatriceDuJour = null;
-    let clockOffset = 0;          
     let fluxMeteoCielClaire = true; 
     let elevationSoleilGlobale = 0;
     let ephemeridesCalculees = {};
     let isEphemeridesLoaded = false;
     let imu = { pitch: 0, roll: 0, yaw: 0 };
     window.boucleEstActive = false;
+
+    // --- ANCHOR TEMPOREL MATÉRIEL SANS SATELLITE SANS ANDROID ---
+    let tempsDeReferenceBaseMs = 0; 
+    let performanceTickInitial = 0; 
 
     let station3D = {
         lat: 43.284356, lon: 5.358507, altGps: 99.31,
@@ -266,7 +269,20 @@
             jplMatriceDuJour = await response.json();
             
             if (!jplMatriceDuJour || !jplMatriceDuJour.DATA) {
-                throw new Error("Le fichier JSON est vide ou mal formaté (Propriété DATA manquante).");
+                throw new Error("Le fichier JSON est vide ou mal formaté.");
+            }
+
+            // --- STRATÉGIE ANTI-ANDROID : ANCRAGE DYNAMIQUE SUR LES DONNÉES DU FLUX ---
+            performanceTickInitial = performance.now();
+            
+            if (jplMatriceDuJour.EPOCH_REF) {
+                tempsDeReferenceBaseMs = Number(jplMatriceDuJour.EPOCH_REF);
+                ecrireLog(`[SUTURE] Ancrage sur marqueur temporel serveur.`);
+            } else {
+                // Secours mathématique : On s'aligne sur l'origine structurelle des données (00:00:00 UTC de la journée courante)
+                let dateSecours = new Date();
+                tempsDeReferenceBaseMs = Date.UTC(dateSecours.getUTCFullYear(), dateSecours.getUTCMonth(), dateSecours.getUTCDate(), 0, 0, 0);
+                ecrireLog("[SUTURE] Marqueur absent. Alignement sur origine structurelle 00:00:00 UTC.");
             }
 
             if (jplMatriceDuJour.STATION_BASE_GPS) {
@@ -278,7 +294,7 @@
             actualiserVecteurStationITRS();
             connecterCapteursMateriels();
 
-            ecrireLog("[SUCCESS] Données Ephémérides chargées. Suture inertielle active.");
+            ecrireLog("[SUCCESS] Données Éphémérides liées. Horloge matérielle isolée.");
             
             if (!window.boucleEstActive) {
                 window.boucleEstActive = true;
@@ -306,7 +322,7 @@
     function appliquerLagrange(noeuds, coeffs) {
         let res = 0.0;
         for (let i = 0; i < 6; i++) {
-            if (noeuds[i] === undefined) throw new Error("Noeud de Lagrange manquant.");
+            if (noeuds[i] === undefined) throw new Error("Nœud de Lagrange manquant.");
             res += noeuds[i] * coeffs[i];
         }
         return res;
@@ -400,12 +416,16 @@
         try {
             if (!jplMatriceDuJour) {
                 requestAnimationFrame(boucleDeCalculContinue);
-            return;
+                return;
             }
 
-            const maintenant = new Date(Date.now() + clockOffset);
-            const debutDuJour = new Date(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate());
-            const tempsEcouleMs = maintenant - debutDuJour;
+            // --- CALCUL DU TEMPS LINÉAIRE PAR PERFORMANCE ENTRÉES GRAPHISME (IMMUNITÉ ANDROID) ---
+            const performanceTicksEcoules = performance.now() - performanceTickInitial;
+            const tempsVirtuelCourantMs = tempsDeReferenceBaseMs + performanceTicksEcoules;
+            
+            const maintenant = new Date(tempsVirtuelCourantMs);
+            const debutDuJour = new Date(maintenant.getUTCFullYear(), maintenant.getUTCMonth(), maintenant.getUTCDate());
+            const tempsEcouleMs = tempsVirtuelCourantMs - debutDuJour.getTime();
             
             document.getElementById('lbl-epoch').innerText = maintenant.toISOString().substring(11, 23) + " UTC";
 
@@ -584,3 +604,4 @@
 </script>
 </body>
 </html>
+            
