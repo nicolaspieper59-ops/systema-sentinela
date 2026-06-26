@@ -129,13 +129,13 @@
     let jplMatriceDuJour = null;
     let baseTimeFluxMs = 0;        
     let performanceTickInitial = 0; 
-    let clockOffset = 0; // CORRECTION CRITIQUE : Déclaration globale initialement à zéro
+    let clockOffset = 0; 
     let fluxMeteoCielClaire = true; 
     let elevationSoleilGlobale = 0;
     let ephemeridesCalculees = {};
     let isEphemeridesLoaded = false;
     let imu = { pitch: 0, roll: 0, yaw: 0 };
-    let meteoTimeoutId = null; // Suivi du handle pour couper proprement la caméra
+    let meteoTimeoutId = null;
 
     let station3D = {
         lat: 43.284356, lon: 5.358507, altGps: 99.31,
@@ -279,7 +279,6 @@
 
         const lblMeteo = document.getElementById('lbl-meteo');
 
-        // OPTIMISATION THERMIQUE : Arrêt propre si nuit aéronautique/astronomique confirmée
         if (elevationSoleilGlobale < -6.0) {
             lblMeteo.innerText = "VEILLE (PROTECTION CONDESATION ET BRUIT THERMIQUE)";
             lblMeteo.style.color = "var(--amber)";
@@ -319,6 +318,40 @@
         meteoTimeoutId = setTimeout(analyserFluxMeteo, 2000);
     }
 
+    // NOUVELLE FONCTION CRITIQUE : Récupération du temps atomique externe avec correction de latence RTT
+    async function recupererTempsAtomiqueExterne() {
+        const urlApiTemps = "https://worldtimeapi.org/api/timezone/Etc/UTC";
+        const tDepart = performance.now();
+        try {
+            const reponse = await fetch(urlApiTemps + "?nocache=" + tDepart);
+            const donnees = await reponse.json();
+            const tArrivee = performance.now();
+            const rtt = tArrivee - tDepart;
+            
+            // Extraction du timestamp Unix en millisecondes depuis l'API atomique
+            const tempsAtomiqueBrutMs = donnees.unixtime * 1000;
+            
+            // Synchronisation fine compensée de la moitié du temps de transit réseau (RTT / 2)
+            const tempsAtomiqueVerrouilleMs = tempsAtomiqueBrutMs + (rtt / 2);
+            ecrireLog(`[TEMPS] Horloge Atomique synchro. RTT: ${rtt.toFixed(1)}ms. Décalage Android ignoré.`);
+            return { tempsMs: tempsAtomiqueVerrouilleMs, tickPerformance: tArrivee };
+        } catch (err) {
+            ecrireLog("[ALERT] Échec serveur Temps Atomique principal. Repli sur secours...");
+            // Serveur de secours
+            try {
+                const tDepartSecours = performance.now();
+                const reponseSecours = await fetch("https://timeapi.io/api/Time/current/zone?timeZone=UTC");
+                const donneesSecours = await reponseSecours.json();
+                const tArriveeSecours = performance.now();
+                const dateUtc = new Date(donneesSecours.dateTime + "Z");
+                return { tempsMs: dateUtc.getTime() + ((tArriveeSecours - tDepartSecours) / 2), tickPerformance: tArriveeSecours };
+            } catch (err2) {
+                ecrireLog("[ERREUR CRITIQUE] Les serveurs de temps atomique sont inaccessibles.");
+                throw new Error("Liaisons de temps réseau rompues.");
+            }
+        }
+    }
+
     async function chargerMatriceFlux() {
         try {
             let antiCache = Math.floor(performance.now()) + "_" + Math.floor(Math.random() * 1000000);
@@ -329,15 +362,14 @@
                 throw new Error("Format JSON corrompu ou illisible.");
             }
 
-            performanceTickInitial = performance.now();
-            if (jplMatriceDuJour.REFERENCE_CHRONO_MS) {
-                baseTimeFluxMs = Number(jplMatriceDuJour.REFERENCE_CHRONO_MS);
-                // CORRECTION CRITIQUE : Calcul et ancrage du décalage d'horloge invariant
-                clockOffset = baseTimeFluxMs - performanceTickInitial;
-                ecrireLog("[SUCCESS] Alignement chronométrique autonome verrouillé.");
-            } else {
-                throw new Error("Marqueur temporel manquant.");
-            }
+            // ÉTAPE HISTORIQUE : Connexion au flux atomique mondial pour détruire la dépendance Android
+            const synchroAtomique = await recupererTempsAtomiqueExterne();
+            performanceTickInitial = synchroAtomique.tickPerformance;
+            baseTimeFluxMs = synchroAtomique.tempsMs;
+            
+            // Ancrage du décalage d'horloge invariant par rapport au registre matériel de performance
+            clockOffset = baseTimeFluxMs - performanceTickInitial;
+            ecrireLog("[SUCCESS] Alignement chronométrique AUTONOME et ATOMIQUE verrouillé.");
 
             if (jplMatriceDuJour.STATION_BASE_GPS) {
                 station3D.lat = jplMatriceDuJour.STATION_BASE_GPS.lat;
@@ -489,7 +521,7 @@
         
         try {
             const maintenantMs = performance.now() + clockOffset;
-            document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs) + " [UTC FLUX]";
+            document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs) + " [ATOMIQUE UTC]";
 
             const minutes_utc = calculerMinutesUtcDepuisTimestamp(maintenantMs);
             const t0 = Math.floor(minutes_utc) % 1440;
