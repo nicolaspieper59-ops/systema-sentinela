@@ -105,7 +105,7 @@
 
     <div class="control-bar">
         <div class="switch-container">
-            <span style="font-weight: bold;">ANALYSE PAR LUMINANCE (CAPTEUR DE NUIT CONTRE LE BRUIT THERMIQUE) :</span>
+            <span style="font-weight: bold;">ANALYSE METEO AUTOMATIQUE (HYBRIDE OPTIQUE ET FLUX SATELLITE NUIT) :</span>
             <label class="switch">
                 <input type="checkbox" id="toggle-camera" onchange="gestionnaireBasculeCamera(this)">
                 <span class="slider"></span>
@@ -135,7 +135,7 @@
     let ephemeridesCalculees = {};
     let isEphemeridesLoaded = false;
     let imu = { pitch: 0, roll: 0, yaw: 0 };
-    let meteoTimeoutId = null;
+    let meteoTimeoutId = null; 
 
     let station3D = {
         lat: 43.284356, lon: 5.358507, altGps: 99.31,
@@ -257,47 +257,90 @@
         if (meteoTimeoutId) { clearTimeout(meteoTimeoutId); meteoTimeoutId = null; }
         const video = document.getElementById('video-temoin');
         if (checkbox.checked) {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                video.srcObject = stream;
-                analyserFluxMeteo();
-            } catch (err) {
-                ecrireLog("[ERREUR] Impossible d'accéder au capteur photo.");
-                checkbox.checked = false;
+            // Si on est de jour, on démarre le flux physique, si on est de nuit, le gestionnaire de flux s'en chargera
+            if (elevationSoleilGlobale >= -6.0) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                    video.srcObject = stream;
+                } catch (err) {
+                    ecrireLog("[ERREUR] Impossible d'accéder au capteur photo de jour.");
+                }
             }
+            analyserFluxMeteo();
         } else {
             if (video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
+            video.srcObject = null;
             document.getElementById('lbl-meteo').innerText = "CAPTEUR OPTIQUE OFF";
             document.getElementById('lbl-meteo').style.color = "var(--dec5)";
-            fluxMeteoCielClaire = true;
+            fluxMeteoCielClaire = true; // Mode bypass libre si débogage
         }
     }
 
-    function analyserFluxMeteo() {
+function analyserFluxMeteo() {
         const video = document.getElementById('video-temoin');
         if (!document.getElementById('toggle-camera').checked) return;
 
         const lblMeteo = document.getElementById('lbl-meteo');
 
+        // ========================================================
+        // TRAITEMENT MODE NUIT PHYSIQUE (Soleil < -6°) : SANS SIMULATION
+        // ========================================================
         if (elevationSoleilGlobale < -6.0) {
-            lblMeteo.innerText = "VEILLE (PROTECTION CONDESATION ET BRUIT THERMIQUE)";
-            lblMeteo.style.color = "var(--amber)";
-            fluxMeteoCielClaire = true;
-            if (video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
-            document.getElementById('toggle-camera').checked = false; 
-            return; 
+            // Coupure du capteur optique pour protéger la matrice du bruit thermique nocturne
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+                ecrireLog("[SYS] Capteur optique en veille de protection thermique.");
+            }
+
+            // Hybridation avec les données réelles du fichier JSON (Zéro constante de complaisance)
+            if (jplMatriceDuJour && jplMatriceDuJour.METEO_TEMPS_REEL && jplMatriceDuJour.METEO_TEMPS_REEL.nebulosite_pourcent !== undefined) {
+                let nebulosite = jplMatriceDuJour.METEO_TEMPS_REEL.nebulosite_pourcent;
+                if (nebulosite > 40) { // Supérieur à 3/8 d'octas
+                    fluxMeteoCielClaire = false;
+                    lblMeteo.innerText = `NUIT : OBSTACLE NUAGEUX DETECTÉ (${nebulosite}%) [DATA]`;
+                    lblMeteo.style.color = "var(--rose)";
+                } else {
+                    fluxMeteoCielClaire = true;
+                    lblMeteo.innerText = `NUIT : CIEL DÉGAGÉ (${nebulosite}%) [DATA]`;
+                    lblMeteo.style.color = "var(--sky)";
+                }
+            } else {
+                // Failsafe strict : en l'absence de données réelles, le système refuse de simuler un ciel clair
+                fluxMeteoCielClaire = false; 
+                lblMeteo.innerText = "NUIT : INDÉTERMINÉ (DONNÉES FLUX ABSENTES)";
+                lblMeteo.style.color = "var(--amber)";
+            }
+
+            // On maintient l'automate en vie pour détecter l'aube future
+            meteoTimeoutId = setTimeout(analyserFluxMeteo, 5000);
+            return;
         }
 
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 80; canvas.height = 60;
+        // ========================================================
+        // TRAITEMENT MODE JOUR/CRÉPUSCULE (Soleil >= -6°) : ANALYSE MATRICIELLE
+        // ========================================================
+        // Réactivation automatique du flux matériel au lever du jour
+        if (!video.srcObject) {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                .then(stream => { 
+                    video.srcObject = stream; 
+                    ecrireLog("[SYS] Réactivation nominale du capteur optique diurne.");
+                })
+                .catch(() => ecrireLog("[ERREUR] Échec d'accès au capteur optique diurne."));
+        }
 
         if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 80; canvas.height = 60;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            
             let sommeLuminance = 0;
             for (let i = 0; i < imgData.length; i += 4) sommeLuminance += (imgData[i] + imgData[i+1] + imgData[i+2]) / 3;
             let moyenne = sommeLuminance / (canvas.width * canvas.height);
+            
             let sommeVariances = 0;
             for (let i = 0; i < imgData.length; i += 4) {
                 let lum = (imgData[i] + imgData[i+1] + imgData[i+2]) / 3;
@@ -307,49 +350,15 @@
 
             if (variance < 160) { 
                 fluxMeteoCielClaire = false;
-                lblMeteo.innerText = "OBSTACLE NUAGEUX DETECTE";
+                lblMeteo.innerText = "JOUR : OBSTACLE NUAGEUX DÉTECTÉ [OPTIQUE]";
                 lblMeteo.style.color = "var(--rose)";
             } else {
                 fluxMeteoCielClaire = true;
-                lblMeteo.innerText = "CIEL DEGAGE VISIBILITE OPTIMALE";
+                lblMeteo.innerText = "JOUR : CIEL DÉGAGÉ VISIBILITÉ OPTIMALE [OPTIQUE]";
                 lblMeteo.style.color = "var(--neon-green)";
             }
         }
         meteoTimeoutId = setTimeout(analyserFluxMeteo, 2000);
-    }
-
-    // NOUVELLE FONCTION CRITIQUE : Récupération du temps atomique externe avec correction de latence RTT
-    async function recupererTempsAtomiqueExterne() {
-        const urlApiTemps = "https://worldtimeapi.org/api/timezone/Etc/UTC";
-        const tDepart = performance.now();
-        try {
-            const reponse = await fetch(urlApiTemps + "?nocache=" + tDepart);
-            const donnees = await reponse.json();
-            const tArrivee = performance.now();
-            const rtt = tArrivee - tDepart;
-            
-            // Extraction du timestamp Unix en millisecondes depuis l'API atomique
-            const tempsAtomiqueBrutMs = donnees.unixtime * 1000;
-            
-            // Synchronisation fine compensée de la moitié du temps de transit réseau (RTT / 2)
-            const tempsAtomiqueVerrouilleMs = tempsAtomiqueBrutMs + (rtt / 2);
-            ecrireLog(`[TEMPS] Horloge Atomique synchro. RTT: ${rtt.toFixed(1)}ms. Décalage Android ignoré.`);
-            return { tempsMs: tempsAtomiqueVerrouilleMs, tickPerformance: tArrivee };
-        } catch (err) {
-            ecrireLog("[ALERT] Échec serveur Temps Atomique principal. Repli sur secours...");
-            // Serveur de secours
-            try {
-                const tDepartSecours = performance.now();
-                const reponseSecours = await fetch("https://timeapi.io/api/Time/current/zone?timeZone=UTC");
-                const donneesSecours = await reponseSecours.json();
-                const tArriveeSecours = performance.now();
-                const dateUtc = new Date(donneesSecours.dateTime + "Z");
-                return { tempsMs: dateUtc.getTime() + ((tArriveeSecours - tDepartSecours) / 2), tickPerformance: tArriveeSecours };
-            } catch (err2) {
-                ecrireLog("[ERREUR CRITIQUE] Les serveurs de temps atomique sont inaccessibles.");
-                throw new Error("Liaisons de temps réseau rompues.");
-            }
-        }
     }
 
     async function chargerMatriceFlux() {
@@ -362,14 +371,14 @@
                 throw new Error("Format JSON corrompu ou illisible.");
             }
 
-            // ÉTAPE HISTORIQUE : Connexion au flux atomique mondial pour détruire la dépendance Android
-            const synchroAtomique = await recupererTempsAtomiqueExterne();
-            performanceTickInitial = synchroAtomique.tickPerformance;
-            baseTimeFluxMs = synchroAtomique.tempsMs;
-            
-            // Ancrage du décalage d'horloge invariant par rapport au registre matériel de performance
-            clockOffset = baseTimeFluxMs - performanceTickInitial;
-            ecrireLog("[SUCCESS] Alignement chronométrique AUTONOME et ATOMIQUE verrouillé.");
+            performanceTickInitial = performance.now();
+            if (jplMatriceDuJour.REFERENCE_CHRONO_MS) {
+                baseTimeFluxMs = Number(jplMatriceDuJour.REFERENCE_CHRONO_MS);
+                clockOffset = baseTimeFluxMs - performanceTickInitial;
+                ecrireLog("[SUCCESS] Alignement chronométrique autonome verrouillé.");
+            } else {
+                throw new Error("Marqueur temporel manquant.");
+            }
 
             if (jplMatriceDuJour.STATION_BASE_GPS) {
                 station3D.lat = jplMatriceDuJour.STATION_BASE_GPS.lat;
@@ -521,7 +530,7 @@
         
         try {
             const maintenantMs = performance.now() + clockOffset;
-            document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs) + " [ATOMIQUE UTC]";
+            document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs) + " [UTC FLUX]";
 
             const minutes_utc = calculerMinutesUtcDepuisTimestamp(maintenantMs);
             const t0 = Math.floor(minutes_utc) % 1440;
@@ -568,7 +577,7 @@
                 const cosR = Math.cos(imu.roll), sinR = Math.sin(imu.roll);
 
                 let zRot = comp_Zen * cosP - comp_Nord * sinP;
-                let nRot = comp_Zen * sinP + comp_Nord * cosP;
+                let nRot = comp_Zen * sinP + cosP * comp_Nord;
                 let eRot = comp_Est * cosR + zRot * sinR;
                 let zFinal = -comp_Est * sinR + zRot * cosR;
 
@@ -628,14 +637,8 @@
                 positions_instantanees[a] = { az: az_deg, el: el_brute, visibleSurRadar: (el_brute > -1.0) };
             });
 
-            const labelMeteo = document.getElementById('lbl-meteo');
-            const inputCam = document.getElementById('toggle-camera');
-            if (elevationSoleilGlobale < -6.0 && inputCam.checked) {
-                inputCam.checked = false;
-                gestionnaireBasculeCamera(inputCam);
-                labelMeteo.innerText = "PROTECTION VEILLE NOCTURNE ACTIVE";
-                labelMeteo.style.color = "var(--amber)";
-            }
+            // CORRECTIONS : L'ancien bloc d'IHM disjoncteur non physique a été totalement éradiqué.
+            // L'utilisateur garde le contrôle total de son commutateur, jour comme nuit.
 
             renduRadar(positions_instantanees);
             requestAnimationFrame(boucleDeCalculContinue);
