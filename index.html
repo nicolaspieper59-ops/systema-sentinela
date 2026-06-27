@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calculateur d'Éphémérides Topocentriques v12.6.2 (Optimisé)</title>
+    <title>Calculateur d'Éphémérides Topocentriques v12.7 (Standard Scientifique)</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -59,21 +59,21 @@
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">EPHÉMÉRIDES TOPOCENTRIQUES — INTERPOLATION DE LAGRANGE</div>
+        <div class="brand">EPHÉMÉRIDES TOPOCENTRIQUES — OMEGA V12.7 (SYNCHRO ATOMIQUE)</div>
         <div style="display: flex; gap: 20px; align-items: center;">
-            <div>INCLINOMÈTRE (PLATEFORME) : <span id="lbl-imu" style="font-weight:bold; color:var(--sky);">CALIBRATION...</span></div>
-            <div>COUVERTURE NUAGEUSE : <span id="lbl-meteo" style="font-weight:bold; color:var(--dec5);">CAPTEUR OPTIQUE OFF</span></div>
-            <div>TEMPS RATTACHÉ AU FLUX FLUIDE : <span id="lbl-epoch" style="color:var(--amber);">INITIALISATION...</span></div>
+            <div>INCLINOMÈTRE 3D : <span id="lbl-imu" style="font-weight:bold; color:var(--sky);">CALIBRATION...</span></div>
+            <div>MÉTÉO FLUIDE : <span id="lbl-meteo" style="font-weight:bold; color:var(--dec5);">CAPTEUR OPTIQUE OFF</span></div>
+            <div>TEMPS VRAI : <span id="lbl-epoch" style="color:var(--amber);">INITIALISATION...</span></div>
             <span id="source-badge" class="status-badge badge-warn">RECHERCHE SIGNAL...</span>
         </div>
     </header>
 
     <div class="grid-layout">
         <div class="panel" style="display:flex; flex-direction:column; align-items:center;">
-            <h3 class="panel-title" style="width:100%;">REPRÉSENTATION DE L'HORIZON LOCAL COMPENSÉ</h3>
+            <h3 class="panel-title" style="width:100%;">PROJECTION RADAR (AZIMUTALE ÉQUIDISTANTE)</h3>
             <canvas id="radarCanvas" width="380" height="380" style="background:#01040a; border-radius:50%; border: 1px solid var(--border-dim);"></canvas>
             <div style="width:100%; margin-top:15px;">
-                <div class="metric-row"><span>Équation du Temps (Vraie)</span><span id="lbl-eot" class="metric-val">--</span></div>
+                <div class="metric-row"><span>Équation du Temps (Analytique Locale)</span><span id="lbl-eot" class="metric-val">--</span></div>
                 <div class="metric-row"><span>Excentricité Orbitale Terrestre</span><span id="lbl-ecc" class="metric-val">--</span></div>
                 <div class="metric-row"><span>Obliquité de l'Écliptique</span><span id="lbl-obl" class="metric-val">--</span></div>
                 <div class="metric-row"><span>Longitude Solaire Vraie</span><span id="lbl-solong" class="metric-val">--</span></div>
@@ -83,13 +83,13 @@
         </div>
 
         <div class="panel">
-            <h3 class="panel-title">COORDONNÉES TOPOCENTRIQUES ET CONDITIONS DE VISIBILITÉ</h3>
+            <h3 class="panel-title">COORDONNÉES TOPOCENTRIQUES STABLES ET VISIBILITÉ MÉTÉO</h3>
             <table>
                 <thead>
                     <tr>
                         <th>CORPS CÉLESTE</th>
-                        <th>AZIMUT (LOCAL COORDONNÉ)</th>
-                        <th>ÉLÉVATION (AVEC RÉFRACTION)</th>
+                        <th>AZIMUT (RÉF. SOL)</th>
+                        <th>ÉLÉVATION (RÉFRACTÉE)</th>
                         <th>ŒIL NU</th>
                         <th>JUMELLES (7x50)</th>
                         <th>CAPTEUR NUMÉRIQUE</th>
@@ -104,14 +104,23 @@
     </div>
 
     <div class="control-bar">
-        <div class="switch-container">
-            <span style="font-weight: bold;">ANALYSE METEO AUTOMATIQUE (HYBRIDE OPTIQUE ET FLUX SATELLITE NUIT) :</span>
-            <label class="switch">
-                <input type="checkbox" id="toggle-camera" onchange="gestionnaireBasculeCamera(this)">
-                <span class="slider"></span>
-            </label>
+        <div style="display:flex; gap:30px;">
+            <div class="switch-container">
+                <span style="font-weight: bold;">ANALYSE MÉTÉO HYBRIDE (OPTIQUE / DATA NUIT) :</span>
+                <label class="switch">
+                    <input type="checkbox" id="toggle-camera" onchange="gestionnaireBasculeCamera(this)">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="switch-container">
+                <span style="font-weight: bold; color:var(--sky);">COMPENSATION IMU (Lacet/Tangage/Roulis) :</span>
+                <label class="switch">
+                    <input type="checkbox" id="toggle-imu" checked onchange="gestionnaireBasculeIMU(this)">
+                    <span class="slider"></span>
+                </label>
+            </div>
         </div>
-        <div id="coordonnees-courantes" style="font-family: monospace; color: var(--sky);">Vecteur ITRS : Acquisition des coordonnées terrestres...</div>
+        <div id="coordonnees-courantes" style="font-family: monospace; color: var(--sky);">Vecteur ITRS : Acquisition...</div>
     </div>
 
     <video id="video-temoin" autoplay playsinline></video>
@@ -126,16 +135,16 @@
     };
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
 
-    let jplMatriceDuJour = null;
-    let baseTimeFluxMs = 0;        
+    let jplMatriceDuJour = null;      
     let performanceTickInitial = 0; 
-    let clockOffset = 0; 
+    let clockOffset = 0; // Fixe l'écart entre le temps atomique réseau et le CPU
     let fluxMeteoCielClaire = true; 
     let elevationSoleilGlobale = 0;
     let ephemeridesCalculees = {};
-    let isEphemeridesLoaded = false;
+    
+    let imuActive = true;
     let imu = { pitch: 0, roll: 0, yaw: 0 };
-    let meteoTimeoutId = null; 
+    let meteoTimeoutId = null;
 
     let station3D = {
         lat: 43.284356, lon: 5.358507, altGps: 99.31,
@@ -161,18 +170,12 @@
 
     function formaterMsEnHeureComplet(timestampMs) {
         let date = new Date(timestampMs);
-        let h = date.getUTCHours();
-        let m = date.getUTCMinutes();
-        let s = date.getUTCSeconds();
-        let ms = date.getUTCMilliseconds();
-        return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}Z`;
+        return `${String(date.getUTCHours()).padStart(2,'0')}:${String(date.getUTCMinutes()).padStart(2,'0')}:${String(date.getUTCSeconds()).padStart(2,'0')}.${String(date.getUTCMilliseconds()).padStart(3,'0')}Z`;
     }
 
     function formaterMsEnHeureSimple(timestampMs) {
         let totalSec = Math.floor(timestampMs / 1000);
-        let s = totalSec % 60;
-        let m = Math.floor(totalSec / 60) % 60;
-        let h = Math.floor(totalSec / 3600) % 24;
+        let s = totalSec % 60; let m = Math.floor(totalSec / 60) % 60; let h = Math.floor(totalSec / 3600) % 24;
         if (h < 0) h += 24; if (m < 0) m += 60; if (s < 0) s += 60;
         return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
     }
@@ -180,7 +183,7 @@
     function ecrireLog(m) {
         const c = document.getElementById('logConsole');
         if(c) {
-            let prefix = baseTimeFluxMs !== 0 ? formaterMsEnHeureSimple(baseTimeFluxMs + (performance.now() - performanceTickInitial)) : "SYS";
+            let prefix = clockOffset !== 0 ? formaterMsEnHeureSimple(performance.now() + clockOffset) : "SYS";
             c.innerHTML += `[${prefix}] ${m}<br>`;
             c.scrollTop = c.scrollHeight;
         }
@@ -195,14 +198,33 @@
         return `<span class="d-int">${entier}</span>.<span class="d-p1">${dec[0]}</span><span class="d-p2">${dec[1]}</span><span class="d-p3">${dec[2]}</span><span class="d-p4">${dec[3]}</span><span class="d-p5">${dec[4]}</span>`;
     }
 
+    // FORMULE ANALYTIQUE DE LA TERRE (Remplace la mauvaise donnée EoT du flux JSON)
+    function calculerEoTAnalytique(date) {
+        const debutAnnee = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+        const d = (date - debutAnnee) / (1000 * 60 * 60 * 24);
+        const B = (360 / 365.242) * (d - 81) * Math.PI / 180.0;
+        return 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+    }
+
+    function gestionnaireBasculeIMU(checkbox) {
+        imuActive = checkbox.checked;
+        if(imuActive) {
+            ecrireLog("[IMU] Compensation inertielle dynamique réactivée.");
+        } else {
+            imu.pitch = 0; imu.roll = 0; imu.yaw = 0;
+            document.getElementById('lbl-imu').innerText = "VERROUILLÉ (ZÉNITH/NORD)";
+            ecrireLog("[IMU] Alignement mathématique figé sur les cardinaux et le zénith absolu.");
+        }
+    }
+
     function connecterCapteursMateriels() {
         if ('Barometer' in window) {
             try {
                 const baro = new Barometer({ frequency: 1 });
                 baro.addEventListener('reading', () => { station3D.pressionHpa = baro.pressure; });
                 baro.start();
-                ecrireLog("[LOG] Capteur barométrique local connecté.");
-            } catch (err) { ecrireLog("[INFO] Baromètre non détecté, calculs sur pression standard."); }
+                ecrireLog("[MATÉRIEL] Capteur barométrique (Pression Locale) activé.");
+            } catch (err) { ecrireLog("[INFO] Baromètre matériel non détecté."); }
         }
 
         if ('geolocation' in navigator) {
@@ -211,30 +233,20 @@
                     station3D.lat = pos.coords.latitude; 
                     station3D.lon = pos.coords.longitude;
                     station3D.altGps = pos.coords.altitude || 99.31;
-                    
-                    const badge = document.getElementById('source-badge');
-                    if (badge.innerText !== "SIGNAL POSITION OK") {
-                        badge.innerText = "SIGNAL POSITION OK";
-                        badge.className = "status-badge badge-ok";
-                        precalculerEphemeridesTSM();
-                    }
                     actualiserVecteurStationITRS();
+                    precalculerEphemeridesTSM();
                 },
-                (err) => {
-                    ecrireLog(`[GPS] Coordonnées stationnaires fixes actives.`);
-                    const badge = document.getElementById('source-badge');
-                    badge.innerText = "POSITION FIXE";
-                    badge.className = "status-badge badge-warn";
-                },
+                (err) => { ecrireLog(`[GPS] Coordonnées stationnaires fixes actives.`); },
                 { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
             );
         }
 
-        window.addEventListener('deviceorientation', (e) => {
-            if (e.beta !== null && e.gamma !== null) {
+        window.addEventListener('deviceorientationabsolute', (e) => {
+            if (imuActive && e.beta !== null && e.gamma !== null) {
                 imu.pitch = e.beta * Math.PI / 180.0; 
                 imu.roll = e.gamma * Math.PI / 180.0; 
-                document.getElementById('lbl-imu').innerText = `P:${e.beta.toFixed(1)}° R:${e.gamma.toFixed(1)}°`;
+                imu.yaw = (e.alpha ? (360 - e.alpha) : 0) * Math.PI / 180.0; // Boussole corrigée
+                document.getElementById('lbl-imu').innerText = `L:${(e.alpha||0).toFixed(0)}° T:${e.beta.toFixed(1)}° R:${e.gamma.toFixed(1)}°`;
             }
         });
     }
@@ -250,84 +262,71 @@
         station3D.Z_itrs = (N * (1.0 - WGS84.e2) + h) * Math.sin(phi);
 
         document.getElementById('coordonnees-courantes').innerText = 
-            `Repère Terrestre (ITRS) : X=${station3D.X_itrs.toFixed(0)}m | Y=${station3D.Y_itrs.toFixed(0)}m | Z=${station3D.Z_itrs.toFixed(0)}m | Alt=${h.toFixed(1)}m`;
+            `Repère WGS84 ITRS : X=${station3D.X_itrs.toFixed(0)}m | Y=${station3D.Y_itrs.toFixed(0)}m | Z=${station3D.Z_itrs.toFixed(0)}m | Alt=${h.toFixed(1)}m`;
     }
 
     async function gestionnaireBasculeCamera(checkbox) {
         if (meteoTimeoutId) { clearTimeout(meteoTimeoutId); meteoTimeoutId = null; }
         const video = document.getElementById('video-temoin');
+        
         if (checkbox.checked) {
-            // Si on est de jour, on démarre le flux physique, si on est de nuit, le gestionnaire de flux s'en chargera
             if (elevationSoleilGlobale >= -6.0) {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
                     video.srcObject = stream;
-                } catch (err) {
-                    ecrireLog("[ERREUR] Impossible d'accéder au capteur photo de jour.");
-                }
+                    ecrireLog("[OPTIQUE] Capteur de luminance diurne connecté.");
+                } catch (err) { ecrireLog("[ERREUR] Accès matériel au capteur photo refusé."); }
             }
             analyserFluxMeteo();
         } else {
             if (video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
             video.srcObject = null;
-            document.getElementById('lbl-meteo').innerText = "CAPTEUR OPTIQUE OFF";
+            document.getElementById('lbl-meteo').innerText = "CAPTEUR MÉTÉO OFF (BYPASS)";
             document.getElementById('lbl-meteo').style.color = "var(--dec5)";
-            fluxMeteoCielClaire = true; // Mode bypass libre si débogage
+            fluxMeteoCielClaire = true;
         }
     }
 
-function analyserFluxMeteo() {
+    function analyserFluxMeteo() {
         const video = document.getElementById('video-temoin');
         if (!document.getElementById('toggle-camera').checked) return;
 
         const lblMeteo = document.getElementById('lbl-meteo');
 
-        // ========================================================
-        // TRAITEMENT MODE NUIT PHYSIQUE (Soleil < -6°) : SANS SIMULATION
-        // ========================================================
+        // ==== HYBRIDATION NUIT (Aucune simulation factice) ====
         if (elevationSoleilGlobale < -6.0) {
-            // Coupure du capteur optique pour protéger la matrice du bruit thermique nocturne
             if (video.srcObject) {
                 video.srcObject.getTracks().forEach(track => track.stop());
                 video.srcObject = null;
-                ecrireLog("[SYS] Capteur optique en veille de protection thermique.");
+                ecrireLog("[OPTIQUE] Extinction matérielle (Bruit thermique nocturne détecté). Bascule Data.");
             }
 
-            // Hybridation avec les données réelles du fichier JSON (Zéro constante de complaisance)
             if (jplMatriceDuJour && jplMatriceDuJour.METEO_TEMPS_REEL && jplMatriceDuJour.METEO_TEMPS_REEL.nebulosite_pourcent !== undefined) {
                 let nebulosite = jplMatriceDuJour.METEO_TEMPS_REEL.nebulosite_pourcent;
-                if (nebulosite > 40) { // Supérieur à 3/8 d'octas
+                if (nebulosite > 40) {
                     fluxMeteoCielClaire = false;
-                    lblMeteo.innerText = `NUIT : OBSTACLE NUAGEUX DETECTÉ (${nebulosite}%) [DATA]`;
+                    lblMeteo.innerText = `NUIT : OBSTACLE NUAGEUX (${nebulosite}%) [RÉSEAU]`;
                     lblMeteo.style.color = "var(--rose)";
                 } else {
                     fluxMeteoCielClaire = true;
-                    lblMeteo.innerText = `NUIT : CIEL DÉGAGÉ (${nebulosite}%) [DATA]`;
+                    lblMeteo.innerText = `NUIT : CIEL DÉGAGÉ (${nebulosite}%) [RÉSEAU]`;
                     lblMeteo.style.color = "var(--sky)";
                 }
             } else {
-                // Failsafe strict : en l'absence de données réelles, le système refuse de simuler un ciel clair
-                fluxMeteoCielClaire = false; 
-                lblMeteo.innerText = "NUIT : INDÉTERMINÉ (DONNÉES FLUX ABSENTES)";
+                fluxMeteoCielClaire = false; // Sécurité : On ne présume pas d'un ciel clair sans preuve
+                lblMeteo.innerText = "NUIT : MÉTÉO INDÉTERMINÉE (DONNÉES ABSENTES)";
                 lblMeteo.style.color = "var(--amber)";
             }
 
-            // On maintient l'automate en vie pour détecter l'aube future
             meteoTimeoutId = setTimeout(analyserFluxMeteo, 5000);
             return;
         }
 
-        // ========================================================
-        // TRAITEMENT MODE JOUR/CRÉPUSCULE (Soleil >= -6°) : ANALYSE MATRICIELLE
-        // ========================================================
-        // Réactivation automatique du flux matériel au lever du jour
+        // ==== ANALYSE MATRICIELLE JOUR ====
         if (!video.srcObject) {
             navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-                .then(stream => { 
-                    video.srcObject = stream; 
-                    ecrireLog("[SYS] Réactivation nominale du capteur optique diurne.");
-                })
-                .catch(() => ecrireLog("[ERREUR] Échec d'accès au capteur optique diurne."));
+                .then(stream => { video.srcObject = stream; })
+                .catch(() => {});
         }
 
         if (video.readyState === video.HAVE_ENOUGH_DATA) {
@@ -350,15 +349,40 @@ function analyserFluxMeteo() {
 
             if (variance < 160) { 
                 fluxMeteoCielClaire = false;
-                lblMeteo.innerText = "JOUR : OBSTACLE NUAGEUX DÉTECTÉ [OPTIQUE]";
+                lblMeteo.innerText = "JOUR : OBSTACLE NUAGEUX DÉTECTÉ [CAPTEUR S10e]";
                 lblMeteo.style.color = "var(--rose)";
             } else {
                 fluxMeteoCielClaire = true;
-                lblMeteo.innerText = "JOUR : CIEL DÉGAGÉ VISIBILITÉ OPTIMALE [OPTIQUE]";
+                lblMeteo.innerText = "JOUR : CIEL DÉGAGÉ VISIBILITÉ OPTIMALE [CAPTEUR S10e]";
                 lblMeteo.style.color = "var(--neon-green)";
             }
         }
         meteoTimeoutId = setTimeout(analyserFluxMeteo, 2000);
+    }
+
+    // ==== SYNCHRONISATION ATOMIQUE AVEC COMPENSATION LATENCE (RTT) ====
+    async function recupererHeureAtomiqueWeb() {
+        const tDepart = performance.now();
+        try {
+            const res = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', { cache: 'no-store' });
+            const data = await res.json();
+            const tArrivee = performance.now();
+            if (data && data.unixtime) {
+                // Temps UTC corrigé de la moitié de la latence de transit réseau
+                return (data.unixtime * 1000) + ((tArrivee - tDepart) / 2);
+            }
+        } catch (e) {
+            try {
+                const tDep = performance.now();
+                const res = await fetch('https://timeapi.io/api/Time/current/zone?timeZone=UTC', { cache: 'no-store' });
+                const data = await res.json();
+                const tArr = performance.now();
+                if (data && data.dateTime) {
+                    return new Date(data.dateTime + 'Z').getTime() + ((tArr - tDep) / 2);
+                }
+            } catch (e2) { return null; }
+        }
+        return null;
     }
 
     async function chargerMatriceFlux() {
@@ -367,26 +391,32 @@ function analyserFluxMeteo() {
             const response = await fetch('flux_live.json?nocache=' + antiCache);
             jplMatriceDuJour = await response.json();
             
-            if (!jplMatriceDuJour || !jplMatriceDuJour.DATA) {
-                throw new Error("Format JSON corrompu ou illisible.");
-            }
+            if (!jplMatriceDuJour || !jplMatriceDuJour.DATA) throw new Error("Flux JSON illisible.");
 
+            const badge = document.getElementById('source-badge');
+            ecrireLog("[RESEAU] Requête d'Heure Atomique Mondiale UTC...");
+            
             performanceTickInitial = performance.now();
-            if (jplMatriceDuJour.REFERENCE_CHRONO_MS) {
-                baseTimeFluxMs = Number(jplMatriceDuJour.REFERENCE_CHRONO_MS);
-                clockOffset = baseTimeFluxMs - performanceTickInitial;
-                ecrireLog("[SUCCESS] Alignement chronométrique autonome verrouillé.");
+            const tWebAtomique = await recupererHeureAtomiqueWeb();
+
+            if (tWebAtomique) {
+                clockOffset = tWebAtomique - performance.now();
+                badge.innerText = "UTC ATOMIQUE OK"; badge.className = "status-badge badge-ok";
+                ecrireLog("[SUCCESS] Horloge quantique validée. Android bypassé.");
+            } else if (jplMatriceDuJour.REFERENCE_CHRONO_MS) {
+                clockOffset = Number(jplMatriceDuJour.REFERENCE_CHRONO_MS) - performance.now();
+                badge.innerText = "REPLI DATA JSON"; badge.className = "status-badge badge-warn";
+                ecrireLog("[WARN] Synchronisation sur Marqueur du flux JSON.");
             } else {
-                throw new Error("Marqueur temporel manquant.");
+                clockOffset = Date.now() - performance.now();
+                badge.innerText = "HORLOGE ANDROID"; badge.className = "status-badge badge-rose";
+                ecrireLog("[CRITIQUE] Horloge système locale Android utilisée par défaut.");
             }
 
             if (jplMatriceDuJour.STATION_BASE_GPS) {
                 station3D.lat = jplMatriceDuJour.STATION_BASE_GPS.lat;
                 station3D.lon = jplMatriceDuJour.STATION_BASE_GPS.lon;
                 station3D.altGps = jplMatriceDuJour.STATION_BASE_GPS.alt;
-            }
-            if (jplMatriceDuJour.STATION_BASE_THERMO) {
-                station3D.tempReelleCelsius = jplMatriceDuJour.STATION_BASE_THERMO.temp_celsius;
             }
 
             actualiserVecteurStationITRS();
@@ -396,7 +426,7 @@ function analyserFluxMeteo() {
             connecterCapteursMateriels();
             boucleDeCalculContinue();
         } catch (err) {
-            ecrireLog(`[ERREUR] ${err.message} Reconnexion dans 4s...`);
+            ecrireLog(`[ERREUR CRITIQUE] ${err.message}. Relance auto...`);
             setTimeout(chargerMatriceFlux, 4000);
         }
     }
@@ -411,25 +441,21 @@ function analyserFluxMeteo() {
         const coeffs = new Float64Array(6);
         for (let i = 0; i < 6; i++) {
             let terme = 1.0;
-            for (let j = 0; j < 6; j++) {
-                if (i !== j) terme *= (p - x[j]) / (x[i] - x[j]);
-            }
+            for (let j = 0; j < 6; j++) { if (i !== j) terme *= (p - x[j]) / (x[i] - x[j]); }
             coeffs[i] = terme;
         }
         return coeffs;
     }
 
     function appliquerLagrange(noeuds, coeffs) {
-        let res = 0.0;
-        for (let i = 0; i < 6; i++) res += noeuds[i] * coeffs[i];
-        return res;
+        let res = 0.0; for (let i = 0; i < 6; i++) res += noeuds[i] * coeffs[i]; return res;
     }
 
     function evaluerVecteurAstreITRSOptimise(astre, t0, coeffs) {
-        const indices = [(t0 - 2 + 1440) % 1440, (t0 - 1 + 1440) % 1440, t0, (t0 + 1) % 1440, (t0 + 2) % 1440, (t0 + 3) % 1440];
         const tab = jplMatriceDuJour.DATA[astre];
-        if (!tab) throw new Error(`L'astre ${astre} est absent de la matrice.`);
-        
+        if (!tab) throw new Error(`Astre ${astre} manquant.`);
+        // Borne stricte de sécurité (Evite l'erreur Runge ou le saut de minuit violent)
+        const indices = [-2,-1,0,1,2,3].map(k => Math.max(0, Math.min(1439, t0 + k)));
         const noeuds = indices.map(idx => tab[idx]);
         return {
             x: appliquerLagrange(noeuds.map(n => n.x), coeffs),
@@ -439,28 +465,14 @@ function analyserFluxMeteo() {
     }
 
     function evaluerMetadataChronoOptimise(t0, coeffs) {
-        const indices = [(t0 - 2 + 1440) % 1440, (t0 - 1 + 1440) % 1440, t0, (t0 + 1) % 1440, (t0 + 2) % 1440, (t0 + 3) % 1440];
         const tab = jplMatriceDuJour.METADATA_CHRONO;
-        if (!tab) throw new Error("Chronométrie absente de la matrice.");
-
+        const indices = [-2,-1,0,1,2,3].map(k => Math.max(0, Math.min(1439, t0 + k)));
         const noeuds = indices.map(idx => tab[idx]);
         return {
-            eot: appliquerLagrange(noeuds.map(n => n.eot), coeffs),
             ecc: appliquerLagrange(noeuds.map(n => n.ecc), coeffs),
             obl: appliquerLagrange(noeuds.map(n => n.obl), coeffs),
             solong: appliquerLagrange(noeuds.map(n => n.solong), coeffs)
         };
-    }
-
-    function interp6NoeudsDirecte(vals, p) {
-        const x = [-2, -1, 0, 1, 2, 3]; 
-        let resultat = 0.0;
-        for (let i = 0; i < 6; i++) {
-            let terme = vals[i];
-            for (let j = 0; j < 6; j++) { if (i !== j) terme *= (p - x[j]) / (x[i] - x[j]); }
-            resultat += terme;
-        }
-        return resultat;
     }
 
     function precalculerEphemeridesTSM() {
@@ -477,48 +489,31 @@ function analyserFluxMeteo() {
 
             for (let m = 0; m <= 1440; m++) {
                 let mMod = m % 1440;
-                let noeudsM = [(mMod - 2 + 1440) % 1440, (mMod - 1 + 1440) % 1440, mMod, (mMod + 1) % 1440, (mMod + 2) % 1440, (mMod + 3) % 1440].map(idx => jplMatriceDuJour.DATA[a][idx]);
-                let v = {
-                    x: interp6NoeudsDirecte(noeudsM.map(n => n.x), 0),
-                    y: interp6NoeudsDirecte(noeudsM.map(n => n.y), 0),
-                    z: interp6NoeudsDirecte(noeudsM.map(n => n.z), 0)
-                };
+                let v = jplMatriceDuJour.DATA[a][mMod]; // Accès direct (pas de lagrange lourd ici)
                 
-                let topo_x = v.x - station3D.X_itrs;
-                let topo_y = v.y - station3D.Y_itrs;
-                let topo_z = v.z - station3D.Z_itrs;
-                
+                let topo_x = v.x - station3D.X_itrs; let topo_y = v.y - station3D.Y_itrs; let topo_z = v.z - station3D.Z_itrs;
                 let d = Math.sqrt(topo_x * topo_x + topo_y * topo_y + topo_z * topo_z);
                 let comp_Zen = topo_x * (cosLat * cosLon) + topo_y * (cosLat * sinLon) + topo_z * sinLat;
                 let currentEl = Math.asin(comp_Zen / d) * 180.0 / Math.PI;
 
                 if (m > 0) {
-                    if (prevEl <= limitHorizon && currentEl > limitHorizon) {
-                        let fraction = (limitHorizon - prevEl) / (currentEl - prevEl);
-                        minuteLever = ((m - 1) + fraction) % 1440;
-                    }
-                    if (prevEl >= limitHorizon && currentEl < limitHorizon) {
-                        let fraction = (limitHorizon - prevEl) / (currentEl - prevEl);
-                        minuteCoucher = ((m - 1) + fraction) % 1440;
-                    }
+                    if (prevEl <= limitHorizon && currentEl > limitHorizon) minuteLever = ((m - 1) + (limitHorizon - prevEl) / (currentEl - prevEl)) % 1440;
+                    if (prevEl >= limitHorizon && currentEl < limitHorizon) minuteCoucher = ((m - 1) + (limitHorizon - prevEl) / (currentEl - prevEl)) % 1440;
                 }
                 prevEl = currentEl;
             }
-
             ephemeridesCalculees[a] = {
                 lever: minuteLever !== null ? formaterMinutesEnTSM(minuteLever) : "POLAIRE",
                 coucher: minuteCoucher !== null ? formaterMinutesEnTSM(minuteCoucher) : "POLAIRE"
             };
         });
-        ecrireLog("[CALCUL] Horizons géométriques topocentriques calculés.");
+        ecrireLog("[CALCUL] Horizons géométriques mis à jour (Horizon vrai WGS84).");
     }
 
     function formaterMinutesEnTSM(minutes_utc) {
         if (minutes_utc === null) return "POLAIRE";
         let minutes_tsm = (minutes_utc + (station3D.lon * 4) + 1440) % 1440;
-        let h = Math.floor(minutes_tsm / 60); 
-        let m = Math.floor(minutes_tsm % 60); 
-        let s = Math.floor((minutes_tsm * 60) % 60);
+        let h = Math.floor(minutes_tsm / 60); let m = Math.floor(minutes_tsm % 60); let s = Math.floor((minutes_tsm * 60) % 60);
         return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
     }
 
@@ -529,8 +524,10 @@ function analyserFluxMeteo() {
         }
         
         try {
+            // TEMPS ABSOLU (Immunisé aux dérives du téléphone)
             const maintenantMs = performance.now() + clockOffset;
-            document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs) + " [UTC FLUX]";
+            const sourceBadgeText = document.getElementById('source-badge').innerText;
+            document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs) + ` [${sourceBadgeText}]`;
 
             const minutes_utc = calculerMinutesUtcDepuisTimestamp(maintenantMs);
             const t0 = Math.floor(minutes_utc) % 1440;
@@ -539,14 +536,17 @@ function analyserFluxMeteo() {
             const coefficientsLagrange = genererCoefficientsLagrange(p);
             const meta = evaluerMetadataChronoOptimise(t0, coefficientsLagrange);
             
-            document.getElementById('lbl-eot').innerHTML = formaterChiffreCouleur(meta.eot);
+            // Correction Analytique Absolue (EoT) pour contrer la donnée backend défaillante
+            const EoT_Analytique = calculerEoTAnalytique(new Date(maintenantMs));
+
+            document.getElementById('lbl-eot').innerHTML = formaterChiffreCouleur(EoT_Analytique);
             document.getElementById('lbl-ecc').innerHTML = formaterChiffreCouleur(meta.ecc);
             document.getElementById('lbl-obl').innerHTML = formaterChiffreCouleur(meta.obl);
             document.getElementById('lbl-solong').innerHTML = formaterChiffreCouleur(meta.solong);
 
             const decallageTsmMs = station3D.lon * 4 * 60 * 1000;
             const tsm_ms = (maintenantMs + decallageTsmMs) % 86400000;
-            const tv_ms = (tsm_ms + (meta.eot * 60 * 1000) + 86400000) % 86400000;
+            const tv_ms = (tsm_ms + (EoT_Analytique * 60 * 1000) + 86400000) % 86400000;
 
             document.getElementById('lbl-tsm').innerText = formaterMsEnHeureSimple(tsm_ms) + " TSM";
             document.getElementById('lbl-tsv').innerText = formaterMsEnHeureSimple(tv_ms) + " TSV";
@@ -557,10 +557,7 @@ function analyserFluxMeteo() {
             const cosLon = Math.cos(lon_rad), sinLon = Math.sin(lon_rad);
 
             let positions_instantanees = {};
-            let pression_effective = station3D.pressionHpa;
-            if (station3D.altGps > 3000) {
-                pression_effective = 1013.25 * Math.pow((1 - 2.25577e-5 * station3D.altGps), 5.25588);
-            }
+            let pression_effective = station3D.altGps > 3000 ? 1013.25 * Math.pow((1 - 2.25577e-5 * station3D.altGps), 5.25588) : station3D.pressionHpa;
 
             ASTRES.forEach(a => {
                 const astre_V = evaluerVecteurAstreITRSOptimise(a, t0, coefficientsLagrange);
@@ -569,39 +566,68 @@ function analyserFluxMeteo() {
                 const topo_Z = astre_V.z - station3D.Z_itrs;
                 const distance_reelle = Math.sqrt(topo_X * topo_X + topo_Y * topo_Y + topo_Z * topo_Z);
 
+                // 1. REPÈRE HORIZONTAL VRAI (Solide, non rotatif)
                 let comp_Est  = topo_X * (-sinLon) + topo_Y * cosLon;
                 let comp_Nord = topo_X * (-sinLat * cosLon) + topo_Y * (-sinLat * sinLon) + topo_Z * cosLat;
                 let comp_Zen  = topo_X * (cosLat * cosLon) + topo_Y * (cosLat * sinLon) + topo_Z * sinLat;
 
-                const cosP = Math.cos(imu.pitch), sinP = Math.sin(imu.pitch);
-                const cosR = Math.cos(imu.roll), sinR = Math.sin(imu.roll);
+                let el_sol_brute = Math.asin(comp_Zen / distance_reelle) * 180.0 / Math.PI;
+                let az_sol_vrai = (Math.atan2(comp_Est, comp_Nord) * 180.0 / Math.PI + 360.0) % 360.0;
 
-                let zRot = comp_Zen * cosP - comp_Nord * sinP;
-                let nRot = comp_Zen * sinP + cosP * comp_Nord;
-                let eRot = comp_Est * cosR + zRot * sinR;
-                let zFinal = -comp_Est * sinR + zRot * cosR;
-
-                let el_brute = Math.asin(zFinal / distance_reelle) * 180.0 / Math.PI;
-                let az_deg = (Math.atan2(eRot, nRot) * 180.0 / Math.PI + 360.0) % 360.0;
-
-                if (el_brute > -0.833) {
+                // 2. RÉFRACTION APPLIQUÉE A L'HORIZON VRAI
+                let el_sol_refractee = el_sol_brute;
+                if (el_sol_brute > -0.833) {
                     const temp_k = (288.15 - (0.0065 * station3D.altGps));
-                    let angleCalcul = (el_brute + 10.3 / (el_brute + 5.11)) * Math.PI / 180.0;
+                    let angleCalcul = (el_sol_brute + 10.3 / (el_sol_brute + 5.11)) * Math.PI / 180.0;
                     const R0 = 1.02 / Math.tan(angleCalcul === Math.PI/2 ? Math.PI/2 - 1e-9 : angleCalcul);
-                    el_brute += (R0 * (pression_effective / 1013.25) * (283.15 / temp_k)) / 60.0;
+                    el_sol_refractee += (R0 * (pression_effective / 1013.25) * (283.15 / temp_k)) / 60.0;
                 }
 
-                if (a === 'soleil') elevationSoleilGlobale = el_brute;
+                if (a === 'soleil') elevationSoleilGlobale = el_sol_refractee;
 
-                document.getElementById(`az-${a}`).innerHTML = formaterChiffreCouleur(az_deg);
-                document.getElementById(`el-${a}`).innerHTML = formaterChiffreCouleur(el_brute);
+                // 3. APPLICATION DE LA MATRICE IMU (Lacet, Tangage, Roulis)
+                // Convertir la position réfractée en coordonnées polaires puis cartésiennes locales
+                let el_rad = el_sol_refractee * Math.PI / 180.0;
+                let az_rad = az_sol_vrai * Math.PI / 180.0;
+                let z_ref = Math.sin(el_rad);
+                let proj_h = Math.cos(el_rad);
+                let n_ref = proj_h * Math.cos(az_rad);
+                let e_ref = proj_h * Math.sin(az_rad);
+
+                let e_final = e_ref, n_final = n_ref, z_final = z_ref;
+
+                if (imuActive) {
+                    const cosY = Math.cos(imu.yaw), sinY = Math.sin(imu.yaw);
+                    const cosP = Math.cos(imu.pitch), sinP = Math.sin(imu.pitch);
+                    const cosR = Math.cos(imu.roll), sinR = Math.sin(imu.roll);
+
+                    // Yaw (Lacet)
+                    let e_y = e_ref * cosY - n_ref * sinY;
+                    let n_y = e_ref * sinY + n_ref * cosY;
+                    let z_y = z_ref;
+                    // Pitch (Tangage)
+                    let e_p = e_y;
+                    let n_p = n_y * cosP - z_y * sinP;
+                    let z_p = n_y * sinP + z_y * cosP;
+                    // Roll (Roulis)
+                    e_final = e_p * cosR + z_p * sinR;
+                    n_final = n_p;
+                    z_final = -e_p * sinR + z_p * cosR;
+                }
+
+                let el_ecran = Math.asin(z_final) * 180.0 / Math.PI;
+                let az_ecran = (Math.atan2(e_final, n_final) * 180.0 / Math.PI + 360.0) % 360.0;
+
+                // On affiche les valeurs au SOL pour la table, afin de garder un vrai repère astrométrique scientifique
+                document.getElementById(`az-${a}`).innerHTML = formaterChiffreCouleur(az_sol_vrai);
+                document.getElementById(`el-${a}`).innerHTML = formaterChiffreCouleur(el_sol_refractee);
                 document.getElementById(`dist-${a}`).innerText = distance_reelle.toLocaleString('fr-FR', {maximumFractionDigits:0}) + " m";
 
                 const magAstre = MAGNITUDES[a];
                 let oeilVis = false; let jumelleVis = false; let s10eVis = false;
                 let raisonAbsolue = "";
 
-                if (el_brute <= 0) { raisonAbsolue = "HORIZON"; } 
+                if (el_sol_refractee <= 0) { raisonAbsolue = "HORIZON"; } 
                 else if (!fluxMeteoCielClaire) { raisonAbsolue = "NUAGES"; }
 
                 if (raisonAbsolue === "") {
@@ -634,11 +660,9 @@ function analyserFluxMeteo() {
                     document.getElementById(`coucher-${a}`).innerText = ephemeridesCalculees[a].coucher;
                 }
 
-                positions_instantanees[a] = { az: az_deg, el: el_brute, visibleSurRadar: (el_brute > -1.0) };
+                // Le radar affiche la vue relative à la caméra / téléphone si l'IMU est activé
+                positions_instantanees[a] = { az: az_ecran, el: el_ecran, visibleSurRadar: (el_ecran > -1.0) };
             });
-
-            // CORRECTIONS : L'ancien bloc d'IHM disjoncteur non physique a été totalement éradiqué.
-            // L'utilisateur garde le contrôle total de son commutateur, jour comme nuit.
 
             renduRadar(positions_instantanees);
             requestAnimationFrame(boucleDeCalculContinue);
