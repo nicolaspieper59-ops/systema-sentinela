@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Calculateur d'Éphémérides Topocentriques v12.8 (Sensor Fusion)</title>
+    <title>Calculateur d'Éphémérides Topocentriques v12.9 (Sensor Fusion)</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -62,7 +62,7 @@
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v12.8 — TERMINAL DE FUSION ET MNT GÉODÉSIQUE</div>
+        <div class="brand">SYSTEMA SENTINELA v12.9 — TERMINAL DE FUSION ET MNT GÉODÉSIQUE</div>
         <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
             <div>MATRICE IMU : <span id="lbl-imu" style="font-weight:bold; color:var(--sky);">CALIBRATION...</span></div>
             <div>MÉTÉO FLUIDE : <span id="lbl-meteo" style="font-weight:bold; color:var(--dec5);">CAPTEUR OPTIQUE OFF</span></div>
@@ -147,6 +147,11 @@
     let imuActive = true;
     let imu = { pitch: 0, roll: 0, yaw: 0 };
     let meteoTimeoutId = null;
+    let cameraAccessFailed = false; // Correction : empêche le spam de requêtes de permission de caméra
+
+    // Limitation du taux de rafraîchissement du DOM pour préserver les performances (Galaxy S10e)
+    let dernierUpdateDOM = 0;
+    const INTERVALLE_DOM_MS = 200; // 5 Hz de rafraîchissement DOM est idéal pour la lisibilité humaine
 
     // Métriques de cinématique et de précision pour la fusion
     let cinematiqueGps = {
@@ -187,9 +192,12 @@
         genererMasqueLocalAnalytique: function(lat, lon) {
             this.latDernierCalcul = lat;
             this.lonDernierCalcul = lon;
-            // Algorithme de génération locale simulant le changement de relief selon les coordonnées géodésiques
-            // Remplace l'ancien tableau statique par un repère glissant basé sur la position réelle
-            const graineSpatiale = Math.sin(lat) * Math.cos(lon);
+            
+            // Correction : Conversion explicite degrés vers radians pour la graine géodésique
+            const latRad = lat * Math.PI / 180.0;
+            const lonRad = lon * Math.PI / 180.0;
+            const graineSpatiale = Math.sin(latRad) * Math.cos(lonRad);
+
             for (let i = 0; i < 360; i++) {
                 if (i >= 0 && i < 60) this.masqueDynamique[i] = 4.2 + Math.sin(i * 0.1 + graineSpatiale) * 2.1;
                 else if (i >= 60 && i < 140) this.masqueDynamique[i] = 6.5 + Math.cos(i * 0.05 + graineSpatiale) * 3.5;
@@ -204,15 +212,12 @@
     // MODULE DE FUSION DE CAPTEURS ADAPTATIVE (CHORÉGRAPHIE INERTIE / GPS)
     const ModuleFusionCapteurs = {
         evaluerPoidsDynamiques: function() {
-            // Certitude de l'IMU : se dégrade linéairement avec l'accélération cinétique du véhicule
             let certitudeInertielle = Math.max(0.10, 1.0 - (cinematiqueGps.vitesseMs / 25.0));
             
-            // Certitude du Cap GPS : excellente en vitesse de croisière (> 2 m/s), nulle à l'arrêt
             let poidsCapGps = 0.0;
             if (cinematiqueGps.vitesseMs > 2.0 && cinematiqueGps.precisionMetres < 20) {
                 poidsCapGps = Math.min(0.95, (cinematiqueGps.vitesseMs - 2.0) / 6.0);
             }
-            // Coupure automatique de la météo optique en mouvement rapide pour éviter le flou de bougé
             let certitudeOptique = cinematiqueGps.vitesseMs > 1.5 ? 0.0 : 1.0;
 
             return { imu: certitudeInertielle, gpsCap: poidsCapGps, optique: certitudeOptique };
@@ -309,10 +314,8 @@
 
                     actualiserVecteurStationITRS();
 
-                    // TRAITEMENT INTELLIGENT DU FILTRAGE DU COMPORTEMENT MNT
                     if (CartographieHorizon.aBesoinDeMiseAJour(lat, lon)) {
                         CartographieHorizon.genererMasqueLocalAnalytique(lat, lon);
-                        // Recalcul asynchrone pour ne pas bloquer la boucle principale d'affichage
                         setTimeout(precalculerEphemeridesTSM, 0);
                     }
                 },
@@ -325,19 +328,17 @@
             if (imuActive && e.beta !== null && e.gamma !== null) {
                 const fusion = ModuleFusionCapteurs.evaluerPoidsDynamiques();
                 
-                // Lecture brute de la centrale d'attitude du S10e
                 let pitchBrut = e.beta * Math.PI / 180.0;
                 let rollBrut = e.gamma * Math.PI / 180.0;
                 let yawBrut = (e.alpha ? (360 - e.alpha) : 0) * Math.PI / 180.0;
 
-                // FUSION DU CAP (YAW) : Priorité géodésique au GPS si vitesse active
                 let capGpsRad = cinematiqueGps.capDegres * Math.PI / 180.0;
                 imu.yaw = (1.0 - fusion.gpsCap) * yawBrut + (fusion.gpsCap * capGpsRad);
 
-                // FILTRAGE LOGICIEL PASSE-BAS DU PITCH/ROLL EN MOUVEMENT
                 imu.pitch = (pitchBrut * fusion.imu) + (0.0 * (1.0 - fusion.imu));
                 imu.roll = (rollBrut * fusion.imu) + (0.0 * (1.0 - fusion.imu));
 
+                // Optimisation d'affichage de la télémétrie IMU dans l'en-tête
                 document.getElementById('lbl-imu').innerText = `C:${(imu.yaw * 180/Math.PI).toFixed(0)}° T:${(imu.pitch * 180/Math.PI).toFixed(1)}° R:${(imu.roll * 180/Math.PI).toFixed(1)}° (Conf: ${(fusion.imu*100).toFixed(0)}%)`;
             }
         });
@@ -362,13 +363,17 @@
         const video = document.getElementById('video-temoin');
         
         if (checkbox.checked) {
+            cameraAccessFailed = false; // Réinitialise l'autorisation de caméra si elle est cliquée
             const fusion = ModuleFusionCapteurs.evaluerPoidsDynamiques();
-                 if (elevationSoleilGlobale >= -6.0 && fusion.optique > 0.5) {
+            if (elevationSoleilGlobale >= -6.0 && fusion.optique > 0.5) {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                    video.srcObject = stream;
+                         video.srcObject = stream;
                     ecrireLog("[OPTIQUE] Capteur optique météo synchronisé.");
-                } catch (err) { ecrireLog("[ERREUR] Accès optique refusé."); }
+                } catch (err) { 
+                    ecrireLog("[ERREUR] Accès optique refusé."); 
+                    cameraAccessFailed = true; 
+                }
             }
             analyserFluxMeteo();
         } else {
@@ -387,7 +392,6 @@
         const lblMeteo = document.getElementById('lbl-meteo');
         const fusion = ModuleFusionCapteurs.evaluerPoidsDynamiques();
 
-        // HYBRIDATION ET COUPORE AUTOMATIQUE EN MOUVEMENT RAPIDE
         if (fusion.optique === 0.0 || elevationSoleilGlobale < -6.0) {
             if (video.srcObject) {
                 video.srcObject.getTracks().forEach(track => track.stop());
@@ -401,13 +405,14 @@
             return;
         }
 
-        if (!video.srcObject) {
+        // Correction : Ne retente pas d'accéder au matériel si l'autorisation a été refusée (évite le spam)
+        if (!video.srcObject && !cameraAccessFailed) {
             navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
                 .then(stream => { video.srcObject = stream; })
-                .catch(() => {});
+                .catch(() => { cameraAccessFailed = true; });
         }
         
-        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        if (video.srcObject && video.readyState === video.HAVE_ENOUGH_DATA) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             canvas.width = 80; canvas.height = 60;
@@ -520,7 +525,8 @@
     function evaluerVecteurAstreITRSOptimise(astre, t0, coeffs) {
         const tab = jplMatriceDuJour.DATA[astre];
         if (!tab) throw new Error(`Astre ${astre} introuvable.`);
-        const indices = [-2,-1,0,1,2,3].map(k => Math.max(0, Math.min(1439, t0 + k)));
+        // Correction : Modulo modulaire périodique de l'interpolation à minuit
+        const indices = [-2,-1,0,1,2,3].map(k => (t0 + k + 1440) % 1440);
         const noeuds = indices.map(idx => tab[idx]);
         return {
             x: appliquerLagrange(noeuds.map(n => n.x), coeffs),
@@ -531,7 +537,8 @@
 
     function evaluerMetadataChronoOptimise(t0, coeffs) {
         const tab = jplMatriceDuJour.METADATA_CHRONO;
-        const indices = [-2,-1,0,1,2,3].map(k => Math.max(0, Math.min(1439, t0 + k)));
+        // Correction : Modulo modulaire périodique de l'interpolation à minuit
+        const indices = [-2,-1,0,1,2,3].map(k => (t0 + k + 1440) % 1440);
         const noeuds = indices.map(idx => tab[idx]);
         return {
             ecc: appliquerLagrange(noeuds.map(n => n.ecc), coeffs),
@@ -589,10 +596,21 @@
         
         try {
             const maintenantMs = performance.now() + clockOffset;
-            const sourceBadgeText = document.getElementById('source-badge').innerText;
-            document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs) + ` [${sourceBadgeText}]`;
+            
+            // Correction de performance : limitation du taux de rafraîchissement des écritures DOM
+            const rafraichirDOM = (maintenantMs - dernierUpdateDOM) > INTERVALLE_DOM_MS;
+            
+            if (rafraichirDOM) {
+                dernierUpdateDOM = maintenantMs;
+                const sourceBadgeText = document.getElementById('source-badge').innerText;
+                document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs) + ` [${sourceBadgeText}]`;
+            }
 
             const minutes_utc = calculerMinutesUtcDepuisTimestamp(maintenantMs);
+            if (isNaN(minutes_utc)) {
+                requestAnimationFrame(boucleDeCalculContinue);
+                return;
+            }
             const t0 = Math.floor(minutes_utc) % 1440;
             const p = minutes_utc - Math.floor(minutes_utc);
             
@@ -600,17 +618,21 @@
             const meta = evaluerMetadataChronoOptimise(t0, coefficientsLagrange);
             const EoT_Analytique = calculerEoTAnalytique(new Date(maintenantMs));
 
-            document.getElementById('lbl-eot').innerHTML = formaterChiffreCouleur(EoT_Analytique);
-            document.getElementById('lbl-ecc').innerHTML = formaterChiffreCouleur(meta.ecc);
-            document.getElementById('lbl-obl').innerHTML = formaterChiffreCouleur(meta.obl);
-            document.getElementById('lbl-solong').innerHTML = formaterChiffreCouleur(meta.solong);
+            if (rafraichirDOM) {
+                document.getElementById('lbl-eot').innerHTML = formaterChiffreCouleur(EoT_Analytique);
+                document.getElementById('lbl-ecc').innerHTML = formaterChiffreCouleur(meta.ecc);
+                document.getElementById('lbl-obl').innerHTML = formaterChiffreCouleur(meta.obl);
+                document.getElementById('lbl-solong').innerHTML = formaterChiffreCouleur(meta.solong);
+            }
 
             const decallageTsmMs = station3D.lon * 4 * 60 * 1000;
             const tsm_ms = (maintenantMs + decallageTsmMs) % 86400000;
             const tv_ms = (tsm_ms + (EoT_Analytique * 60 * 1000) + 86400000) % 86400000;
 
-            document.getElementById('lbl-tsm').innerText = formaterMsEnHeureSimple(tsm_ms) + " TSM";
-            document.getElementById('lbl-tsv').innerText = formaterMsEnHeureSimple(tv_ms) + " TSV";
+            if (rafraichirDOM) {
+                document.getElementById('lbl-tsm').innerText = formaterMsEnHeureSimple(tsm_ms) + " TSM";
+                document.getElementById('lbl-tsv').innerText = formaterMsEnHeureSimple(tv_ms) + " TSV";
+            }
 
             const lat_rad = station3D.lat * Math.PI / 180.0;
             const lon_rad = station3D.lon * Math.PI / 180.0;
@@ -635,96 +657,77 @@
                 let comp_Nord = topo_X * (-sinLat * cosLon) + topo_Y * (-sinLat * sinLon) + topo_Z * cosLat;
                 let comp_Zen  = topo_X * (cosLat * cosLon) + topo_Y * (cosLat * sinLon) + topo_Z * sinLat;
 
-                let el_sol_brute = Math.asin(comp_Zen / distance_reelle) * 180.0 / Math.PI;
-                let az_sol_vrai = (Math.atan2(comp_Est, comp_Nord) * 180.0 / Math.PI + 360.0) % 360.0;
+                let el_brute = Math.asin(comp_Zen / distance_reelle) * 180.0 / Math.PI;
+                let az_vrai = (Math.atan2(comp_Est, comp_Nord) * 180.0 / Math.PI + 360.0) % 360.0;
 
-                let el_sol_refractee = el_sol_brute;
-                if (el_sol_brute > -0.833) {
-                    const temp_k = (288.15 - (0.0065 * station3D.altGps));
-                    let angleCalcul = (el_sol_brute + 10.3 / (el_sol_brute + 5.11)) * Math.PI / 180.0;
+                let el_refractee = el_brute;
+                if (el_brute > -0.833) {
+                    // Correction : Utilisation intelligente de la température réelle mesurée de la station
+                    const temp_k = station3D.tempReelleCelsius !== undefined ? (station3D.tempReelleCelsius + 273.15) : (288.15 - (0.0065 * station3D.altGps));
+                    let angleCalcul = (el_brute + 10.3 / (el_brute + 5.11)) * Math.PI / 180.0;
                     const R0 = 1.02 / Math.tan(angleCalcul === Math.PI/2 ? Math.PI/2 - 1e-9 : angleCalcul);
-                    el_sol_refractee += (R0 * (pression_effective / 1013.25) * (283.15 / temp_k)) / 60.0;
+                    el_refractee += (R0 * (pression_effective / 1013.25) * (283.15 / temp_k)) / 60.0;
                 }
 
-                if (a === 'soleil') elevationSoleilGlobale = el_sol_refractee;
+                if (a === 'soleil') elevationSoleilGlobale = el_refractee;
 
-                let el_rad = el_sol_refractee * Math.PI / 180.0;
-                let az_rad = az_sol_vrai * Math.PI / 180.0;
-                let e_ref = Math.cos(el_rad) * Math.sin(az_rad);
-                let n_ref = Math.cos(el_rad) * Math.cos(az_rad);
-                let z_ref = Math.sin(el_rad);
+                if (rafraichirDOM) {
+                    document.getElementById(`az-${a}`).innerHTML = formaterChiffreCouleur(az_vrai);
+                    document.getElementById(`el-${a}`).innerHTML = formaterChiffreCouleur(el_refractee);
+                    document.getElementById(`dist-${a}`).innerText = distance_reelle.toLocaleString('fr-FR', {maximumFractionDigits:0}) + " m";
 
-                let e_final = e_ref, n_final = n_ref, z_final = z_ref;
+                    // INTERPOLATION DU COMPORTEMENT SUR LE MASQUE DE TERRAIN CINETIQUE DYNAMIQUE
+                    const indexAzimutEntier = Math.floor(az_vrai) % 360;
+                    const hauteurObstacleLocal = CartographieHorizon.masqueDynamique[indexAzimutEntier];
 
-                if (imuActive) {
-                    const cosY = Math.cos(imu.yaw), sinY = Math.sin(imu.yaw);
-                    const cosP = Math.cos(imu.pitch), sinP = Math.sin(imu.pitch);
-                    const cosR = Math.cos(imu.roll), sinR = Math.sin(imu.roll);
+                    const magAstre = MAGNITUDES[a];
+                    let oeilVis = false; let jumelleVis = false; let s10eVis = false;
+                    let raisonAbsolue = "";
 
-                    let e_y = e_ref * cosY - n_ref * sinY;
-                    let n_y = e_ref * sinY + n_ref * cosY;
-                    let z_y = z_ref;
-                    
-                    let e_p = e_y;
-                    let n_p = n_y * cosP - z_y * sinP;
-                    let z_p = n_y * sinP + z_y * cosP;
-                    
-                    e_final = e_p * cosR + z_p * sinR;
-                    n_final = n_p;
-                    z_final = -e_p * sinR + z_p * cosR;
-                }
+                    if (el_refractee <= 0) raisonAbsolue = "HORIZON";
+                    else if (el_refractee <= hauteurObstacleLocal) raisonAbsolue = "OBSTACLE_MASQUE";
+                    else if (!fluxMeteoCielClaire) raisonAbsolue = "NUAGES";
 
-                let el_ecran = Math.asin(z_final) * 180.0 / Math.PI;
-                let az_ecran = (Math.atan2(e_final, n_final) * 180.0 / Math.PI + 360.0) % 360.0;
+                    if (raisonAbsolue === "") {
+                        // Optimisation scientifique : Amélioration des règles de visibilité au crépuscule
+                        if (elevationSoleilGlobale > 0) { 
+                            // Journée : Soleil et Lune uniquement
+                            if (a === 'soleil' || a === 'lune') { oeilVis = true; jumelleVis = true; s10eVis = true; }
+                        } else if (elevationSoleilGlobale > -6.0) { 
+                            // Crépuscule civil : Venus (mag -4.4) et Jupiter (-2.7) sont parfaitement visibles à l'œil nu
+                            if (a === 'soleil' || a === 'lune') { oeilVis = true; jumelleVis = true; s10eVis = true; }
+                            else if (a === 'venus' || a === 'jupiter') { oeilVis = true; jumelleVis = true; s10eVis = true; }
+                        } else { 
+                            // Nuit noire : critères photométriques standards
+                            if (magAstre <= 6.0) oeilVis = true;       
+                            if (magAstre <= 9.5) jumelleVis = true;    
+                            if (magAstre <= 2.0 || a === 'lune') s10eVis = true; 
+                        }
+                    }
 
-                document.getElementById(`az-${a}`).innerHTML = formaterChiffreCouleur(az_sol_vrai);
-                document.getElementById(`el-${a}`).innerHTML = formaterChiffreCouleur(el_sol_refractee);
-                document.getElementById(`dist-${a}`).innerText = distance_reelle.toLocaleString('fr-FR', {maximumFractionDigits:0}) + " m";
+                    const cellOeil = document.getElementById(`oeil-${a}`);
+                    const cellJumelle = document.getElementById(`jumelle-${a}`);
+                    const cellS10e = document.getElementById(`s10e-${a}`);
 
-                               // INTERPOLATION DU COMPORTEMENT SUR LE MASQUE DE TERRAIN CINETIQUE DYNAMIQUE
-                const indexAzimutEntier = Math.floor(az_sol_vrai) % 360;
-                const hauteurObstacleLocal = CartographieHorizon.masqueDynamique[indexAzimutEntier];
+                    const appliquerRenduStatut = (cell, visible) => {
+                        if (raisonAbsolue === "HORIZON") { cell.innerText = "SOUS HORIZON"; cell.style.color = "#2c3e50"; }
+                        else if (raisonAbsolue === "OBSTACLE_MASQUE") { cell.innerText = `MASQUÉ (${hauteurObstacleLocal.toFixed(1)}°)`; cell.style.color = "var(--amber)"; }
+                        else if (raisonAbsolue === "NUAGES") { cell.innerText = "NUAGEUX"; cell.style.color = "var(--rose)"; }
+                        else { cell.innerText = visible ? "VISIBLE" : "INFRA-MAGNITUDE"; cell.style.color = visible ? "var(--neon-green)" : "#22262d"; }
+                    };
 
-                const magAstre = MAGNITUDES[a];
-                let oeilVis = false; let jumelleVis = false; let s10eVis = false;
-                let raisonAbsolue = "";
+                    appliquerRenduStatut(cellOeil, oeilVis);
+                    appliquerRenduStatut(cellJumelle, jumelleVis);
+                    appliquerRenduStatut(cellS10e, s10eVis);
 
-                if (el_sol_refractee <= 0) raisonAbsolue = "HORIZON";
-                else if (el_sol_refractee <= hauteurObstacleLocal) raisonAbsolue = "OBSTACLE_MASQUE";
-                else if (!fluxMeteoCielClaire) raisonAbsolue = "NUAGES";
-
-                if (raisonAbsolue === "") {
-                    if (elevationSoleilGlobale > -6.0) { 
-                        if (a === 'soleil' || a === 'lune') { oeilVis = true; jumelleVis = true; s10eVis = true; }
-                        else if (a === 'venus') { oeilVis = false; jumelleVis = true; s10eVis = false; } 
-                    } else { 
-                        if (magAstre <= 6.0) oeilVis = true;       
-                        if (magAstre <= 9.5) jumelleVis = true;    
-                        if (magAstre <= 2.0 || a === 'lune') s10eVis = true; 
+                    if (ephemeridesCalculees[a]) {
+                        document.getElementById(`lever-${a}`).innerText = ephemeridesCalculees[a].lever;
+                        document.getElementById(`coucher-${a}`).innerText = ephemeridesCalculees[a].coucher;
                     }
                 }
 
-                const cellOeil = document.getElementById(`oeil-${a}`);
-                const cellJumelle = document.getElementById(`jumelle-${a}`);
-                const cellS10e = document.getElementById(`s10e-${a}`);
-
-                const appliquerRenduStatut = (cell, visible) => {
-                    if (raisonAbsolue === "HORIZON") { cell.innerText = "SOUS HORIZON"; cell.style.color = "#2c3e50"; }
-                    else if (raisonAbsolue === "OBSTACLE_MASQUE") { cell.innerText = `MASQUÉ (${hauteurObstacleLocal.toFixed(1)}°)`; cell.style.color = "var(--amber)"; }
-                    else if (raisonAbsolue === "NUAGES") { cell.innerText = "NUAGEUX"; cell.style.color = "var(--rose)"; }
-                    else { cell.innerText = visible ? "VISIBLE" : "INFRA-MAGNITUDE"; cell.style.color = visible ? "var(--neon-green)" : "#22262d"; }
-                };
-
-                appliquerRenduStatut(cellOeil, oeilVis);
-                appliquerRenduStatut(cellJumelle, jumelleVis);
-                appliquerRenduStatut(cellS10e, s10eVis);
-
-                if (ephemeridesCalculees[a]) {
-                    document.getElementById(`lever-${a}`).innerText = ephemeridesCalculees[a].lever;
-                    document.getElementById(`coucher-${a}`).innerText = ephemeridesCalculees[a].coucher;
-                }
-
-                positions_instantanees[a] = { az: az_ecran, el: el_ecran, visibleSurRadar: (el_ecran > -2.0) };
+                // Sauvegarde de la position physique stable (les coordonnées d'écran ne stockent plus la rotation IMU en amont)
+                positions_instantanees[a] = { az: az_vrai, el: el_refractee, visibleSurRadar: (el_refractee > -2.0) };
             });
 
             renduRadar(positions_instantanees);
@@ -742,7 +745,16 @@
         
         ctx.save();
         
-        // CORRECTION : RENDU DYNAMIQUE DU MASQUE DE CRÊTE (MNT GLISSANT)
+        // CORRECTION MAJEURE : Rotation globale du Radar basée sur le yaw (cap) de l'IMU.
+        // La grille, le masque de terrain (MNT) et les étiquettes cardinaux tournent ensemble !
+        if (imuActive) {
+            ctx.translate(cx, cy);
+            ctx.rotate(-imu.yaw);
+            ctx.translate(-cx, -cy);
+        }
+        
+
+        // RENDU DYNAMIQUE DU MASQUE DE CRÊTE (MNT GLISSANT ALIGNÉ)
         ctx.fillStyle = 'rgba(210, 153, 34, 0.08)'; 
         ctx.beginPath();
         for (let az = 0; az <= 360; az++) {
@@ -754,19 +766,23 @@
             if (az === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
         for (let az = 360; az >= 0; az--) {
+            let theta = (az - 90) * Math.PI / 180.0;
             ctx.lineTo(cx + rMax * Math.cos(theta), cy + rMax * Math.sin(theta));
         }
         ctx.closePath();
         ctx.fill();
 
+        // Cercles concentriques d'élévation et lignes d'azimut
         ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
         [0.33, 0.66, 1.0].forEach(scale => { ctx.beginPath(); ctx.arc(cx, cy, rMax * scale, 0, 2 * Math.PI); ctx.stroke(); });
         ctx.beginPath(); ctx.moveTo(cx, cy - rMax); ctx.lineTo(cx, cy + rMax); ctx.moveTo(cx - rMax, cy); ctx.lineTo(cx + rMax, cy); ctx.stroke();
 
+        // Affichage des repères cardinaux (ils s'orientent avec le cap)
         ctx.fillStyle = 'var(--dec5)'; ctx.font = '10px monospace';
         ctx.fillText("N", cx - 3, cy - rMax - 4); ctx.fillText("S", cx - 3, cy + rMax + 11);
         ctx.fillText("E", cx + rMax + 5, cy + 4); ctx.fillText("O", cx - rMax - 13, cy + 4);
 
+        // Affichage des objets célestes
         for (const astre in positions) {
             const data = positions[astre];
             if (data.el > 0 && data.visibleSurRadar) {
@@ -776,7 +792,17 @@
                 
                 ctx.fillStyle = astre === 'soleil' ? 'var(--amber)' : astre === 'lune' ? '#fff' : 'var(--sky)';
                 ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI); ctx.fill();
-                ctx.fillStyle = 'var(--text-main)'; ctx.font = '9px Consolas'; ctx.fillText(astre.substring(0,3).toUpperCase(), x + 6, y + 3);
+                
+                // AJOUT OPTIQUE : Contre-rotation dynamique des textes d'étiquettes
+                // Les noms des astres restent toujours horizontaux et lisibles sur l'écran !
+                ctx.save();
+                ctx.translate(x + 6, y + 3);
+                if (imuActive) {
+                    ctx.rotate(imu.yaw); // Annule l'effet de rotation globale uniquement pour le texte
+                }
+                ctx.fillStyle = 'var(--text-main)'; ctx.font = '9px Consolas'; 
+                ctx.fillText(astre.substring(0,3).toUpperCase(), 0, 0);
+                ctx.restore();
             }
         }
         ctx.restore();
@@ -786,5 +812,3 @@
 </script>
 </body>
 </html>
-
-      
