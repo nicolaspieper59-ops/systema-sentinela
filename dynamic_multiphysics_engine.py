@@ -36,8 +36,6 @@ def main():
     aujourdhui = datetime.now(timezone.utc).date()
     date_base = datetime(aujourdhui.year, aujourdhui.month, aujourdhui.day, 0, 0, tzinfo=timezone.utc)
 
-    station_marseille = wgs84.latlon(lat_target, lon_target, elevation_m=alt_target)
-
     corps_celestes = {
         'soleil': eph['sun'], 'lune': eph['moon'], 'mercure': eph['mercury barycenter'],
         'venus': eph['venus barycenter'], 'mars': eph['mars barycenter'],
@@ -78,14 +76,12 @@ def main():
             x_m, y_m, z_m = astre_apparent.frame_xyz(itrs).m
             matrice_24h[nom].append({"x": float(x_m), "y": float(y_m), "z": float(z_m)})
 
-    now_utc = datetime.now(timezone.utc)
-    reference_chrono_ms = int((now_utc - date_base).total_seconds() * 1000)
+    # Timestamp UNIX absolu de minuit pile (00:00:00 UTC du jour)
     timestamp_absolu_debut_utc = int(date_base.timestamp() * 1000)
 
     payload = {
         "INFRASTRUCTURE": "SYSTEMA SENTINELA v13.0 — DETERMINISTE PUR",
         "GENERATION_TIMESTAMP_MS": int(time.time() * 1000),
-        "REFERENCE_CHRONO_MS": reference_chrono_ms,
         "TIMESTAMP_DEBUT_UTC_MS": timestamp_absolu_debut_utc,
         "DATE_REF": aujourdhui.isoformat(),
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_target},
@@ -96,7 +92,7 @@ def main():
 
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
-    print(f"[SUCCESS] Matrice stabilisée avec ancrage temporel UTC absolu.")
+    print(f"[SUCCESS] Matrice 24h générée avec succès.")
 
 if __name__ == "__main__":
     main()
