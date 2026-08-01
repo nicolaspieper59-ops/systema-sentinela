@@ -1,9 +1,9 @@
-name: Noyau Multiphysique Éphémérides v10
+name: Noyau Déterministe Pur
 
 on:
   schedule:
-    - cron: '*/10 * * * *' # Exécution automatisée synchronisée (Toutes les 10 min)
-  workflow_dispatch:      # Permet le déclenchement manuel depuis l'interface
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -38,9 +38,9 @@ jobs:
         path: de421.bsp
         key: bsp-de421-v1
 
-    - name: Exécution du Moteur Multiphysique
+    - name: Exécution du Moteur Déterministe Pur
       run: |
-        python dynamic_multiphysics_engine.py 43.284356 5.358507 99.3100
+        python dynamic_multiphysics_engine.py 43.284356 5.358507 99.3100 15.0
 
     - name: Commit et Push des résultats
       run: |
@@ -48,7 +48,7 @@ jobs:
         git config --local user.name "GitHub Action"
         git add flux_live.json
         if ! git diff-index --quiet HEAD --; then
-          git commit -m "Mise à jour automatique du vecteur d'état céleste [CI]"
+          git commit -m "Mise à jour déterministe pure de la matrice céleste [CI]"
           git push
         else
           echo "Aucune variation détectée dans la matrice d'état."
