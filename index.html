@@ -62,12 +62,12 @@
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v13.0 — TERMINAL DÉTERMINISTE PUR (WMM CORRIGÉ)</div>
+        <div class="brand">SYSTEMA SENTINELA v13.0 — TERMINAL DÉTERMINISTE PUR</div>
         <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
             <div>MATRICE IMU : <span id="lbl-imu" style="font-weight:bold; color:var(--sky);">CALIBRATION...</span></div>
             <div>MÉTÉO FLUIDE : <span id="lbl-meteo" style="font-weight:bold; color:var(--dec5);">OPTIQUE OFF</span></div>
-            <div>TEMPS UTC : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">INITIALISATION...</span></div>
-            <span id="source-badge" class="status-badge badge-warn">SYNCHRO...</span>
+            <div>TEMPS UTC SATELLITE : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">SYNCHRONISATION...</span></div>
+            <span id="source-badge" class="status-badge badge-warn">INIT</span>
         </div>
     </header>
 
@@ -139,7 +139,7 @@
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
 
     let jplMatriceDuJour = null;      
-    let clockOffset = 0; 
+    let offsetHorlogeServeurMs = 0; // Écart exact par rapport au temps réel haute précision
     let fluxMeteoCielClaire = true; 
     let elevationSoleilGlobale = 0;
     let ephemeridesCalculees = {};
@@ -151,9 +151,8 @@
     let cinematiqueGps = { vitesseMs: 0, capDegres: 0, precisionMetres: 10 };
     let station3D = { lat: 43.284356, lon: 5.358507, altGps: 99.31, pressionHpa: 1013.25, tempReelleCelsius: 15.0, X_itrs: 0, Y_itrs: 0, Z_itrs: 0 };
 
-    // Module WMM (World Magnetic Model) local simplifié pour la déclinaison magnétique vraie
     function calculerDeclinaisonMagnetique(lat, lon) {
-        let declinaisonBase = 2.18; // Référence Marseille
+        let declinaisonBase = 2.18;
         let correctionLon = (lon - 5.35) * 0.05;
         let correctionLat = (lat - 43.28) * 0.02;
         return declinaisonBase + correctionLon - correctionLat;
@@ -177,7 +176,7 @@
 
     function formaterMsEnHeureComplet(timestampMs) {
         let date = new Date(timestampMs);
-        return `${String(date.getUTCHours()).padStart(2,'0')}:${String(date.getUTCMinutes()).padStart(2,'0')}:${String(date.getUTCSeconds()).padStart(2,'0')}.${String(date.getUTCMilliseconds()).padStart(3,'0')}Z`;
+        return `${String(date.getUTCHours()).padStart(2,'0')}:${String(date.getUTCMinutes()).padStart(2,'0')}:${String(date.getUTCSeconds()).padStart(2,'0')}.${String(date.getUTCMilliseconds()).padStart(3,'0')} UTC`;
     }
 
     function formaterMsEnHeureSimple(timestampMs) {
@@ -190,8 +189,8 @@
     function ecrireLog(m) {
         const c = document.getElementById('logConsole');
         if(c) {
-            let prefix = clockOffset !== 0 ? formaterMsEnHeureSimple(performance.now() + clockOffset) : "SYS";
-            c.innerHTML += `[${prefix}] ${m}<br>`;
+            let temppsCourantUtc = performance.now() + offsetHorlogeServeurMs;
+            c.innerHTML += `[${formaterMsEnHeureSimple(temppsCourantUtc)}] ${m}<br>`;
             c.scrollTop = c.scrollHeight;
         }
     }
@@ -235,6 +234,9 @@
                     cinematiqueGps.capDegres = pos.coords.heading || 0;
                     cinematiqueGps.precisionMetres = pos.coords.accuracy || 10;
                     actualiserVecteurStationITRS();
+                    
+                    const elCoord = document.getElementById('coordonnees-courantes');
+                    if(elCoord) elCoord.innerText = `GPS WGS84 : ${station3D.lat.toFixed(6)}°, ${station3D.lon.toFixed(6)}° (${station3D.altGps.toFixed(1)}m)`;
                 },
                 (err) => {},
                 { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
@@ -247,7 +249,6 @@
                 let rollBrut = e.gamma * Math.PI / 180.0;
                 let yawMagnetiqueBrut = e.alpha ? (360 - e.alpha) : 0;
 
-                // Application stricte de la Déclinaison Magnétique (WMM) vers le Vrai Nord Géographique
                 let declinaisonDeg = calculerDeclinaisonMagnetique(station3D.lat, station3D.lon);
                 let yawVraiDeg = (yawMagnetiqueBrut + declinaisonDeg + 360) % 360;
                 
@@ -255,7 +256,7 @@
                 imu.pitch = pitchBrut;
                 imu.roll = rollBrut;
 
-                document.getElementById('lbl-imu').innerText = `VRAI CAP : ${yawVraiDeg.toFixed(0)}° (WMM +${declinaisonDeg.toFixed(1)}°)`;
+                document.getElementById('lbl-imu').innerText = `CAP VRAI : ${yawVraiDeg.toFixed(0)}° (WMM +${declinaisonDeg.toFixed(1)}°)`;
             }
         });
     }
@@ -330,11 +331,45 @@
         meteoTimeoutId = setTimeout(analyserFluxMeteo, 3000);
     }
 
+    /**
+     * SYNCHRONISATION TEMPORELLE ABSOLUE SANS HORLOGE ANDROID
+     * Extrait l'entête HTTP 'Date' renvoyé par le serveur Web (NTP Serveur)
+     */
     async function chargerMatriceFlux() {
         try {
-            const response = await fetch('flux_live.json?nocache=' + performance.now());
+            const t0Req = performance.now();
+            const response = await fetch('flux_live.json?nocache=' + t0Req);
+            const t1Req = performance.now();
+            const latenceReseauMs = (t1Req - t0Req) / 2.0;
+
             jplMatriceDuJour = await response.json();
-            clockOffset = Number(jplMatriceDuJour.REFERENCE_CHRONO_MS) - performance.now();
+
+            // Extraction de l'heure HTTP officielle du serveur web (NTP universel)
+            const dateHeader = response.headers.get('date');
+            let timestampUtcReelMs = 0;
+
+            if (dateHeader) {
+                timestampUtcReelMs = new Date(dateHeader).getTime() + latenceReseauMs;
+                document.getElementById('source-badge').innerText = "NTP SERVEUR";
+                document.getElementById('source-badge').className = "status-badge badge-ok";
+            } else {
+                // Fallback direct sur une API NTP externe si l'en-tête HTTP est masqué par le navigateur
+                try {
+                    const respNtp = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC');
+                    const dataNtp = await respNtp.json();
+                    timestampUtcReelMs = new Date(dataNtp.utc_datetime).getTime();
+                    document.getElementById('source-badge').innerText = "NTP WORLDTIME";
+                    document.getElementById('source-badge').className = "status-badge badge-ok";
+                } catch(e) {
+                    // Secours ultime (Date système)
+                    timestampUtcReelMs = Date.now();
+                    document.getElementById('source-badge').innerText = "HORLOGE LOCAL";
+                    document.getElementById('source-badge').className = "status-badge badge-warn";
+                }
+            }
+
+            // Ancrage absolu de la ligne de temps sur 'performance.now()'
+            offsetHorlogeServeurMs = timestampUtcReelMs - performance.now();
 
             if (jplMatriceDuJour.STATION_BASE_GPS) {
                 station3D.lat = jplMatriceDuJour.STATION_BASE_GPS.lat;
@@ -348,25 +383,21 @@
             actualiserVecteurStationITRS();
             precalculerEphemeridesTSM();
             connecterCapteursMateriels();
+            
+            ecrireLog("[SYS] Synchronisation temporelle UTC établie.");
             boucleDeCalculContinue();
         } catch (err) {
+            ecrireLog("[ERREUR] Échec du chargement de la matrice. Nouvelle tentative...");
             setTimeout(chargerMatriceFlux, 5000);
         }
     }
 
-    function calculerMinutesUtcDepuisTimestamp(tsMs) {
-        let date = new Date(tsMs);
-        return date.getUTCHours() * 60 + date.getUTCMinutes() + date.getUTCSeconds() / 60 + date.getUTCMilliseconds() / 60000;
-    }
-
     function evaluerVecteurAstreITRSOptimise(astre, t0) {
-        const tab = jplMatriceDuJour.DATA[astre];
-        return tab[t0]; // Extraction directe déterministe sans interpolation polynomiale
+        return jplMatriceDuJour.DATA[astre][t0];
     }
 
     function evaluerMetadataChronoOptimise(t0) {
-        const tab = jplMatriceDuJour.METADATA_CHRONO;
-        return tab[t0];
+        return jplMatriceDuJour.METADATA_CHRONO[t0];
     }
 
     function precalculerEphemeridesTSM() {
@@ -390,8 +421,11 @@
                 let currentEl = Math.asin(comp_Zen / d) * 180.0 / Math.PI;
 
                 if (m > 0) {
-                    if (prevEl <= limitHorizon && currentEl > limitHorizon) minuteLever = ((m - 1) + (limitHorizon - prevEl) / (currentEl - prevEl)) % 1440;
-                    if (prevEl >= limitHorizon && currentEl < limitHorizon) minuteCoucher = ((m - 1) + (limitHorizon - prevEl) / (currentEl - prevEl)) % 1440;
+                    let diff = currentEl - prevEl;
+                    if (Math.abs(diff) > 1e-9) {
+                        if (prevEl <= limitHorizon && currentEl > limitHorizon) minuteLever = ((m - 1) + (limitHorizon - prevEl) / diff) % 1440;
+                        if (prevEl >= limitHorizon && currentEl < limitHorizon) minuteCoucher = ((m - 1) + (limitHorizon - prevEl) / diff) % 1440;
+                    }
                 }
                 prevEl = currentEl;
             }
@@ -406,35 +440,49 @@
         let minutes_tsm = (minutes_utc + (station3D.lon * 4) + 1440) % 1440;
         let h = Math.floor(minutes_tsm / 60); let m = Math.floor(minutes_tsm % 60); let s = Math.floor((minutes_tsm * 60) % 60);
         return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-    }
-
+    } 
+                
     function boucleDeCalculContinue() {
-        if (!jplMatriceDuJour || clockOffset === 0) {
+        if (!jplMatriceDuJour) {
             requestAnimationFrame(boucleDeCalculContinue);
             return;
         }
         
         try {
-            const maintenantMs = performance.now() + clockOffset;
-            document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs);
-
-            const minutes_utc = calculerMinutesUtcDepuisTimestamp(maintenantMs);
-            const t0 = Math.floor(minutes_utc) % 1440;
+            // TEMPS UTC RÉEL CALCULÉ SANS RESPECTER L'HORLOGE ANDROID
+            const maintenantUtcMs = performance.now() + offsetHorlogeServeurMs;
             
+            if (document.getElementById('lbl-epoch')) {
+                document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantUtcMs);
+            }
+
+            // Calcul du début de journée UTC exact fourni par la matrice Python
+            let debutJourneeUtcMs = jplMatriceDuJour.TIMESTAMP_DEBUT_UTC_MS;
+            if (!debutJourneeUtcMs) {
+                debutJourneeUtcMs = Date.parse(jplMatriceDuJour.DATE_REF + "T00:00:00.000Z");
+            }
+
+            const deltaMsDepuisMinuit = maintenantUtcMs - debutJourneeUtcMs;
+            
+            // Calcul de l'index minute t0 (0 à 1439) dans la matrice 24h
+            const minutes_utc_absolues = deltaMsDepuisMinuit / 60000.0;
+            let t0 = Math.floor(minutes_utc_absolues) % 1440;
+            if (t0 < 0) t0 += 1440;
+
             const meta = evaluerMetadataChronoOptimise(t0);
             const EoT_JPL = meta.eot; 
 
-            document.getElementById('lbl-eot').innerHTML = formaterChiffreCouleur(EoT_JPL);
-            document.getElementById('lbl-ecc').innerHTML = formaterChiffreCouleur(meta.ecc);
-            document.getElementById('lbl-obl').innerHTML = formaterChiffreCouleur(meta.obl);
-            document.getElementById('lbl-solong').innerHTML = formaterChiffreCouleur(meta.solong);
+            if (document.getElementById('lbl-eot')) document.getElementById('lbl-eot').innerHTML = formaterChiffreCouleur(EoT_JPL);
+            if (document.getElementById('lbl-ecc')) document.getElementById('lbl-ecc').innerHTML = formaterChiffreCouleur(meta.ecc);
+            if (document.getElementById('lbl-obl')) document.getElementById('lbl-obl').innerHTML = formaterChiffreCouleur(meta.obl);
+            if (document.getElementById('lbl-solong')) document.getElementById('lbl-solong').innerHTML = formaterChiffreCouleur(meta.solong);
 
             const decallageTsmMs = station3D.lon * 4 * 60 * 1000;
-            const tsm_ms = (maintenantMs + decallageTsmMs) % 86400000;
+            const tsm_ms = (maintenantUtcMs + decallageTsmMs) % 86400000;
             const tv_ms = (tsm_ms + (EoT_JPL * 60 * 1000) + 86400000) % 86400000;
 
-            document.getElementById('lbl-tsm').innerText = formaterMsEnHeureSimple(tsm_ms) + " TSM";
-            document.getElementById('lbl-tsv').innerText = formaterMsEnHeureSimple(tv_ms) + " TSV";
+            if (document.getElementById('lbl-tsm')) document.getElementById('lbl-tsm').innerText = formaterMsEnHeureSimple(tsm_ms) + " TSM";
+            if (document.getElementById('lbl-tsv')) document.getElementById('lbl-tsv').innerText = formaterMsEnHeureSimple(tv_ms) + " TSV";
 
             const lat_rad = station3D.lat * Math.PI / 180.0;
             const lon_rad = station3D.lon * Math.PI / 180.0;
@@ -443,6 +491,9 @@
 
             let positions_instantanees = {};
             let pression_effective = station3D.pressionHpa;
+            if (pression_effective === 1013.25 && station3D.altGps !== 99.31) {
+                pression_effective = 1013.25 * Math.pow((1.0 - 2.25577e-5 * station3D.altGps), 5.25588);
+            }
 
             ASTRES.forEach(a => {
                 const astre_V = evaluerVecteurAstreITRSOptimise(a, t0);
@@ -501,12 +552,12 @@
                 let el_ecran = Math.asin(z_final) * 180.0 / Math.PI;
                 let az_ecran = (Math.atan2(e_final, n_final) * 180.0 / Math.PI + 360.0) % 360.0;
 
-                document.getElementById(`az-${a}`).innerHTML = formaterChiffreCouleur(az_sol_vrai);
-                document.getElementById(`el-${a}`).innerHTML = formaterChiffreCouleur(el_sol_refractee);
-                document.getElementById(`dist-${a}`).innerText = distance_reelle.toLocaleString('fr-FR', {maximumFractionDigits:0}) + " m";
+                if (document.getElementById(`az-${a}`)) document.getElementById(`az-${a}`).innerHTML = formaterChiffreCouleur(az_sol_vrai);
+                if (document.getElementById(`el-${a}`)) document.getElementById(`el-${a}`).innerHTML = formaterChiffreCouleur(el_sol_refractee);
+                if (document.getElementById(`dist-${a}`)) document.getElementById(`dist-${a}`).innerText = distance_reelle.toLocaleString('fr-FR', {maximumFractionDigits:0}) + " m";
 
                 const magAstre = MAGNITUDES[a];
-                let oeilVis = false; let jumelleVis = false; let s10eVis = false;
+                let oeilVis = false, jumelleVis = false, s10eVis = false;
                 let raisonAbsolue = "";
 
                 if (el_sol_refractee <= 0) raisonAbsolue = "HORIZON";
@@ -524,6 +575,7 @@
                 }
 
                 const appliquerRenduStatut = (cell, visible) => {
+                    if (!cell) return;
                     if (raisonAbsolue === "HORIZON") { cell.innerText = "SOUS HORIZON"; cell.style.color = "#2c3e50"; }
                     else if (raisonAbsolue === "NUAGES") { cell.innerText = "NUAGEUX"; cell.style.color = "var(--rose)"; }
                     else { cell.innerText = visible ? "VISIBLE" : "INFRA-MAGNITUDE"; cell.style.color = visible ? "var(--neon-green)" : "#22262d"; }
@@ -534,8 +586,8 @@
                 appliquerRenduStatut(document.getElementById(`s10e-${a}`), s10eVis);
 
                 if (ephemeridesCalculees[a]) {
-                    document.getElementById(`lever-${a}`).innerText = ephemeridesCalculees[a].lever;
-                    document.getElementById(`coucher-${a}`).innerText = ephemeridesCalculees[a].coucher;
+                    if (document.getElementById(`lever-${a}`)) document.getElementById(`lever-${a}`).innerText = ephemeridesCalculees[a].lever;
+                    if (document.getElementById(`coucher-${a}`)) document.getElementById(`coucher-${a}`).innerText = ephemeridesCalculees[a].coucher;
                 }
 
                 positions_instantanees[a] = { az: az_ecran, el: el_ecran, visibleSurRadar: (el_ecran > -2.0) };
@@ -583,4 +635,3 @@
 </script>
 </body>
 </html>
-          
