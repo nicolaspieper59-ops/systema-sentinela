@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA — NOYAU EXTRACTEUR ITRS TOPOCENTRIQUE DÉTERMINISTE
+SYSTEMA SENTINELA v13.0 — NOYAU EXTRACTEUR ITRS TOPOCENTRIQUE DÉTERMINISTE
 Fichier : dynamic_multiphysics_engine.py
-Correction : Intégration de l'ancrage UTC absolu (TIMESTAMP_DEBUT_UTC_MS)
 """
 import os
 import sys
@@ -81,15 +80,13 @@ def main():
 
     now_utc = datetime.now(timezone.utc)
     reference_chrono_ms = int((now_utc - date_base).total_seconds() * 1000)
-    
-    # ANCRAGE ABSOLU UNIVERSEL : Le timestamp UTC exact (en millisecondes) de minuit pile (00:00:00 UTC)
     timestamp_absolu_debut_utc = int(date_base.timestamp() * 1000)
 
     payload = {
         "INFRASTRUCTURE": "SYSTEMA SENTINELA v13.0 — DETERMINISTE PUR",
         "GENERATION_TIMESTAMP_MS": int(time.time() * 1000),
         "REFERENCE_CHRONO_MS": reference_chrono_ms,
-        "TIMESTAMP_DEBUT_UTC_MS": timestamp_absolu_debut_utc, # <--- Clé indispensable pour le front-end
+        "TIMESTAMP_DEBUT_UTC_MS": timestamp_absolu_debut_utc,
         "DATE_REF": aujourdhui.isoformat(),
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_target},
         "STATION_BASE_THERMO": {"temp_celsius": temp_target},
