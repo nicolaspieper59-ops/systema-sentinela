@@ -442,7 +442,7 @@
         return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
     } 
                 
-    function boucleDeCalculContinue() {
+  function boucleDeCalculContinue() {
         if (!jplMatriceDuJour) {
             requestAnimationFrame(boucleDeCalculContinue);
             return;
@@ -456,7 +456,6 @@
                 document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantUtcMs);
             }
 
-            // Calcul du début de journée UTC exact fourni par la matrice Python
             let debutJourneeUtcMs = jplMatriceDuJour.TIMESTAMP_DEBUT_UTC_MS;
             if (!debutJourneeUtcMs) {
                 debutJourneeUtcMs = Date.parse(jplMatriceDuJour.DATE_REF + "T00:00:00.000Z");
@@ -464,10 +463,21 @@
 
             const deltaMsDepuisMinuit = maintenantUtcMs - debutJourneeUtcMs;
             
-            // Calcul de l'index minute t0 (0 à 1439) dans la matrice 24h
+            // CORRECTION SÉCURITÉ : VERROU DE PÉREMPTION 24H
+            if (deltaMsDepuisMinuit < 0 || deltaMsDepuisMinuit >= 86400000) {
+                document.getElementById('lbl-epoch').innerText = "MATRICE PÉRIMÉE - ACTUALISATION REQUISE";
+                document.getElementById('lbl-epoch').style.color = "var(--rose)";
+                document.getElementById('source-badge').innerText = "ARRÊT SÉCURITÉ";
+                document.getElementById('source-badge').className = "status-badge badge-rose";
+                
+                // On tente de recharger le flux JSON en arrière-plan sans bloquer
+                setTimeout(chargerMatriceFlux, 10000); 
+                return; // On stoppe le calcul géométrique pour ne pas afficher de fausses données (ex: la Lune)
+            }
+            
+            // Calcul de l'index minute t0 (0 à 1439)
             const minutes_utc_absolues = deltaMsDepuisMinuit / 60000.0;
-            let t0 = Math.floor(minutes_utc_absolues) % 1440;
-            if (t0 < 0) t0 += 1440;
+            const t0 = Math.floor(minutes_utc_absolues); // Plus besoin de modulo grâce au verrou de sécurité 24h ci-dessus
 
             const meta = evaluerMetadataChronoOptimise(t0);
             const EoT_JPL = meta.eot; 
@@ -532,7 +542,7 @@
 
                 let e_final = e_ref, n_final = n_ref, z_final = z_ref;
 
-                if (imuActive) {
+                if (typeof imuActive !== 'undefined' && imuActive) {
                     const cosY = Math.cos(imu.yaw), sinY = Math.sin(imu.yaw);
                     const cosP = Math.cos(imu.pitch), sinP = Math.sin(imu.pitch);
                     const cosR = Math.cos(imu.roll), sinR = Math.sin(imu.roll);
@@ -556,12 +566,12 @@
                 if (document.getElementById(`el-${a}`)) document.getElementById(`el-${a}`).innerHTML = formaterChiffreCouleur(el_sol_refractee);
                 if (document.getElementById(`dist-${a}`)) document.getElementById(`dist-${a}`).innerText = distance_reelle.toLocaleString('fr-FR', {maximumFractionDigits:0}) + " m";
 
-                const magAstre = MAGNITUDES[a];
+                const magAstre = typeof MAGNITUDES !== 'undefined' ? MAGNITUDES[a] : 0;
                 let oeilVis = false, jumelleVis = false, s10eVis = false;
                 let raisonAbsolue = "";
 
                 if (el_sol_refractee <= 0) raisonAbsolue = "HORIZON";
-                else if (!fluxMeteoCielClaire) raisonAbsolue = "NUAGES";
+                else if (typeof fluxMeteoCielClaire !== 'undefined' && !fluxMeteoCielClaire) raisonAbsolue = "NUAGES";
 
                 if (raisonAbsolue === "") {
                     if (elevationSoleilGlobale > -6.0) { 
@@ -585,7 +595,7 @@
                 appliquerRenduStatut(document.getElementById(`jumelle-${a}`), jumelleVis);
                 appliquerRenduStatut(document.getElementById(`s10e-${a}`), s10eVis);
 
-                if (ephemeridesCalculees[a]) {
+                if (typeof ephemeridesCalculees !== 'undefined' && ephemeridesCalculees[a]) {
                     if (document.getElementById(`lever-${a}`)) document.getElementById(`lever-${a}`).innerText = ephemeridesCalculees[a].lever;
                     if (document.getElementById(`coucher-${a}`)) document.getElementById(`coucher-${a}`).innerText = ephemeridesCalculees[a].coucher;
                 }
@@ -593,7 +603,9 @@
                 positions_instantanees[a] = { az: az_ecran, el: el_ecran, visibleSurRadar: (el_ecran > -2.0) };
             });
 
-            renduRadar(positions_instantanees);
+            if (typeof renduRadar === 'function') {
+                renduRadar(positions_instantanees);
+            }
             requestAnimationFrame(boucleDeCalculContinue);
         } catch (err) {
             requestAnimationFrame(boucleDeCalculContinue);
