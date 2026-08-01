@@ -78,18 +78,17 @@ def main():
             astre_apparent = position_centre_terre.observe(cible).apparent()
             x_m, y_m, z_m = astre_apparent.frame_xyz(itrs).m
             matrice_24h[nom].append({"x": float(x_m), "y": float(y_m), "z": float(z_m)})
-
 now_utc = datetime.now(timezone.utc)
     reference_chrono_ms = int((now_utc - date_base).total_seconds() * 1000)
     
-    # AJOUT SCIENTIFIQUE : Le timestamp UTC exact du début de la matrice (00:00:00 UTC)
+    # ANCRAGE ABSOLU UNIVERSEL : Le timestamp UTC exact (en millisecondes) de minuit pile (00:00:00 UTC)
     timestamp_absolu_debut_utc = int(date_base.timestamp() * 1000)
 
     payload = {
-        "INFRASTRUCTURE": "SYSTEMA SENTINELA - DETERMINISTE PUR",
+        "INFRASTRUCTURE": "SYSTEMA SENTINELA v13.0 — DETERMINISTE PUR",
         "GENERATION_TIMESTAMP_MS": int(time.time() * 1000),
         "REFERENCE_CHRONO_MS": reference_chrono_ms,
-        "TIMESTAMP_DEBUT_UTC_MS": timestamp_absolu_debut_utc, # <--- Synchronisation absolue
+        "TIMESTAMP_DEBUT_UTC_MS": timestamp_absolu_debut_utc, # <--- Clé indispensable pour le front-end
         "DATE_REF": aujourdhui.isoformat(),
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_target},
         "STATION_BASE_THERMO": {"temp_celsius": temp_target},
@@ -99,6 +98,6 @@ now_utc = datetime.now(timezone.utc)
 
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
-    print(f"[SUCCESS] Matrice déterministe générée avec ancrage temporel absolu.")
+    print(f"[SUCCESS] Matrice stabilisée avec ancrage temporel UTC absolu.")
 if __name__ == "__main__":
     main()
