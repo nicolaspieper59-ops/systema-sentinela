@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v13.0 — NOYAU EXTRACTEUR ITRS TOPOCENTRIQUE DÉTERMINISTE
-Fichier : dynamic_multiphysics_engine.py
+SYSTEMA SENTINELA v14.0 — NOYAU EXTRACTEUR ITRS DÉTERMINISTE
+Éphéméride : DE440s (JPL 2020) - Précision maximale
 """
 import os
 import sys
@@ -27,10 +27,11 @@ def main():
     temp_target = conversion_securisee_float(sys.argv[4] if len(sys.argv) > 4 else None, 15.0)
 
     loader = Loader(os.getcwd(), verbose=False)
+    # CORRECTION : Passage au standard scientifique actuel DE440s
     try:
-        eph = loader('de421.bsp')
+        eph = loader('de440s.bsp')
     except Exception:
-        eph = loader('https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de421.bsp')
+        eph = loader('https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp')
         
     ts = loader.timescale(builtin=True)
     aujourdhui = datetime.now(timezone.utc).date()
@@ -76,11 +77,10 @@ def main():
             x_m, y_m, z_m = astre_apparent.frame_xyz(itrs).m
             matrice_24h[nom].append({"x": float(x_m), "y": float(y_m), "z": float(z_m)})
 
-    # Timestamp UNIX absolu de minuit pile (00:00:00 UTC du jour)
     timestamp_absolu_debut_utc = int(date_base.timestamp() * 1000)
 
     payload = {
-        "INFRASTRUCTURE": "SYSTEMA SENTINELA v13.0 — DETERMINISTE PUR",
+        "INFRASTRUCTURE": "SYSTEMA SENTINELA v14.0 — DE440s",
         "GENERATION_TIMESTAMP_MS": int(time.time() * 1000),
         "TIMESTAMP_DEBUT_UTC_MS": timestamp_absolu_debut_utc,
         "DATE_REF": aujourdhui.isoformat(),
@@ -92,7 +92,7 @@ def main():
 
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
-    print(f"[SUCCESS] Matrice 24h générée avec succès.")
+    print(f"[SUCCESS] Matrice DE440s 24H générée avec ancrage absolu.")
 
 if __name__ == "__main__":
     main()
