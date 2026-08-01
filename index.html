@@ -408,18 +408,32 @@
         return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
     }
 
-    function boucleDeCalculContinue() {
+function boucleDeCalculContinue() {
         if (!jplMatriceDuJour || clockOffset === 0) {
             requestAnimationFrame(boucleDeCalculContinue);
             return;
         }
         
         try {
+            // TEMPS ABSOLU UNIFIÉ : On utilise le temps réel corrigé du décalage de synchronisation
             const maintenantMs = performance.now() + clockOffset;
             document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs);
 
-            const minutes_utc = calculerMinutesUtcDepuisTimestamp(maintenantMs);
-            const t0 = Math.floor(minutes_utc) % 1440;
+            // CORRECTION STRICTE DE LA SYNCHRONISATION TEMPORELLE ABSOLUE :
+            // On calcule l'index exact par rapport au début de la journée UTC de la matrice,
+            // sranchissant de l'heure locale potentiellement erronée du terminal.
+            const debutJourneeUtcMs = jplMatriceDuJour.TIMESTAMP_DEBUT_UTC_MS || (new Date(jplMatriceDuJour.DATE_REF).getTime());
+            const deltaMsDepuisMinuit = maintenantMs - debutJourneeUtcMs;
+            
+            // Calcul exact de la minute flottante dans la matrice 24h (0 à 1399)
+            const minutes_utc_absolues = deltaMsDepuisMinuit / 60000.0;
+            const t0 = Math.floor(minutes_utc_absolues) % 1440;
+
+            // Protection si l'on sort de la matrice du jour courant
+            if (t0 < 0 || t0 >= 1440) {
+                requestAnimationFrame(boucleDeCalculContinue);
+                return;
+            }
             
             const meta = evaluerMetadataChronoOptimise(t0);
             const EoT_JPL = meta.eot; 
