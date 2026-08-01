@@ -1,8 +1,8 @@
-name: Noyau Déterministe Pur
+name: Noyau Déterministe DE440s
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '0 * * * *' # CORRECTION : 1 fois par heure, pile à l'heure (évite le ban GitHub)
   workflow_dispatch:
 
 permissions:
@@ -31,14 +31,14 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Gestion du Cache pour l'Éphéméride de421.bsp
+    - name: Gestion du Cache pour l'Éphéméride de440s.bsp
       id: cache-bsp
       uses: actions/cache@v4
       with:
-        path: de421.bsp
-        key: bsp-de421-v1
+        path: de440s.bsp
+        key: bsp-de440s-v1
 
-    - name: Exécution du Moteur Déterministe Pur
+    - name: Exécution du Moteur Déterministe
       run: |
         python dynamic_multiphysics_engine.py 43.284356 5.358507 99.3100 15.0
 
@@ -48,8 +48,8 @@ jobs:
         git config --local user.name "GitHub Action"
         git add flux_live.json
         if ! git diff-index --quiet HEAD --; then
-          git commit -m "Mise à jour déterministe pure de la matrice céleste [CI]"
+          git commit -m "Actualisation horaire UTC matrice d'état [CI]"
           git push
         else
-          echo "Aucune variation détectée dans la matrice d'état."
+          echo "Aucune variation détectée."
         fi
