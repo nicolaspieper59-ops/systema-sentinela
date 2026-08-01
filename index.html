@@ -407,7 +407,6 @@
         let h = Math.floor(minutes_tsm / 60); let m = Math.floor(minutes_tsm % 60); let s = Math.floor((minutes_tsm * 60) % 60);
         return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
     }
-
 function boucleDeCalculContinue() {
         if (!jplMatriceDuJour || clockOffset === 0) {
             requestAnimationFrame(boucleDeCalculContinue);
@@ -415,27 +414,31 @@ function boucleDeCalculContinue() {
         }
         
         try {
-            // TEMPS ABSOLU UNIFIÉ : On utilise le temps réel corrigé du décalage de synchronisation
+            // TEMPS ABSOLU UNIFIÉ : On utilise le temps réel corrigé par NTP ou le flux
             const maintenantMs = performance.now() + clockOffset;
-            document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs);
+            const sourceBadgeText = document.getElementById('source-badge').innerText;
+            document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs) + ` [${sourceBadgeText}]`;
 
             // CORRECTION STRICTE DE LA SYNCHRONISATION TEMPORELLE ABSOLUE :
-            // On calcule l'index exact par rapport au début de la journée UTC de la matrice,
-            // sranchissant de l'heure locale potentiellement erronée du terminal.
-            const debutJourneeUtcMs = jplMatriceDuJour.TIMESTAMP_DEBUT_UTC_MS || (new Date(jplMatriceDuJour.DATE_REF).getTime());
+            // On s'affranchit de l'heure locale de l'appareil en calculant le delta en millisecondes
+            // depuis le début exact de la journée UTC de référence fourni par le backend.
+            const debutJourneeUtcMs = jplMatriceDuJour.TIMESTAMP_DEBUT_UTC_MS || new Date(jplMatriceDuJour.DATE_REF).getTime();
             const deltaMsDepuisMinuit = maintenantMs - debutJourneeUtcMs;
             
-            // Calcul exact de la minute flottante dans la matrice 24h (0 à 1399)
+            // Calcul exact de la minute flottante globale et de l'index dans la matrice 24h (0 à 1439)
             const minutes_utc_absolues = deltaMsDepuisMinuit / 60000.0;
             const t0 = Math.floor(minutes_utc_absolues) % 1440;
-
-            // Protection si l'on sort de la matrice du jour courant
+            const p = minutes_utc_absolues - Math.floor(minutes_utc_absolues);
+            
+            // Protection si l'on sort des bornes de la matrice du jour
             if (t0 < 0 || t0 >= 1440) {
                 requestAnimationFrame(boucleDeCalculContinue);
                 return;
             }
-            
-            const meta = evaluerMetadataChronoOptimise(t0);
+
+            const coefficientsLagrange = genererCoefficientsLagrange(p);
+            const meta = evaluerMetadataChronoOptimise(t0, coefficientsLagrange);
+
             const EoT_JPL = meta.eot; 
 
             document.getElementById('lbl-eot').innerHTML = formaterChiffreCouleur(EoT_JPL);
@@ -457,9 +460,12 @@ function boucleDeCalculContinue() {
 
             let positions_instantanees = {};
             let pression_effective = station3D.pressionHpa;
+            if (pression_effective === 1013.25 && station3D.altGps !== 99.31) {
+                pression_effective = 1013.25 * Math.pow((1.0 - 2.25577e-5 * station3D.altGps), 5.25588);
+            }
 
             ASTRES.forEach(a => {
-                const astre_V = evaluerVecteurAstreITRSOptimise(a, t0);
+                const astre_V = evaluerVecteurAstreITRSOptimise(a, t0, coefficientsLagrange);
                 
                 const topo_X = astre_V.x - station3D.X_itrs; 
                 const topo_Y = astre_V.y - station3D.Y_itrs; 
@@ -476,11 +482,14 @@ function boucleDeCalculContinue() {
                 let el_sol_refractee = el_sol_brute;
                 if (el_sol_brute > -0.833) {
                     const temp_k = station3D.tempReelleCelsius + 273.15;
+                    
                     let diviseur = el_sol_brute + 5.11;
                     if (Math.abs(diviseur) < 1e-4) diviseur = 1e-4;
+                    
                     let angleCalcul = (el_sol_brute + 10.3 / diviseur) * Math.PI / 180.0;
                     let tanCalcul = Math.tan(angleCalcul);
                     if (Math.abs(tanCalcul) < 1e-4) tanCalcul = 1e-4;
+                    
                     const R0 = 1.02 / tanCalcul;
                     el_sol_refractee += (R0 * (pression_effective / 1013.25) * (283.15 / temp_k)) / 60.0;
                 }
@@ -503,6 +512,7 @@ function boucleDeCalculContinue() {
                     let e_y = e_ref * cosY - n_ref * sinY;
                     let n_y = e_ref * sinY + n_ref * cosY;
                     let z_y = z_ref;
+                    
                     let e_p = e_y;
                     let n_p = n_y * cosP - z_y * sinP;
                     let z_p = n_y * sinP + z_y * cosP;
@@ -519,17 +529,21 @@ function boucleDeCalculContinue() {
                 document.getElementById(`el-${a}`).innerHTML = formaterChiffreCouleur(el_sol_refractee);
                 document.getElementById(`dist-${a}`).innerText = distance_reelle.toLocaleString('fr-FR', {maximumFractionDigits:0}) + " m";
 
+                const indexAzimutEntier = Math.floor(az_sol_vrai) % 360;
+                const hauteurObstacleLocal = CartographieHorizon.masqueDynamique[indexAzimutEntier];
+
                 const magAstre = MAGNITUDES[a];
                 let oeilVis = false; let jumelleVis = false; let s10eVis = false;
                 let raisonAbsolue = "";
 
                 if (el_sol_refractee <= 0) raisonAbsolue = "HORIZON";
+                else if (el_sol_refractee <= hauteurObstacleLocal) raisonAbsolue = "OBSTACLE_MASQUE";
                 else if (!fluxMeteoCielClaire) raisonAbsolue = "NUAGES";
 
                 if (raisonAbsolue === "") {
                     if (elevationSoleilGlobale > -6.0) { 
                         if (a === 'soleil' || a === 'lune') { oeilVis = true; jumelleVis = true; s10eVis = true; }
-                        else if (a === 'venus') { jumelleVis = true; } 
+                        else if (a === 'venus') { oeilVis = false; jumelleVis = true; s10eVis = false; } 
                     } else { 
                         if (magAstre <= 6.0) oeilVis = true;       
                         if (magAstre <= 9.5) jumelleVis = true;    
@@ -537,15 +551,20 @@ function boucleDeCalculContinue() {
                     }
                 }
 
+                const cellOeil = document.getElementById(`oeil-${a}`);
+                const cellJumelle = document.getElementById(`jumelle-${a}`);
+                const cellS10e = document.getElementById(`s10e-${a}`);
+
                 const appliquerRenduStatut = (cell, visible) => {
                     if (raisonAbsolue === "HORIZON") { cell.innerText = "SOUS HORIZON"; cell.style.color = "#2c3e50"; }
+                    else if (raisonAbsolue === "OBSTACLE_MASQUE") { cell.innerText = `MASQUÉ (${hauteurObstacleLocal.toFixed(1)}°)`; cell.style.color = "var(--amber)"; }
                     else if (raisonAbsolue === "NUAGES") { cell.innerText = "NUAGEUX"; cell.style.color = "var(--rose)"; }
                     else { cell.innerText = visible ? "VISIBLE" : "INFRA-MAGNITUDE"; cell.style.color = visible ? "var(--neon-green)" : "#22262d"; }
                 };
 
-                appliquerRenduStatut(document.getElementById(`oeil-${a}`), oeilVis);
-                appliquerRenduStatut(document.getElementById(`jumelle-${a}`), jumelleVis);
-                appliquerRenduStatut(document.getElementById(`s10e-${a}`), s10eVis);
+                appliquerRenduStatut(cellOeil, oeilVis);
+                appliquerRenduStatut(cellJumelle, jumelleVis);
+                appliquerRenduStatut(cellS10e, s10eVis);
 
                 if (ephemeridesCalculees[a]) {
                     document.getElementById(`lever-${a}`).innerText = ephemeridesCalculees[a].lever;
@@ -557,6 +576,7 @@ function boucleDeCalculContinue() {
 
             renduRadar(positions_instantanees);
             requestAnimationFrame(boucleDeCalculContinue);
+
         } catch (err) {
             requestAnimationFrame(boucleDeCalculContinue);
         }
