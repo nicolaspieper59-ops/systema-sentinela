@@ -406,56 +406,35 @@
         let minutes_tsm = (minutes_utc + (station3D.lon * 4) + 1440) % 1440;
         let h = Math.floor(minutes_tsm / 60); let m = Math.floor(minutes_tsm % 60); let s = Math.floor((minutes_tsm * 60) % 60);
         return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-    } 
-                
-function boucleDeCalculContinue() {
-        if (!jplMatriceDuJour) {
+    }
+
+    function boucleDeCalculContinue() {
+        if (!jplMatriceDuJour || clockOffset === 0) {
             requestAnimationFrame(boucleDeCalculContinue);
             return;
         }
         
         try {
-            // TEMPS ABSOLU UNIFIÉ : Temps courant corrigé
             const maintenantMs = performance.now() + clockOffset;
-            const sourceBadgeText = document.getElementById('source-badge') ? document.getElementById('source-badge').innerText : "LIVE";
-            if (document.getElementById('lbl-epoch')) {
-                document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs) + ` [${sourceBadgeText}]`;
-            }
+            document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(maintenantMs);
 
-            // CORRECTION STRICTE DE LA SYNCHRONISATION UTC ABSOLUE :
-            // On exploite le timestamp précis du début de journée UTC, sans conversion locale erronée.
-            let debutJourneeUtcMs = jplMatriceDuJour.TIMESTAMP_DEBUT_UTC_MS;
-            if (!debutJourneeUtcMs) {
-                // Secours strict format UTC ISO si l'ancienne structure de données est lue
-                debutJourneeUtcMs = Date.parse(jplMatriceDuJour.DATE_REF + "T00:00:00.000Z");
-            }
-
-            const deltaMsDepuisMinuit = maintenantMs - debutJourneeUtcMs;
+            const minutes_utc = calculerMinutesUtcDepuisTimestamp(maintenantMs);
+            const t0 = Math.floor(minutes_utc) % 1440;
             
-            // Calcul exact de la minute flottante et de l'index dans la matrice 24h (0 à 1439)
-            const minutes_utc_absolues = deltaMsDepuisMinuit / 60000.0;
-            const t0 = Math.floor(minutes_utc_absolues) % 1440;
-            
-            // Protection robuste contre les dépassements de tableaux
-            if (t0 < 0 || t0 >= 1440) {
-                requestAnimationFrame(boucleDeCalculContinue);
-                return;
-            }
-
             const meta = evaluerMetadataChronoOptimise(t0);
             const EoT_JPL = meta.eot; 
 
-            if (document.getElementById('lbl-eot')) document.getElementById('lbl-eot').innerHTML = formaterChiffreCouleur(EoT_JPL);
-            if (document.getElementById('lbl-ecc')) document.getElementById('lbl-ecc').innerHTML = formaterChiffreCouleur(meta.ecc);
-            if (document.getElementById('lbl-obl')) document.getElementById('lbl-obl').innerHTML = formaterChiffreCouleur(meta.obl);
-            if (document.getElementById('lbl-solong')) document.getElementById('lbl-solong').innerHTML = formaterChiffreCouleur(meta.solong);
+            document.getElementById('lbl-eot').innerHTML = formaterChiffreCouleur(EoT_JPL);
+            document.getElementById('lbl-ecc').innerHTML = formaterChiffreCouleur(meta.ecc);
+            document.getElementById('lbl-obl').innerHTML = formaterChiffreCouleur(meta.obl);
+            document.getElementById('lbl-solong').innerHTML = formaterChiffreCouleur(meta.solong);
 
             const decallageTsmMs = station3D.lon * 4 * 60 * 1000;
             const tsm_ms = (maintenantMs + decallageTsmMs) % 86400000;
             const tv_ms = (tsm_ms + (EoT_JPL * 60 * 1000) + 86400000) % 86400000;
 
-            if (document.getElementById('lbl-tsm')) document.getElementById('lbl-tsm').innerText = formaterMsEnHeureSimple(tsm_ms) + " TSM";
-            if (document.getElementById('lbl-tsv')) document.getElementById('lbl-tsv').innerText = formaterMsEnHeureSimple(tv_ms) + " TSV";
+            document.getElementById('lbl-tsm').innerText = formaterMsEnHeureSimple(tsm_ms) + " TSM";
+            document.getElementById('lbl-tsv').innerText = formaterMsEnHeureSimple(tv_ms) + " TSV";
 
             const lat_rad = station3D.lat * Math.PI / 180.0;
             const lon_rad = station3D.lon * Math.PI / 180.0;
@@ -464,9 +443,6 @@ function boucleDeCalculContinue() {
 
             let positions_instantanees = {};
             let pression_effective = station3D.pressionHpa;
-            if (pression_effective === 1013.25 && station3D.altGps !== 99.31) {
-                pression_effective = 1013.25 * Math.pow((1.0 - 2.25577e-5 * station3D.altGps), 5.25588);
-            }
 
             ASTRES.forEach(a => {
                 const astre_V = evaluerVecteurAstreITRSOptimise(a, t0);
@@ -505,7 +481,7 @@ function boucleDeCalculContinue() {
 
                 let e_final = e_ref, n_final = n_ref, z_final = z_ref;
 
-                if (typeof imuActive !== 'undefined' && imuActive) {
+                if (imuActive) {
                     const cosY = Math.cos(imu.yaw), sinY = Math.sin(imu.yaw);
                     const cosP = Math.cos(imu.pitch), sinP = Math.sin(imu.pitch);
                     const cosR = Math.cos(imu.roll), sinR = Math.sin(imu.roll);
@@ -525,16 +501,16 @@ function boucleDeCalculContinue() {
                 let el_ecran = Math.asin(z_final) * 180.0 / Math.PI;
                 let az_ecran = (Math.atan2(e_final, n_final) * 180.0 / Math.PI + 360.0) % 360.0;
 
-                if (document.getElementById(`az-${a}`)) document.getElementById(`az-${a}`).innerHTML = formaterChiffreCouleur(az_sol_vrai);
-                if (document.getElementById(`el-${a}`)) document.getElementById(`el-${a}`).innerHTML = formaterChiffreCouleur(el_sol_refractee);
-                if (document.getElementById(`dist-${a}`)) document.getElementById(`dist-${a}`).innerText = distance_reelle.toLocaleString('fr-FR', {maximumFractionDigits:0}) + " m";
+                document.getElementById(`az-${a}`).innerHTML = formaterChiffreCouleur(az_sol_vrai);
+                document.getElementById(`el-${a}`).innerHTML = formaterChiffreCouleur(el_sol_refractee);
+                document.getElementById(`dist-${a}`).innerText = distance_reelle.toLocaleString('fr-FR', {maximumFractionDigits:0}) + " m";
 
-                const magAstre = typeof MAGNITUDES !== 'undefined' ? MAGNITUDES[a] : 0;
-                let oeilVis = false, jumelleVis = false, s10eVis = false;
+                const magAstre = MAGNITUDES[a];
+                let oeilVis = false; let jumelleVis = false; let s10eVis = false;
                 let raisonAbsolue = "";
 
                 if (el_sol_refractee <= 0) raisonAbsolue = "HORIZON";
-                else if (typeof fluxMeteoCielClaire !== 'undefined' && !fluxMeteoCielClaire) raisonAbsolue = "NUAGES";
+                else if (!fluxMeteoCielClaire) raisonAbsolue = "NUAGES";
 
                 if (raisonAbsolue === "") {
                     if (elevationSoleilGlobale > -6.0) { 
@@ -548,7 +524,6 @@ function boucleDeCalculContinue() {
                 }
 
                 const appliquerRenduStatut = (cell, visible) => {
-                    if (!cell) return;
                     if (raisonAbsolue === "HORIZON") { cell.innerText = "SOUS HORIZON"; cell.style.color = "#2c3e50"; }
                     else if (raisonAbsolue === "NUAGES") { cell.innerText = "NUAGEUX"; cell.style.color = "var(--rose)"; }
                     else { cell.innerText = visible ? "VISIBLE" : "INFRA-MAGNITUDE"; cell.style.color = visible ? "var(--neon-green)" : "#22262d"; }
@@ -558,17 +533,15 @@ function boucleDeCalculContinue() {
                 appliquerRenduStatut(document.getElementById(`jumelle-${a}`), jumelleVis);
                 appliquerRenduStatut(document.getElementById(`s10e-${a}`), s10eVis);
 
-                if (typeof ephemeridesCalculees !== 'undefined' && ephemeridesCalculees[a]) {
-                    if (document.getElementById(`lever-${a}`)) document.getElementById(`lever-${a}`).innerText = ephemeridesCalculees[a].lever;
-                    if (document.getElementById(`coucher-${a}`)) document.getElementById(`coucher-${a}`).innerText = ephemeridesCalculees[a].coucher;
+                if (ephemeridesCalculees[a]) {
+                    document.getElementById(`lever-${a}`).innerText = ephemeridesCalculees[a].lever;
+                    document.getElementById(`coucher-${a}`).innerText = ephemeridesCalculees[a].coucher;
                 }
 
                 positions_instantanees[a] = { az: az_ecran, el: el_ecran, visibleSurRadar: (el_ecran > -2.0) };
             });
 
-            if (typeof renduRadar === 'function') {
-                renduRadar(positions_instantanees);
-            }
+            renduRadar(positions_instantanees);
             requestAnimationFrame(boucleDeCalculContinue);
         } catch (err) {
             requestAnimationFrame(boucleDeCalculContinue);
