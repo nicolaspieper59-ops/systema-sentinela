@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v12.6.2 — NOYAU EXTRACTEUR ITRS TOPOCENTRIQUE SYNCHRONISÉ
+SYSTEMA SENTINELA — NOYAU EXTRACTEUR ITRS TOPOCENTRIQUE DÉTERMINISTE
 Fichier : dynamic_multiphysics_engine.py
-Correction : Stabilité d'exécution et robustesse du typage des métadonnées astronomiques
+Correction : Sans lissage, sans filtre, alignement strict sur de421.bsp.
 """
 import os
 import sys
 import json
 import time
-import math
 from datetime import datetime, timedelta, timezone
 from skyfield.api import Loader, wgs84
 from skyfield.framelib import itrs
@@ -23,11 +22,10 @@ def conversion_securisee_float(valeur_str, valeur_secours):
         return valeur_secours
 
 def main():
-    # Coordonnées cibles par défaut : Marseille (Notre-Dame de la Garde)
     lat_target = conversion_securisee_float(sys.argv[1] if len(sys.argv) > 1 else None, 43.284356)
     lon_target = conversion_securisee_float(sys.argv[2] if len(sys.argv) > 2 else None, 5.358507)
     alt_target = conversion_securisee_float(sys.argv[3] if len(sys.argv) > 3 else None, 99.31)
-    temp_target = conversion_securisee_float(sys.argv[4] if len(sys.argv) > 4 else None, 31.7)
+    temp_target = conversion_securisee_float(sys.argv[4] if len(sys.argv) > 4 else None, 15.0)
 
     loader = Loader(os.getcwd(), verbose=False)
     try:
@@ -39,7 +37,6 @@ def main():
     aujourdhui = datetime.now(timezone.utc).date()
     date_base = datetime(aujourdhui.year, aujourdhui.month, aujourdhui.day, 0, 0, tzinfo=timezone.utc)
 
-    # Définition de l'observateur topocentrique exact sur la surface terrestre
     station_marseille = wgs84.latlon(lat_target, lon_target, elevation_m=alt_target)
 
     corps_celestes = {
@@ -56,7 +53,6 @@ def main():
         instant = date_base + timedelta(minutes=minute)
         t = ts.from_datetime(instant)
         
-        # 1. CALCUL DE L'ÉQUATION DU TEMPS HAUTE PRÉCISION (IAU)
         T = (t.tt - 2451545.0) / 36525.0
         L0 = 280.46646 + 36000.76983 * T + 0.0003032 * T**2
         L0_heures = (L0 % 360.0) / 15.0
@@ -64,7 +60,7 @@ def main():
         sol_geocentrique = eph['earth'].at(t).observe(eph['sun']).apparent()
         ra_sun, _, _ = sol_geocentrique.radec()
         
-        eot = (L0_heures - ra_sun.hours) * 60.0  # Résultat en minutes
+        eot = (L0_heures - ra_sun.hours) * 60.0
         if eot > 720.0: eot -= 1440.0
         elif eot < -720.0: eot += 1440.0
 
@@ -77,7 +73,6 @@ def main():
             "obl": float(obliquity), "solong": float(lon_ecliptic.degrees)
         })
 
-        # 2. EXTRACTEUR DES VECTEURS D'ÉTAT GÉOCENTRIQUES ITRS
         position_centre_terre = eph['earth'].at(t)
         for nom, cible in corps_celestes.items():
             astre_apparent = position_centre_terre.observe(cible).apparent()
@@ -88,7 +83,7 @@ def main():
     reference_chrono_ms = int((now_utc - date_base).total_seconds() * 1000)
 
     payload = {
-        "INFRASTRUCTURE": "SYSTEMA SENTINELA v12.6.2",
+        "INFRASTRUCTURE": "SYSTEMA SENTINELA - DETERMINISTE PUR",
         "GENERATION_TIMESTAMP_MS": int(time.time() * 1000),
         "REFERENCE_CHRONO_MS": reference_chrono_ms,
         "DATE_REF": aujourdhui.isoformat(),
@@ -100,7 +95,7 @@ def main():
 
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
-    print(f"[SUCCESS] Matrice stabilisée pour Marseille ({lat_target}, {lon_target}) avec {len(metadata_24h)} points.")
+    print(f"[SUCCESS] Matrice déterministe générée pour ({lat_target}, {lon_target}).")
 
 if __name__ == "__main__":
     main()
