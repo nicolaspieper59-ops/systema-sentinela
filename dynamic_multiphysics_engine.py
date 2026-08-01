@@ -3,7 +3,7 @@
 """
 SYSTEMA SENTINELA — NOYAU EXTRACTEUR ITRS TOPOCENTRIQUE DÉTERMINISTE
 Fichier : dynamic_multiphysics_engine.py
-Correction : Sans lissage, sans filtre, alignement strict sur de421.bsp.
+Correction : Intégration de l'ancrage UTC absolu (TIMESTAMP_DEBUT_UTC_MS)
 """
 import os
 import sys
@@ -78,7 +78,8 @@ def main():
             astre_apparent = position_centre_terre.observe(cible).apparent()
             x_m, y_m, z_m = astre_apparent.frame_xyz(itrs).m
             matrice_24h[nom].append({"x": float(x_m), "y": float(y_m), "z": float(z_m)})
-now_utc = datetime.now(timezone.utc)
+
+    now_utc = datetime.now(timezone.utc)
     reference_chrono_ms = int((now_utc - date_base).total_seconds() * 1000)
     
     # ANCRAGE ABSOLU UNIVERSEL : Le timestamp UTC exact (en millisecondes) de minuit pile (00:00:00 UTC)
@@ -99,5 +100,6 @@ now_utc = datetime.now(timezone.utc)
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
     print(f"[SUCCESS] Matrice stabilisée avec ancrage temporel UTC absolu.")
+
 if __name__ == "__main__":
     main()
