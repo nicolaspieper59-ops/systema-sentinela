@@ -436,20 +436,14 @@
         });
     }
 
-    function formaterMinutesEnTSM(minutes_utc) {
-        let minutes_tsm = (minutes_utc + (station3D.lon * 4) + 1440) % 1440;
-        let h = Math.floor(minutes_tsm / 60); let m = Math.floor(minutes_tsm % 60); let s = Math.floor((minutes_tsm * 60) % 60);
-        return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-    } 
-                
-  function boucleDeCalculContinue() {
+function boucleDeCalculContinue() {
         if (!jplMatriceDuJour) {
             requestAnimationFrame(boucleDeCalculContinue);
             return;
         }
         
         try {
-            // TEMPS UTC RÉEL CALCULÉ SANS RESPECTER L'HORLOGE ANDROID
+            // TEMPS UTC RÉEL SYNCHRONISÉ
             const maintenantUtcMs = performance.now() + offsetHorlogeServeurMs;
             
             if (document.getElementById('lbl-epoch')) {
@@ -463,21 +457,20 @@
 
             const deltaMsDepuisMinuit = maintenantUtcMs - debutJourneeUtcMs;
             
-            // CORRECTION SÉCURITÉ : VERROU DE PÉREMPTION 24H
+            // VERROU DE SÉCURITÉ STRICT : PÉREMPTION 24H (Empêche le bug de la Lune hors plage)
             if (deltaMsDepuisMinuit < 0 || deltaMsDepuisMinuit >= 86400000) {
                 document.getElementById('lbl-epoch').innerText = "MATRICE PÉRIMÉE - ACTUALISATION REQUISE";
                 document.getElementById('lbl-epoch').style.color = "var(--rose)";
-                document.getElementById('source-badge').innerText = "ARRÊT SÉCURITÉ";
-                document.getElementById('source-badge').className = "status-badge badge-rose";
-                
-                // On tente de recharger le flux JSON en arrière-plan sans bloquer
+                if (document.getElementById('source-badge')) {
+                    document.getElementById('source-badge').innerText = "ARRÊT SÉCURITÉ";
+                    document.getElementById('source-badge').className = "status-badge badge-rose";
+                }
                 setTimeout(chargerMatriceFlux, 10000); 
-                return; // On stoppe le calcul géométrique pour ne pas afficher de fausses données (ex: la Lune)
+                return; 
             }
             
-            // Calcul de l'index minute t0 (0 à 1439)
             const minutes_utc_absolues = deltaMsDepuisMinuit / 60000.0;
-            const t0 = Math.floor(minutes_utc_absolues); // Plus besoin de modulo grâce au verrou de sécurité 24h ci-dessus
+            const t0 = Math.floor(minutes_utc_absolues);
 
             const meta = evaluerMetadataChronoOptimise(t0);
             const EoT_JPL = meta.eot; 
@@ -519,6 +512,9 @@
 
                 let el_sol_brute = Math.asin(comp_Zen / distance_reelle) * 180.0 / Math.PI;
                 let az_sol_vrai = (Math.atan2(comp_Est, comp_Nord) * 180.0 / Math.PI + 360.0) % 360.0;
+
+                // Horizon géodésique standard propre (sans appel à CartographieHorizon)
+                const hauteurObstacleLocal = 0.0;
 
                 let el_sol_refractee = el_sol_brute;
                 if (el_sol_brute > -0.833) {
@@ -570,7 +566,7 @@
                 let oeilVis = false, jumelleVis = false, s10eVis = false;
                 let raisonAbsolue = "";
 
-                if (el_sol_refractee <= 0) raisonAbsolue = "HORIZON";
+                if (el_sol_refractee <= hauteurObstacleLocal) raisonAbsolue = "HORIZON";
                 else if (typeof fluxMeteoCielClaire !== 'undefined' && !fluxMeteoCielClaire) raisonAbsolue = "NUAGES";
 
                 if (raisonAbsolue === "") {
@@ -608,6 +604,7 @@
             }
             requestAnimationFrame(boucleDeCalculContinue);
         } catch (err) {
+            console.error("Erreur boucle calcul:", err);
             requestAnimationFrame(boucleDeCalculContinue);
         }
     }
