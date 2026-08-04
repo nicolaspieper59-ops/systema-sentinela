@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 SYSTEMA SENTINELA v14.0 — NOYAU EXTRACTEUR ITRS DÉTERMINISTE
-Éphéméride : DE440s (JPL 2020) - Précision maximale
+Correction : Matrice étendue à 1441 points (24h strictes) & JPL DE440s
 """
 import os
 import sys
@@ -27,7 +27,6 @@ def main():
     temp_target = conversion_securisee_float(sys.argv[4] if len(sys.argv) > 4 else None, 15.0)
 
     loader = Loader(os.getcwd(), verbose=False)
-    # CORRECTION : Passage au standard scientifique actuel DE440s
     try:
         eph = loader('de440s.bsp')
     except Exception:
@@ -36,6 +35,8 @@ def main():
     ts = loader.timescale(builtin=True)
     aujourdhui = datetime.now(timezone.utc).date()
     date_base = datetime(aujourdhui.year, aujourdhui.month, aujourdhui.day, 0, 0, tzinfo=timezone.utc)
+
+    station_base = wgs84.latlon(lat_target, lon_target, elevation_m=alt_target)
 
     corps_celestes = {
         'soleil': eph['sun'], 'lune': eph['moon'], 'mercure': eph['mercury barycenter'],
@@ -47,7 +48,8 @@ def main():
     matrice_24h = {name: [] for name in corps_celestes.keys()}
     metadata_24h = []
 
-    for minute in range(1440):
+    # 1441 itérations pour couvrir de 00:00 à 24:00 inclus (évite l'interpolation récursive)
+    for minute in range(1441):
         instant = date_base + timedelta(minutes=minute)
         t = ts.from_datetime(instant)
         
@@ -92,7 +94,7 @@ def main():
 
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
-    print(f"[SUCCESS] Matrice DE440s 24H générée avec ancrage absolu.")
+    print(f"[SUCCESS] Matrice DE440s de 1441 points générée avec ancrage UTC absolu.")
 
 if __name__ == "__main__":
     main()
