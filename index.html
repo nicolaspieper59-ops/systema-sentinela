@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Calculateur d'Éphémérides Topocentriques v13.0 — Déterministe Pur</title>
+    <title>Calculateur d'Éphémérides Topocentriques v14.0 — Déterministe Pur</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -62,7 +62,7 @@
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v13.0 — TERMINAL DÉTERMINISTE PUR</div>
+        <div class="brand">SYSTEMA SENTINELA v14.0 — TERMINAL DÉTERMINISTE PUR</div>
         <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
             <div>MATRICE IMU : <span id="lbl-imu" style="font-weight:bold; color:var(--sky);">CALIBRATION...</span></div>
             <div>MÉTÉO FLUIDE : <span id="lbl-meteo" style="font-weight:bold; color:var(--dec5);">OPTIQUE OFF</span></div>
@@ -139,7 +139,7 @@
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
 
     let jplMatriceDuJour = null;      
-    let offsetHorlogeServeurMs = 0; // Écart exact par rapport au temps réel haute précision
+    let offsetHorlogeServeurMs = 0;
     let fluxMeteoCielClaire = true; 
     let elevationSoleilGlobale = 0;
     let ephemeridesCalculees = {};
@@ -331,10 +331,6 @@
         meteoTimeoutId = setTimeout(analyserFluxMeteo, 3000);
     }
 
-    /**
-     * SYNCHRONISATION TEMPORELLE ABSOLUE SANS HORLOGE ANDROID
-     * Extrait l'entête HTTP 'Date' renvoyé par le serveur Web (NTP Serveur)
-     */
     async function chargerMatriceFlux() {
         try {
             const t0Req = performance.now();
@@ -344,7 +340,6 @@
 
             jplMatriceDuJour = await response.json();
 
-            // Extraction de l'heure HTTP officielle du serveur web (NTP universel)
             const dateHeader = response.headers.get('date');
             let timestampUtcReelMs = 0;
 
@@ -353,7 +348,6 @@
                 document.getElementById('source-badge').innerText = "NTP SERVEUR";
                 document.getElementById('source-badge').className = "status-badge badge-ok";
             } else {
-                // Fallback direct sur une API NTP externe si l'en-tête HTTP est masqué par le navigateur
                 try {
                     const respNtp = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC');
                     const dataNtp = await respNtp.json();
@@ -361,17 +355,14 @@
                     document.getElementById('source-badge').innerText = "NTP WORLDTIME";
                     document.getElementById('source-badge').className = "status-badge badge-ok";
                 } catch(e) {
-                    // Secours ultime (Date système)
                     timestampUtcReelMs = Date.now();
                     document.getElementById('source-badge').innerText = "HORLOGE LOCAL";
                     document.getElementById('source-badge').className = "status-badge badge-warn";
                 }
             }
 
-            // Ancrage absolu de la ligne de temps sur 'performance.now()'
             offsetHorlogeServeurMs = timestampUtcReelMs - performance.now();
 
-            
             if (jplMatriceDuJour.STATION_BASE_GPS) {
                 station3D.lat = jplMatriceDuJour.STATION_BASE_GPS.lat;
                 station3D.lon = jplMatriceDuJour.STATION_BASE_GPS.lon;
@@ -413,9 +404,11 @@
             let minuteLever = null; let minuteCoucher = null;
             let prevEl = 0;
 
-            for (let m = 0; m <= 1440; m++) {
-                let mMod = m % 1440;
-                let v = jplMatriceDuJour.DATA[a][mMod];
+            // CORRECTION: Exploite la vraie taille du tableau (1441) au lieu de forcer modulo 1440
+            const totalPoints = jplMatriceDuJour.DATA[a].length;
+
+            for (let m = 0; m < totalPoints; m++) {
+                let v = jplMatriceDuJour.DATA[a][m];
                 let topo_x = v.x - station3D.X_itrs; let topo_y = v.y - station3D.Y_itrs; let topo_z = v.z - station3D.Z_itrs;
                 let d = Math.sqrt(topo_x * topo_x + topo_y * topo_y + topo_z * topo_z);
                 let comp_Zen = topo_x * (cosLat * cosLon) + topo_y * (cosLat * sinLon) + topo_z * sinLat;
@@ -441,15 +434,15 @@
         let minutes_tsm = (minutes_utc + (station3D.lon * 4) + 1440) % 1440;
         let h = Math.floor(minutes_tsm / 60); let m = Math.floor(minutes_tsm % 60); let s = Math.floor((minutes_tsm * 60) % 60);
         return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-    } 
-                function boucleDeCalculContinue() {
+    }
+
+    function boucleDeCalculContinue() {
         if (!jplMatriceDuJour) {
             requestAnimationFrame(boucleDeCalculContinue);
             return;
         }
         
         try {
-            // TEMPS UTC RÉEL SYNCHRONISÉ
             const maintenantUtcMs = performance.now() + offsetHorlogeServeurMs;
             
             if (document.getElementById('lbl-epoch')) {
@@ -463,7 +456,7 @@
 
             const deltaMsDepuisMinuit = maintenantUtcMs - debutJourneeUtcMs;
             
-            // VERROU DE SÉCURITÉ STRICT : PÉREMPTION 24H (Empêche le bug de la Lune hors plage)
+            // VERROU DE SÉCURITÉ PÉREMPTION 24H (Empêche l'affichage erroné le lendemain)
             if (deltaMsDepuisMinuit < 0 || deltaMsDepuisMinuit >= 86400000) {
                 document.getElementById('lbl-epoch').innerText = "MATRICE PÉRIMÉE - ACTUALISATION REQUISE";
                 document.getElementById('lbl-epoch').style.color = "var(--rose)";
@@ -519,7 +512,6 @@
                 let el_sol_brute = Math.asin(comp_Zen / distance_reelle) * 180.0 / Math.PI;
                 let az_sol_vrai = (Math.atan2(comp_Est, comp_Nord) * 180.0 / Math.PI + 360.0) % 360.0;
 
-                // Horizon géodésique standard propre (sans appel à CartographieHorizon)
                 const hauteurObstacleLocal = 0.0;
 
                 let el_sol_refractee = el_sol_brute;
@@ -615,7 +607,7 @@
         }
     }
 
-        function renduRadar(positions) {
+    function renduRadar(positions) {
         const canvas = document.getElementById('radarCanvas'); if (!canvas) return;
         const ctx = canvas.getContext('2d'); const cx = canvas.width / 2; const cy = canvas.height / 2; const rMax = cx - 15;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
