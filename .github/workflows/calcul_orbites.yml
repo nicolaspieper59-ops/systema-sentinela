@@ -2,7 +2,7 @@ name: Noyau Déterministe DE440s
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 1 fois par jour à minuit pile
+    - cron: '0 0 * * *' # Exécution unique à minuit UTC pile
   workflow_dispatch:
 
 permissions:
@@ -38,7 +38,7 @@ jobs:
         path: de440s.bsp
         key: bsp-de440s-v1
 
-    - name: Exécution du Moteur Déterministe
+    - name: Exécution du Moteur Déterministe 1441 pts
       run: |
         python dynamic_multiphysics_engine.py 43.284356 5.358507 99.3100 15.0
 
@@ -48,7 +48,7 @@ jobs:
         git config --local user.name "GitHub Action"
         git add flux_live.json
         if ! git diff-index --quiet HEAD --; then
-          git commit -m "Actualisation journalière UTC matrice d'état DE440s [CI]"
+          git commit -m "Actualisation journalière UTC de la matrice d'état DE440s [CI]"
           git push
         else
           echo "Aucune variation détectée."
