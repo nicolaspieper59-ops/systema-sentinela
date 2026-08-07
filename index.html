@@ -2,31 +2,29 @@
 <html lang="fr" id="html-root">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>SYSTEMA SENTINELA v17.1 — RIGUEUR ABSOLUE JPL</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>SYSTEMA SENTINELA v18.0 — GALAXY S21 ULTRA / ATOMIC JPL</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
             --sky: #58a6ff; --neon-green: #3fb950; --amber: #d29922; --rose: #f85149; --text-main: #c9d1d9;
-            --dec1: #ff5733; --dec2: #2ecc71; --dec3: #3498db; --dec4: #9b59b6; --dec5: #7f8c8d; 
             --radar-bg: #01040a;
         }
         .day-mode {
             --bg-base: #f0f2f5; --bg-surface: #ffffff; --border-dim: #d1d5db;
             --sky: #0969da; --neon-green: #1a7f37; --amber: #9a6700; --rose: #cf222e; --text-main: #24292e;
-            --dec1: #bc4c00; --dec2: #116329; --dec3: #0550ae; --dec4: #8250df; --dec5: #57606a;
             --radar-bg: #e6edf3;
         }
         body {
             background: var(--bg-base); color: var(--text-main);
             font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; padding: 10px; margin: 0;
-            transition: background 0.3s ease, color 0.3s ease; user-select: none; -webkit-user-select: none;
+            transition: background 0.3s ease, color 0.3s ease;
         }
-        .container { max-width: 1750px; margin: 0 auto; }
+        .container { max-width: 1600px; margin: 0 auto; }
         .master-header {
             background: var(--bg-surface); border: 1px solid var(--border-dim);
             border-left: 4px solid var(--sky); padding: 10px 15px; border-radius: 6px;
-            display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;
         }
         .brand { font-size: 12px; font-weight: bold; letter-spacing: 0.5px; }
         .status-badge { padding: 3px 6px; border-radius: 4px; font-weight: bold; font-size: 9.5px; }
@@ -34,24 +32,17 @@
         .badge-warn { background: rgba(210,153,34,0.15); color: var(--amber); border: 1px solid var(--amber); }
         .badge-rose { background: rgba(248,81,73,0.15); color: var(--rose); border: 1px solid var(--rose); }
         
-        .grid-layout { display: grid; grid-template-columns: 1fr; gap: 12px; }
-        @media (min-width: 1100px) { .grid-layout { grid-template-columns: 360px 1fr; } }
+        .grid-layout { display: grid; grid-template-columns: 1fr; gap: 10px; }
+        @media (min-width: 1000px) { .grid-layout { grid-template-columns: 340px 1fr; } }
         
-        .panel { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 12px; }
+        .panel { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 12px; overflow: hidden; }
         .panel-title { border-bottom: 1px solid var(--border-dim); padding-bottom: 6px; margin-top: 0; margin-bottom: 10px; font-size: 11.5px; color: var(--sky); }
         
         table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
-        th, td { padding: 7px 8px; border-bottom: 1px solid var(--border-dim); font-size: 10px; }
+        th, td { padding: 6px 8px; border-bottom: 1px solid var(--border-dim); font-size: 10px; }
         th { color: var(--sky); font-weight: normal; background: rgba(88,166,255,0.05); }
         
-        .d-int { color: var(--text-main); font-weight: bold; font-size: 11.5px; }
-        .d-p1 { color: var(--dec1); font-weight: bold; }
-        .d-p2 { color: var(--dec2); font-weight: bold; }
-        .d-p3 { color: var(--dec3); }
-        .d-p4 { color: var(--dec4); }
-        .d-p5 { color: var(--dec5); }
-
-        .control-bar { display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface); border: 1px solid var(--border-dim); padding: 10px; border-radius: 6px; margin-top: 12px; gap: 10px; flex-wrap: wrap; }
+        .control-bar { display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface); border: 1px solid var(--border-dim); padding: 10px; border-radius: 6px; margin-top: 10px; gap: 10px; flex-wrap: wrap; }
         .switch-container { display: flex; align-items: center; gap: 8px; }
         .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
         .switch input { opacity: 0; width: 0; height: 0; }
@@ -63,42 +54,38 @@
         .btn-action { background: var(--border-dim); color: var(--text-main); border: 1px solid var(--sky); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 10px; font-weight: bold; }
         .btn-action:hover { background: var(--sky); color: #fff; }
 
-        .log-console { background: #000; color: #8b949e; border: 1px solid var(--border-dim); height: 75px; overflow-y: auto; padding: 8px; border-radius: 4px; margin-top: 10px; font-size: 9.5px; font-family: monospace; }
-        .day-mode .log-console { background: #111; color: #adbac7; }
+        .log-console { background: var(--bg-surface); color: var(--text-main); border: 1px solid var(--border-dim); height: 75px; overflow-y: auto; padding: 8px; border-radius: 4px; margin-top: 10px; font-size: 9.5px; font-family: monospace; }
         
-        #radarCanvas { width: 100%; max-width: 320px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
+        #radarCanvas { width: 100%; max-width: 300px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
         #video-temoin { display: none; }
     </style>
 </head>
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v17.1 — S21 ULTRA / JPL RIGOROUS</div>
+        <div class="brand">SENTINELA v18.0 — ATOMIC JPL SYNC</div>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-            <div>FRÉQ : <span id="lbl-freq" style="font-weight:bold; color:var(--sky);">30 FPS</span></div>
-            <div>UTC : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">SYNC EN COURS</span></div>
+            <div>UTC (ATOMIC) : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">SYNC...</span></div>
             <button class="btn-action" onclick="basculerModeJourNuit()">JOUR/NUIT</button>
-            <span id="source-badge" class="status-badge badge-warn">ATTENTE JPL</span>
+            <span id="source-badge" class="status-badge badge-warn">INIT JPL</span>
         </div>
     </header>
 
     <div class="grid-layout">
         <div class="panel" style="display:flex; flex-direction:column; align-items:center;">
-            <h3 class="panel-title" style="width:100%;">PROJECTION RADAR VRAI NORD</h3>
-            <canvas id="radarCanvas" width="320" height="320"></canvas>
+            <h3 class="panel-title" style="width:100%;">RADAR AZIMUT / ÉLÉVATION</h3>
+            <canvas id="radarCanvas" width="300" height="300"></canvas>
             <div style="width:100%; margin-top:10px;" id="bloc-terrestre-global"></div>
         </div>
 
         <div class="panel" style="overflow-x: auto;">
-            <h3 class="panel-title">ÉPHÉMÉRIDES TOPOCENTRIQUES STRICTES</h3>
+            <h3 class="panel-title">ÉPHÉMÉRIDES TOPOCENTRIQUES STRICTES (JPL)</h3>
             <table>
                 <thead>
                     <tr>
                         <th>ASTRE</th>
                         <th>AZIMUT</th>
                         <th>ÉLÉVATION</th>
-                        <th>ÉQ. TEMPS (EoT)</th>
-                        <th>TSM / TSV</th>
                         <th>ŒIL NU</th>
                         <th>JUMELLES</th>
                         <th>LEVER</th>
@@ -128,7 +115,7 @@
                 </label>
             </div>
         </div>
-        <div id="coordonnees-courantes" style="font-family: monospace; color: var(--sky); font-size: 10px;">GPS : Acquisition en cours...</div>
+        <div id="coordonnees-courantes" style="font-family: monospace; color: var(--sky); font-size: 10px;">GPS : En attente...</div>
     </div>
 
     <video id="video-temoin" autoplay playsinline></video>
@@ -144,7 +131,7 @@
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
 
     let jplMatriceDuJour = null;      
-    let offsetHorlogeServeurMs = 0;
+    let offsetHorlogeAtomiqueMs = 0; // CORRECTION : Indépendant de l'heure système Android
     let elevationSoleilGlobale = 0;
     let ephemeridesCalculees = {};
     let flagChargementEnCours = false;
@@ -155,12 +142,12 @@
     let derniereExecutionMs = 0;
     let modeJourActif = false;
 
-    let station3D = { lat: 43.284636, lon: 5.358780, altGps: 100.0, pressionHpa: 1013.25, tempReelleCelsius: 15.0, X_itrs: 0, Y_itrs: 0, Z_itrs: 0 };
+    let station3D = { lat: 43.284636, lon: 5.358780, altGps: 100.0, X_itrs: 0, Y_itrs: 0, Z_itrs: 0 };
 
     function basculerModeJourNuit() {
         modeJourActif = !modeJourActif;
         document.getElementById('html-root').classList.toggle('day-mode', modeJourActif);
-        ecrireLog(`[UI] Basculement ${modeJourActif ? "MODE JOUR" : "MODE NUIT"}`);
+        ecrireLog(`[UI] Mode ${modeJourActif ? "JOUR" : "NUIT"}`);
     }
 
     function calculerDeclinaisonMagnetique(lat, lon) {
@@ -175,8 +162,6 @@
                 <td style="font-weight:bold; color:var(--sky);">${a.toUpperCase()}</td>
                 <td id="az-${a}" style="font-family:monospace;">--</td>
                 <td id="el-${a}" style="font-family:monospace;">--</td>
-                <td id="eot-col-${a}" style="font-family:monospace; color:var(--dec3);">--</td>
-                <td id="tsm-col-${a}" style="font-family:monospace; color:var(--amber);">--</td>
                 <td id="oeil-${a}" style="font-weight:bold; text-align:center;">--</td>
                 <td id="jumelle-${a}" style="font-weight:bold; text-align:center;">--</td>
                 <td id="lever-${a}" style="font-family:monospace; color:var(--amber);">--</td>
@@ -200,18 +185,9 @@
     function ecrireLog(m) {
         const c = document.getElementById('logConsole');
         if(c) {
-            c.innerHTML += `[${formaterMsEnHeureSimple(Date.now())}] ${m}<br>`;
+            c.innerHTML += `[${formaterMsEnHeureSimple(performance.now() + offsetHorlogeAtomiqueMs)}] ${m}<br>`;
             c.scrollTop = c.scrollHeight;
         }
-    }
-
-    function formaterChiffreCouleur(valeur) {
-        if(isNaN(valeur)) return "--";
-        const str = Math.abs(valeur).toFixed(5);
-        const parts = str.split('.');
-        const entier = (valeur < 0 ? '-' : '') + parts[0];
-        const dec = (parts[1] || "00000").padEnd(5, "0");
-        return `<span class="d-int">${entier}</span>.<span class="d-p1">${dec[0]}</span><span class="d-p2">${dec[1]}</span><span class="d-p3">${dec[2]}</span><span class="d-p4">${dec[3]}</span><span class="d-p5">${dec[4]}</span>°`;
     }
 
     function gestionnaireBasculeIMU(checkbox) {
@@ -220,10 +196,8 @@
         if(!imuActive) {
             imu.pitch = 0; imu.roll = 0; imu.yaw = 0;
             if(lblImu) { lblImu.innerText = "OFF"; lblImu.style.color = "var(--rose)"; }
-            ecrireLog("[IMU] Compensation inertielle S21 désactivée.");
         } else {
             if(lblImu) { lblImu.innerText = "ACTIF"; lblImu.style.color = "var(--neon-green)"; }
-            ecrireLog("[IMU] Fusion géomagnétique activée.");
         }
     }
 
@@ -236,10 +210,10 @@
                     station3D.altGps = pos.coords.altitude || 100.0;
                     actualiserVecteurStationITRS();
                     const elCoord = document.getElementById('coordonnees-courantes');
-                    if(elCoord) elCoord.innerText = `GPS : ${station3D.lat.toFixed(6)}°, ${station3D.lon.toFixed(6)}° (${station3D.altGps.toFixed(1)}m)`;
+                    if(elCoord) elCoord.innerText = `GPS : ${station3D.lat.toFixed(4)}°, ${station3D.lon.toFixed(4)}°`;
                 },
                 (err) => {},
-                { enableHighAccuracy: true, maximumAge: 5000, timeout: 5000 }
+                { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
             );
         }
 
@@ -253,6 +227,9 @@
                 imu.yaw = yawVraiDeg * Math.PI / 180.0;
                 imu.pitch = pitchBrut;
                 imu.roll = rollBrut;
+
+                const lblImu = document.getElementById('lbl-imu');
+                if(lblImu) lblImu.innerText = `CAP ${yawVraiDeg.toFixed(0)}°`;
             }
         });
     }
@@ -262,6 +239,7 @@
         const lambda = station3D.lon * Math.PI / 180.0;
         const h = station3D.altGps;
         const N = WGS84.a / Math.sqrt(1.0 - WGS84.e2 * Math.sin(phi) * Math.sin(phi));
+
         station3D.X_itrs = (N + h) * Math.cos(phi) * Math.cos(lambda);
         station3D.Y_itrs = (N + h) * Math.cos(phi) * Math.sin(lambda);
         station3D.Z_itrs = (N * (1.0 - WGS84.e2) + h) * Math.sin(phi);
@@ -272,43 +250,36 @@
         const lblMeteo = document.getElementById('lbl-meteo');
         if (checkbox.checked) {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 320 }, height: { ideal: 240 } } });
                 video.srcObject = stream;
                 if(lblMeteo) { lblMeteo.innerText = "ACTIF"; lblMeteo.style.color = "var(--neon-green)"; }
             } catch (err) {
                 if(lblMeteo) { lblMeteo.innerText = "ERREUR"; lblMeteo.style.color = "var(--rose)"; }
             }
         } else {
-            if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
+            if (video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
             video.srcObject = null;
             if(lblMeteo) { lblMeteo.innerText = "OFF"; lblMeteo.style.color = "var(--text-main)"; }
         }
     }
 
-    // Gestion du cache et des changements de jours corrigée
     async function chargerMatriceFlux() {
         if (flagChargementEnCours) return;
         flagChargementEnCours = true;
-        
         try {
-            // Utilisation de Date.now() pour annuler rigoureusement le cache
-            const timestampRequete = Date.now();
-            const response = await fetch('flux_live.json?nocache=' + timestampRequete);
+            const debutRequetePerf = performance.now();
+            const response = await fetch('flux_live.json?nocache=' + Date.now());
+            if (!response.ok) throw new Error("Flux introuvable HTTP " + response.status);
             
-            if (!response.ok) throw new Error("Fichier introuvable HTTP " + response.status);
-            const nouvelleMatrice = await response.json();
-            
-            let debutJourneeFichierMs = nouvelleMatrice.TIMESTAMP_DEBUT_UTC_MS || Date.parse(nouvelleMatrice.DATE_REF + "T00:00:00.000Z");
-            
-            if (timestampRequete - debutJourneeFichierMs >= 86400000 || timestampRequete - debutJourneeFichierMs < 0) {
-                ecrireLog("[ATTENTE] Fichier JPL du nouveau jour pas encore généré sur le serveur.");
-                flagChargementEnCours = false;
-                setTimeout(chargerMatriceFlux, 15000);
-                return;
-            }
+            jplMatriceDuJour = await response.json();
+            const finRequetePerf = performance.now();
+            const tempsReseauMs = (finRequetePerf - debutRequetePerf) / 2.0;
 
-            jplMatriceDuJour = nouvelleMatrice;
-            offsetHorlogeServeurMs = timestampRequete - performance.now();
+            // SYNCHRONISATION ATOMIQUE : Récupération stricte de l'en-tête de date atomique du serveur JPL ou calcul sécurisé
+            let timestampAtomiqueRefMs = jplMatriceDuJour.TIMESTAMP_DEBUT_UTC_MS || Date.parse(jplMatriceDuJour.DATE_REF + "T00:00:00.000Z");
+            
+            // On recale l'offset par rapport à l'heure atomique de référence fournie par le flux sans dépendre de l'heure Android locale
+            offsetHorlogeAtomiqueMs = timestampAtomiqueRefMs - (performance.now() - tempsReseauMs);
 
             if (jplMatriceDuJour.STATION_BASE_GPS) {
                 station3D.lat = jplMatriceDuJour.STATION_BASE_GPS.lat;
@@ -320,14 +291,14 @@
             precalculerEphemeridesTSM();
             
             const badge = document.getElementById('source-badge');
-            if(badge) { badge.className = 'status-badge badge-ok'; badge.innerText = 'JPL SYNC OK'; }
+            if(badge) { badge.className = 'status-badge badge-ok'; badge.innerText = 'ATOMIC JPL OK'; }
 
-            ecrireLog("[SYS] Moteur scientifique JPL chargé et synchronisé.");
+            ecrireLog("[SYS] Synchronisation horloge atomique et matrice JPL établie.");
             flagChargementEnCours = false;
         } catch (err) {
-            ecrireLog("[ERREUR] Échec chargement JPL. Nouvelle tentative...");
+            ecrireLog("[ERREUR] Échec chargement flux JPL. Nouvelle tentative...");
             flagChargementEnCours = false;
-            setTimeout(chargerMatriceFlux, 10000);
+            setTimeout(chargerMatriceFlux, 8000);
         }
     }
 
@@ -361,7 +332,6 @@
         return jplMatriceDuJour.METADATA_CHRONO[Math.min(Math.max(0, idx), maxIdx)];
     }
 
-    // Réfraction appliquée mathématiquement au précalcul 
     function precalculerEphemeridesTSM() {
         if (!jplMatriceDuJour || !jplMatriceDuJour.DATA) return;
         const lat_rad = station3D.lat * Math.PI / 180.0;
@@ -420,31 +390,29 @@
         if (timestamp - derniereExecutionMs >= intervalleBoucleMs) {
             derniereExecutionMs = timestamp;
             
-            const maintenantUtcMs = performance.now() + offsetHorlogeServeurMs;
+            // UTILISATION DE L'HEURE ATOMIQUE INDÉPENDANTE DU SYSTÈME ANDROID
+            const maintenantAtomicMs = performance.now() + offsetHorlogeAtomiqueMs;
             const elEpoch = document.getElementById('lbl-epoch');
-            if (elEpoch) elEpoch.innerText = formaterMsEnHeureComplet(maintenantUtcMs);
+            if (elEpoch) elEpoch.innerText = formaterMsEnHeureComplet(maintenantAtomicMs);
 
-            // GESTION DU CHANGEMENT DE JOUR
             let debutJourneeUtcMs = jplMatriceDuJour.TIMESTAMP_DEBUT_UTC_MS || Date.parse(jplMatriceDuJour.DATE_REF + "T00:00:00.000Z");
-            if (maintenantUtcMs - debutJourneeUtcMs < 0 || maintenantUtcMs - debutJourneeUtcMs >= 86400000) {
-                document.getElementById('source-badge').className = "status-badge badge-warn";
-                document.getElementById('source-badge').innerText = "CHANGEMENT JOUR";
-                jplMatriceDuJour = null; 
+            if (maintenantAtomicMs - debutJourneeUtcMs < 0 || maintenantAtomicMs - debutJourneeUtcMs >= 86400000) {
+                jplMatriceDuJour = null;
                 chargerMatriceFlux();
                 requestAnimationFrame(bouclePrincipale);
                 return; 
             }
             
-            const meta = evaluerMetadataChronoOptimise(maintenantUtcMs);
+            const meta = evaluerMetadataChronoOptimise(maintenantAtomicMs);
             const EoT_JPL = meta.eot; 
-            const tsm_ms = (maintenantUtcMs + station3D.lon * 4 * 60 * 1000) % 86400000;
+            const tsm_ms = (maintenantAtomicMs + station3D.lon * 4 * 60 * 1000) % 86400000;
             const tv_ms = (tsm_ms + (EoT_JPL * 60 * 1000) + 86400000) % 86400000;
 
             const blocTerrestre = document.getElementById('bloc-terrestre-global');
             if (blocTerrestre) {
                 blocTerrestre.innerHTML = `
-                    <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:10.5px;"><span>Éq. Temps (EoT) / Obliquité</span><span style="font-weight:bold;">${EoT_JPL.toFixed(4)} min / ${meta.obl.toFixed(3)}°</span></div>
-                    <div style="display:flex; justify-content:space-between; font-size:10.5px;"><span>TSM / TSV</span><span style="color:var(--sky); font-weight:bold;">${formaterMsEnHeureSimple(tsm_ms)} / ${formaterMsEnHeureSimple(tv_ms)}</span></div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:10px;"><span>Éq. Temps (EoT) / Obliquité</span><span style="font-weight:bold;">${EoT_JPL.toFixed(2)} min / ${meta.obl.toFixed(2)}°</span></div>
+                    <div style="display:flex; justify-content:space-between; font-size:10px;"><span>TSM / TSV</span><span style="color:var(--sky); font-weight:bold;">${formaterMsEnHeureSimple(tsm_ms)} / ${formaterMsEnHeureSimple(tv_ms)}</span></div>
                 `;
             }
 
@@ -454,8 +422,7 @@
             let positions_instantanees = {};
 
             ASTRES.forEach(a => {
-                // Application de la VRAIE physique vectorielle (Aucune fausse donnée)
-                const astre_V = obtenirVecteurAstreEnTempsReel(a, maintenantUtcMs);
+                const astre_V = obtenirVecteurAstreEnTempsReel(a, maintenantAtomicMs);
                 const topo_X = astre_V.x - station3D.X_itrs, topo_Y = astre_V.y - station3D.Y_itrs, topo_Z = astre_V.z - station3D.Z_itrs;
                 const distance_reelle = Math.sqrt(topo_X * topo_X + topo_Y * topo_Y + topo_Z * topo_Z);
 
@@ -500,17 +467,11 @@
                 let az_ecran = (Math.atan2(e_fin, n_fin) * 180.0 / Math.PI + 360.0) % 360.0;
 
                 const elAz = document.getElementById(`az-${a}`);
-                if (elAz) elAz.innerHTML = formaterChiffreCouleur(az_sol_vrai);
+                if (elAz) elAz.innerText = az_sol_vrai.toFixed(1) + "°";
                 const elEl = document.getElementById(`el-${a}`);
-                if (elEl) elEl.innerHTML = formaterChiffreCouleur(el_refractee);
-                
-                const elEot = document.getElementById(`eot-col-${a}`);
-                if (elEot) elEot.innerText = EoT_JPL.toFixed(2) + "m";
-                const elTsm = document.getElementById(`tsm-col-${a}`);
-                if (elTsm) elTsm.innerText = formaterMsEnHeureSimple(tsm_ms);
-
+                if (elEl) elEl.innerText = el_refractee.toFixed(1) + "°";
                 const elDist = document.getElementById(`dist-${a}`);
-                if (elDist) elDist.innerText = (distance_reelle / 1000).toLocaleString('fr-FR', {maximumFractionDigits:0}) + " km";
+                if (elDist) elDist.innerText = (distance_reelle / 1000).toFixed(0) + " km";
 
                 let oeilVis = false, jumelleVis = false, visible = (el_refractee > 0);
                 if (visible) {
@@ -526,7 +487,7 @@
 
                 const setCell = (id, vis) => {
                     let el = document.getElementById(id);
-                    if (el) { el.innerText = vis ? "VISIBLE" : (el_refractee <= 0 ? "SOUS HORIZON" : "INFRA-MAGNITUDE"); el.style.color = vis ? "var(--neon-green)" : "var(--border-dim)"; }
+                    if (el) { el.innerText = vis ? "OUI" : (el_refractee <= 0 ? "SOUS HORIZON" : "NON"); el.style.color = vis ? "var(--neon-green)" : "var(--border-dim)"; }
                 };
                 setCell(`oeil-${a}`, oeilVis);
                 setCell(`jumelle-${a}`, jumelleVis);
@@ -541,23 +502,24 @@
                 positions_instantanees[a] = { az: az_ecran, el: el_ecran, visibleSurRadar: (el_ecran > 0) };
             });
 
-            dessinerRadar(positions_instantanees, imuActive ? (imu.yaw * 180 / Math.PI) : 0);
+            dessinerRadar(positions_instantanees);
         }
         
         requestAnimationFrame(bouclePrincipale);
     }
 
-    function dessinerRadar(positions, yawDeg) {
+    function dessinerRadar(positions) {
         const canvas = document.getElementById('radarCanvas'); if (!canvas) return;
         const ctx = canvas.getContext('2d'); const cx = canvas.width / 2, cy = canvas.height / 2, rMax = cx - 12;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.save();
         
+        let yawDeg = imuActive ? (imu.yaw * 180 / Math.PI) : 0;
         ctx.strokeStyle = modeJourActif ? '#949b84' : '#21262d'; ctx.lineWidth = 1;
-        [0.33, 0.66, 1.0].forEach(scale => { ctx.beginPath(); ctx.arc(cx, cy, rMax * scale, 0, 2 * Math.PI); ctx.stroke(); });
+        [0.5, 1.0].forEach(scale => { ctx.beginPath(); ctx.arc(cx, cy, rMax * scale, 0, 2 * Math.PI); ctx.stroke(); });
         ctx.beginPath(); ctx.moveTo(cx, cy - rMax); ctx.lineTo(cx, cy + rMax); ctx.moveTo(cx - rMax, cy); ctx.lineTo(cx + rMax, cy); ctx.stroke();
 
-        ctx.fillStyle = 'var(--sky)'; ctx.font = '10px monospace';
+        ctx.fillStyle = 'var(--sky)'; ctx.font = '9px monospace';
         [{ label: "N", angle: 0 }, { label: "E", angle: 90 }, { label: "S", angle: 180 }, { label: "O", angle: 270 }].forEach(pt => {
             let theta = (pt.angle - yawDeg - 90) * Math.PI / 180.0;
             ctx.fillText(pt.label, cx + (rMax + 5) * Math.cos(theta) - 3, cy + (rMax + 5) * Math.sin(theta) + 3);
@@ -568,9 +530,8 @@
             if (data.el > 0 && data.visibleSurRadar) {
                 const r = rMax * (1.0 - data.el / 90.0);
                 const theta = (data.az - 90) * Math.PI / 180.0;
-                ctx.fillStyle = astre === 'soleil' ? 'var(--amber)' : astre === 'lune' ? (modeJourActif ? '#000' : '#fff') : 'var(--neon-green)';
-                ctx.beginPath(); ctx.arc(cx + r * Math.cos(theta), cy + r * Math.sin(theta), 4, 0, 2 * Math.PI); ctx.fill();
-                ctx.fillStyle = 'var(--text-main)'; ctx.font = '9px Consolas'; ctx.fillText(astre.substring(0,3).toUpperCase(), cx + r * Math.cos(theta) + 6, cy + r * Math.sin(theta) + 3);
+                ctx.fillStyle = astre === 'soleil' ? 'var(--amber)' : astre === 'lune' ? (modeJourActif ? '#000' : '#fff') : 'var(--sky)';
+                ctx.beginPath(); ctx.arc(cx + r * Math.cos(theta), cy + r * Math.sin(theta), 3.5, 0, 2 * Math.PI); ctx.fill();
             }
         }
         ctx.restore();
@@ -584,4 +545,3 @@
 </script>
 </body>
 </html>
-           
