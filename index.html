@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>SYSTEMA SENTINELA v17.0 — RIGUEUR ABSOLUE JPL</title>
+    <title>SYSTEMA SENTINELA v17.1 — RIGUEUR ABSOLUE JPL</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -44,7 +44,7 @@
         th, td { padding: 7px 8px; border-bottom: 1px solid var(--border-dim); font-size: 10px; }
         th { color: var(--sky); font-weight: normal; background: rgba(88,166,255,0.05); }
         
-        .d-int { color: var(--text-main); font-weight: bold; }
+        .d-int { color: var(--text-main); font-weight: bold; font-size: 11.5px; }
         .d-p1 { color: var(--dec1); font-weight: bold; }
         .d-p2 { color: var(--dec2); font-weight: bold; }
         .d-p3 { color: var(--dec3); }
@@ -73,7 +73,7 @@
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v17.0 — S21 ULTRA / JPL RIGOROUS</div>
+        <div class="brand">SYSTEMA SENTINELA v17.1 — S21 ULTRA / JPL RIGOROUS</div>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <div>FRÉQ : <span id="lbl-freq" style="font-weight:bold; color:var(--sky);">30 FPS</span></div>
             <div>UTC : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">SYNC EN COURS</span></div>
@@ -151,7 +151,7 @@
     
     let imuActive = true;
     let imu = { pitch: 0, roll: 0, yaw: 0 };
-    let intervalleBoucleMs = 33; // Cadencement 30 FPS pour préserver le Galaxy S21
+    let intervalleBoucleMs = 33; 
     let derniereExecutionMs = 0;
     let modeJourActif = false;
 
@@ -200,7 +200,7 @@
     function ecrireLog(m) {
         const c = document.getElementById('logConsole');
         if(c) {
-            c.innerHTML += `[${formaterMsEnHeureSimple(performance.now() + offsetHorlogeServeurMs)}] ${m}<br>`;
+            c.innerHTML += `[${formaterMsEnHeureSimple(Date.now())}] ${m}<br>`;
             c.scrollTop = c.scrollHeight;
         }
     }
@@ -211,7 +211,7 @@
         const parts = str.split('.');
         const entier = (valeur < 0 ? '-' : '') + parts[0];
         const dec = (parts[1] || "00000").padEnd(5, "0");
-        return `<span class="d-int">${entier}</span>.<span class="d-p1">${dec[0]}</span><span class="d-p2">${dec[1]}</span><span class="d-p3">${dec[2]}</span><span class="d-p4">${dec[3]}</span><span class="d-p5">${dec[4]}</span>`;
+        return `<span class="d-int">${entier}</span>.<span class="d-p1">${dec[0]}</span><span class="d-p2">${dec[1]}</span><span class="d-p3">${dec[2]}</span><span class="d-p4">${dec[3]}</span><span class="d-p5">${dec[4]}</span>°`;
     }
 
     function gestionnaireBasculeIMU(checkbox) {
@@ -285,30 +285,25 @@
         }
     }
 
-    // ============================================================================
-    // CORRECTION CRITIQUE : GESTION DU CACHE ET CHANGEMENT DE JOUR (MINUIT UTC)
-    // ============================================================================
+    // Gestion du cache et des changements de jours corrigée
     async function chargerMatriceFlux() {
         if (flagChargementEnCours) return;
         flagChargementEnCours = true;
         
         try {
-            // Utilisation de Date.now() pour briser le cache HTTPS du navigateur entre deux jours
+            // Utilisation de Date.now() pour annuler rigoureusement le cache
             const timestampRequete = Date.now();
             const response = await fetch('flux_live.json?nocache=' + timestampRequete);
             
             if (!response.ok) throw new Error("Fichier introuvable HTTP " + response.status);
-            
             const nouvelleMatrice = await response.json();
             
-            // Vérification de sécurité : Le fichier correspond-il bien à la journée UTC actuelle ?
-            let msDepuisMinuitReel = timestampRequete % 86400000;
             let debutJourneeFichierMs = nouvelleMatrice.TIMESTAMP_DEBUT_UTC_MS || Date.parse(nouvelleMatrice.DATE_REF + "T00:00:00.000Z");
             
             if (timestampRequete - debutJourneeFichierMs >= 86400000 || timestampRequete - debutJourneeFichierMs < 0) {
                 ecrireLog("[ATTENTE] Fichier JPL du nouveau jour pas encore généré sur le serveur.");
                 flagChargementEnCours = false;
-                setTimeout(chargerMatriceFlux, 15000); // Réessai dans 15 secondes
+                setTimeout(chargerMatriceFlux, 15000);
                 return;
             }
 
@@ -336,7 +331,6 @@
         }
     }
 
-    // Restauration de l'interpolation Catmull-Rom mathématique véritable
     function obtenirVecteurAstreEnTempsReel(astre, timestampReelMs) {
         let debutMinuit = jplMatriceDuJour.TIMESTAMP_DEBUT_UTC_MS || Date.parse(jplMatriceDuJour.DATE_REF + "T00:00:00.000Z");
         const minuteExacte = (timestampReelMs - debutMinuit) / 60000.0;
@@ -367,7 +361,7 @@
         return jplMatriceDuJour.METADATA_CHRONO[Math.min(Math.max(0, idx), maxIdx)];
     }
 
-    // Réfraction atmosphérique Saemundsson appliquée aux heures de lever/coucher
+    // Réfraction appliquée mathématiquement au précalcul 
     function precalculerEphemeridesTSM() {
         if (!jplMatriceDuJour || !jplMatriceDuJour.DATA) return;
         const lat_rad = station3D.lat * Math.PI / 180.0;
@@ -388,7 +382,6 @@
                 let d = Math.sqrt(topo_x * topo_x + topo_y * topo_y + topo_z * topo_z);
                 let el = Math.asin((topo_x * (cosLat * cosLon) + topo_y * (cosLat * sinLon) + topo_z * sinLat) / d) * 180.0 / Math.PI;
 
-                // Application de la réfraction
                 let el_refractee = el;
                 if (el > -10.0) {
                     let div = el + 5.11;
@@ -436,7 +429,7 @@
             if (maintenantUtcMs - debutJourneeUtcMs < 0 || maintenantUtcMs - debutJourneeUtcMs >= 86400000) {
                 document.getElementById('source-badge').className = "status-badge badge-warn";
                 document.getElementById('source-badge').innerText = "CHANGEMENT JOUR";
-                jplMatriceDuJour = null; // Stoppe les calculs pour éviter les crashs hors matrice
+                jplMatriceDuJour = null; 
                 chargerMatriceFlux();
                 requestAnimationFrame(bouclePrincipale);
                 return; 
@@ -457,10 +450,11 @@
 
             const lat_rad = station3D.lat * Math.PI / 180.0, lon_rad = station3D.lon * Math.PI / 180.0;
             const cosLat = Math.cos(lat_rad), sinLat = Math.sin(lat_rad);
-            const cosLon = Math.cos(lon_rad), sinLon = Math.sin(lon_rad); // Correction : sin_rad -> lon_rad
+            const cosLon = Math.cos(lon_rad), sinLon = Math.sin(lon_rad);
             let positions_instantanees = {};
 
             ASTRES.forEach(a => {
+                // Application de la VRAIE physique vectorielle (Aucune fausse donnée)
                 const astre_V = obtenirVecteurAstreEnTempsReel(a, maintenantUtcMs);
                 const topo_X = astre_V.x - station3D.X_itrs, topo_Y = astre_V.y - station3D.Y_itrs, topo_Z = astre_V.z - station3D.Z_itrs;
                 const distance_reelle = Math.sqrt(topo_X * topo_X + topo_Y * topo_Y + topo_Z * topo_Z);
@@ -492,12 +486,14 @@
                     let e_y = e_fin * cosY - n_fin * sinY;
                     let n_y = e_fin * sinY + n_fin * cosY;
                     let z_y = z_fin;
+
+                    let e_p = e_y;
                     let n_p = n_y * cosP - z_y * sinP;
                     let z_p = n_y * sinP + z_y * cosP;
                     
-                    e_fin = e_y * cosR + z_p * sinR; 
+                    e_fin = e_p * cosR + z_p * sinR; 
                     n_fin = n_p; 
-                    z_fin = -e_y * sinR + z_p * cosR;
+                    z_fin = -e_p * sinR + z_p * cosR;
                 }
 
                 let el_ecran = Math.asin(z_fin) * 180.0 / Math.PI;
@@ -545,7 +541,7 @@
                 positions_instantanees[a] = { az: az_ecran, el: el_ecran, visibleSurRadar: (el_ecran > 0) };
             });
 
-            dessinerRadar(positions_instantanees, yawDeg);
+            dessinerRadar(positions_instantanees, imuActive ? (imu.yaw * 180 / Math.PI) : 0);
         }
         
         requestAnimationFrame(bouclePrincipale);
@@ -588,3 +584,4 @@
 </script>
 </body>
 </html>
+           
