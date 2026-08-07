@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>SYSTEMA SENTINELA v17.3 — GALAXY S21 ULTRA / JPL RIGOURIEUX & ATOMIQUE</title>
+    <title>SYSTEMA SENTINELA — GALAXY S21 ULTRA / VSOP2013 SCIENTIFIQUE</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -69,16 +69,17 @@
         #radarCanvas { width: 100%; max-width: 320px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
         #video-temoin { display: none; }
     </style>
+    <script src="vsop2013.js"></script>
 </head>
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v17.3 — GALAXY S21 ULTRA (JPL + ATOMIQUE)</div>
+        <div class="brand">SYSTEMA SENTINELA — VSOP2013 & NTP ATOMIQUE</div>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <div>UTC ATOMIQUE : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">SYNCHRONISATION...</span></div>
             <button class="btn-action" onclick="basculerModeJourNuit()">JOUR/NUIT</button>
             <button class="btn-action" onclick="forcerSynchronisationAtomique()">RESYNC NTP</button>
-            <span id="source-badge" class="status-badge badge-warn">INIT JPL</span>
+            <span id="source-badge" class="status-badge badge-warn">INIT MOTEUR</span>
         </div>
     </header>
 
@@ -90,7 +91,7 @@
         </div>
 
         <div class="panel" style="overflow-x: auto;">
-            <h3 class="panel-title">ÉPHÉMÉRIDES TOPOCENTRIQUES STRICTES (JPL)</h3>
+            <h3 class="panel-title">ÉPHÉMÉRIDES TOPOCENTRIQUES ANALYTIQUES (VSOP2013)</h3>
             <table>
                 <thead>
                     <tr>
@@ -134,19 +135,15 @@
 </div>
 
 <script>
-    const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
+    const ASTRES = ['mercure', 'venus', 'terre', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
     const MAGNITUDES = {
-        'soleil': -26.74, 'lune': -12.74, 'venus': -4.4, 'jupiter': -2.7,
-        'mars': -0.2, 'mercure': 0.2, 'saturne': 0.6, 'uranus': 5.5, 'neptune': 7.8
+        'soleil': -26.74, 'lune': -12.74, 'mercure': 0.2, 'venus': -4.4, 
+        'terre': 0.0, 'mars': -0.2, 'jupiter': -2.7, 'saturne': 0.6, 'uranus': 5.5, 'neptune': 7.8
     };
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
 
-    let jplMatriceDuJour = null;
-    let offsetHorlogeAtomiqueMs = 0; 
+    let offsetHorlogeAtomiqueMs = 0;
     let elevationSoleilGlobale = 0;
-    let ephemeridesCalculees = {};
-    let flagChargementEnCours = false;
-    
     let imuActive = true;
     let imu = { pitch: 0, roll: 0, yaw: 0 };
     let intervalleBoucleMs = 33; 
@@ -155,38 +152,23 @@
 
     let station3D = { lat: 43.284636, lon: 5.358780, altGps: 100.0, X_itrs: 0, Y_itrs: 0, Z_itrs: 0 };
 
-    // Synchronisation de l'heure atomique universelle (NTP / WorldTimeAPI)
     async function forcerSynchronisationAtomique() {
         ecrireLog("[TEMPS] Interrogation horloge atomique UTC (NTP)...");
         const tDebutReq = performance.now();
         try {
             const reponse = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', { cache: 'no-store' });
             const tFinReq = performance.now();
-            if (!reponse.ok) throw new Error("Erreur HTTP serveur de temps");
-            
+            if (!reponse.ok) throw new Error();
             const donneesTemps = await reponse.json();
             const timestampAtomiqueMs = new Date(donneesTemps.unixtime * 1000).getTime();
             const latenceReseauMs = (tFinReq - tDebutReq) / 2.0;
-            const tempsEstimeActuelMs = timestampAtomiqueMs + latenceReseauMs;
-            
-            offsetHorlogeAtomiqueMs = tempsEstimeActuelMs - performance.now();
-            
-            ecrireLog(`[TEMPS] Synchro Atomique OK. Offset : ${offsetHorlogeAtomiqueMs.toFixed(0)} ms`);
+            offsetHorlogeAtomiqueMs = (timestampAtomiqueMs + latenceReseauMs) - performance.now();
+            ecrireLog(`[TEMPS] Synchro NTP OK. Offset : ${offsetHorlogeAtomiqueMs.toFixed(0)} ms`);
             const badge = document.getElementById('source-badge');
             if(badge) { badge.className = "status-badge badge-ok"; badge.innerText = "ATOMIQUE SYNC"; }
         } catch (err) {
-            ecrireLog("[AVERTISSEMENT] Échec NTP externe, bascule sur en-tête HTTP...");
-            try {
-                const repSecours = await fetch(window.location.href, { method: 'HEAD', cache: 'no-store' });
-                const dateEntete = repSecours.headers.get('Date');
-                if (dateEntete) {
-                    offsetHorlogeAtomiqueMs = new Date(dateEntete).getTime() - performance.now();
-                    ecrireLog(`[TEMPS] Synchro HTTP OK. Offset : ${offsetHorlogeAtomiqueMs.toFixed(0)} ms`);
-                } else { throw new Error(); }
-            } catch (e) {
-                ecrireLog("[ERREUR] Référence atomique inaccessible. Utilisation locale.");
-                offsetHorlogeAtomiqueMs = 0;
-            }
+            ecrireLog("[AVERTISSEMENT] NTP distant indisponible, utilisation du repli local.");
+            offsetHorlogeAtomiqueMs = 0;
         }
     }
 
@@ -202,7 +184,7 @@
     }
 
     const tbody = document.getElementById('table-body');
-    ASTRES.forEach(a => {
+    ASTRES.concat(['soleil']).forEach(a => {
         tbody.innerHTML += `
             <tr id="row-${a}">
                 <td style="font-weight:bold; color:var(--sky);">${a.toUpperCase()}</td>
@@ -318,241 +300,134 @@
         }
     }
 
-    async function chargerMatriceFlux() {
-        if (flagChargementEnCours) return;
-        flagChargementEnCours = true;
-        try {
-            const timestampRequete = Date.now();
-            const response = await fetch('flux_live.json?nocache=' + timestampRequete);
-            if (!response.ok) throw new Error("Flux introuvable HTTP " + response.status);
-            
-            jplMatriceDuJour = await response.json();
-
-            if (jplMatriceDuJour.STATION_BASE_GPS) {
-                station3D.lat = jplMatriceDuJour.STATION_BASE_GPS.lat;
-                station3D.lon = jplMatriceDuJour.STATION_BASE_GPS.lon;
-                station3D.altGps = jplMatriceDuJour.STATION_BASE_GPS.alt;
-            }
-
-            actualiserVecteurStationITRS();
-            precalculerEphemeridesTSM();
-            
-            const badge = document.getElementById('source-badge');
-            if(badge) { badge.className = 'status-badge badge-ok'; badge.innerText = 'JPL SYNC OK'; }
-
-            ecrireLog("[SYS] Moteur JPL synchronisé avec succès.");
-            flagChargementEnCours = false;
-        } catch (err) {
-            ecrireLog("[ERREUR] Échec chargement flux JPL. Nouvelle tentative...");
-            flagChargementEnCours = false;
-            setTimeout(chargerMatriceFlux, 8000);
-        }
-    }
-
-    function obtenirVecteurAstreEnTempsReel(astre, timestampReelMs) {
-        let debutMinuit = jplMatriceDuJour.TIMESTAMP_DEBUT_UTC_MS || Date.parse(jplMatriceDuJour.DATE_REF + "T00:00:00.000Z");
-        const minuteExacte = (timestampReelMs - debutMinuit) / 60000.0;
-        const idx1 = Math.floor(minuteExacte);
-        const fraction = minuteExacte - idx1;
-        const data = jplMatriceDuJour.DATA[astre];
-        const maxIdx = data.length - 1;
-        
-        const i0 = Math.max(0, idx1 - 1);
-        const i1 = Math.min(maxIdx, idx1);
-        const i2 = Math.min(maxIdx, idx1 + 1);
-        const i3 = Math.min(maxIdx, idx1 + 2);
-
-        const p0 = data[i0], p1 = data[i1], p2 = data[i2], p3 = data[i3];
-        const t2 = fraction * fraction, t3 = t2 * fraction;
-
-        return {
-            x: 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * fraction + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
-            y: 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * fraction + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
-            z: 0.5 * ((2 * p1.z) + (-p0.z + p2.z) * fraction + (2 * p0.z - 5 * p1.z + 4 * p2.z - p3.z) * t2 + (-p0.z + 3 * p1.z - 3 * p2.z + p3.z) * t3)
-        };
-    }
-
-    function evaluerMetadataChronoOptimise(timestampReelMs) {
-        let debutMinuit = jplMatriceDuJour.TIMESTAMP_DEBUT_UTC_MS || Date.parse(jplMatriceDuJour.DATE_REF + "T00:00:00.000Z");
-         const idx = Math.floor((timestampReelMs - debutMinuit) / 60000.0);
-        const maxIdx = jplMatriceDuJour.METADATA_CHRONO.length - 1;
-        return jplMatriceDuJour.METADATA_CHRONO[Math.min(Math.max(0, idx), maxIdx)];
-    }
-
-    function precalculerEphemeridesTSM() {
-        if (!jplMatriceDuJour || !jplMatriceDuJour.DATA) return;
-        const lat_rad = station3D.lat * Math.PI / 180.0;
-        const lon_rad = station3D.lon * Math.PI / 180.0;
-        const cosLat = Math.cos(lat_rad), sinLat = Math.sin(lat_rad);
-        const cosLon = Math.cos(lon_rad), sinLon = Math.sin(lon_rad);
-        let depressionHorizonDeg = (1.77 * Math.sqrt(Math.max(0, station3D.altGps))) / 60.0;
-
-        ASTRES.forEach(a => {
-            let standardOffset = ((a === 'soleil' || a === 'lune') ? -0.833 : -0.566);
-            let limitHorizon = standardOffset - depressionHorizonDeg;
-            let minuteLever = null, minuteCoucher = null, prevEl = null;
-            const totalPoints = jplMatriceDuJour.DATA[a].length;
-
-            for (let m = 0; m < totalPoints; m++) {
-                let v = jplMatriceDuJour.DATA[a][m];
-                let topo_x = v.x - station3D.X_itrs, topo_y = v.y - station3D.Y_itrs, topo_z = v.z - station3D.Z_itrs;
-                let d = Math.sqrt(topo_x * topo_x + topo_y * topo_y + topo_z * topo_z);
-                let el = Math.asin((topo_x * (cosLat * cosLon) + topo_y * (cosLat * sinLon) + topo_z * sinLat) / d) * 180.0 / Math.PI;
-
-                let el_refractee = el;
-                if (el > -10.0) {
-                    let div = el + 5.11;
-                    if (Math.abs(div) < 1e-4) div = 1e-4;
-                    el_refractee += (1.02 / Math.tan((el + 10.3 / div) * Math.PI / 180.0)) / 60.0;
-                }
-
-                if (prevEl !== null) {
-                    let diff = el_refractee - prevEl;
-                    if (Math.abs(diff) > 1e-9) {
-                        if (prevEl <= limitHorizon && el_refractee > limitHorizon) minuteLever = ((m - 1) + (limitHorizon - prevEl) / diff) % 1440;
-                        if (prevEl >= limitHorizon && el_refractee < limitHorizon) minuteCoucher = ((m - 1) + (limitHorizon - prevEl) / diff) % 1440;
-                    }
-                }
-                prevEl = el_refractee;
-            }
-            ephemeridesCalculees[a] = {
-                lever: minuteLever !== null ? formaterMinutesEnTSM(minuteLever) : "POLAIRE",
-                coucher: minuteCoucher !== null ? formaterMinutesEnTSM(minuteCoucher) : "POLAIRE"
-            };
-        });
-    }
-
-    function formaterMinutesEnTSM(minutes_utc) {
-        let minutes_tsm = (minutes_utc + (station3D.lon * 4) + 1440) % 1440;
-        let h = Math.floor(minutes_tsm / 60), m = Math.floor(minutes_tsm % 60);
-        return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    function obtenirSiecleJulien(timestampMs) {
+        const jd = (timestampMs / 86400000.0) + 2440587.5;
+        return (jd - 2451545.0) / 36525.0;
     }
 
     function bouclePrincipale(timestamp) {
-        if (!jplMatriceDuJour) {
-            requestAnimationFrame(bouclePrincipale);
-            return;
-        }
-        
         if (timestamp - derniereExecutionMs >= intervalleBoucleMs) {
             derniereExecutionMs = timestamp;
             
-            // Heure UTC atomique exacte en continu
             const maintenantUtcAtomiqueMs = performance.now() + offsetHorlogeAtomiqueMs;
             const elEpoch = document.getElementById('lbl-epoch');
             if (elEpoch) elEpoch.innerText = formaterMsEnHeureComplet(maintenantUtcAtomiqueMs);
 
-            let debutJourneeUtcMs = jplMatriceDuJour.TIMESTAMP_DEBUT_UTC_MS || Date.parse(jplMatriceDuJour.DATE_REF + "T00:00:00.000Z");
-            if (maintenantUtcAtomiqueMs - debutJourneeUtcMs < 0 || maintenantUtcAtomiqueMs - debutJourneeUtcMs >= 86400000) {
-                jplMatriceDuJour = null;
-                chargerMatriceFlux();
-                requestAnimationFrame(bouclePrincipale);
-                return; 
-            }
+            const T = obtenirSiecleJulien(maintenantUtcAtomiqueMs);
             
-            const meta = evaluerMetadataChronoOptimise(maintenantUtcAtomiqueMs);
-            const EoT_JPL = meta.eot; 
-            const tsm_ms = (maintenantUtcAtomiqueMs + station3D.lon * 4 * 60 * 1000) % 86400000;
-            const tv_ms = (tsm_ms + (EoT_JPL * 60 * 1000) + 86400000) % 86400000;
-
-            const blocTerrestre = document.getElementById('bloc-terrestre-global');
-            if (blocTerrestre) {
-                blocTerrestre.innerHTML = `
-                    <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:10px;"><span>Éq. Temps (EoT) / Obliquité</span><span style="font-weight:bold;">${EoT_JPL.toFixed(2)} min / ${meta.obl.toFixed(2)}°</span></div>
-                    <div style="display:flex; justify-content:space-between; font-size:10px;"><span>TSM / TSV</span><span style="color:var(--sky); font-weight:bold;">${formaterMsEnHeureSimple(tsm_ms)} / ${formaterMsEnHeureSimple(tv_ms)}</span></div>
-                `;
+            if (typeof vsop2013 === 'undefined') {
+                ecrireLog("[ERREUR] vsop2013.js manquant dans le répertoire GitHub.");
+                requestAnimationFrame(bouclePrincipale);
+                return;
             }
+
+            const badge = document.getElementById('source-badge');
+            if(badge) { badge.className = 'status-badge badge-ok'; badge.innerText = 'VSOP ANALYTIQUE'; }
 
             const lat_rad = station3D.lat * Math.PI / 180.0, lon_rad = station3D.lon * Math.PI / 180.0;
             const cosLat = Math.cos(lat_rad), sinLat = Math.sin(lat_rad);
             const cosLon = Math.cos(lon_rad), sinLon = Math.sin(lon_rad);
+            
             let positions_instantanees = {};
+            let posTerre = { x: 0, y: 0, z: 0 };
+
+            if (vsop2013.terre && typeof vsop2013.terre.position === 'function') {
+                let pT = vsop2013.terre.position(T);
+                posTerre = { x: pT.x * 149597870700.0, y: pT.y * 149597870700.0, z: pT.z * 149597870700.0 };
+            }
+
+            let posSoleil = { x: -posTerre.x, y: -posTerre.y, z: -posTerre.z };
+            traiterAstreCosmique('soleil', posSoleil, positions_instantanees, cosLat, sinLat, cosLon, sinLon);
 
             ASTRES.forEach(a => {
-                const astre_V = obtenirVecteurAstreEnTempsReel(a, maintenantUtcAtomiqueMs);
-                const topo_X = astre_V.x - station3D.X_itrs, topo_Y = astre_V.y - station3D.Y_itrs, topo_Z = astre_V.z - station3D.Z_itrs;
-                const distance_reelle = Math.sqrt(topo_X * topo_X + topo_Y * topo_Y + topo_Z * topo_Z);
-
-                let comp_Est = topo_X * (-sinLon) + topo_Y * cosLon;
-                let comp_Nord = topo_X * (-sinLat * cosLon) + topo_Y * (-sinLat * sinLon) + topo_Z * cosLat;
-                let comp_Zen = topo_X * (cosLat * cosLon) + topo_Y * (cosLat * sinLon) + topo_Z * sinLat;
-
-                let el_sol_brute = Math.asin(comp_Zen / distance_reelle) * 180.0 / Math.PI;
-                let az_sol_vrai = (Math.atan2(comp_Est, comp_Nord) * 180.0 / Math.PI + 360.0) % 360.0;
-
-                let el_refractee = el_sol_brute;
-                if (el_sol_brute > -5.0) {
-                    let div = el_sol_brute + 5.11;
-                    if (Math.abs(div) < 1e-4) div = 1e-4;
-                    el_refractee += (1.02 / Math.tan((el_sol_brute + 10.3 / div) * Math.PI / 180.0)) / 60.0;
+                if (a !== 'terre' && vsop2013[a] && typeof vsop2013[a].position === 'function') {
+                    let pA = vsop2013[a].position(T);
+                    let posX = pA.x * 149597870700.0;
+                    let posY = pA.y * 149597870700.0;
+                    let posZ = pA.z * 149597870700.0;
+                    let topoA = { x: posX - posTerre.x, y: posY - posTerre.y, z: posZ - posTerre.z };
+                    traiterAstreCosmique(a, topoA, positions_instantanees, cosLat, sinLat, cosLon, sinLon);
                 }
-
-                if (a === 'soleil') elevationSoleilGlobale = el_refractee;
-
-                let el_rad = el_refractee * Math.PI / 180.0, az_rad = az_sol_vrai * Math.PI / 180.0;
-                let e_fin = Math.cos(el_rad) * Math.sin(az_rad), n_fin = Math.cos(el_rad) * Math.cos(az_rad), z_fin = Math.sin(el_rad);
-
-                if (imuActive) {
-                    const cosY = Math.cos(imu.yaw), sinY = Math.sin(imu.yaw);
-                    const cosP = Math.cos(imu.pitch), sinP = Math.sin(imu.pitch);
-                    const cosR = Math.cos(imu.roll), sinR = Math.sin(imu.roll);
-                    
-                    let e_y = e_fin * cosY - n_fin * sinY;
-                    let n_y = e_fin * sinY + n_fin * cosY;
-                    let z_y = z_fin;
-
-                    let e_p = e_y;
-                    let n_p = n_y * cosP - z_y * sinP;
-                    let z_p = n_y * sinP + z_y * cosP;
-                    
-                    e_fin = e_p * cosR + z_p * sinR; 
-                    n_fin = n_p; 
-                    z_fin = -e_p * sinR + z_p * cosR;
-                }
-
-                let el_ecran = Math.asin(z_fin) * 180.0 / Math.PI;
-                let az_ecran = (Math.atan2(e_fin, n_fin) * 180.0 / Math.PI + 360.0) % 360.0;
-
-                const elAz = document.getElementById(`az-${a}`);
-                if (elAz) elAz.innerHTML = formaterChiffreCouleur(az_sol_vrai);
-                const elEl = document.getElementById(`el-${a}`);
-                if (elEl) elEl.innerHTML = formaterChiffreCouleur(el_refractee);
-                const elDist = document.getElementById(`dist-${a}`);
-                if (elDist) elDist.innerText = (distance_reelle / 1000).toFixed(0) + " km";
-
-                let oeilVis = false, jumelleVis = false, visible = (el_refractee > 0);
-                if (visible) {
-                    let mag = MAGNITUDES[a] || 0;
-                    if (elevationSoleilGlobale < -6.0) {
-                        if (mag <= 6.0) oeilVis = true;
-                        if (mag <= 9.5) jumelleVis = true;
-                    } else if (a === 'venus' || a === 'jupiter' || a === 'lune' || a === 'soleil') {
-                        jumelleVis = true;
-                        if (a === 'soleil' || a === 'lune' || a === 'venus') oeilVis = true;
-                    }
-                }
-
-                const setCell = (id, vis) => {
-                    let el = document.getElementById(id);
-                    if (el) { el.innerText = vis ? "OUI" : (el_refractee <= 0 ? "SOUS HORIZON" : "NON"); el.style.color = vis ? "var(--neon-green)" : "var(--border-dim)"; }
-                };
-                setCell(`oeil-${a}`, oeilVis);
-                setCell(`jumelle-${a}`, jumelleVis);
-
-                if (ephemeridesCalculees[a]) {
-                    const elLev = document.getElementById(`lever-${a}`);
-                    if (elLev) elLev.innerText = ephemeridesCalculees[a].lever;
-                    const elCou = document.getElementById(`coucher-${a}`);
-                    if (elCou) elCou.innerText = ephemeridesCalculees[a].coucher;
-                }
-
-                positions_instantanees[a] = { az: az_ecran, el: el_ecran, visibleSurRadar: (el_ecran > 0) };
             });
 
             dessinerRadar(positions_instantanees);
         }
-        
         requestAnimationFrame(bouclePrincipale);
+    }
+
+    function traiterAstreCosmique(astre, vecAstre, positions_instantanees, cosLat, sinLat, cosLon, sinLon) {
+        const topo_X = vecAstre.x - station3D.X_itrs;
+        const topo_Y = vecAstre.y - station3D.Y_itrs;
+        const topo_Z = vecAstre.z - station3D.Z_itrs;
+        const distance_reelle = Math.sqrt(topo_X * topo_X + topo_Y * topo_Y + topo_Z * topo_Z);
+
+        let comp_Est = topo_X * (-sinLon) + topo_Y * cosLon;
+        let comp_Nord = topo_X * (-sinLat * cosLon) + topo_Y * (-sinLat * sinLon) + topo_Z * cosLat;
+        let comp_Zen = topo_X * (cosLat * cosLon) + topo_Y * (cosLat * sinLon) + topo_Z * sinLat;
+
+        let el_sol_brute = Math.asin(comp_Zen / distance_reelle) * 180.0 / Math.PI;
+        let az_sol_vrai = (Math.atan2(comp_Est, comp_Nord) * 180.0 / Math.PI + 360.0) % 360.0;
+
+        let el_refractee = el_sol_brute;
+        if (el_sol_brute > -5.0) {
+            let div = el_sol_brute + 5.11;
+            if (Math.abs(div) < 1e-4) div = 1e-4;
+            el_refractee += (1.02 / Math.tan((el_sol_brute + 10.3 / div) * Math.PI / 180.0)) / 60.0;
+        }
+
+        if (astre === 'soleil') elevationSoleilGlobale = el_refractee;
+
+        let el_rad = el_refractee * Math.PI / 180.0, az_rad = az_sol_vrai * Math.PI / 180.0;
+        let e_fin = Math.cos(el_rad) * Math.sin(az_rad), n_fin = Math.cos(el_rad) * Math.cos(az_rad), z_fin = Math.sin(el_rad);
+
+        if (imuActive) {
+            const cosY = Math.cos(imu.yaw), sinY = Math.sin(imu.yaw);
+            const cosP = Math.cos(imu.pitch), sinP = Math.sin(imu.pitch);
+            const cosR = Math.cos(imu.roll), sinR = Math.sin(imu.roll);
+            
+            let e_y = e_fin * cosY - n_fin * sinY;
+            let n_y = e_fin * sinY + n_fin * cosY;
+            let z_y = z_fin;
+
+            let e_p = e_y;
+            let n_p = n_y * cosP - z_y * sinP;
+            let z_p = n_y * sinP + z_y * cosP;
+            
+            e_fin = e_p * cosR + z_p * sinR; 
+            n_fin = n_p; 
+            z_fin = -e_p * sinR + z_p * cosR;
+        }
+
+        let el_ecran = Math.asin(z_fin) * 180.0 / Math.PI;
+        let az_ecran = (Math.atan2(e_fin, n_fin) * 180.0 / Math.PI + 360.0) % 360.0;
+
+        const elAz = document.getElementById(`az-${astre}`);
+        if (elAz) elAz.innerHTML = formaterChiffreCouleur(az_sol_vrai);
+        const elEl = document.getElementById(`el-${astre}`);
+        if (elEl) elEl.innerHTML = formaterChiffreCouleur(el_refractee);
+        const elDist = document.getElementById(`dist-${astre}`);
+        if (elDist) elDist.innerText = (distance_reelle / 1000).toFixed(0) + " km";
+
+        let oeilVis = false, jumelleVis = false, visible = (el_refractee > 0);
+        if (visible) {
+            let mag = MAGNITUDES[astre] || 0;
+            if (elevationSoleilGlobale < -6.0) {
+                if (mag <= 6.0) oeilVis = true;
+                if (mag <= 9.5) jumelleVis = true;
+            } else if (astre === 'venus' || astre === 'jupiter' || astre === 'soleil') {
+                jumelleVis = true;
+                if (astre === 'soleil' || astre === 'venus') oeilVis = true;
+            }
+        }
+
+        const setCell = (id, vis) => {
+            let el = document.getElementById(id);
+            if (el) { el.innerText = vis ? "OUI" : (el_refractee <= 0 ? "SOUS HORIZON" : "NON"); el.style.color = vis ? "var(--neon-green)" : "var(--border-dim)"; }
+        };
+        setCell(`oeil-${astre}`, oeilVis);
+        setCell(`jumelle-${astre}`, jumelleVis);
+
+        positions_instantanees[astre] = { az: az_ecran, el: el_ecran, visibleSurRadar: (el_ecran > 0) };
     }
 
     function dessinerRadar(positions) {
@@ -577,7 +452,7 @@
             if (data.el > 0 && data.visibleSurRadar) {
                 const r = rMax * (1.0 - data.el / 90.0);
                 const theta = (data.az - 90) * Math.PI / 180.0;
-                ctx.fillStyle = astre === 'soleil' ? 'var(--amber)' : astre === 'lune' ? (modeJourActif ? '#000' : '#fff') : 'var(--sky)';
+                ctx.fillStyle = astre === 'soleil' ? 'var(--amber)' : 'var(--sky)';
                 ctx.beginPath(); ctx.arc(cx + r * Math.cos(theta), cy + r * Math.sin(theta), 3.5, 0, 2 * Math.PI); ctx.fill();
             }
         }
@@ -586,9 +461,9 @@
 
     window.addEventListener('load', async () => {
         connecterCapteursMateriels();
-        ecrireLog("[SYSTEMA] Initialisation v17.3 Galaxy S21 Ultra démarrée.");
+        actualiserVecteurStationITRS();
+        ecrireLog("[SYSTEMA] Initialisation module scientifique VSOP2013.");
         await forcerSynchronisationAtomique();
-        chargerMatriceFlux();
         requestAnimationFrame(bouclePrincipale);
     });
 </script>
