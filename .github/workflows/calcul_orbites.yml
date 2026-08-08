@@ -32,7 +32,7 @@ jobs:
         path: de440s.bsp
         key: bsp-de440s-v2
 
-    - name: Exécution du Moteur
+    - name: Exécution du Moteur Topocentrique
       run: |
         python dynamic_multiphysics_engine.py 43.284356 5.358507 99.3100 15.0
 
@@ -42,7 +42,7 @@ jobs:
         git config --local user.name "GitHub Action"
         git add flux_live.json
         if ! git diff-index --quiet HEAD --; then
-          git commit -m "Actualisation flux_live.json [CI Corrigé]"
+          git commit -m "Actualisation flux_live.json [Topocentrique DE440s Corrigé]"
           git push
         else
           echo "Aucune variation détectée."
