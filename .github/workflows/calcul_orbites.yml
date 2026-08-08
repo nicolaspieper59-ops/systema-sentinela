@@ -1,8 +1,8 @@
-name: Noyau Déterministe DE440s
+name: Noyau Déterministe DE440s Corrigé
 
 on:
   schedule:
-    - cron: '0 0 * * *' # Exécution unique à minuit UTC pile
+    - cron: '0 0 * * *'
   workflow_dispatch:
 
 permissions:
@@ -15,12 +15,7 @@ jobs:
     - name: Récupération du code source
       uses: actions/checkout@v4
 
-    - name: Génération dynamique des prérequis
-      run: |
-        echo "numpy" > requirements.txt
-        echo "skyfield" >> requirements.txt
-
-    - name: Configuration de Python & Mise en Cache Pip
+    - name: Configuration de Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
@@ -29,26 +24,25 @@ jobs:
     - name: Installation des dépendances
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install numpy skyfield
 
-    - name: Gestion du Cache pour l'Éphéméride de440s.bsp
-      id: cache-bsp
+    - name: Cache de l'éphéméride de440s.bsp
       uses: actions/cache@v4
       with:
         path: de440s.bsp
-        key: bsp-de440s-v1
+        key: bsp-de440s-v2
 
-    - name: Exécution du Moteur Déterministe 1441 pts
+    - name: Exécution du Moteur
       run: |
         python dynamic_multiphysics_engine.py 43.284356 5.358507 99.3100 15.0
 
-    - name: Commit et Push des résultats
+    - name: Commit et Push
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add flux_live.json
         if ! git diff-index --quiet HEAD --; then
-          git commit -m "Actualisation journalière UTC de la matrice d'état DE440s [CI]"
+          git commit -m "Actualisation flux_live.json [CI Corrigé]"
           git push
         else
           echo "Aucune variation détectée."
