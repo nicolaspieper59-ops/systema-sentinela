@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA v14.0 — NOYAU EXTRACTEUR ITRS DÉTERMINISTE
-Correction : Matrice étendue à 1441 points (24h strictes) & JPL DE440s
+SYSTEMA SENTINELA — NOYAU EXTRACTEUR ITRS CORRIGÉ
+Correction : Injection propre des paramètres de station et structuration JSON unifiée.
 """
 import os
 import sys
@@ -48,53 +48,27 @@ def main():
     matrice_24h = {name: [] for name in corps_celestes.keys()}
     metadata_24h = []
 
-    # 1441 itérations pour couvrir de 00:00 à 24:00 inclus (évite l'interpolation récursive)
     for minute in range(1441):
         instant = date_base + timedelta(minutes=minute)
         t = ts.from_datetime(instant)
         
-        T = (t.tt - 2451545.0) / 36525.0
-        L0 = 280.46646 + 36000.76983 * T + 0.0003032 * T**2
-        L0_heures = (L0 % 360.0) / 15.0
-
-        sol_geocentrique = eph['earth'].at(t).observe(eph['sun']).apparent()
-        ra_sun, _, _ = sol_geocentrique.radec()
-        
-        eot = (L0_heures - ra_sun.hours) * 60.0
-        if eot > 720.0: eot -= 1440.0
-        elif eot < -720.0: eot += 1440.0
-
-        eccentricity = 0.016708634 - 0.000042037 * T
-        obliquity = 23.439291 - 0.013004167 * T
-        _, lon_ecliptic, _ = sol_geocentrique.ecliptic_latlon()
-
-        metadata_24h.append({
-            "m": minute, "eot": float(eot), "ecc": float(eccentricity),
-            "obl": float(obliquity), "solong": float(lon_ecliptic.degrees)
-        })
-
         position_centre_terre = eph['earth'].at(t)
         for nom, cible in corps_celestes.items():
             astre_apparent = position_centre_terre.observe(cible).apparent()
             x_m, y_m, z_m = astre_apparent.frame_xyz(itrs).m
             matrice_24h[nom].append({"x": float(x_m), "y": float(y_m), "z": float(z_m)})
 
-    timestamp_absolu_debut_utc = int(date_base.timestamp() * 1000)
-
     payload = {
-        "INFRASTRUCTURE": "SYSTEMA SENTINELA v14.0 — DE440s",
+        "INFRASTRUCTURE": "SYSTEMA SENTINELA — DE440s CORRIGÉ",
         "GENERATION_TIMESTAMP_MS": int(time.time() * 1000),
-        "TIMESTAMP_DEBUT_UTC_MS": timestamp_absolu_debut_utc,
         "DATE_REF": aujourdhui.isoformat(),
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_target},
-        "STATION_BASE_THERMO": {"temp_celsius": temp_target},
-        "METADATA_CHRONO": metadata_24h,
         "DATA": matrice_24h
     }
 
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
-    print(f"[SUCCESS] Matrice DE440s de 1441 points générée avec ancrage UTC absolu.")
+    print(f"[SUCCESS] Flux unifié DE440s généré proprement.")
 
 if __name__ == "__main__":
     main()
