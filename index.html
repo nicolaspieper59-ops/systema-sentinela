@@ -3,18 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>SYSTEMA SENTINELA — GALAXY S21 ULTRA / VSOP2013 INTÉGRAL & SCIENTIFIQUE</title>
+    <title>SYSTEMA SENTINELA — ORIENTATION & CAPTEURS RÉELS</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
             --sky: #58a6ff; --neon-green: #3fb950; --amber: #d29922; --rose: #f85149; --text-main: #c9d1d9;
-            --dec1: #ff5733; --dec2: #2ecc71; --dec3: #3498db; --dec4: #9b59b6; --dec5: #7f8c8d; 
             --radar-bg: #01040a;
         }
         .day-mode {
             --bg-base: #f0f2f5; --bg-surface: #ffffff; --border-dim: #d1d5db;
             --sky: #0969da; --neon-green: #1a7f37; --amber: #9a6700; --rose: #cf222e; --text-main: #24292e;
-            --dec1: #bc4c00; --dec2: #116329; --dec3: #0550ae; --dec4: #8250df; --dec5: #57606a;
             --radar-bg: #e6edf3;
         }
         body {
@@ -22,7 +20,7 @@
             font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; padding: 12px; margin: 0;
             transition: background 0.3s ease, color 0.3s ease;
         }
-        .container { max-width: 1750px; margin: 0 auto; }
+        .container { max-width: 1200px; margin: 0 auto; }
         .master-header {
             background: var(--bg-surface); border: 1px solid var(--border-dim);
             border-left: 4px solid var(--sky); padding: 10px 15px; border-radius: 6px;
@@ -31,38 +29,33 @@
         .brand { font-size: 12px; font-weight: bold; letter-spacing: 0.5px; }
         .status-badge { padding: 3px 6px; border-radius: 4px; font-weight: bold; font-size: 9.5px; }
         .badge-ok { background: rgba(63,185,80,0.15); color: var(--neon-green); border: 1px solid var(--neon-green); }
+        .badge-err { background: rgba(248,81,73,0.15); color: var(--rose); border: 1px solid var(--rose); }
         
         .grid-layout { display: grid; grid-template-columns: 1fr; gap: 12px; }
-        @media (min-width: 1200px) { .grid-layout { grid-template-columns: 340px 1fr; } }
+        @media (min-width: 900px) { .grid-layout { grid-template-columns: 345px 1fr; } }
         
         .panel { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 12px; }
         .panel-title { border-bottom: 1px solid var(--border-dim); padding-bottom: 6px; margin-top: 0; margin-bottom: 10px; font-size: 11.5px; color: var(--sky); display: flex; justify-content: space-between; align-items: center; }
         
-        table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
-        th, td { padding: 7px 8px; border-bottom: 1px solid var(--border-dim); font-size: 10px; }
-        th { color: var(--sky); font-weight: normal; background: rgba(88,166,255,0.05); }
-        
-        .d-int { color: var(--text-main); font-weight: bold; }
-        .d-p1 { color: var(--dec1); font-weight: bold; }
-        .d-p2 { color: var(--dec2); font-weight: bold; }
-        .d-p3 { color: var(--dec3); }
-        .d-p4 { color: var(--dec4); }
-        .d-p5 { color: var(--dec5); }
-
-        .btn-action { background: var(--border-dim); color: var(--text-main); border: 1px solid var(--sky); padding: 4px 8px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 10px; }
+        .btn-action { background: var(--border-dim); color: var(--text-main); border: 1px solid var(--sky); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 10px; }
         .btn-action:hover { background: var(--sky); color: var(--bg-base); }
 
-        .log-console { background: #000; color: #8b949e; border: 1px solid var(--border-dim); height: 90px; overflow-y: auto; padding: 8px; border-radius: 4px; margin-top: 10px; font-size: 9.5px; font-family: monospace; }
-        #radarCanvas { width: 100%; max-width: 300px; height: 300px; background: var(--radar-bg); border-radius: 50%; display: block; margin: 0 auto; border: 1px solid var(--border-dim); }
+        .log-console { background: #000; color: #8b949e; border: 1px solid var(--border-dim); height: 140px; overflow-y: auto; padding: 8px; border-radius: 4px; font-size: 9.5px; font-family: monospace; }
+        #radarCanvas { width: 100%; max-width: 320px; height: 320px; background: var(--radar-bg); border-radius: 50%; display: block; margin: 0 auto; border: 1px solid var(--border-dim); }
+        
+        .telemetry-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        .telemetry-item { background: rgba(88,166,255,0.03); border: 1px solid var(--border-dim); padding: 8px; border-radius: 4px; }
+        .telemetry-label { font-size: 9.5px; color: var(--sky); margin-bottom: 3px; }
+        .telemetry-value { font-size: 13px; font-weight: bold; }
     </style>
 </head>
 <body>
 <div class="container">
     <div class="master-header">
-        <div class="brand">SYSTEMA SENTINELA — GALAXY S21 ULTRA / VSOP2013 INTÉGRAL</div>
+        <div class="brand">SYSTEMA SENTINELA — TÉLÉMÉTRIE MATÉRIELLE RÉELLE</div>
         <div>
-            <span class="status-badge badge-ok" id="badge-sync">ATOMIQUE SYNCHRONISÉ</span>
-            <span class="status-badge badge-ok" id="badge-imu">IMU ACTIF</span>
+            <span class="status-badge badge-err" id="badge-imu">IMU INACTIF</span>
+            <span class="status-badge badge-err" id="badge-gps">GPS EN ATTENTE</span>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR / NUIT</button>
         </div>
     </div>
@@ -70,54 +63,62 @@
     <div class="grid-layout">
         <div style="display: flex; flex-direction: column; gap: 12px;">
             <div class="panel">
-                <div class="panel-title">RADAR CÉLESTE TEMPS RÉEL (ORIENTATION S21)</div>
-                <canvas id="radarCanvas" width="300" height="300"></canvas>
+                <div class="panel-title">RADAR D'ORIENTATION (NORD MAGNÉTIQUE)</div>
+                <canvas id="radarCanvas" width="320" height="320"></canvas>
             </div>
             <div class="panel">
-                <div class="panel-title">JOURNAL SYSTÈME (LOGS)</div>
-                <div class="log-console" id="logConsole">[SYSTEMA] Initialisation du module de précision VSOP2013...</div>
+                <div class="panel-title">JOURNAL SYSTÈMES ET CAPTEURS</div>
+                <div class="log-console" id="logConsole">[INIT] Démarrage du système de télémétrie native...</div>
             </div>
         </div>
 
-        <div class="panel">
-            <div class="panel-title">
-                <span>ÉPHÉMÉRIDES SCIENTIFIQUES & POSITIONNEMENT PRÉCIS</span>
-                <span id="lbl-epoch" style="font-size: 10px; color: var(--neon-green);">--</span>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="panel">
+                <div class="panel-title">DONNÉES BRUTES DU CAPTEUR INTERne (S21 ULTRA)</div>
+                <div class="telemetry-grid">
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">CAP (AZIMUTH / YAW)</div>
+                        <div class="telemetry-value" id="val-yaw">-- °</div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">INCLINAISON (PITCH)</div>
+                        <div class="telemetry-value" id="val-pitch">-- °</div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">ROULEMENT (ROLL)</div>
+                        <div class="telemetry-value" id="val-roll">-- °</div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">PRÉCISION HORLOGE</div>
+                        <div class="telemetry-value" id="val-time">--</div>
+                    </div>
+                </div>
             </div>
-            <div style="overflow-x: auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>ASTRE</th>
-                            <th>AZIMUTH (°)</th>
-                            <th>ÉLÉVATION (°)</th>
-                            <th>DISTANCE</th>
-                            <th>ÉQ. TEMPS</th>
-                            <th>CULMINATION</th>
-                            <th>LÈVER</th>
-                            <th>COUCHER</th>
-                            <th>ŒIL NU</th>
-                            <th>JUMELLES</th>
-                        </tr>
-                    </thead>
-                    <tbody id="corps-tableau">
-                        </tbody>
-                </table>
+
+            <div class="panel">
+                <div class="panel-title">POSITION GÉODÉSIQUE (GPS) & HORODATAGE</div>
+                <div class="telemetry-grid">
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">LATITUDE</div>
+                        <div class="telemetry-value" id="val-lat">--</div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">LONGITUDE</div>
+                        <div class="telemetry-value" id="val-lon">--</div>
+                    </div>
+                    <div class="telemetry-item" style="grid-column: span 2;">
+                        <div class="telemetry-label">ALTITUDE & PRÉCISION GPS</div>
+                        <div class="telemetry-value" id="val-alt">--</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    const CORPS_CELESTES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
-    const MAGNITUDES = { 'soleil': -26.74, 'lune': -12.74, 'mercure': 0.2, 'venus': -4.4, 'mars': -0.2, 'jupiter': -2.7, 'saturne': 0.6, 'uranus': 5.5, 'neptune': 7.8 };
-    
     let modeJourActif = false;
-    let offsetHorlogeAtomiqueMs = 0;
-    let imuActive = true;
-    let imu = { pitch: 0, roll: 0, yaw: 0 };
-    let derniereExecutionMs = 0;
-    let intervalleBoucleMs = 100;
+    let imuData = { yaw: 0, pitch: 0, roll: 0, active: false };
 
     function basculerModeJour() {
         modeJourActif = !modeJourActif;
@@ -128,143 +129,117 @@
     function ecrireLog(message) {
         const consoleEl = document.getElementById('logConsole');
         if (consoleEl) {
-            consoleEl.innerHTML += `<div>${message}</div>`;
+            consoleEl.innerHTML += `<div>[${new Date().toISOString().slice(11, 19)}] ${message}</div>`;
             consoleEl.scrollTop = consoleEl.scrollHeight;
         }
     }
 
-    function formaterChiffreCouleur(valeur) {
-        if(isNaN(valeur)) return "--";
-        const str = Math.abs(valeur).toFixed(5);
-        const parts = str.split('.');
-        const entier = (valeur < 0 ? '-' : '') + parts[0];
-        const dec = (parts[1] || "00000").padEnd(5, "0");
-        return `<span class="d-int">${entier}</span>.<span class="d-p1">${dec[0]}</span><span class="d-p2">${dec[1]}</span><span class="d-p3">${dec[2]}</span><span class="d-p4">${dec[3]}</span><span class="d-p5">${dec[4]}</span>`;
-    }
-
-    function formaterMsEnHeureComplet(ms) {
-        const d = new Date(ms);
-        return d.toISOString().replace('T', ' ').slice(0, 19) + "." + String(d.getMilliseconds()).padStart(3, '0');
-    }
-
-    function connecterCapteursMateriels() {
+    function initialiserCapteurs() {
+        // 1. Gestion de l'orientation de l'appareil (IMU)
         if (window.DeviceOrientationEvent) {
             window.addEventListener('deviceorientation', (event) => {
                 if (event.alpha !== null) {
-                    imu.yaw = event.alpha * (Math.PI / 180.0);
-                    imu.pitch = (event.beta || 0) * (Math.PI / 180.0);
-                    imu.roll = (event.gamma || 0) * (Math.PI / 180.0);
-                    imuActive = true;
-                    document.getElementById('badge-imu').innerText = "IMU S21 ACTIF";
+                    imuData.yaw = event.alpha;   // Cap (0-360°)
+                    imuData.pitch = event.beta;  // Bascule avant/arrière (-180 à 180)
+                    imuData.roll = event.gamma;  // Inclinaison gauche/droite (-90 à 90)
+                    imuData.active = true;
+
+                    const badge = document.getElementById('badge-imu');
+                    badge.innerText = "IMU ACTIF";
+                    badge.className = "status-badge badge-ok";
+
+                    document.getElementById('val-yaw').innerText = imuData.yaw.toFixed(1) + " °";
+                    document.getElementById('val-pitch').innerText = imuData.pitch.toFixed(1) + " °";
+                    document.getElementById('val-roll').innerText = imuData.roll.toFixed(1) + " °";
                 }
             }, true);
+            ecrireLog("[IMU] Écouteur DeviceOrientation enregistré.");
         } else {
-            ecrireLog("[avertissement] Capteurs IMU non disponibles, mode statique.");
-            imuActive = false;
+            ecrireLog("[avertissement] DeviceOrientation non supporté par ce navigateur/contexte.");
+        }
+
+        // 2. Gestion du géopositionnement (GPS)
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(
+                (position) => {
+                    const badge = document.getElementById('badge-gps');
+                    badge.innerText = "GPS FIXÉ";
+                    badge.className = "status-badge badge-ok";
+
+                    document.getElementById('val-lat').innerText = position.coords.latitude.toFixed(5) + "°";
+                    document.getElementById('val-lon').innerText = position.coords.longitude.toFixed(5) + "°";
+                    document.getElementById('val-alt').innerText = (position.coords.altitude !== null ? position.coords.altitude.toFixed(1) + " m" : "N/D") + ` (±${position.coords.accuracy.toFixed(0)}m)`;
+                },
+                (error) => {
+                    ecrireLog(`[GPS Erreur] Code ${error.code}: ${error.message}`);
+                    const badge = document.getElementById('badge-gps');
+                    badge.innerText = "GPS REFUSÉ/INDISPO";
+                    badge.className = "status-badge badge-err";
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+            ecrireLog("[GPS] Demande de suivi de position initialisée.");
+        } else {
+            ecrireLog("[avertissement] Géolocalisation non supportée.");
         }
     }
 
-    function dessinerRadar(yawDeg) {
+    function dessinerRadar() {
         const canvas = document.getElementById('radarCanvas');
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
-        const cx = canvas.width / 2, cy = canvas.height / 2, rMax = cx - 12;
+        const cx = canvas.width / 2, cy = canvas.height / 2, rMax = cx - 15;
         
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.save();
         
+        // Style des cercles du radar
         ctx.strokeStyle = modeJourActif ? '#949b84' : '#21262d';
         ctx.lineWidth = 1;
         [0.5, 1.0].forEach(scale => {
             ctx.beginPath(); ctx.arc(cx, cy, rMax * scale, 0, 2 * Math.PI); ctx.stroke();
         });
-        ctx.beginPath(); ctx.moveTo(cx, cy - rMax); ctx.lineTo(cx, cy + rMax); ctx.moveTo(cx - rMax, cy); ctx.lineTo(cx + rMax, cy); ctx.stroke();
+        
+        // Croix centrale
+        ctx.beginPath(); 
+        ctx.moveTo(cx, cy - rMax); ctx.lineTo(cx, cy + rMax); 
+        ctx.moveTo(cx - rMax, cy); ctx.lineTo(cx + rMax, cy); 
+        ctx.stroke();
 
-        ctx.fillStyle = 'var(--sky)'; ctx.font = '9px monospace';
+        // Affichage dynamique orienté par la boussole (Yaw)
+        let yawDeg = imuData.active ? imuData.yaw : 0;
+        ctx.fillStyle = 'var(--sky)'; ctx.font = '10px monospace';
+        
         [{ label: "N", angle: 0 }, { label: "E", angle: 90 }, { label: "S", angle: 180 }, { label: "O", angle: 270 }].forEach(pt => {
+            // Rotation du repère selon le cap de l'appareil
             let theta = (pt.angle - yawDeg - 90) * Math.PI / 180.0;
-            ctx.fillText(pt.label, cx + (rMax + 5) * Math.cos(theta) - 3, cy + (rMax + 5) * Math.sin(theta) + 3);
+            ctx.fillText(pt.label, cx + (rMax + 8) * Math.cos(theta) - 4, cy + (rMax + 8) * Math.sin(theta) + 4);
         });
+
+        // Indicateur central de direction de l'appareil
+        ctx.strokeStyle = 'var(--neon-green)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx, cy - 35);
+        ctx.stroke();
 
         ctx.restore();
     }
 
-    function initialiserTableauHtml() {
-        const tbody = document.getElementById('corps-tableau');
-        tbody.innerHTML = '';
-        CORPS_CELESTES.forEach(astre => {
-            tbody.innerHTML += `
-                <tr>
-                    <td style="font-weight: bold; color: var(--sky);">${astre.toUpperCase()}</td>
-                    <td id="az-${astre}">--</td>
-                    <td id="el-${astre}">--</td>
-                    <td id="dist-${astre}">--</td>
-                    <td id="eot-${astre}">--</td>
-                    <td id="tsm-${astre}">--</td>
-                    <td id="lever-${astre}">--</td>
-                    <td id="coucher-${astre}">--</td>
-                    <td id="oeil-${astre}">--</td>
-                    <td id="jum-${astre}">--</td>
-                </tr>`;
-        });
-    }
-
-    function bouclePrincipale(timestamp) {
-        if (timestamp - derniereExecutionMs >= intervalleBoucleMs) {
-            derniereExecutionMs = timestamp;
-            const maintenant = Date.now() + offsetHorlogeAtomiqueMs;
-            
-            const elEpoch = document.getElementById('lbl-epoch');
-            if (elEpoch) elEpoch.innerText = formaterMsEnHeureComplet(maintenant);
-
-            let yawDeg = imuActive ? (imu.yaw * 180 / Math.PI) : 0;
-
-            CORPS_CELESTES.forEach((astre, idx) => {
-                // Simulation scientifique vectorielle VSOP2013 de référence
-                let azDummy = (15.0 * (idx + 1) + (maintenant / 50000.0)) % 360.0;
-                let elDummy = Math.max(0.0, 45.0 + 35.0 * Math.sin((maintenant / 200000.0) + idx));
-                let distDummy = 149597870700.0 * (1.0 + 0.1 * Math.cos(idx));
-
-                const azEl = document.getElementById(`az-${astre}`);
-                const elEl = document.getElementById(`el-${astre}`);
-                const distEl = document.getElementById(`dist-${astre}`);
-                const eotEl = document.getElementById(`eot-${astre}`);
-                const tsmEl = document.getElementById(`tsm-${astre}`);
-                const levEl = document.getElementById(`lever-${astre}`);
-                const couEl = document.getElementById(`coucher-${astre}`);
-                const oeilEl = document.getElementById(`oeil-${astre}`);
-                const jumEl = document.getElementById(`jum-${astre}`);
-
-                if (azEl) azEl.innerHTML = formaterChiffreCouleur(azDummy);
-                if (elEl) elEl.innerHTML = formaterChiffreCouleur(elDummy);
-                if (distEl) distEl.innerText = (distDummy / 149597870700.0).toFixed(4) + " UA";
-                if (eotEl) eotEl.innerText = "+02m 45s";
-                if (tsmEl) tsmEl.innerText = new Date(maintenant).toISOString().slice(11, 19);
-                if (levEl) levEl.innerText = "06:22 UTC";
-                if (couEl) couEl.innerText = "19:35 UTC";
-
-                let mag = MAGNITUDES[astre] || 5.0;
-                if (oeilEl) {
-                    oeilEl.innerText = mag <= 3.0 ? "OUI" : "NON";
-                    oeilEl.style.color = mag <= 3.0 ? "var(--neon-green)" : "var(--rose)";
-                }
-                if (jumEl) {
-                    jumEl.innerText = mag <= 7.0 ? "OUI" : "NON";
-                    jumEl.style.color = mag <= 7.0 ? "var(--sky)" : "var(--rose)";
-                }
-            });
-
-            dessinerRadar(yawDeg);
-        }
-        requestAnimationFrame(bouclePrincipale);
+    function boucleRendu() {
+        const maintenant = new Date();
+        document.getElementById('val-time').innerText = maintenant.toISOString().slice(11, 19) + "." + String(maintenant.getMilliseconds()).padStart(3, '0');
+        
+        dessinerRadar();
+        requestAnimationFrame(boucleRendu);
     }
 
     window.addEventListener('load', () => {
-        initialiserTableauHtml();
-        connecterCapteursMateriels();
-        ecrireLog("[SYSTEMA] Initialisation complète validée par les scientifiques (VSOP2013).");
-        requestAnimationFrame(bouclePrincipale);
+        initialiserCapteurs();
+        requestAnimationFrame(boucleRendu);
+        ecrireLog("[SYSTEMA] Prêt. Interface épurée et orientée matériel réel activée.");
     });
 </script>
 </body>
-    </html>
+                    </html>
