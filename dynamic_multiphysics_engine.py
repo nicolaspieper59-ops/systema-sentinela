@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SYSTEMA SENTINELA — NOYAU EXTRACTEUR ITRS CORRIGÉ
-Correction : Injection propre des paramètres de station et structuration JSON unifiée.
+SYSTEMA SENTINELA — NOYAU EXTRACTEUR ITRS GÉODÉSIQUE CORRIGÉ
+Correction : Application rigoureuse de la station topocentrique WGS84 
+pour chaque minute de la matrice 24h.
 """
 import os
 import sys
@@ -21,6 +22,7 @@ def conversion_securisee_float(valeur_str, valeur_secours):
         return valeur_secours
 
 def main():
+    # Récupération des paramètres de la station (Défaut : Marseille)
     lat_target = conversion_securisee_float(sys.argv[1] if len(sys.argv) > 1 else None, 43.284356)
     lon_target = conversion_securisee_float(sys.argv[2] if len(sys.argv) > 2 else None, 5.358507)
     alt_target = conversion_securisee_float(sys.argv[3] if len(sys.argv) > 3 else None, 99.31)
@@ -36,6 +38,7 @@ def main():
     aujourdhui = datetime.now(timezone.utc).date()
     date_base = datetime(aujourdhui.year, aujourdhui.month, aujourdhui.day, 0, 0, tzinfo=timezone.utc)
 
+    # Instanciation de la station topocentrique WGS84
     station_base = wgs84.latlon(lat_target, lon_target, elevation_m=alt_target)
 
     corps_celestes = {
@@ -46,20 +49,25 @@ def main():
     }
 
     matrice_24h = {name: [] for name in corps_celestes.keys()}
-    metadata_24h = []
 
+    print(f"[EXÉCUTION] Calcul topocentrique pour Lat:{lat_target}, Lon:{lon_target}, Alt:{alt_target}m...")
+
+    # Boucle minute par minute sur 24h (1441 points)
     for minute in range(1441):
         instant = date_base + timedelta(minutes=minute)
         t = ts.from_datetime(instant)
         
-        position_centre_terre = eph['earth'].at(t)
+        # CORRECTION MAJEURE : Position de l'observateur au temps t (prend en compte la rotation terrestre ITRS)
+        position_observateur = station_base.at(t)
+
         for nom, cible in corps_celestes.items():
-            astre_apparent = position_centre_terre.observe(cible).apparent()
+            # Observation apparente depuis la station topocentrique locale
+            astre_apparent = position_observateur.observe(cible).apparent()
             x_m, y_m, z_m = astre_apparent.frame_xyz(itrs).m
             matrice_24h[nom].append({"x": float(x_m), "y": float(y_m), "z": float(z_m)})
 
     payload = {
-        "INFRASTRUCTURE": "SYSTEMA SENTINELA — DE440s CORRIGÉ",
+        "INFRASTRUCTURE": "SYSTEMA SENTINELA — DE440s TOPOCENTRIQUE CORRIGÉ",
         "GENERATION_TIMESTAMP_MS": int(time.time() * 1000),
         "DATE_REF": aujourdhui.isoformat(),
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_target},
@@ -68,7 +76,8 @@ def main():
 
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
-    print(f"[SUCCESS] Flux unifié DE440s généré proprement.")
+        
+    print(f"[SUCCESS] Flux unifié DE440s topocentrique généré et sauvegardé dans flux_live.json.")
 
 if __name__ == "__main__":
     main()
