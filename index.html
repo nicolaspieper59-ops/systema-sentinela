@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>SYSTEMA SENTINELA v18.1 — GALAXY S21 ULTRA / VSOP2013 CORRIGÉ</title>
+    <title>SYSTEMA SENTINELA v18.2 — GALAXY S21 ULTRA / VSOP2013 INTÉGRAL</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -60,7 +60,7 @@
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v18.1 — S21 ULTRA</div>
+        <div class="brand">SYSTEMA SENTINELA v18.2 — STATION TERRAIN</div>
         <div>UTC ATOMIQUE : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">SYNCHRONISATION...</span></div>
         <div style="display:flex; gap:6px;">
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR/NUIT</button>
@@ -77,7 +77,7 @@
 
         <div class="panel" style="overflow-x: auto;">
             <h3 class="panel-title">
-                <span>ÉPHÉMÉRIDES TOPOCENTRIQUES (VSOP2013)</span>
+                <span>ÉPHÉMÉRIDES TOPOCENTRIQUES & ANALYSE OPTIQUE</span>
                 <span id="lbl-coord-ref" style="font-size:9px; color:var(--amber);">GPS : 43.284N, 5.358E</span>
             </h3>
             <table>
@@ -87,7 +87,7 @@
                         <th>AZIMUT</th>
                         <th>ÉLÉVATION</th>
                         <th>DISTANCE</th>
-                        <th>OEIL</th>
+                        <th>OEIL NU</th>
                         <th>JUMELLES</th>
                     </tr>
                 </thead>
@@ -280,9 +280,9 @@
     window.addEventListener('load', () => {
         actualiserVecteurStationITRS();
         connecterCapteursMateriels();
-        ecrireLog("[SYSTEMA] Moteur unifié v18.1 opérationnel.");
+        ecrireLog("[SYSTEMA] Moteur intégré v18.2 actif sur S21 Ultra.");
         requestAnimationFrame(bouclePrincipale);
     });
 </script>
 </body>
-    </html>
+</html>
