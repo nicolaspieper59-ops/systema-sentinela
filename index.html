@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>SYSTEMA SENTINELA v15.1 — GALAXY S21 ULTRA / CARTE 3D & SOUVERAINETÉ</title>
+    <title>SYSTEMA SENTINELA v15.2 — GALAXY S21 ULTRA / SOUVERAINETÉ AUTOMATIQUE</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -66,13 +66,11 @@
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v15.1 — GALAXY S21 ULTRA / SOUVERAINETÉ 3D</div>
+        <div class="brand">SYSTEMA SENTINELA v15.2 — GALAXY S21 ULTRA / AUTONOME</div>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <div>UTC ATOMIQUE : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">SYNCHRONISATION...</span></div>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR/NUIT</button>
-            <button class="btn-action" onclick="demanderAutorisationCapteurs()">ACTIVER CAPTEURS</button>
-            <button class="btn-action" onclick="lancerArbitre4D()">LANCER ARBITRE 4D</button>
-            <span id="badge-moteur" class="status-badge badge-warn">ATTENTE WORKER</span>
+            <span id="badge-moteur" class="status-badge badge-warn">WORKER EN CHARGEMENT</span>
         </div>
     </header>
 
@@ -81,9 +79,9 @@
             <div class="panel">
                 <div class="panel-title">RADAR CÉLESTE 4D</div>
                 <canvas id="radarCanvas" width="300" height="300"></canvas>
-                <div style="width:100%; margin-top:10px; border-top:1px solid var(--border-dim); pt:8px;">
+                <div style="width:100%; margin-top:10px; border-top:1px solid var(--border-dim); padding-top:8px;">
                     <div style="font-size:9.5px; line-height: 1.4;">
-                        <div>GPS / POSITION : <span id="st-gps" style="color:var(--amber);">Recherche de position...</span></div>
+                        <div>GPS / STATION : <span id="st-gps" style="color:var(--amber);">Initialisation...</span></div>
                         <div>QUATERNION [w,x,y,z] : <span id="st-quat" style="color:var(--neon-green);">[1,0,0,0]</span></div>
                         <div>CRÊTE PARABOLE : <span id="val-parabole" style="color:var(--amber)">--</span></div>
                     </div>
@@ -110,16 +108,16 @@
             </table>
             <div style="margin-top: 15px;">
                 <div class="panel-title" style="margin-bottom: 6px;">JOURNAL SYSTÈMES SOUVERAINS</div>
-                <div class="log-console" id="logConsole">[SENTINELA v15.1] Initialisation des scripts du dépôt...</div>
+                <div class="log-console" id="logConsole">[SENTINELA v15.2] Démarrage automatique du noyau...</div>
             </div>
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 12px;">
             <div class="panel">
-                <div class="panel-title">CARTE SÉLECTEUR D'EMPLACEMENT 3D</div>
+                <div class="panel-title">CARTE SÉLECTEUR 3D (CLIQUEZ / PRÉRÉGLAGES)</div>
                 <canvas id="mapCanvas" width="300" height="160"></canvas>
                 <div style="font-size: 9.5px; color: var(--sky); margin-top: 6px; text-align: center;">
-                    Cliquez sur la carte ou utilisez un préréglage pour changer de station géodésique.
+                    Changement dynamique de station géodésique.
                 </div>
                 <div style="display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; justify-content: center;">
                     <button class="btn-action" onclick="fixerStation(43.2843, 5.3585, 'Marseille')">Marseille</button>
@@ -137,11 +135,11 @@
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
     
     let modeJourActif = false;
-    let imuActif = true;
     let yawSommetAbsolu = 0;
     let quaternionActuel = { w: 1, x: 0, y: 0, z: 0 };
     let decalageEpochUtc = 0; 
     
+    // Station par défaut (Marseille) immédiatement active pour ne jamais bloquer les calculs
     let station3D = { lat: 43.284356, lon: 5.358507, altGps: 100.0, X_itrs: 0, Y_itrs: 0, Z_itrs: 0, gpsAcquis: true, temp: 29.9, pres: 1013.25 };
 
     // Synchronisation NTP de secours
@@ -149,9 +147,9 @@
         .then(res => res.json())
         .then(data => {
             decalageEpochUtc = new Date(data.datetime).getTime() - performance.now();
-            ecrireLog("[SYNCHRONISATION] Heure UTC souveraine alignée.");
+            ecrireLog("[SYNCHRONISATION] Heure UTC souveraine alignée via réseau.");
         })
-        .catch(() => ecrireLog("[SYNCHRONISATION] Mode autonome activé."));
+        .catch(() => ecrireLog("[SYNCHRONISATION] Mode autonome souverain activé."));
 
     function obtenirTempsAtomiqueUtc() {
         return (decalageEpochUtc !== 0) ? performance.now() + decalageEpochUtc : Date.now();
@@ -165,7 +163,7 @@
     }
 
     // =========================================================================
-    // WORKER WEB : Utilisation des fichiers vsop2013.js et ElpMpp02DE_min.js
+    // WORKER WEB : Calculs astronomiques indépendants
     // =========================================================================
     const codeIA2 = `
         importScripts('./vsop2013.js', './ElpMpp02DE_min.js');
@@ -246,7 +244,7 @@
 
     vsopWorker.onmessage = function(e) {
         document.getElementById('badge-moteur').className = "status-badge badge-ok";
-        document.getElementById('badge-moteur').innerText = "WORKER ACTIF (DÉPÔT)";
+        document.getElementById('badge-moteur').innerText = "WORKER SOUVERAIN ACTIF";
         mettreAJourInterface(e.data);
     };
 
@@ -266,13 +264,13 @@
         station3D.lat = lat;
         station3D.lon = lon;
         actualiserVecteurStationITRS();
-        document.getElementById('st-gps').innerText = `${lat.}° N, ${lon.}° E (${nom})`;
-        ecrireLog(`[STATION 3D] Emplacement basculé sur ${nom} (${lat}, ${lon}).`);
+        document.getElementById('st-gps').innerText = `${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E (${nom})`;
+        ecrireLog(`[STATION] Position basculée sur ${nom}.`);
         dessinerCarte3D();
     }
 
     // =========================================================================
-    // CARTE 3D INTERACTIVE (Sélecteur d'emplacement spatial)
+    // CARTE 3D INTERACTIVE & RADAR
     // =========================================================================
     function dessinerCarte3D() {
         const canvas = document.getElementById('mapCanvas');
@@ -283,13 +281,11 @@
         ctx.fillStyle = modeJourActif ? '#e6edf3' : '#040d1a';
         ctx.fillRect(0, 0, w, h);
 
-        // Grille équatoriale et méridiens simplifiés (Projection équirectangulaire)
         ctx.strokeStyle = modeJourActif ? '#cbd5e1' : '#1f293d';
         ctx.lineWidth = 1;
         for(let x=0; x<w; x+=30) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
         for(let y=0; y<h; y+=30) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
 
-        // Marqueur de la station active
         const xMark = (station3D.lon + 180) * (w / 360);
         const yMark = (90 - station3D.lat) * (h / 180);
 
@@ -300,12 +296,9 @@
 
     document.getElementById('mapCanvas').addEventListener('click', (e) => {
         const rect = e.target.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-
+        const x = e.clientX - rect.left, y = e.clientY - rect.top;
         const lon = (x / rect.width) * 360.0 - 180.0;
         const lat = 90.0 - (y / rect.height) * 180.0;
-
         fixerStation(parseFloat(lat.toFixed(4)), parseFloat(lon.toFixed(4)), 'Sélecteur 3D');
     });
 
@@ -358,15 +351,13 @@
         }
     }
 
-    function lancerArbitre4D() {
+    // =========================================================================
+    // LANCEMENT AUTOMATIQUE GLOBAL (Dès l'ouverture)
+    // =========================================================================
+    function lancerBoucleAutomatique() {
         document.getElementById('lbl-epoch').innerText = new Date(obtenirTempsAtomiqueUtc()).toISOString().replace('T', ' ').slice(0, 23) + " UTC";
-        ecrireLog("[ARBITRE] Boucle synchrone active.");
-        boucleArbitre60Hz();
-    }
-
-    function boucleArbitre60Hz() {
         vsopWorker.postMessage({ timestampUtc: obtenirTempsAtomiqueUtc(), station3D, astres: ASTRES });
-        requestAnimationFrame(boucleArbitre60Hz);
+        requestAnimationFrame(lancerBoucleAutomatique);
     }
 
     function mettreAJourInterface(donnees) {
@@ -385,7 +376,7 @@
             if (azEl) azEl.innerHTML = formaterChiffreArcEnCiel(d.azVrai);
             if (elEl) elEl.innerHTML = formaterChiffreArcEnCiel(d.elRefractee);
             if (distEl) distEl.innerText = d.distanceUA.toFixed(6) + " UA";
-            if (infEl) infEl.innerText = d.inflexion;
+              if (infEl) infEl.innerText = d.inflexion;
             if (oeilEl) {
                 oeilEl.innerText = d.elRefractee > 0 ? "OUI" : "NON";
                 oeilEl.style.color = d.elRefractee > 0 ? "var(--neon-green)" : "var(--rose)";
@@ -401,28 +392,58 @@
         dessinerCarte3D();
     }
 
-    function demanderAutorisationCapteurs() {
+    // Activation automatique des capteurs IMU sans clic requis si le navigateur l'autorise
+    function initialiserIMUAutomatique() {
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            DeviceOrientationEvent.requestPermission().then(state => { if (state === 'granted') activerIMU(); });
-        } else { activerIMU(); }
+            DeviceOrientationEvent.requestPermission().then(state => {
+                if (state === 'granted') ecouterCapteursIMU();
+            }).catch(() => {});
+        } else {
+            ecouterCapteursIMU();
+        }
     }
 
-    function activerIMU() {
+    function ecouterCapteursIMU() {
         window.addEventListener('deviceorientation', (e) => {
-            if (!imuActif || e.alpha === null) return;
+            if (e.alpha === null) return;
             yawSommetAbsolu = e.alpha;
             document.getElementById('st-quat').innerText = `[${quaternionActuel.w.toFixed(2)}, ...]`;
         }, true);
-        ecrireLog("[IMU] Capteurs activés.");
+    }
+
+    // Essai GPS natif, avec secours automatique immédiat si refusé
+    function initialiserGPSAutonome() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    station3D.lat = pos.coords.latitude;
+                    station3D.lon = pos.coords.longitude;
+                    station3D.altGps = pos.coords.altitude || 100.0;
+                    actualiserVecteurStationITRS();
+                    document.getElementById('st-gps').innerText = `${station3D.lat.toFixed(4)}° N, ${station3D.lon.toFixed(4)}° E (GPS)`;
+                    ecrireLog("[GPS] Position réelle verrouillée.");
+                },
+                () => {
+                    actualiserVecteurStationITRS();
+                    document.getElementById('st-gps').innerText = `${station3D.lat.toFixed(4)}° N, ${station3D.lon.toFixed(4)}° E (Secours Marseille)`;
+                    ecrireLog("[GPS] Refus ou indisponible -> Station secours Marseille active.");
+                },
+                { timeout: 4000 }
+            );
+        } else {
+            actualiserVecteurStationITRS();
+        }
     }
 
     window.addEventListener('load', () => {
         initialiserTableauHtml();
-        actualiserVecteurStationITRS();
         dessinerCarte3D();
-        ecrireLog("[SENTINELA v15.1] Prêt. Fichiers du dépôt chargés.");
-        lancerArbitre4D();
+        initialiserGPSAutonome();
+        initialiserIMUAutomatique();
+        ecrireLog("[SENTINELA v15.2] Noyau souverain totalement automatisé.");
+        lancerBoucleAutomatique();
     });
 </script>
 </body>
 </html>
+       
