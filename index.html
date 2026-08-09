@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>SYSTEMA SENTINELA v14.3 — GALAXY S21 ULTRA / SOUVERAINETÉ TOTALE</title>
+    <title>SYSTEMA SENTINELA v14.4 — GALAXY S21 ULTRA / SOUVERAINETÉ TOTALE</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -77,7 +77,7 @@
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v14.3 — GALAXY S21 ULTRA / SOUVERAINETÉ TOTALE</div>
+        <div class="brand">SYSTEMA SENTINELA v14.4 — GALAXY S21 ULTRA / SOUVERAINETÉ TOTALE</div>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <div>TEMPS SOUVERAIN : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">SYNCHRONISATION...</span></div>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR/NUIT</button>
@@ -115,7 +115,7 @@
             </div>
             <div class="panel">
                 <div class="panel-title">JOURNAL SYSTÈMES (LOGS SOUVERAINS)</div>
-                <div class="log-console" id="logConsole">[SENTINELA v14.3] Initialisation du noyau multi-physique déterministe...</div>
+                <div class="log-console" id="logConsole">[SENTINELA v14.4] Initialisation du noyau multi-physique déterministe...</div>
             </div>
         </div>
 
@@ -177,7 +177,6 @@
     let yawDeviceLisse = 0;
     const factorLissageIMU = 0.2; 
 
-    // Horloge Souveraine Découplée de l'OS Android
     const tempsAncreSysteme = performance.now();
     const tempsAncreAstro = Date.now(); 
     let deltaTempsSouverainAstro = 0; 
@@ -185,7 +184,6 @@
     let streamCamera = null;
     let station3D = { lat: 43.284356, lon: 5.358507, altGps: 99.31, X_itrs: 0, Y_itrs: 0, Z_itrs: 0, gpsAcquis: false };
 
-    // Résolution d'origine pour le Web Worker (GitHub Pages / Local)
     const cheminBase = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
 
     const workerCode = `
@@ -193,6 +191,25 @@
             importScripts('${cheminBase}vsop2013.js', '${cheminBase}ElpMpp02DE_min.js');
         } catch(e) {
             importScripts('vsop2013.js', 'ElpMpp02DE_min.js');
+        }
+
+        // Table de correspondance Multilingue FR -> EN pour VSOP2013
+        const MAP_VSOP = {
+            'soleil': 'sun',
+            'terre': 'earth',
+            'mercure': 'mercury',
+            'venus': 'venus',
+            'mars': 'mars',
+            'jupiter': 'jupiter',
+            'saturne': 'saturn',
+            'uranus': 'uranus',
+            'neptune': 'neptune'
+        };
+
+        function getVsopBody(nomFr) {
+            if (typeof vsop2013 === 'undefined') return null;
+            let keyEn = MAP_VSOP[nomFr] || nomFr;
+            return vsop2013[keyEn] || vsop2013[nomFr] || null;
         }
 
         self.onmessage = function(e) {
@@ -208,20 +225,20 @@
             const cosLon = Math.cos(lon_rad), sinLon = Math.sin(lon_rad);
 
             let posTerre = { x: 0, y: 0, z: 0 };
-            if (vsop2013.terre && typeof vsop2013.terre.position === 'function') {
-                let pT = vsop2013.terre.position(T);
+            let objTerre = getVsopBody('terre');
+            if (objTerre && typeof objTerre.position === 'function') {
+                let pT = objTerre.position(T);
                 posTerre = { x: pT.x * 149597870700.0, y: pT.y * 149597870700.0, z: pT.z * 149597870700.0 };
             }
 
             let resultats = {};
             let elevationSoleilGlobale = 0;
-            let lonSolGlobal = 0;
+            let lonSolGlobal = Math.atan2(-posTerre.y, -posTerre.x) * 180.0 / Math.PI;
 
             astres.forEach(astre => {
                 let vecAstre = { x: 0, y: 0, z: 0 };
                 if (astre === 'soleil') {
                     vecAstre = { x: -posTerre.x, y: -posTerre.y, z: -posTerre.z };
-                    lonSolGlobal = Math.atan2(-posTerre.y, -posTerre.x) * 180.0 / Math.PI;
                 } else if (astre === 'lune') {
                     if (typeof getX2000_DE === 'function') {
                         let pLuneGeo = getX2000_DE(T);
@@ -229,11 +246,18 @@
                     } else {
                         return;
                     }
-                } else if (vsop2013[astre] && typeof vsop2013[astre].position === 'function') {
-                    let pA = vsop2013[astre].position(T);
-                    vecAstre = { x: pA.x * 149597870700.0 - posTerre.x, y: pA.y * 149597870700.0 - posTerre.y, z: pA.z * 149597870700.0 - posTerre.z };
                 } else {
-                    return;
+                    let objAstre = getVsopBody(astre);
+                    if (objAstre && typeof objAstre.position === 'function') {
+                        let pA = objAstre.position(T);
+                        vecAstre = { 
+                            x: pA.x * 149597870700.0 - posTerre.x, 
+                            y: pA.y * 149597870700.0 - posTerre.y, 
+                            z: pA.z * 149597870700.0 - posTerre.z 
+                        };
+                    } else {
+                        return;
+                    }
                 }
 
                 const topo_X = vecAstre.x - station3D.X_itrs;
@@ -343,6 +367,10 @@
     }
 
     async function demanderAutorisationCapteurs() {
+        if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            ecrireLog("[ATTENTION HTTPS] Android exige une connexion HTTPS pour activer GPS et Caméra.");
+        }
+
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             try {
                 const response = await DeviceOrientationEvent.requestPermission();
@@ -456,7 +484,7 @@
                 videoEl.style.display = 'block';
                 ecrireLog("[OPTIQUE] Caméra arrière S21 engagée.");
             } catch (err) {
-                ecrireLog("[ERREUR CAMÉRA] Accès refusé ou indisponible.");
+                ecrireLog("[ERREUR CAMÉRA] Accès refusé ou hors HTTPS.");
                 checkbox.checked = false;
                 cameraActive = false;
             }
@@ -472,7 +500,7 @@
         const canvasTraitement = document.getElementById('canvas-traitement');
         
         if (!cameraActive || videoEl.readyState !== videoEl.HAVE_ENOUGH_DATA) {
-            ecrireLog("[CALAGE OPTIQUE] Flux vidéo inactif ou non prêt.");
+            ecrireLog("[CALAGE OPTIQUE] Activer d'abord la caméra S21.");
             return;
         }
 
@@ -631,11 +659,10 @@
 
     window.addEventListener('load', () => {
         initialiserTableauHtml();
-        ecrireLog("[SENTINELA v14.3] Noyau initialisé. Station de secours Marseille configurée.");
+        ecrireLog("[SENTINELA v14.4] Noyau initialisé. Station de secours Marseille configurée.");
         actualiserVecteurStationITRS();
         requestAnimationFrame(bouclePrincipaleUI);
     });
 </script>
 </body>
 </html>
-            
