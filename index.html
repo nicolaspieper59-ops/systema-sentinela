@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>SYSTEMA SENTINELA v15.3 — GALAXY S21 ULTRA / GLOBE 3D SCIENTIFIQUE</title>
+    <title>SYSTEMA SENTINELA v15.4 — GALAXY S21 ULTRA / SOUVERAINETÉ SCIENTIFIQUE</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -30,7 +30,6 @@
         .brand { font-size: 12px; font-weight: bold; letter-spacing: 0.5px; }
         .status-badge { padding: 3px 6px; border-radius: 4px; font-weight: bold; font-size: 9.5px; }
         .badge-ok { background: rgba(63,185,80,0.15); color: var(--neon-green); border: 1px solid var(--neon-green); }
-        .badge-err { background: rgba(248,81,73,0.15); color: var(--rose); border: 1px solid var(--rose); }
         .badge-warn { background: rgba(210,153,34,0.15); color: var(--amber); border: 1px solid var(--amber); }
         
         .grid-layout { display: grid; grid-template-columns: 1fr; gap: 12px; }
@@ -63,11 +62,11 @@
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v15.3 — GALAXY S21 ULTRA / GLOBE 3D</div>
+        <div class="brand">SYSTEMA SENTINELA v15.4 — SOUVERAINETÉ AUTOMATIQUE</div>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <div>UTC ATOMIQUE : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">SYNCHRONISATION...</span></div>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR/NUIT</button>
-            <span id="badge-moteur" class="status-badge badge-warn">WORKER EN CHARGEMENT</span>
+            <span id="badge-moteur" class="status-badge badge-warn">ATTENTE WORKER</span>
         </div>
     </header>
 
@@ -105,16 +104,16 @@
             </table>
             <div style="margin-top: 15px;">
                 <div class="panel-title" style="margin-bottom: 6px;">JOURNAL SYSTÈMES SOUVERAINS</div>
-                <div class="log-console" id="logConsole">[SENTINELA v15.3] Initialisation du noyau 3D...</div>
+                <div class="log-console" id="logConsole">[SENTINELA v15.4] Démarrage du noyau...</div>
             </div>
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 12px;">
             <div class="panel">
-                <div class="panel-title">GLOBE GÉODÉSIQUE 3D (ORTHOGRAPHIQUE)</div>
+                <div class="panel-title">GLOBE GÉODÉSIQUE 3D</div>
                 <canvas id="globeCanvas" width="300" height="200"></canvas>
                 <div style="font-size: 9.5px; color: var(--sky); margin-top: 6px; text-align: center;">
-                    Modélisation ellipsoïdale WGS84 & Rotation interactive.
+                    Glissez pour faire pivoter le globe.
                 </div>
                 <div style="display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; justify-content: center;">
                     <button class="btn-action" onclick="fixerStation(43.2843, 5.3585, 'Marseille')">Marseille</button>
@@ -133,10 +132,7 @@
     
     let modeJourActif = false;
     let yawSommetAbsolu = 0;
-    let quaternionActuel = { w: 1, x: 0, y: 0, z: 0 };
     let decalageEpochUtc = 0;
-    
-    // Angles de rotation du Globe 3D scientifique
     let globeRotationLon = 5.3585;
     let globeRotationLat = 43.2843;
     let isDragging = false;
@@ -144,14 +140,10 @@
     
     let station3D = { lat: 43.284356, lon: 5.358507, altGps: 100.0, X_itrs: 0, Y_itrs: 0, Z_itrs: 0, gpsAcquis: true, temp: 29.9, pres: 1013.25 };
 
-    // Synchronisation UTC
     fetch('https://worldtimeapi.org/api/timezone/Etc/UTC')
         .then(res => res.json())
-        .then(data => {
-            decalageEpochUtc = new Date(data.datetime).getTime() - performance.now();
-            ecrireLog("[SYNCHRONISATION] Heure UTC souveraine alignée.");
-        })
-        .catch(() => ecrireLog("[SYNCHRONISATION] Mode autonome activé."));
+        .then(data => { decalageEpochUtc = new Date(data.datetime).getTime() - performance.now(); })
+        .catch(() => {});
 
     function obtenirTempsAtomiqueUtc() {
         return (decalageEpochUtc !== 0) ? performance.now() + decalageEpochUtc : Date.now();
@@ -164,16 +156,14 @@
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
-    // Instanciation propre du Worker externe sans blocage CORS
+    // Instanciation du Worker pointant vers le fichier physique
     const vsopWorker = new Worker('./worker_astronomie.js');
 
     vsopWorker.onmessage = function(e) {
         if (e.data.status === 'OK') {
             document.getElementById('badge-moteur').className = "status-badge badge-ok";
-            document.getElementById('badge-moteur').innerText = "WORKER SOUVERAIN ACTIF";
+            document.getElementById('badge-moteur').innerText = "WORKER ACTIF";
             mettreAJourInterface(e.data.data);
-        } else {
-            ecrireLog(`[ERREUR WORKER] ${e.data.message}`);
         }
     };
 
@@ -182,7 +172,6 @@
         const lambda = station3D.lon * Math.PI / 180.0;
         const h = station3D.altGps;
         const N = WGS84.a / Math.sqrt(1.0 - WGS84.e2 * Math.sin(phi) * Math.sin(phi));
-
         station3D.X_itrs = (N + h) * Math.cos(phi) * Math.cos(lambda);
         station3D.Y_itrs = (N + h) * Math.cos(phi) * Math.sin(lambda);
         station3D.Z_itrs = (N * (1.0 - WGS84.e2) + h) * Math.sin(phi);
@@ -190,19 +179,14 @@
     }
 
     function fixerStation(lat, lon, nom) {
-        station3D.lat = lat;
-        station3D.lon = lon;
-        globeRotationLat = lat;
-        globeRotationLon = lon;
+        station3D.lat = lat; station3D.lon = lon;
+        globeRotationLat = lat; globeRotationLon = lon;
         actualiserVecteurStationITRS();
         document.getElementById('st-gps').innerText = `${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E (${nom})`;
-        ecrireLog(`[STATION] Position fixée sur ${nom}.`);
+        ecrireLog(`[STATION] Fixé sur ${nom}.`);
         dessinerGlobe3D();
     }
 
-    // =========================================================================
-    // MOTEUR GLOBE 3D SCIENTIFIQUE (Projection Orthographique & Rotation)
-    // =========================================================================
     function dessinerGlobe3D() {
         const canvas = document.getElementById('globeCanvas');
         const ctx = canvas.getContext('2d');
@@ -210,27 +194,20 @@
         const cx = w / 2, cy = h / 2, R = Math.min(cx, cy) - 15;
 
         ctx.clearRect(0, 0, w, h);
-
-        // Fond du globe (océan)
         ctx.fillStyle = modeJourActif ? '#e1ecf4' : '#051124';
         ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.fill();
-        ctx.strokeStyle = varCss('--sky'); ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 1.5; ctx.stroke();
 
-        // Conversion des coordonnées de la station active en 3D orthographique
         const phi0 = globeRotationLat * Math.PI / 180.0;
         const lam0 = globeRotationLon * Math.PI / 180.0;
 
-        // Tracé des méridiens et parallèles scientifiques (effet sphérique)
         ctx.strokeStyle = modeJourActif ? '#cbd5e1' : '#1e293b';
         ctx.lineWidth = 0.75;
-        
         for (let lat = -60; lat <= 60; lat += 30) {
             ctx.beginPath();
             let first = true;
             for (let lon = -180; lon <= 180; lon += 5) {
-                const phi = lat * Math.PI / 180.0;
-                const lam = lon * Math.PI / 180.0;
-                // Rotation par rapport au centre de vue
+                const phi = lat * Math.PI / 180.0, lam = lon * Math.PI / 180.0;
                 const cosC = Math.sin(phi0)*Math.sin(phi) + Math.cos(phi0)*Math.cos(phi)*Math.cos(lam - lam0);
                 if (cosC > 0) {
                     const x = cx + R * Math.cos(phi) * Math.sin(lam - lam0);
@@ -241,12 +218,8 @@
             ctx.stroke();
         }
 
-        // Marqueur de la station active sur le globe
-        const phiSt = station3D.lat * Math.PI / 180.0;
-        const lamSt = station3D.lon * Math.PI / 180.0;
-        const cosCSt = Math.sin(phi0)*Math.sin(phiSt) + Math.cos(phi0)*Math.cos(phiSt)*Math.cos(lamSt - lam0);
-        
-        if (cosCSt > 0) {
+        const phiSt = station3D.lat * Math.PI / 180.0, lamSt = station3D.lon * Math.PI / 180.0;
+        if ((Math.sin(phi0)*Math.sin(phiSt) + Math.cos(phi0)*Math.cos(phiSt)*Math.cos(lamSt - lam0)) > 0) {
             const xSt = cx + R * Math.cos(phiSt) * Math.sin(lamSt - lam0);
             const ySt = cy - R * (Math.cos(phi0)*Math.sin(phiSt) - Math.sin(phi0)*Math.cos(phiSt)*Math.cos(lamSt - lam0));
             ctx.fillStyle = 'var(--rose)';
@@ -255,20 +228,13 @@
         }
     }
 
-    function varCss(name) {
-        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    }
-
-    // Interaction souris / tactile pour faire pivoter le globe scientifique 3D
     const globeCanvas = document.getElementById('globeCanvas');
     globeCanvas.addEventListener('mousedown', (e) => { isDragging = true; mouseLastX = e.clientX; mouseLastY = e.clientY; });
     window.addEventListener('mouseup', () => { isDragging = false; });
     globeCanvas.addEventListener('mousemove', (e) => {
         if (!isDragging) return;
-        const dx = e.clientX - mouseLastX;
-        const dy = e.clientY - mouseLastY;
-        globeRotationLon -= dx * 0.5;
-        globeRotationLat = Math.max(-85, Math.min(85, globeRotationLat + dy * 0.5));
+        globeRotationLon -= (e.clientX - mouseLastX) * 0.5;
+        globeRotationLat = Math.max(-85, Math.min(85, globeRotationLat + (e.clientY - mouseLastY) * 0.5));
         mouseLastX = e.clientX; mouseLastY = e.clientY;
         dessinerGlobe3D();
     });
@@ -303,14 +269,12 @@
         const canvas = document.getElementById('radarCanvas');
         const ctx = canvas.getContext('2d');
         const cx = canvas.width / 2, cy = canvas.height / 2, rMax = cx - 15;
-
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.strokeStyle = modeJourActif ? '#d1d5db' : '#21262d';
         ctx.lineWidth = 1;
         [0.33, 0.66, 1.0].forEach(scale => {
             ctx.beginPath(); ctx.arc(cx, cy, rMax * scale, 0, 2 * Math.PI); ctx.stroke();
         });
-
         for (const astre in positions) {
             const data = positions[astre];
             if (data.el > -1.0) {
@@ -333,18 +297,13 @@
         for (const astre in donnees) {
             const d = donnees[astre];
             positionsRadar[astre] = { az: d.azVrai, el: d.elRefractee };
-
-            const azEl = document.getElementById(`az-${astre}`);
-            const elEl = document.getElementById(`el-${astre}`);
-            const distEl = document.getElementById(`dist-${astre}`);
-            const oeilEl = document.getElementById(`oeil-${astre}`);
-            const jumEl = document.getElementById(`jum-${astre}`);
-            const infEl = document.getElementById(`inf-${astre}`);
+            document.getElementById(`az-${astre}`).innerHTML = formaterChiffreArcEnCiel(d.azVrai);
+            document.getElementById(`el-${astre}`).innerHTML = formaterChiffreArcEnCiel(d.elRefractee);
+            document.getElementById(`dist-${astre}`).innerText = d.distanceUA.toFixed(6) + " UA";
+            document.getElementById(`inf-${astre}`).innerText = d.inflexion;
             
-            if (azEl) azEl.innerHTML = formaterChiffreArcEnCiel(d.azVrai);
-            if (elEl) elEl.innerHTML = formaterChiffreArcEnCiel(d.elRefractee);
-            if (distEl) distEl.innerText = d.distanceUA.toFixed(6) + " UA";
-            if (infEl) infEl.innerText = d.inflexion;
+            let oeilEl = document.getElementById(`oeil-${astre}`);
+            let jumEl = document.getElementById(`jum-${astre}`);
             if (oeilEl) {
                 oeilEl.innerText = d.elRefractee > 0 ? "OUI" : "NON";
                 oeilEl.style.color = d.elRefractee > 0 ? "var(--neon-green)" : "var(--rose)";
@@ -365,9 +324,12 @@
         initialiserTableauHtml();
         actualiserVecteurStationITRS();
         dessinerGlobe3D();
-        ecrireLog("[SENTINELA v15.3] Noyau initialisé avec Globe 3D orthographique.");
+        ecrireLog("[SENTINELA v15.4] Noyau initialisé.");
         lancerBoucleAutomatique();
     });
 </script>
+
+<script src="ElpMpp02DE_min.js"></script>
+<script src="vsop2013.js"></script>
 </body>
-    </html>
+</html>
