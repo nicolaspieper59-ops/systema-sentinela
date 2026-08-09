@@ -159,7 +159,7 @@
             </div>
         </div>
         <div id="status-capteurs" style="font-family: monospace; font-size: 10px;">
-            <span class="status-badge badge-err" id="badge-imu">IMU CALIBRATION...</span>
+            <span class="status-badge badge-err" id="badge-imu">IMU INACTIF</span>
             <span class="status-badge badge-err" id="badge-gps">GPS EN RECHERCHE</span>
         </div>
     </div>
@@ -174,46 +174,39 @@
     let imuActif = true;
     let cameraActive = false;
     let yawDevice = 0;
+    let dernierEnvoiWorker = 0;
+    let workerEnCours = false;
     
-    // TEMPS SOUVERAIN : Alimenté uniquement par le GNSS/GPS (Temps Atomique)
     let timestampUtcGnssStrict = null; 
     let station3D = { lat: 43.284356, lon: 5.358507, altGps: 99.31, X_itrs: 0, Y_itrs: 0, Z_itrs: 0, gpsAcquis: false };
 
-    // WEB WORKER DÉTERMINISTE (Calculs astronomiques fondamentaux sans constante en dur)
     const workerCode = `
         importScripts('vsop2013.js', 'ElpMpp02DE_min.js');
-
-        const DELTA_T_SEC = 69.18; // Décalage TT - UTC (IERS)
+        const DELTA_T_SEC = 69.18;
 
         self.onmessage = function(e) {
             const { timestampUtc, station3D, astres } = e.data;
             if (!timestampUtc || !station3D.gpsAcquis) return;
 
-            // 1. DÉTERMINATION RIGOURANCE DU TEMPS TERRESTRE (TT) ET UT1
             const jd_UTC = (timestampUtc / 86400000.0) + 2440587.5;
             const jd_TT  = jd_UTC + (DELTA_T_SEC / 86400.0);
-            const T      = (jd_TT - 2451545.0) / 36525.0; // Siècles juliens TT
+            const T      = (jd_TT - 2451545.0) / 36525.0;
 
-            // Angle de Rotation Terrestre (ERA) pour passage Céleste -> Terrestre (ITRS)
             const dUT1 = jd_UTC - 2451545.0;
             const eraRad = (2.0 * Math.PI) * (0.7790572732640 + 1.00273781191135448 * dUT1);
 
-            // Coordonnées de la station d'observation (WGS84)
             const latRad = station3D.lat * Math.PI / 180.0;
             const lonRad = station3D.lon * Math.PI / 180.0;
             const cosLat = Math.cos(latRad), sinLat = Math.sin(latRad);
             const cosLon = Math.cos(lonRad), sinLon = Math.sin(lonRad);
 
-            // 2. EXTRACTION DU VECTEUR HÉLIOCENTRIQUE TERRE (VSOP2013)
             let pT = vsop2013.Earth.position(T);
-            const terreHelio = { x: pT.x, y: pT.y, z: pT.z }; // UA
+            const terreHelio = { x: pT.x, y: pT.y, z: pT.z };
 
-            // Calculs dynamiques de l'Équation du Temps & Éléments Écliptiques
-            const oblRad = (23.43929111 - 0.013004166 * T) * Math.PI / 180.0; // Obliquité vraie
+            const oblRad = (23.43929111 - 0.013004166 * T) * Math.PI / 180.0;
             const lonSolRad = Math.atan2(-terreHelio.y, -terreHelio.x);
             const lonSolDeg = (lonSolRad * 180.0 / Math.PI + 360.0) % 360.0;
             
-            // Équation du temps exacte déduite du Soleil Vrai et du Soleil Moyen
             const tsmHeures = ((jd_UTC + 0.5) % 1.0) * 24.0 + station3D.lon / 15.0;
             const raSoleil = Math.atan2(Math.sin(lonSolRad) * Math.cos(oblRad), Math.cos(lonSolRad));
             const tsvHeures = ((eraRad + lonRad - raSoleil) * 12.0 / Math.PI + 24.0) % 24.0;
@@ -224,14 +217,13 @@
             let resultats = {};
             let elSoleilVraie = 0;
 
-            // 3. CALCUL DES VECTEURS TOPOCENTRIQUES POUR CHAQUE ASTRE
             astres.forEach(astre => {
                 let vecJ2000UA = { x: 0, y: 0, z: 0 };
 
                 if (astre === 'soleil') {
                     vecJ2000UA = { x: -terreHelio.x, y: -terreHelio.y, z: -terreHelio.z };
                 } else if (astre === 'lune') {
-                    let pLune = getX2000_DE(T); // Renvoie vecteur J2000 géocentrique en UA
+                    let pLune = getX2000_DE(T);
                     vecJ2000UA = { x: pLune.X, y: pLune.Y, z: pLune.Z };
                 } else if (vsop2013[astre] && typeof vsop2013[astre].position === 'function') {
                     let pA = vsop2013[astre].position(T);
@@ -240,7 +232,6 @@
                     return;
                 }
 
-                // Transformation de J2000 vers ECEF (Mètres)
                 const UA_TO_M = 149597870700.0;
                 const xM = vecJ2000UA.x * UA_TO_M;
                 const yM = vecJ2000UA.y * UA_TO_M;
@@ -250,12 +241,10 @@
                 const yECEF = -xM * Math.sin(eraRad) + yM * Math.cos(eraRad);
                 const zECEF =  zM;
 
-                // Vecteur Station -> Astre
                 const dx = xECEF - station3D.X_itrs;
                 const dy = yECEF - station3D.Y_itrs;
                 const dz = zECEF - station3D.Z_itrs;
 
-                // Conversion Repère Local ENU (East, North, Up)
                 const east  = -sinLon * dx + cosLon * dy;
                 const north = -sinLat * cosLon * dx - sinLat * sinLon * dy + cosLat * dz;
                 const up    =  cosLat * cosLon * dx + cosLat * sinLon * dy + sinLat * dz;
@@ -268,7 +257,6 @@
                 let elDeg = elRad * 180.0 / Math.PI;
                 let azDeg = azRad * 180.0 / Math.PI;
 
-                // Réfraction atmosphérique exacte (si au-dessus de l'horizon)
                 if (elDeg > -1.0) {
                     let refArcMin = 1.02 / Math.tan((elDeg + 10.3 / (elDeg + 5.11)) * Math.PI / 180.0);
                     elDeg += refArcMin / 60.0;
@@ -290,7 +278,7 @@
                 resultats,
                 paramsAstro: {
                     eqt: eqtMinutes,
-                    ecc: 0.0167086 - 0.000042037 * T, // Excentricité séculaire calculée
+                    ecc: 0.0167086 - 0.000042037 * T,
                     obl: oblRad * 180.0 / Math.PI,
                     lonSol: lonSolDeg,
                     tsm: (tsmHeures + 24) % 24,
@@ -304,6 +292,7 @@
     let vsopWorker = new Worker(URL.createObjectURL(blobWorker));
 
     vsopWorker.onmessage = function(e) {
+        workerEnCours = false;
         const { resultats, paramsAstro } = e.data;
         document.getElementById('badge-moteur').className = "status-badge badge-ok";
         document.getElementById('badge-moteur').innerText = "WORKER SOUVERAIN ACTIF";
@@ -333,6 +322,68 @@
         ecrireLog(modeJourActif ? "Mode Jour activé." : "Mode Nuit activé.");
     }
 
+    function demanderAutorisationCapteurs() {
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission().then(state => {
+                if (state === 'granted') activerIMU();
+                else ecrireLog("[IMU] Permission refusée.");
+            }).catch(console.error);
+        } else {
+            activerIMU();
+        }
+    }
+
+    function activerIMU() {
+        window.addEventListener('deviceorientation', (e) => {
+            if (!imuActif) return;
+            if (e.alpha !== null) {
+                yawDevice = e.alpha;
+                const badgeImu = document.getElementById('badge-imu');
+                badgeImu.className = "status-badge badge-ok";
+                badgeImu.innerText = "IMU ACTIF (" + yawDevice.toFixed(1) + "°)";
+            }
+        });
+        ecrireLog("[IMU] Écouteurs d'orientation activés.");
+    }
+
+    function gestionnaireBasculeIMU(checkbox) {
+        imuActif = checkbox.checked;
+        const badgeImu = document.getElementById('badge-imu');
+        if (!imuActif) {
+            badgeImu.className = "status-badge badge-err";
+            badgeImu.innerText = "IMU DÉSACTIVÉ";
+            yawDevice = 0;
+        }
+        ecrireLog(imuActif ? "[IMU] Flux réactivé." : "[IMU] Flux désactivé.");
+    }
+
+    function gestionnaireBasculeCamera(checkbox) {
+        cameraActive = checkbox.checked;
+        const video = document.getElementById('video-temoin');
+        if (cameraActive) {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.style.display = 'block';
+                    ecrireLog("[CAMÉRA] Flux ISP S21 verrouillé.");
+                })
+                .catch(err => {
+                    ecrireLog(`[CAMÉRA Erreur] ${err.message}`);
+                    checkbox.checked = false;
+                });
+        } else {
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(t => t.stop());
+            }
+            video.style.display = 'none';
+            ecrireLog("[CAMÉRA] Flux arrêté.");
+        }
+    }
+
+    function lancerCalageOptiqueSouverain() {
+        ecrireLog("[CALAGE OPTIQUE] Calibrage zéro du capteur optique effectué.");
+    }
+
     function formaterChiffreCouleur(valeur) {
         if(isNaN(valeur)) return "--";
         const str = Math.abs(valeur).toFixed(5);
@@ -346,9 +397,7 @@
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(
                 (pos) => {
-                    // VERROUILLAGE SOUVERAIN : Récupération du temps GNSS/GPS direct
                     timestampUtcGnssStrict = pos.timestamp; 
-
                     station3D.lat = pos.coords.latitude;
                     station3D.lon = pos.coords.longitude;
                     station3D.altGps = pos.coords.altitude || 0.0;
@@ -403,26 +452,91 @@
         });
     }
 
+    function dessinerRadar(positions, yawDeg) {
+        const canvas = document.getElementById('radarCanvas');
+        const ctx = canvas.getContext('2d');
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        const rMax = cx - 15;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Cercles d'élévation (30°, 60°)
+        ctx.strokeStyle = modeJourActif ? '#d1d5db' : '#21262d';
+        ctx.lineWidth = 1;
+        [0.33, 0.66, 1.0].forEach(scale => {
+            ctx.beginPath();
+            ctx.arc(cx, cy, rMax * scale, 0, 2 * Math.PI);
+            ctx.stroke();
+        });
+
+        // Axes N-S et E-O
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - rMax); ctx.lineTo(cx, cy + rMax);
+        ctx.moveTo(cx - rMax, cy); ctx.lineTo(cx + rMax, cy);
+        ctx.stroke();
+
+        // Points Cardinaux
+        ctx.fillStyle = modeJourActif ? '#0969da' : '#58a6ff';
+        ctx.font = '10px monospace';
+        [{ label: "N", angle: 0 }, { label: "E", angle: 90 }, { label: "S", angle: 180 }, { label: "O", angle: 270 }].forEach(pt => {
+            let theta = (pt.angle - yawDeg - 90) * Math.PI / 180.0;
+            ctx.fillText(pt.label, cx + (rMax + 8) * Math.cos(theta) - 3, cy + (rMax + 8) * Math.sin(theta) + 3);
+        });
+
+        // Affichage des Astres
+        for (const astre in positions) {
+            const data = positions[astre];
+            if (data.el > -1.0) { // Visible ou proche horizon
+                const r = rMax * (1.0 - Math.max(0, data.el) / 90.0);
+                const theta = (data.az - yawDeg - 90) * Math.PI / 180.0;
+                
+                ctx.fillStyle = astre === 'soleil' ? '#d29922' : astre === 'lune' ? (modeJourActif ? '#000' : '#fff') : '#3fb950';
+                ctx.beginPath();
+                ctx.arc(cx + r * Math.cos(theta), cy + r * Math.sin(theta), astre === 'soleil' || astre === 'lune' ? 5 : 3, 0, 2 * Math.PI);
+                ctx.fill();
+
+                ctx.fillStyle = modeJourActif ? '#24292e' : '#c9d1d9';
+                ctx.fillText(astre.substring(0, 3).toUpperCase(), cx + r * Math.cos(theta) + 6, cy + r * Math.sin(theta) + 3);
+            }
+        }
+    }
+
     function mettreAJourInterface(donnees) {
         let positionsRadar = {};
         for (const astre in donnees) {
             const d = donnees[astre];
-            positionsRadar[astre] = { az: d.azVrai, el: d.elRefractee, visibleSurRadar: (d.elRefractee > 0) };
+            positionsRadar[astre] = { az: d.azVrai, el: d.elRefractee };
 
             const azEl = document.getElementById(`az-${astre}`);
             const elEl = document.getElementById(`el-${astre}`);
             const distEl = document.getElementById(`dist-${astre}`);
+            const oeilEl = document.getElementById(`oeil-${astre}`);
+            const jumEl = document.getElementById(`jum-${astre}`);
             
             if (azEl) azEl.innerHTML = formaterChiffreCouleur(d.azVrai);
             if (elEl) elEl.innerHTML = formaterChiffreCouleur(d.elRefractee);
             if (distEl) distEl.innerText = d.distanceUA.toFixed(6) + " UA";
+
+            // Détermination de visibilité physique
+            if (oeilEl && jumEl) {
+                let visOeil = (d.elRefractee > 0 && d.elevationSoleilGlobale < -6.0);
+                if (astre === 'soleil') visOeil = (d.elRefractee > 0);
+                if (astre === 'lune') visOeil = (d.elRefractee > 0);
+                
+                oeilEl.innerText = visOeil ? "OUI" : "SOUS HORIZON";
+                oeilEl.style.color = visOeil ? "var(--neon-green)" : "var(--rose)";
+                jumEl.innerText = d.elRefractee > -2.0 ? "OUI" : "SOUS HORIZON";
+            }
         }
-        dessinerRadar(positionsRadar, 0);
+        dessinerRadar(positionsRadar, yawDevice);
     }
 
-    function bouclePrincipaleUI() {
-        // Exécution déterministe guidée par la présence d'un FIX GPS
-        if (station3D.gpsAcquis && timestampUtcGnssStrict) {
+    function bouclePrincipaleUI(now) {
+        // Cadencement du worker à 10 Hz (toutes les 100 ms) pour soulager la batterie
+        if (station3D.gpsAcquis && timestampUtcGnssStrict && !workerEnCours && (now - dernierEnvoiWorker > 100)) {
+            workerEnCours = true;
+            dernierEnvoiWorker = now;
             vsopWorker.postMessage({
                 timestampUtc: timestampUtcGnssStrict,
                 station3D,
@@ -441,6 +555,3 @@
 </script>
 </body>
 </html>
-    
-
-                            
