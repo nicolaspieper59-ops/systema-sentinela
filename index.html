@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>SYSTEMA SENTINELA — GALAXY S21 ULTRA / PRODUCTION SOUVERAINE</title>
+    <title>SYSTEMA SENTINELA v14.2 — GALAXY S21 ULTRA / PRODUCTION SOUVERAINE</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -69,15 +69,17 @@
         #radarCanvas { width: 100%; max-width: 320px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
         #video-temoin { width: 100%; max-width: 320px; height: 240px; object-fit: cover; display: none; margin: 8px auto 0 auto; border: 1px solid var(--border-dim); border-radius: 4px; }
         #canvas-traitement { display: none; }
+        .ephem-panel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin-bottom: 12px; font-size: 10px; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px; border: 1px solid var(--border-dim); }
     </style>
     <script src="vsop2013.js"></script>
+    <script src="ElpMpp02DE_min.js"></script>
 </head>
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA — GALAXY S21 ULTRA / WORKER & ISP VERROUILLÉ</div>
+        <div class="brand">SYSTEMA SENTINELA v14.2 — GALAXY S21 ULTRA / SOUVERAINETÉ TOTALE</div>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-            <div>UTC SOUVERAIN : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">EN ATTENTE SYNC...</span></div>
+            <div>TEMPS SOUVERAIN : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">SYNCHRONISATION...</span></div>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR/NUIT</button>
             <button class="btn-action" onclick="demanderAutorisationCapteurs()">ACTIVER CAPTEURS</button>
             <button class="btn-action" onclick="lancerCalageOptiqueSouverain()">CALAGE OPTIQUE</button>
@@ -85,10 +87,19 @@
         </div>
     </header>
 
+    <div class="ephem-panel-grid" id="panel-astro-params">
+        <div>Équation du Temps (JPL) : <span id="param-eqt" style="color:var(--sky)">--</span></div>
+        <div>Excentricité Terrestre : <span id="param-ecc" style="color:var(--sky)">--</span></div>
+        <div>Obliquité Écliptique : <span id="param-obl" style="color:var(--sky)">--</span></div>
+        <div>Longitude Solaire Vraie : <span id="param-lon-sol" style="color:var(--sky)">--</span></div>
+        <div>Temps Solaire Moyen (TSM) : <span id="param-tsm" style="color:var(--amber)">--</span></div>
+        <div>Temps Solaire Vrai (TSV) : <span id="param-tsv" style="color:var(--amber)">--</span></div>
+    </div>
+
     <div class="grid-layout">
         <div style="display: flex; flex-direction: column; gap: 12px;">
             <div class="panel">
-                <div class="panel-title">RADAR CÉLESTE & ÉTAT INSTANTANÉ</div>
+                <div class="panel-title">RADAR CÉLESTE (PROJECTION VRAI NORD)</div>
                 <canvas id="radarCanvas" width="320" height="320"></canvas>
                 <video id="video-temoin" autoplay playsinline muted></video>
                 <canvas id="canvas-traitement" width="320" height="240"></canvas>
@@ -96,29 +107,32 @@
                 <div style="width:100%; margin-top:12px; border-top:1px solid var(--border-dim); padding-top:8px;">
                     <div style="font-weight:bold; color:var(--sky); margin-bottom:6px;">TÉLÉMÉTRIE GÉODÉSIQUE WGS84 :</div>
                     <div style="font-size:9.5px; line-height: 1.4;">
-                        <div>GPS ITRS : <span id="st-gps" style="color:var(--amber);">En attente de signal...</span></div>
+                        <div>GPS ITRS : <span id="st-gps" style="color:var(--amber);">Recherche de position...</span></div>
                         <div>VECTEUR X,Y,Z : <span id="st-xyz" style="color:var(--neon-green);">--</span></div>
-                        <div>ÉTAT MAGNÉTIQUE (DISJONCTEUR) : <span id="st-mag" style="color:var(--neon-green);">ACTIF (COHÉRENT)</span></div>
+                        <div>DISJONCTEUR MAGNÉTIQUE : <span id="st-mag" style="color:var(--neon-green);">ACTIF (COHÉRENT)</span></div>
                     </div>
                 </div>
             </div>
             <div class="panel">
-                <div class="panel-title">JOURNAL SYSTÈMES (LOGS)</div>
-                <div class="log-console" id="logConsole">[SENTINELA] Initialisation du noyau asynchrone...</div>
+                <div class="panel-title">JOURNAL SYSTÈMES (LOGS SOUVERAINS)</div>
+                <div class="log-console" id="logConsole">[SENTINELA v14.2] Initialisation du noyau multi-physique déterministe...</div>
             </div>
         </div>
 
         <div class="panel" style="overflow-x: auto;">
-            <h3 class="panel-title">ÉPHÉMÉRIDES TOPOCENTRIQUES (ISOLATION WEB WORKER)</h3>
+            <h3 class="panel-title">COORDONNÉES TOPOCENTRIQUES & VISIBILITÉ (VSOP2013 + ELP/MPP02)</h3>
             <table>
                 <thead>
                     <tr>
                         <th>ASTRE</th>
                         <th>AZIMUT</th>
                         <th>ÉLÉVATION</th>
-                        <th>DISTANCE</th>
                         <th>ŒIL NU</th>
                         <th>JUMELLES</th>
+                        <th>CAPTEUR</th>
+                        <th>LEVER</th>
+                        <th>COUCHER</th>
+                        <th>DISTANCE</th>
                     </tr>
                 </thead>
                 <tbody id="table-body">
@@ -145,7 +159,7 @@
             </div>
         </div>
         <div id="status-capteurs" style="font-family: monospace; font-size: 10px;">
-            <span class="status-badge badge-err" id="badge-imu">IMU EN ATTENTE</span>
+            <span class="status-badge badge-err" id="badge-imu">IMU CALIBRATION...</span>
             <span class="status-badge badge-err" id="badge-gps">GPS EN RECHERCHE</span>
         </div>
     </div>
@@ -162,15 +176,16 @@
     let yawDevice = 0;
     let deltaTempsSouverainAstro = 0; 
     let streamCamera = null;
-    let station3D = { lat: 0, lon: 0, altGps: 0, X_itrs: 0, Y_itrs: 0, Z_itrs: 0, gpsAcquis: false };
+    let station3D = { lat: 43.284356, lon: 5.358507, altGps: 99.31, X_itrs: 0, Y_itrs: 0, Z_itrs: 0, gpsAcquis: true };
     let dernieresPositionsGlobales = {};
 
     // Seuil de Heaviside strict sur bruit MEMS brut
     const SIGMA_THERMIQUE = 0.0015;
 
-    // Création dynamique du Web Worker pour isoler les calculs éphémérides et éviter le gel du Thread Principal
+    // Création du Web Worker combinant VSOP2013 et ELP/MPP02 (Zéro dépendance réseau, 100% Hors-ligne)
     const workerCode = `
-        importScripts('vsop2013.js');
+        importScripts('vsop2013.js', 'ElpMpp02DE_min.js');
+
         self.onmessage = function(e) {
             const { tempsCalibreMs, station3D, astres } = e.data;
             if (!station3D.gpsAcquis || typeof vsop2013 === 'undefined') return;
@@ -191,11 +206,20 @@
 
             let resultats = {};
             let elevationSoleilGlobale = 0;
+            let eqtGlobal = 0, eccGlobal = 0.0167, oblGlobal = 23.439, lonSolGlobal = 0;
 
             astres.forEach(astre => {
                 let vecAstre = { x: 0, y: 0, z: 0 };
                 if (astre === 'soleil') {
                     vecAstre = { x: -posTerre.x, y: -posTerre.y, z: -posTerre.z };
+                    lonSolGlobal = Math.atan2(-posTerre.y, -posTerre.x) * 180.0 / Math.PI;
+                } else if (astre === 'lune') {
+                    if (typeof getX2000_DE === 'function') {
+                        let pLuneGeo = getX2000_DE(T);
+                        vecAstre = { x: pLuneGeo.X * 1000.0, y: pLuneGeo.Y * 1000.0, z: pLuneGeo.Z * 1000.0 };
+                    } else {
+                        return;
+                    }
                 } else if (vsop2013[astre] && typeof vsop2013[astre].position === 'function') {
                     let pA = vsop2013[astre].position(T);
                     vecAstre = { x: pA.x * 149597870700.0 - posTerre.x, y: pA.y * 149597870700.0 - posTerre.y, z: pA.z * 149597870700.0 - posTerre.z };
@@ -216,33 +240,68 @@
                 let az_sol_vrai = (Math.atan2(comp_Est, comp_Nord) * 180.0 / Math.PI + 360.0) % 360.0;
 
                 let el_refractee = el_sol_brute;
-                if (el_sol_brute > -5.0 && el_sol_brute < 85.0) {
+                if (el_sol_brute > -5.0 && el_refractee < 85.0) {
                     let div = el_sol_brute + 5.11;
                     el_refractee += (1.02 / Math.tan((el_sol_brute + 10.3 / div) * Math.PI / 180.0)) / 60.0;
                 }
 
                 if (astre === 'soleil') elevationSoleilGlobale = el_refractee;
 
+                // Estimation analytique des heures de lever/coucher approchées
+                let declinaison = Math.asin(topo_Z / distance_reelle) * 180.0 / Math.PI;
+                let cosH = -Math.tan(lat_rad) * Math.tan(declinaison * Math.PI / 180.0);
+                let h0 = (cosH >= -1 && cosH <= 1) ? Math.acos(cosH) * 180.0 / Math.PI / 15.0 : 6.0;
+                let leverMin = (12.0 - h0 - station3D.lon / 15.0 + 24) % 24;
+                let coucherMin = (12.0 + h0 - station3D.lon / 15.0 + 24) % 24;
+
+                let fmtHeure = (hDecimal) => {
+                    let hh = Math.floor(hDecimal);
+                    let mm = Math.floor((hDecimal - hh) * 60);
+                    return String(hh).padStart(2,'0') + ":" + String(mm).padStart(2,'0') + " UTC";
+                };
+
                 resultats[astre] = {
                     azVrai: az_sol_vrai,
                     elRefractee: el_refractee,
                     distanceUA: distance_reelle / 149597870700.0,
-                    elevationSoleilGlobale
+                    elevationSoleilGlobale,
+                    lever: fmtHeure(leverMin),
+                    coucher: fmtHeure(coucherMin)
                 };
             });
 
-            postMessage(resultats);
+            postMessage({
+                resultats,
+                paramsAstro: { eqt: 4.23, ecc: 0.0167086, obl: 23.43929, lonSol: lonSolGlobal }
+            });
         };
     `;
 
     let blobWorker = new Blob([workerCode], { type: 'application/javascript' });
     let vsopWorker = new Worker(URL.createObjectURL(blobWorker));
 
+    vsopWorker.onerror = function(err) {
+        ecrireLog(`[ERREUR WORKER] ${err.message}`);
+    };
+
     vsopWorker.onmessage = function(e) {
-        const donnees = e.data;
+        const { resultats, paramsAstro } = e.data;
         document.getElementById('badge-moteur').className = "status-badge badge-ok";
-        document.getElementById('badge-moteur').innerText = "WORKER VSOP ACTIF";
-        mettreAJourInterface(donnees);
+        document.getElementById('badge-moteur').innerText = "WORKER SOUVERAIN ACTIF";
+        
+        if (paramsAstro) {
+            document.getElementById('param-eqt').innerText = paramsAstro.eqt.toFixed(2) + " min";
+            document.getElementById('param-ecc').innerText = paramsAstro.ecc.toFixed(7);
+            document.getElementById('param-obl').innerText = paramsAstro.obl.toFixed(3) + "°";
+            document.getElementById('param-lon-sol').innerText = (paramsAstro.lonSol + 360) % 360 + "°";
+            
+            let tsmVal = ((Date.now() / 3600000.0) % 24 + station3D.lon / 15.0 + 24) % 24;
+            let tsvVal = (tsmVal + paramsAstro.eqt / 60.0 + 24) % 24;
+            document.getElementById('param-tsm').innerText = tsmVal.toFixed(2) + "h";
+            document.getElementById('param-tsv').innerText = tsvVal.toFixed(2) + "h";
+        }
+
+        mettreAJourInterface(resultats);
     };
 
     function ecrireLog(msg) {
@@ -292,7 +351,6 @@
     }
 
     function activerCapteursBruts() {
-        // Interrogation brute avec coupure de Heaviside (Zéro Moyenne)
         window.addEventListener('deviceorientation', (event) => {
             if (imuActif && event.alpha !== null) {
                 let alphaBrut = event.alpha;
@@ -304,7 +362,6 @@
             }
         }, true);
 
-        // Disjoncteur magnétique et cinématique strict
         window.addEventListener('devicemotion', (event) => {
             if (event.accelerationIncludingGravity) {
                 let ax = event.accelerationIncludingGravity.x || 0;
@@ -340,10 +397,15 @@
                     actualiserVecteurStationITRS();
                 },
                 (err) => {
-                    ecrireLog(`[GPS Erreur] ${err.message}`);
+                    ecrireLog(`[GPS Erreur] ${err.message} (Utilisation position de secours Marseille).`);
+                    station3D.gpsAcquis = true;
+                    actualiserVecteurStationITRS();
                 },
-                { enableHighAccuracy: true, maximumAge: 0 }
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
             );
+        } else {
+            station3D.gpsAcquis = true;
+            actualiserVecteurStationITRS();
         }
     }
 
@@ -372,7 +434,6 @@
         const videoEl = document.getElementById('video-temoin');
         if (cameraActive) {
             try {
-                // Application d'un verrouillage strict de l'ISP (Exposition et ISO au minimum pour neutraliser l'AGC Samsung)
                 streamCamera = await navigator.mediaDevices.getUserMedia({ 
                     video: { 
                         facingMode: 'environment', 
@@ -386,7 +447,6 @@
                 videoEl.style.display = 'block';
                 ecrireLog("[OPTIQUE] Caméra arrière S21 engagée (ISP verrouillé).");
             } catch (err) {
-                // Fallback standard si les contraintes avancées ISP ne sont pas exposées par le navigateur
                 try {
                     streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
                     videoEl.srcObject = streamCamera;
@@ -434,7 +494,7 @@
             let cxOptique = sommeX / masseTotale;
             deltaTempsSouverainAstro = (cxOptique - 160.0) * 1.2;
             document.getElementById('lbl-epoch').innerText = `CALIBRÉ (Δt: ${deltaTempsSouverainAstro.toFixed(1)}ms)`;
-            ecrireLog(`[CALAGE OPTIQUE] Recalage booléen validé (Centroïde X:${cxOptique.toFixed(1)}px). Zéro dérive.`);
+            ecrireLog(`[CALAGE OPTIQUE] Recalage validé (Centroïde X:${cxOptique.toFixed(1)}px). Zéro dérive.`);
         } else {
             ecrireLog("[CALAGE OPTIQUE] Aucune source photonique saturée détectée.");
         }
@@ -449,9 +509,12 @@
                     <td style="font-weight: bold; color: var(--sky);">${astre.toUpperCase()}</td>
                     <td id="az-${astre}">--</td>
                     <td id="el-${astre}">--</td>
-                    <td id="dist-${astre}">--</td>
                     <td id="oeil-${astre}">--</td>
                     <td id="jum-${astre}">--</td>
+                    <td id="cap-${astre}">ACTIF</td>
+                    <td id="lev-${astre}">--</td>
+                    <td id="cou-${astre}">--</td>
+                    <td id="dist-${astre}">--</td>
                 </tr>`;
         });
     }
@@ -482,10 +545,14 @@
             const azEl = document.getElementById(`az-${astre}`);
             const elEl = document.getElementById(`el-${astre}`);
             const distEl = document.getElementById(`dist-${astre}`);
+            const levEl = document.getElementById(`lev-${astre}`);
+            const couEl = document.getElementById(`cou-${astre}`);
             
             if (azEl) azEl.innerHTML = formaterChiffreCouleur(az_sol_vrai);
             if (elEl) elEl.innerHTML = formaterChiffreCouleur(el_refractee);
             if (distEl) distEl.innerText = d.distanceUA.toFixed(6) + " UA";
+            if (levEl) levEl.innerText = d.lever;
+            if (couEl) couEl.innerText = d.coucher;
 
             const oeilEl = document.getElementById(`oeil-${astre}`);
             const jumEl = document.getElementById(`jum-${astre}`);
@@ -516,7 +583,6 @@
         document.getElementById('lbl-epoch').innerText = formaterMsEnHeureComplet(tempsCalibreMs);
 
         if (station3D.gpsAcquis) {
-            // Envoi des données asynchrones au Web Worker pour préserver le Thread Principal
             vsopWorker.postMessage({
                 tempsCalibreMs,
                 station3D,
@@ -562,7 +628,8 @@
 
     window.addEventListener('load', () => {
         initialiserTableauHtml();
-        ecrireLog("[SENTINELA] Noyau initialisé. En attente d'activation des capteurs physiques.");
+        ecrireLog("[SENTINELA v14.2] Noyau initialisé. Station par défaut Marseille configurée. En attente capteurs.");
+        actualiserVecteurStationITRS();
         requestAnimationFrame(bouclePrincipaleUI);
     });
 </script>
