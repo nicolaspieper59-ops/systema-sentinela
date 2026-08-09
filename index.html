@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>SYSTEMA SENTINELA v15.4 — GALAXY S21 ULTRA / SOUVERAINETÉ SCIENTIFIQUE</title>
+    <title>SYSTEMA SENTINELA v15.5 — SOUVERAINETÉ SCIENTIFIQUE DIRECTE</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -30,7 +30,6 @@
         .brand { font-size: 12px; font-weight: bold; letter-spacing: 0.5px; }
         .status-badge { padding: 3px 6px; border-radius: 4px; font-weight: bold; font-size: 9.5px; }
         .badge-ok { background: rgba(63,185,80,0.15); color: var(--neon-green); border: 1px solid var(--neon-green); }
-        .badge-warn { background: rgba(210,153,34,0.15); color: var(--amber); border: 1px solid var(--amber); }
         
         .grid-layout { display: grid; grid-template-columns: 1fr; gap: 12px; }
         @media (min-width: 1200px) { .grid-layout { grid-template-columns: 340px 1fr 340px; } }
@@ -62,11 +61,11 @@
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v15.4 — SOUVERAINETÉ AUTOMATIQUE</div>
+        <div class="brand">SYSTEMA SENTINELA v15.5 — MOTEUR DIRECT SANS WORKER</div>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <div>UTC ATOMIQUE : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">SYNCHRONISATION...</span></div>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR/NUIT</button>
-            <span id="badge-moteur" class="status-badge badge-warn">ATTENTE WORKER</span>
+            <span id="badge-moteur" class="status-badge badge-ok">MOTEUR DIRECT ACTIF</span>
         </div>
     </header>
 
@@ -77,7 +76,7 @@
                 <canvas id="radarCanvas" width="300" height="300"></canvas>
                 <div style="width:100%; margin-top:10px; border-top:1px solid var(--border-dim); padding-top:8px;">
                     <div style="font-size:9.5px; line-height: 1.4;">
-                        <div>GPS / STATION : <span id="st-gps" style="color:var(--amber);">Initialisation...</span></div>
+                        <div>GPS / STATION : <span id="st-gps" style="color:var(--amber);">Marseille (Défaut)</span></div>
                         <div>QUATERNION [w,x,y,z] : <span id="st-quat" style="color:var(--neon-green);">[1,0,0,0]</span></div>
                         <div>CRÊTE PARABOLE : <span id="val-parabole" style="color:var(--amber)">--</span></div>
                     </div>
@@ -104,7 +103,7 @@
             </table>
             <div style="margin-top: 15px;">
                 <div class="panel-title" style="margin-bottom: 6px;">JOURNAL SYSTÈMES SOUVERAINS</div>
-                <div class="log-console" id="logConsole">[SENTINELA v15.4] Démarrage du noyau...</div>
+                <div class="log-console" id="logConsole">[SENTINELA v15.5] Initialisation directe des bibliothèques...</div>
             </div>
         </div>
 
@@ -126,13 +125,16 @@
     </div>
 </div>
 
+<script src="ElpMpp02DE_min.js"></script>
+<script src="vsop2013.js"></script>
+
 <script>
     const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
+    const DELTA_T_SEC = 69.18;
     
     let modeJourActif = false;
     let yawSommetAbsolu = 0;
-    let decalageEpochUtc = 0;
     let globeRotationLon = 5.3585;
     let globeRotationLat = 43.2843;
     let isDragging = false;
@@ -140,32 +142,12 @@
     
     let station3D = { lat: 43.284356, lon: 5.358507, altGps: 100.0, X_itrs: 0, Y_itrs: 0, Z_itrs: 0, gpsAcquis: true, temp: 29.9, pres: 1013.25 };
 
-    fetch('https://worldtimeapi.org/api/timezone/Etc/UTC')
-        .then(res => res.json())
-        .then(data => { decalageEpochUtc = new Date(data.datetime).getTime() - performance.now(); })
-        .catch(() => {});
-
-    function obtenirTempsAtomiqueUtc() {
-        return (decalageEpochUtc !== 0) ? performance.now() + decalageEpochUtc : Date.now();
-    }
-
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
-        const timestamp = new Date(obtenirTempsAtomiqueUtc()).toISOString().slice(11, 23);
+        const timestamp = new Date().toISOString().slice(11, 23);
         consoleEl.innerHTML += `<div>[${timestamp}] ${msg}</div>`;
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
-
-    // Instanciation du Worker pointant vers le fichier physique
-    const vsopWorker = new Worker('./worker_astronomie.js');
-
-    vsopWorker.onmessage = function(e) {
-        if (e.data.status === 'OK') {
-            document.getElementById('badge-moteur').className = "status-badge badge-ok";
-            document.getElementById('badge-moteur').innerText = "WORKER ACTIF";
-            mettreAJourInterface(e.data.data);
-        }
-    };
 
     function actualiserVecteurStationITRS() {
         const phi = station3D.lat * Math.PI / 180.0;
@@ -185,6 +167,80 @@
         document.getElementById('st-gps').innerText = `${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E (${nom})`;
         ecrireLog(`[STATION] Fixé sur ${nom}.`);
         dessinerGlobe3D();
+    }
+
+    function calculerAstronomieDirecte() {
+        const timestampUtc = Date.now();
+        document.getElementById('lbl-epoch').innerText = new Date(timestampUtc).toISOString().replace('T', ' ').slice(0, 23) + " UTC";
+
+        try {
+            const jd_UTC = (timestampUtc / 86400000.0) + 2440587.5;
+            const jd_TT  = jd_UTC + (DELTA_T_SEC / 86400.0);
+            const T      = (jd_TT - 2451545.0) / 36525.0;
+
+            const dUT1 = jd_UTC - 2451545.0;
+            const eraRad = (2.0 * Math.PI) * (0.7790572732640 + 1.00273781191135448 * dUT1);
+
+            const latRad = station3D.lat * Math.PI / 180.0;
+            const lonRad = station3D.lon * Math.PI / 180.0;
+            const cosLat = Math.cos(latRad), sinLat = Math.sin(latRad);
+            const cosLon = Math.cos(lonRad), sinLon = Math.sin(lonRad);
+
+            let pT = vsop2013.Earth.position(T);
+            const terreHelio = { x: pT.x, y: pT.y, z: pT.z };
+            let resultats = {};
+
+            ASTRES.forEach(astre => {
+                let vecJ2000UA = { x: 0, y: 0, z: 0 };
+                if (astre === 'soleil') {
+                    vecJ2000UA = { x: -terreHelio.x, y: -terreHelio.y, z: -terreHelio.z };
+                } else if (astre === 'lune') {
+                    let pLune = getX2000_DE(T);
+                    vecJ2000UA = { x: pLune.X, y: pLune.Y, z: pLune.Z };
+                } else if (vsop2013[astre] && typeof vsop2013[astre].position === 'function') {
+                    let pA = vsop2013[astre].position(T);
+                    vecJ2000UA = { x: pA.x - terreHelio.x, y: pA.y - terreHelio.y, z: pA.z - terreHelio.z };
+                } else { return; }
+
+                const UA_TO_M = 149597870700.0;
+                const xM = vecJ2000UA.x * UA_TO_M, yM = vecJ2000UA.y * UA_TO_M, zM = vecJ2000UA.z * UA_TO_M;
+
+                const xECEF =  xM * Math.cos(eraRad) + yM * Math.sin(eraRad);
+                const yECEF = -xM * Math.sin(eraRad) + yM * Math.cos(eraRad);
+                const zECEF =  zM;
+
+                const dx = xECEF - station3D.X_itrs, dy = yECEF - station3D.Y_itrs, dz = zECEF - station3D.Z_itrs;
+                const east  = -sinLon * dx + cosLon * dy;
+                const north = -sinLat * cosLon * dx - sinLat * sinLon * dy + cosLat * dz;
+                const up    =  cosLat * cosLon * dx + cosLat * sinLon * dy + sinLat * dz;
+
+                const distM = Math.sqrt(east * east + north * north + up * up);
+                let elRad = Math.asin(up / distM), azRad = Math.atan2(east, north);
+                if (azRad < 0) azRad += 2.0 * Math.PI;
+
+                let elDeg = elRad * 180.0 / Math.PI, azDeg = azRad * 180.0 / Math.PI;
+
+                // Billard météo 10 strates
+                let elRefractee = elDeg, inflexionStr = "0.0000°";
+                if (elDeg > 0 && elDeg < 90) {
+                    const n0 = 1.0 + 0.000293 * (station3D.pres / 1013.25) * (273.15 / (273.15 + station3D.temp));
+                    let angleZ = (90 - elDeg) * Math.PI / 180.0;
+                    for (let couche = 10; couche >= 1; couche--) {
+                        let n_couche = 1.0 + (n0 - 1.0) * (couche / 10.0);
+                        let n_dessus = 1.0 + (n0 - 1.0) * ((couche - 1) / 10.0);
+                        angleZ = Math.asin((n_dessus / n_couche) * Math.sin(angleZ));
+                    }
+                    elRefractee = 90.0 - (angleZ * 180.0 / Math.PI);
+                    inflexionStr = (elRefractee - elDeg).toFixed(4) + "°";
+                }
+
+                resultats[astre] = { azVrai: azDeg, elRefractee, distanceUA: distM / UA_TO_M, inflexion: inflexionStr };
+            });
+
+            mettreAJourInterface(resultats);
+        } catch (err) {
+            ecrireLog(`[ERREUR CALCUL] ${err.message}`);
+        }
     }
 
     function dessinerGlobe3D() {
@@ -286,12 +342,6 @@
         }
     }
 
-    function lancerBoucleAutomatique() {
-        document.getElementById('lbl-epoch').innerText = new Date(obtenirTempsAtomiqueUtc()).toISOString().replace('T', ' ').slice(0, 23) + " UTC";
-        vsopWorker.postMessage({ timestampUtc: obtenirTempsAtomiqueUtc(), station3D, astres: ASTRES });
-        requestAnimationFrame(lancerBoucleAutomatique);
-    }
-
     function mettreAJourInterface(donnees) {
         let positionsRadar = {};
         for (const astre in donnees) {
@@ -324,12 +374,11 @@
         initialiserTableauHtml();
         actualiserVecteurStationITRS();
         dessinerGlobe3D();
-        ecrireLog("[SENTINELA v15.4] Noyau initialisé.");
-        lancerBoucleAutomatique();
+        ecrireLog("[SENTINELA v15.5] Noyau direct initialisé. Calcul éphémérides...");
+        calculerAstronomieDirecte();
+        // Rafraîchissement automatique toutes les secondes
+        setInterval(calculerAstronomieDirecte, 1000);
     });
 </script>
-
-<script src="ElpMpp02DE_min.js"></script>
-<script src="vsop2013.js"></script>
 </body>
 </html>
