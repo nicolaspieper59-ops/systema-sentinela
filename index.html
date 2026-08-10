@@ -170,7 +170,16 @@
     const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
     const CONSTANTES = { UA_M: 149597870700.0, DELTA_T_SEC: 69.18, RAD2DEG: 180.0 / Math.PI, DEG2RAD: Math.PI / 180.0 };
-    
+
+    // Ajout de CYCLE ici :
+const CYCLE = 2.0 * Math.PI; 
+
+const CONSTANTES = { 
+    UA_M: 149597870700.0, 
+    DELTA_T_SEC: 69.18, 
+    RAD2DEG: 180.0 / Math.PI, 
+    DEG2RAD: Math.PI / 180.0 
+};
     // Mappage robuste des clés VSOP2013
     const MAP_VSOP_KEYS = {
         'earth': ['emb', 'ear', 'earth', 'Terre'],
