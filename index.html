@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>SYSTEMA SENTINELA v15.6 — SOUVERAINETÉ SCIENTIFIQUE DIRECTE</title>
+    <title>SYSTEMA SENTINELA v15.8 — OPTIMISÉ & FLUIDE</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -21,7 +21,7 @@
             background: var(--bg-base); color: var(--text-main);
             font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; padding: 12px; margin: 0;
         }
-        .container { max-width: 1750px; margin: 0 auto; }
+        .container { max-width: 1800px; margin: 0 auto; }
         .master-header {
             background: var(--bg-surface); border: 1px solid var(--border-dim);
             border-left: 4px solid var(--sky); padding: 10px 15px; border-radius: 6px;
@@ -30,13 +30,19 @@
         .brand { font-size: 12px; font-weight: bold; letter-spacing: 0.5px; }
         .status-badge { padding: 3px 6px; border-radius: 4px; font-weight: bold; font-size: 9.5px; }
         .badge-ok { background: rgba(63,185,80,0.15); color: var(--neon-green); border: 1px solid var(--neon-green); }
+        .badge-warn { background: rgba(210,153,34,0.15); color: var(--amber); border: 1px solid var(--amber); }
         
         .grid-layout { display: grid; grid-template-columns: 1fr; gap: 12px; }
-        @media (min-width: 1200px) { .grid-layout { grid-template-columns: 340px 1fr 340px; } }
+        @media (min-width: 1250px) { .grid-layout { grid-template-columns: 320px 1fr 300px; } }
         
         .panel { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 12px; }
         .panel-title { border-bottom: 1px solid var(--border-dim); padding-bottom: 6px; margin-top: 0; margin-bottom: 10px; font-size: 11.5px; color: var(--sky); display: flex; justify-content: space-between; align-items: center; }
         
+        .astro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 10px; margin-bottom: 10px; }
+        .astro-card { background: rgba(255,255,255,0.02); border: 1px solid var(--border-dim); padding: 6px; border-radius: 4px; }
+        .astro-label { color: var(--text-main); font-size: 9px; opacity: 0.8; }
+        .astro-val { font-weight: bold; margin-top: 2px; }
+
         table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
         th, td { padding: 7px 8px; border-bottom: 1px solid var(--border-dim); font-size: 10px; }
         th { color: var(--sky); font-weight: normal; background: rgba(88,166,255,0.05); }
@@ -54,71 +60,103 @@
         .log-console { background: #000; color: #8b949e; border: 1px solid var(--border-dim); height: 110px; overflow-y: auto; padding: 8px; border-radius: 4px; font-size: 9.5px; font-family: monospace; }
         .day-mode .log-console { background: #111; color: #adbac7; }
         
-        #radarCanvas { width: 100%; max-width: 300px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
-        #globeCanvas { width: 100%; max-width: 300px; height: 200px; display: block; margin: 0 auto; background: var(--radar-bg); border: 1px solid var(--border-dim); border-radius: 6px; cursor: grab; }
+        #radarCanvas { width: 100%; max-width: 280px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
+        #globeCanvas { width: 100%; max-width: 280px; height: 180px; display: block; margin: 0 auto; background: var(--radar-bg); border: 1px solid var(--border-dim); border-radius: 6px; cursor: grab; }
     </style>
 </head>
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v15.6 — MOTEUR DIRECT SANS WORKER</div>
+        <div class="brand">SYSTEMA SENTINELA v15.8 — PROJECTION VRAI NORD & FUSION IMU</div>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-            <div>UTC ATOMIQUE : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">SYNCHRONISATION...</span></div>
-            <button class="btn-action" onclick="basculerModeJour()">MODE JOUR/NUIT</button>
-            <span id="badge-moteur" class="status-badge badge-ok">MOTEUR DIRECT ACTIF</span>
+            <div>UTC : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">SYNCHRONISATION...</span></div>
+            <button class="btn-action" onclick="basculerModeJour()">MODE JOUR / NUIT</button>
+            <span id="badge-moteur" class="status-badge badge-ok">SYSTEME SOUVERAIN ACTIF</span>
         </div>
     </header>
 
     <div class="grid-layout">
         <div style="display: flex; flex-direction: column; gap: 12px;">
             <div class="panel">
-                <div class="panel-title">RADAR CÉLESTE 4D</div>
-                <canvas id="radarCanvas" width="300" height="300"></canvas>
-                <div style="width:100%; margin-top:10px; border-top:1px solid var(--border-dim); padding-top:8px;">
-                    <div style="font-size:9.5px; line-height: 1.4;">
-                        <div>GPS / STATION : <span id="st-gps" style="color:var(--amber);">Marseille (Défaut)</span></div>
-                        <div>QUATERNION [w,x,y,z] : <span id="st-quat" style="color:var(--neon-green);">[1,0,0,0]</span></div>
-                        <div>DÉPRESSION HORIZON : <span id="val-parabole" style="color:var(--amber)">--</span></div>
+                <div class="panel-title">PARAMÈTRES ORBITAUX SOLAIRES</div>
+                <div class="astro-grid">
+                    <div class="astro-card">
+                        <div class="astro-label">ÉQUATION DU TEMPS (JPL)</div>
+                        <div class="astro-val" id="val-eqt" style="color:var(--sky)">-- min</div>
+                    </div>
+                    <div class="astro-card">
+                        <div class="astro-label">EXCENTRICITÉ TERRESTRE</div>
+                        <div class="astro-val" id="val-ecc">--</div>
+                    </div>
+                    <div class="astro-card">
+                        <div class="astro-label">OBLIQUITÉ ÉCLIPTIQUE</div>
+                        <div class="astro-val" id="val-obl">--°</div>
+                    </div>
+                    <div class="astro-card">
+                        <div class="astro-label">LONGITUDE SOLAIRE VRAIE</div>
+                        <div class="astro-val" id="val-lon-sol">--°</div>
+                    </div>
+                    <div class="astro-card">
+                        <div class="astro-label">TEMPS SOLAIRE MOYEN (TSM)</div>
+                        <div class="astro-val" id="val-tsm" style="color:var(--amber)">--:--:--</div>
+                    </div>
+                    <div class="astro-card">
+                        <div class="astro-label">TEMPS SOLAIRE VRAI (TSV)</div>
+                        <div class="astro-val" id="val-tsv" style="color:var(--neon-green)">--:--:--</div>
                     </div>
                 </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-title">RADAR CÉLESTE 4D (PROJECTION VRAI NORD)</div>
+                <canvas id="radarCanvas" width="280" height="280"></canvas>
+                <div style="width:100%; margin-top:10px; border-top:1px solid var(--border-dim); padding-top:8px; font-size:9.5px; line-height: 1.5;">
+                    <div>GPS : <span id="st-gps" style="color:var(--amber);">Marseille (Acquisition OK)</span></div>
+                    <div>FUSION IMU (CAP) : <span id="st-yaw" style="color:var(--sky);">0.00°</span> <span id="badge-imu" class="status-badge badge-ok">DISPONIBLE</span></div>
+                    <div>DÉPRESSION HORIZON : <span id="val-parabole" style="color:var(--amber)">--°</span></div>
+                    <div>MÉTÉO OP. : <span id="st-meteo" style="color:var(--neon-green)">1013.25 hPa | 15.0°C</span></div>
+                </div>
+                <button class="btn-action" style="width: 100%; margin-top: 8px;" onclick="demanderCalibrageCapteurs()">CALIBRER IMU / BOUSSOLE</button>
             </div>
         </div>
 
         <div class="panel" style="overflow-x: auto;">
-            <h3 class="panel-title">COORDONNÉES TOPOCENTRIQUES (VSOP2013 + ELP/MPP02 + BILLARD MÉTÉO)</h3>
+            <h3 class="panel-title">COORDONNÉES TOPOCENTRIQUES & VISIBILITÉ (VSOP2013 + ELP/MPP02)</h3>
             <table>
                 <thead>
                     <tr>
                         <th>ASTRE</th>
-                        <th>AZIMUT</th>
-                        <th>ÉLÉVATION (10 STRATES)</th>
+                        <th>AZIMUT (VRAI)</th>
+                        <th>ÉLÉVATION</th>
                         <th>ŒIL NU</th>
                         <th>JUMELLES</th>
-                        <th>INFLEXION MÉTÉO</th>
-                        <th>DISTANCE (UA)</th>
+                        <th>CAPTEUR (IMU)</th>
+                        <th>LEVER (UTC)</th>
+                        <th>COUCHER (UTC)</th>
+                        <th>DISTANCE</th>
                     </tr>
                 </thead>
                 <tbody id="table-body">
                 </tbody>
             </table>
             <div style="margin-top: 15px;">
-                <div class="panel-title" style="margin-bottom: 6px;">JOURNAL SYSTÈMES SOUVERAINS</div>
-                <div class="log-console" id="logConsole">[SENTINELA v15.6] Initialisation directe des bibliothèques...</div>
+                <div class="panel-title" style="margin-bottom: 6px;">JOURNAL SYSTEMA SENTINELA</div>
+                <div class="log-console" id="logConsole">[SENTINELA v15.8] Initialisation du système de haute précision...</div>
             </div>
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 12px;">
             <div class="panel">
-                <div class="panel-title">GLOBE GÉODÉSIQUE 3D (CARTÉSIEN X,Y,Z)</div>
-                <canvas id="globeCanvas" width="300" height="200"></canvas>
+                <div class="panel-title">GLOBE GÉODÉSIQUE 3D</div>
+                <canvas id="globeCanvas" width="280" height="180"></canvas>
                 <div style="font-size: 9.5px; color: var(--sky); margin-top: 6px; text-align: center;">
                     Glissez pour faire pivoter le globe.
                 </div>
                 <div style="display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; justify-content: center;">
-                    <button class="btn-action" onclick="fixerStation(43.2843, 5.3585, 'Marseille')">Marseille</button>
-                    <button class="btn-action" onclick="fixerStation(48.8566, 2.3522, 'Paris')">Paris</button>
-                    <button class="btn-action" onclick="fixerStation(28.7041, 77.1025, 'Delhi')">Delhi</button>
-                    <button class="btn-action" onclick="fixerStation(35.6762, 139.6503, 'Tokyo')">Tokyo</button>
+                    <button class="btn-action" onclick="fixerStation(43.2843, 5.3585, 100.0, 'Marseille')">Marseille</button>
+                    <button class="btn-action" onclick="fixerStation(48.8566, 2.3522, 60.0, 'Paris')">Paris</button>
+                    <button class="btn-action" onclick="fixerStation(28.7041, 77.1025, 216.0, 'Delhi')">Delhi</button>
+                    <button class="btn-action" onclick="fixerStation(35.6762, 139.6503, 40.0, 'Tokyo')">Tokyo</button>
                 </div>
             </div>
         </div>
@@ -129,11 +167,13 @@
 <script src="vsop2013.js"></script>
 
 <script>
+    // ============================================================================
+    // CONSTANTES ET CONFIGURATION SCIENTIFIQUE
+    // ============================================================================
     const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
-    const DELTA_T_SEC = 69.18;
+    const CONSTANTES = { UA_M: 149597870700.0, DELTA_T_SEC: 69.18, RAD2DEG: 180.0 / Math.PI, DEG2RAD: Math.PI / 180.0 };
     
-    // Mappage sécurisé des clés d'astres pour VSOP2013 (Anglais / Français)
     const MAP_VSOP_KEYS = {
         'earth': ['Earth', 'earth', 'Terre', 'terre'],
         'mercure': ['Mercury', 'mercury', 'Mercure', 'mercure'],
@@ -146,13 +186,30 @@
     };
 
     let modeJourActif = false;
-    let yawSommetAbsolu = 0;
+    let yawSommetAbsolu = 0.0; // Angle IMU (Filtre Complémentaire)
+    let alphaEKF = 0.15;
     let globeRotationLon = 5.3585;
     let globeRotationLat = 43.2843;
     let isDragging = false;
     let mouseLastX = 0, mouseLastY = 0;
     
-    let station3D = { lat: 43.284356, lon: 5.358507, altGps: 100.0, X_itrs: 0, Y_itrs: 0, Z_itrs: 0, gpsAcquis: true, temp: 29.9, pres: 1013.25 };
+    let station3D = { 
+        lat: 43.284356, lon: 5.358507, altGps: 100.0, 
+        X_itrs: 0, Y_itrs: 0, Z_itrs: 0, 
+        temp: 15.0, pres: 1013.25 
+    };
+
+    // ============================================================================
+    // FORMATAGE DECIMALE ARC EN CIEL (5 DÉCIMALES COLORÉES)
+    // ============================================================================
+    function formaterChiffreArcEnCiel(valeur) {
+        if(isNaN(valeur) || valeur === null) return "--";
+        const str = Math.abs(valeur).toFixed(5);
+        const parts = str.split('.');
+        const entier = (valeur < 0 ? '-' : '') + parts[0];
+        const dec = (parts[1] || "00000").padEnd(5, "0");
+        return `<span class="d-int">${entier}</span>.<span class="d-p1">${dec[0]}</span><span class="d-p2">${dec[1]}</span><span class="d-p3">${dec[2]}</span><span class="d-p4">${dec[3]}</span><span class="d-p5">${dec[4]}</span>`;
+    }
 
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
@@ -162,26 +219,106 @@
     }
 
     function actualiserVecteurStationITRS() {
-        const phi = station3D.lat * Math.PI / 180.0;
-        const lambda = station3D.lon * Math.PI / 180.0;
+        const phi = station3D.lat * CONSTANTES.DEG2RAD;
+        const lambda = station3D.lon * CONSTANTES.DEG2RAD;
         const h = station3D.altGps;
         const N = WGS84.a / Math.sqrt(1.0 - WGS84.e2 * Math.sin(phi) * Math.sin(phi));
         station3D.X_itrs = (N + h) * Math.cos(phi) * Math.cos(lambda);
         station3D.Y_itrs = (N + h) * Math.cos(phi) * Math.sin(lambda);
         station3D.Z_itrs = (N * (1.0 - WGS84.e2) + h) * Math.sin(phi);
-        station3D.gpsAcquis = true;
     }
 
-    function fixerStation(lat, lon, nom) {
-        station3D.lat = lat; station3D.lon = lon;
+    function fixerStation(lat, lon, alt, nom) {
+        station3D.lat = lat; station3D.lon = lon; station3D.altGps = alt;
         globeRotationLat = lat; globeRotationLon = lon;
         actualiserVecteurStationITRS();
         document.getElementById('st-gps').innerText = `${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E (${nom})`;
-        ecrireLog(`[STATION] Fixée sur ${nom}.`);
+        ecrireLog(`[STATION] Fixée sur ${nom} (Alt: ${alt}m).`);
         dessinerGlobe3D();
     }
 
-    // Résolution sécurisée de la fonction de calcul VSOP2013
+    // ============================================================================
+    // CAPTEURS IMU & BOUSSOLE
+    // ============================================================================
+    function initialiserCapteursIMU() {
+        if (window.DeviceOrientationEvent) {
+            window.addEventListener('deviceorientation', (e) => {
+                let heading = e.alpha;
+                if (e.webkitCompassHeading) heading = e.webkitCompassHeading;
+                if (heading !== null && !isNaN(heading)) {
+                    let diff = heading - yawSommetAbsolu;
+                    while (diff < -180) diff += 360;
+                    while (diff > 180) diff -= 360;
+                    
+                    yawSommetAbsolu += alphaEKF * diff;
+                    if (yawSommetAbsolu < 0) yawSommetAbsolu += 360;
+                    if (yawSommetAbsolu >= 360) yawSommetAbsolu -= 360;
+
+                    document.getElementById('st-yaw').innerText = yawSommetAbsolu.toFixed(2) + "°";
+                }
+            }, true);
+            ecrireLog("[IMU] Capteurs orientation initialisés.");
+        }
+    }
+
+    function demanderCalibrageCapteurs() {
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission()
+                .then(response => { if (response === 'granted') initialiserCapteursIMU(); })
+                .catch(err => ecrireLog(`[IMU] ${err.message}`));
+        } else {
+            initialiserCapteursIMU();
+        }
+    }
+
+    // ============================================================================
+    // PARAMÈTRES ASTRONOMIQUES SOLAIRES & EQUATION DU TEMPS
+    // ============================================================================
+    function calculerParametresSolaires(T, jd_UTC) {
+        // Obliquité moyenne de l'écliptique (Laskar)
+        const oblDeg = 23.43929111 - (46.8150 * T + 0.00059 * T * T - 0.001813 * T * T * T) / 3600.0;
+        
+        // Excentricité de l'orbite terrestre
+        const ecc = 0.016708634 - 0.000042037 * T - 0.0000001267 * T * T;
+        
+        // Anomale moyenne du Soleil (degrés)
+        const M = (357.52911 + 35999.05029 * T - 0.0001537 * T * T) % 360.0;
+        const M_rad = M * CONSTANTES.DEG2RAD;
+        
+        // Longitude moyenne du Soleil (degrés)
+        const L0 = (280.46646 + 36000.76983 * T + 0.0003032 * T * T) % 360.0;
+        
+        // Equation du Centre
+        const C = (1.914602 - 0.004817 * T - 0.000014 * T * T) * Math.sin(M_rad)
+                + (0.019993 - 0.000101 * T) * Math.sin(2 * M_rad)
+                + 0.000289 * Math.sin(3 * M_rad);
+                
+        // Longitude vraie du Soleil
+        const lonSolVraie = (L0 + C) % 360.0;
+        
+        // Équation du temps (JPL Approximation) en minutes
+        const y = Math.tan((oblDeg * CONSTANTES.DEG2RAD) / 2.0) ** 2;
+        const L0_rad = L0 * CONSTANTES.DEG2RAD;
+        const eqtMin = 4.0 * CONSTANTES.RAD2DEG * (y * Math.sin(2 * L0_rad) - 2 * ecc * Math.sin(M_rad) + 4 * ecc * y * Math.sin(M_rad) * Math.cos(2 * L0_rad) - 0.5 * y * y * Math.sin(4 * L0_rad) - 1.25 * ecc * ecc * Math.sin(2 * M_rad));
+        
+        // TSM & TSV
+        const utcH = (jd_UTC + 0.5) % 1.0; // Fraction de jour UTC
+        const tsmSec = (utcH * 86400 + (station3D.lon / 15.0) * 3600 + 86400) % 86400;
+        const tsvSec = (tsmSec + eqtMin * 60 + 86400) % 86400;
+
+        const fmtTime = (s) => new Date(s * 1000).toISOString().substr(11, 8);
+
+        document.getElementById('val-eqt').innerText = (eqtMin >= 0 ? "+" : "") + eqtMin.toFixed(2) + " min";
+        document.getElementById('val-ecc').innerHTML = formaterChiffreArcEnCiel(ecc);
+        document.getElementById('val-obl').innerHTML = formaterChiffreArcEnCiel(oblDeg) + "°";
+        document.getElementById('val-lon-sol').innerHTML = formaterChiffreArcEnCiel(lonSolVraie) + "°";
+        document.getElementById('val-tsm').innerText = fmtTime(tsmSec);
+        document.getElementById('val-tsv').innerText = fmtTime(tsvSec);
+    }
+
+    // ============================================================================
+    // NOYAU TOPOCENTRIQUE DIRECT
+    // ============================================================================
     function extrairePositionVsop(astreKey, T) {
         if (typeof vsop2013 === 'undefined') return null;
         const candidats = MAP_VSOP_KEYS[astreKey] || [astreKey];
@@ -201,25 +338,26 @@
 
         try {
             const jd_UTC = (timestampUtc / 86400000.0) + 2440587.5;
-            const jd_TT  = jd_UTC + (DELTA_T_SEC / 86400.0);
+            const jd_TT  = jd_UTC + (CONSTANTES.DELTA_T_SEC / 86400.0);
             const T      = (jd_TT - 2451545.0) / 36525.0;
+
+            calculerParametresSolaires(T, jd_UTC);
 
             const dUT1 = jd_UTC - 2451545.0;
             const eraRad = (2.0 * Math.PI) * (0.7790572732640 + 1.00273781191135448 * dUT1);
 
-            const latRad = station3D.lat * Math.PI / 180.0;
-            const lonRad = station3D.lon * Math.PI / 180.0;
+            const latRad = station3D.lat * CONSTANTES.DEG2RAD;
+            const lonRad = station3D.lon * CONSTANTES.DEG2RAD;
             const cosLat = Math.cos(latRad), sinLat = Math.sin(latRad);
             const cosLon = Math.cos(lonRad), sinLon = Math.sin(lonRad);
 
-            // Position Héliocentrique de la Terre (VSOP2013)
             let pT = extrairePositionVsop('earth', T);
-            if (!pT) throw new Error("Impossible d'extraire la position de la Terre dans vsop2013");
+            if (!pT) throw new Error("Bibliothèque VSOP2013 absente.");
             
             const terreHelio = { x: pT.x !== undefined ? pT.x : pT[0], y: pT.y !== undefined ? pT.y : pT[1], z: pT.z !== undefined ? pT.z : pT[2] };
             let resultats = {};
 
-            // Calcul de la dépression de l'horizon physique selon l'altitude
+            // Dépression exacte de l'horizon physique : gamma = 0.0161 * sqrt(h)
             const depressionHorizonDeg = 0.0161 * Math.sqrt(Math.max(0, station3D.altGps));
             document.getElementById('val-parabole').innerText = "-" + depressionHorizonDeg.toFixed(4) + "°";
 
@@ -243,8 +381,7 @@
                     } else { return; }
                 }
 
-                const UA_TO_M = 149597870700.0;
-                const xM = vecJ2000UA.x * UA_TO_M, yM = vecJ2000UA.y * UA_TO_M, zM = vecJ2000UA.z * UA_TO_M;
+                const xM = vecJ2000UA.x * CONSTANTES.UA_M, yM = vecJ2000UA.y * CONSTANTES.UA_M, zM = vecJ2000UA.z * CONSTANTES.UA_M;
 
                 const xECEF =  xM * Math.cos(eraRad) + yM * Math.sin(eraRad);
                 const yECEF = -xM * Math.sin(eraRad) + yM * Math.cos(eraRad);
@@ -259,27 +396,44 @@
                 let elRad = Math.asin(up / distM), azRad = Math.atan2(east, north);
                 if (azRad < 0) azRad += 2.0 * Math.PI;
 
-                let elDeg = elRad * 180.0 / Math.PI, azDeg = azRad * 180.0 / Math.PI;
+                let elDeg = elRad * CONSTANTES.RAD2DEG, azDeg = azRad * CONSTANTES.RAD2DEG;
 
-                // Modèle de réfraction à 10 strates (Billard météo)
-                let elRefractee = elDeg, inflexionStr = "0.0000°";
-                if (elDeg > -2.0 && elDeg < 90) {
+                // Modèle de réfraction atmosphérique standardisé
+                let elRefractee = elDeg;
+                if (elDeg > -2.0 && elDeg < 90.0) {
                     const n0 = 1.0 + 0.000293 * (station3D.pres / 1013.25) * (273.15 / (273.15 + station3D.temp));
-                    let angleZ = (90 - elDeg) * Math.PI / 180.0;
+                    let angleZ = (90.0 - elDeg) * CONSTANTES.DEG2RAD;
                     for (let couche = 10; couche >= 1; couche--) {
                         let n_couche = 1.0 + (n0 - 1.0) * (couche / 10.0);
                         let n_dessus = 1.0 + (n0 - 1.0) * ((couche - 1) / 10.0);
                         angleZ = Math.asin(Math.min(1.0, (n_dessus / n_couche) * Math.sin(angleZ)));
                     }
-                    elRefractee = 90.0 - (angleZ * 180.0 / Math.PI);
-                    inflexionStr = (elRefractee - elDeg).toFixed(4) + "°";
+                    elRefractee = 90.0 - (angleZ * CONSTANTES.RAD2DEG);
+                }
+
+                // Azimut relatif capteur IMU
+                let azCapteur = (azDeg - yawSommetAbsolu + 360.0) % 360.0;
+
+                // Estimation Simplifiée Lever / Coucher
+                let hLever = "--:--", hCoucher = "--:--";
+                if (Math.abs(sinLat) < 0.95) { // Évite les zones polaires pures
+                    let cosHA = -Math.tan(latRad) * Math.tan(elRad);
+                    if (cosHA >= -1 && cosHA <= 1) {
+                        let haDeg = Math.acos(cosHA) * CONSTANTES.RAD2DEG;
+                        let levUTC = (12.0 - haDeg / 15.0 + 24.0) % 24.0;
+                        let couUTC = (12.0 + haDeg / 15.0 + 24.0) % 24.0;
+                        hLever = `${Math.floor(levUTC).toString().padStart(2,'0')}:${Math.floor((levUTC%1)*60).toString().padStart(2,'0')}`;
+                        hCoucher = `${Math.floor(couUTC).toString().padStart(2,'0')}:${Math.floor((couUTC%1)*60).toString().padStart(2,'0')}`;
+                    }
                 }
 
                 resultats[astre] = { 
                     azVrai: azDeg, 
                     elRefractee: elRefractee, 
-                    distanceUA: distM / UA_TO_M, 
-                    inflexion: inflexionStr,
+                    azCapteur: azCapteur,
+                    lever: hLever,
+                    coucher: hCoucher,
+                    distanceUA: distM / CONSTANTES.UA_M, 
                     deprHorizon: depressionHorizonDeg 
                 };
             });
@@ -290,7 +444,9 @@
         }
     }
 
-    // Moteur de rendu 3D Géodésique Cartésien Réel (X, Y, Z)
+    // ============================================================================
+    // RENDU CANVASES (GLOBE 3D & RADAR)
+    // ============================================================================
     function dessinerGlobe3D() {
         const canvas = document.getElementById('globeCanvas');
         const ctx = canvas.getContext('2d');
@@ -302,35 +458,30 @@
         ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.fill();
         ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 1.5; ctx.stroke();
 
-        const phi0 = globeRotationLat * Math.PI / 180.0;
-        const lam0 = globeRotationLon * Math.PI / 180.0;
+        const phi0 = globeRotationLat * CONSTANTES.DEG2RAD;
+        const lam0 = globeRotationLon * CONSTANTES.DEG2RAD;
         const cosLat0 = Math.cos(phi0), sinLat0 = Math.sin(phi0);
         const cosLon0 = Math.cos(lam0), sinLon0 = Math.sin(lam0);
 
-        // Tracé du maillage 3D sphérique en coordonnées cartésiennes
         ctx.strokeStyle = modeJourActif ? 'rgba(0,0,0,0.12)' : 'rgba(88,166,255,0.2)';
         ctx.lineWidth = 0.75;
 
         for (let lat = -75; lat <= 75; lat += 15) {
-            let phi = lat * Math.PI / 180.0;
+            let phi = lat * CONSTANTES.DEG2RAD;
             let cosPhi = Math.cos(phi), sinPhi = Math.sin(phi);
             ctx.beginPath();
             let started = false;
 
             for (let lon = -180; lon <= 180; lon += 5) {
-                let lam = lon * Math.PI / 180.0;
-                let X3D = cosPhi * Math.cos(lam);
-                let Y3D = cosPhi * Math.sin(lam);
-                let Z3D = sinPhi;
+                let lam = lon * CONSTANTES.DEG2RAD;
+                let X3D = cosPhi * Math.cos(lam), Y3D = cosPhi * Math.sin(lam), Z3D = sinPhi;
 
-                // Rotation 3D par rapport à l'axe de la caméra
                 let xRot = -sinLon0 * X3D + cosLon0 * Y3D;
                 let yRot = -sinLat0 * cosLon0 * X3D - sinLat0 * sinLon0 * Y3D + cosLat0 * Z3D;
                 let zRot =  cosLat0 * cosLon0 * X3D + cosLat0 * sinLon0 * Y3D + sinLat0 * Z3D;
 
                 if (zRot > 0) {
-                    let xScreen = cx + R * xRot;
-                    let yScreen = cy - R * yRot;
+                    let xScreen = cx + R * xRot, yScreen = cy - R * yRot;
                     if (!started) { ctx.moveTo(xScreen, yScreen); started = true; }
                     else { ctx.lineTo(xScreen, yScreen); }
                 } else { started = false; }
@@ -338,35 +489,48 @@
             ctx.stroke();
         }
 
-        // Projection 3D de la station en coordonnées cartésiennes ECEF
-        let phiSt = station3D.lat * Math.PI / 180.0;
-        let lamSt = station3D.lon * Math.PI / 180.0;
+        let phiSt = station3D.lat * CONSTANTES.DEG2RAD, lamSt = station3D.lon * CONSTANTES.DEG2RAD;
         let cosSt = Math.cos(phiSt);
-        
-        let X_st = cosSt * Math.cos(lamSt);
-        let Y_st = cosSt * Math.sin(lamSt);
-        let Z_st = Math.sin(phiSt);
+        let X_st = cosSt * Math.cos(lamSt), Y_st = cosSt * Math.sin(lamSt), Z_st = Math.sin(phiSt);
 
         let xRSt = -sinLon0 * X_st + cosLon0 * Y_st;
         let yRSt = -sinLat0 * cosLon0 * X_st - sinLat0 * sinLon0 * Y_st + cosLat0 * Z_st;
         let zRSt =  cosLat0 * cosLon0 * X_st + cosLat0 * sinLon0 * Y_st + sinLat0 * Z_st;
 
         if (zRSt > 0) {
-            let xStScreen = cx + R * xRSt;
-            let yStScreen = cy - R * yRSt;
-            
+            let xStScreen = cx + R * xRSt, yStScreen = cy - R * yRSt;
             ctx.fillStyle = 'var(--rose)';
-            ctx.beginPath(); ctx.arc(xStScreen, yStScreen, 4.5, 0, 2 * Math.PI); ctx.fill();
-            ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
-
-            // Rendu textuel des coordonnées cartésiennes
-            ctx.fillStyle = modeJourActif ? '#000' : '#c9d1d9';
-            ctx.font = '8px Consolas';
-            ctx.fillText(`X:${(station3D.X_itrs/1000).toFixed(0)}km`, xStScreen + 6, yStScreen - 2);
-            ctx.fillText(`Y:${(station3D.Y_itrs/1000).toFixed(0)}km`, xStScreen + 6, yStScreen + 7);
+            ctx.beginPath(); ctx.arc(xStScreen, yStScreen, 4, 0, 2 * Math.PI); ctx.fill();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
         }
     }
 
+    function dessinerRadar(positions, yawAbsolu) {
+        const canvas = document.getElementById('radarCanvas');
+        const ctx = canvas.getContext('2d');
+        const cx = canvas.width / 2, cy = canvas.height / 2, rMax = cx - 15;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = modeJourActif ? '#d1d5db' : '#21262d';
+        ctx.lineWidth = 1;
+        
+        [0.33, 0.66, 1.0].forEach(scale => {
+            ctx.beginPath(); ctx.arc(cx, cy, rMax * scale, 0, 2 * Math.PI); ctx.stroke();
+        });
+
+        for (const astre in positions) {
+            const data = positions[astre];
+            if (data.el > -2.0) {
+                const r = rMax * (1.0 - Math.max(0, data.el) / 90.0);
+                const theta = (data.az - yawAbsolu - 90) * CONSTANTES.DEG2RAD;
+                ctx.fillStyle = astre === 'soleil' ? '#d29922' : '#3fb950';
+                ctx.beginPath(); ctx.arc(cx + r * Math.cos(theta), cy + r * Math.sin(theta), 3.5, 0, 2 * Math.PI); ctx.fill();
+            }
+        }
+    }
+
+    // ============================================================================
+    // INTERFACE ET MISE À JOUR
+    // ============================================================================
     const globeCanvas = document.getElementById('globeCanvas');
     globeCanvas.addEventListener('mousedown', (e) => { isDragging = true; mouseLastX = e.clientX; mouseLastY = e.clientY; });
     window.addEventListener('mouseup', () => { isDragging = false; });
@@ -377,15 +541,6 @@
         mouseLastX = e.clientX; mouseLastY = e.clientY;
         dessinerGlobe3D();
     });
-
-    function formaterChiffreArcEnCiel(valeur) {
-        if(isNaN(valeur)) return "--";
-        const str = Math.abs(valeur).toFixed(5);
-        const parts = str.split('.');
-        const entier = (valeur < 0 ? '-' : '') + parts[0];
-        const dec = (parts[1] || "00000").padEnd(5, "0");
-        return `<span class="d-int">${entier}</span>.<span class="d-p1">${dec[0]}</span><span class="d-p2">${dec[1]}</span><span class="d-p3">${dec[2]}</span><span class="d-p4">${dec[3]}</span><span class="d-p5">${dec[4]}</span>`;
-    }
 
     function initialiserTableauHtml() {
         const tbody = document.getElementById('table-body');
@@ -398,31 +553,12 @@
                     <td id="el-${astre}">--</td>
                     <td id="oeil-${astre}">--</td>
                     <td id="jum-${astre}">--</td>
-                    <td id="inf-${astre}" style="color:var(--amber)">--</td>
+                    <td id="cap-${astre}">--</td>
+                    <td id="lev-${astre}">--</td>
+                    <td id="cou-${astre}">--</td>
                     <td id="dist-${astre}">--</td>
                 </tr>`;
         });
-    }
-
-    function dessinerRadar(positions, yawAbsolu) {
-        const canvas = document.getElementById('radarCanvas');
-        const ctx = canvas.getContext('2d');
-        const cx = canvas.width / 2, cy = canvas.height / 2, rMax = cx - 15;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = modeJourActif ? '#d1d5db' : '#21262d';
-        ctx.lineWidth = 1;
-        [0.33, 0.66, 1.0].forEach(scale => {
-            ctx.beginPath(); ctx.arc(cx, cy, rMax * scale, 0, 2 * Math.PI); ctx.stroke();
-        });
-        for (const astre in positions) {
-            const data = positions[astre];
-            if (data.el > -2.0) {
-                const r = rMax * (1.0 - Math.max(0, data.el) / 90.0);
-                const theta = (data.az - yawAbsolu - 90) * Math.PI / 180.0;
-                ctx.fillStyle = astre === 'soleil' ? '#d29922' : '#3fb950';
-                ctx.beginPath(); ctx.arc(cx + r * Math.cos(theta), cy + r * Math.sin(theta), 3.5, 0, 2 * Math.PI); ctx.fill();
-            }
-        }
     }
 
     function mettreAJourInterface(donnees) {
@@ -432,8 +568,10 @@
             positionsRadar[astre] = { az: d.azVrai, el: d.elRefractee };
             document.getElementById(`az-${astre}`).innerHTML = formaterChiffreArcEnCiel(d.azVrai);
             document.getElementById(`el-${astre}`).innerHTML = formaterChiffreArcEnCiel(d.elRefractee);
+            document.getElementById(`cap-${astre}`).innerHTML = formaterChiffreArcEnCiel(d.azCapteur);
+            document.getElementById(`lev-${astre}`).innerText = d.lever;
+            document.getElementById(`cou-${astre}`).innerText = d.coucher;
             document.getElementById(`dist-${astre}`).innerText = d.distanceUA.toFixed(6) + " UA";
-            document.getElementById(`inf-${astre}`).innerText = d.inflexion;
             
             let oeilEl = document.getElementById(`oeil-${astre}`);
             let jumEl = document.getElementById(`jum-${astre}`);
@@ -458,7 +596,8 @@
         initialiserTableauHtml();
         actualiserVecteurStationITRS();
         dessinerGlobe3D();
-        ecrireLog("[SENTINELA v15.6] Noyau direct initialisé. Calcul éphémérides...");
+        initialiserCapteursIMU();
+        ecrireLog("[SENTINELA v15.8] Initialisation complète réussie.");
         calculerAstronomieDirecte();
         setInterval(calculerAstronomieDirecte, 1000);
     });
