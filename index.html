@@ -190,6 +190,49 @@ function CYCLE(x, max = 2.0 * Math.PI) {
         'uranus': ['ura', 'uranus', 'Uranus'],
         'neptune': ['nep', 'neptune', 'Neptune']
     };
+    // ============================================================================
+// COMPOSANT ORBIT (REQUIS PAR VSOP2013)
+// ============================================================================
+class Orbit {
+    constructor(params) {
+        if (params instanceof Orbit) {
+            this._a = params._a;
+            this._L = params._L;
+            this._k = params._k;
+            this._h = params._h;
+            this._q = params._q;
+            this._p = params._p;
+            this.GM = params.GM;
+            this.epoch = params.epoch;
+            this.r = params.r ? params.r.clone() : new THREE.Vector3();
+            this.v = params.v ? params.v.clone() : new THREE.Vector3();
+        } else {
+            this._a = params.a || 0;
+            this._L = params.L || 0;
+            this._k = params.k || 0;
+            this._h = params.h || 0;
+            this._q = params.q || 0;
+            this._p = params.p || 0;
+            this.GM = params.GM || 0;
+            this.epoch = params.epoch || 0;
+            this.r = params.r || new THREE.Vector3();
+            this.v = params.v || new THREE.Vector3();
+        }
+    }
+
+    L() { return this._L; }
+    k() { return this._k; }
+    h() { return this._h; }
+    q() { return this._q; }
+    p() { return this._p; }
+
+    state(f) {
+        return {
+            r: this.r.clone(),
+            v: this.v.clone()
+        };
+    }
+    }
 
     let modeJourActif = false;
     let yawSommetAbsolu = 0.0;
