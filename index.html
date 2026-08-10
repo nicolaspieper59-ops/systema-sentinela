@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>SYSTEMA SENTINELA v15.5 — SOUVERAINETÉ SCIENTIFIQUE DIRECTE</title>
+    <title>SYSTEMA SENTINELA v15.6 — SOUVERAINETÉ SCIENTIFIQUE DIRECTE</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -61,7 +61,7 @@
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v15.5 — MOTEUR DIRECT SANS WORKER</div>
+        <div class="brand">SYSTEMA SENTINELA v15.6 — MOTEUR DIRECT SANS WORKER</div>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <div>UTC ATOMIQUE : <span id="lbl-epoch" style="color:var(--amber); font-weight: bold;">SYNCHRONISATION...</span></div>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR/NUIT</button>
@@ -78,7 +78,7 @@
                     <div style="font-size:9.5px; line-height: 1.4;">
                         <div>GPS / STATION : <span id="st-gps" style="color:var(--amber);">Marseille (Défaut)</span></div>
                         <div>QUATERNION [w,x,y,z] : <span id="st-quat" style="color:var(--neon-green);">[1,0,0,0]</span></div>
-                        <div>CRÊTE PARABOLE : <span id="val-parabole" style="color:var(--amber)">--</span></div>
+                        <div>DÉPRESSION HORIZON : <span id="val-parabole" style="color:var(--amber)">--</span></div>
                     </div>
                 </div>
             </div>
@@ -103,13 +103,13 @@
             </table>
             <div style="margin-top: 15px;">
                 <div class="panel-title" style="margin-bottom: 6px;">JOURNAL SYSTÈMES SOUVERAINS</div>
-                <div class="log-console" id="logConsole">[SENTINELA v15.5] Initialisation directe des bibliothèques...</div>
+                <div class="log-console" id="logConsole">[SENTINELA v15.6] Initialisation directe des bibliothèques...</div>
             </div>
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 12px;">
             <div class="panel">
-                <div class="panel-title">GLOBE GÉODÉSIQUE 3D</div>
+                <div class="panel-title">GLOBE GÉODÉSIQUE 3D (CARTÉSIEN X,Y,Z)</div>
                 <canvas id="globeCanvas" width="300" height="200"></canvas>
                 <div style="font-size: 9.5px; color: var(--sky); margin-top: 6px; text-align: center;">
                     Glissez pour faire pivoter le globe.
@@ -133,6 +133,18 @@
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
     const DELTA_T_SEC = 69.18;
     
+    // Mappage sécurisé des clés d'astres pour VSOP2013 (Anglais / Français)
+    const MAP_VSOP_KEYS = {
+        'earth': ['Earth', 'earth', 'Terre', 'terre'],
+        'mercure': ['Mercury', 'mercury', 'Mercure', 'mercure'],
+        'venus': ['Venus', 'venus', 'Vénus', 'venus'],
+        'mars': ['Mars', 'mars'],
+        'jupiter': ['Jupiter', 'jupiter'],
+        'saturne': ['Saturn', 'saturn', 'Saturne'],
+        'uranus': ['Uranus', 'uranus'],
+        'neptune': ['Neptune', 'neptune']
+    };
+
     let modeJourActif = false;
     let yawSommetAbsolu = 0;
     let globeRotationLon = 5.3585;
@@ -165,8 +177,22 @@
         globeRotationLat = lat; globeRotationLon = lon;
         actualiserVecteurStationITRS();
         document.getElementById('st-gps').innerText = `${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E (${nom})`;
-        ecrireLog(`[STATION] Fixé sur ${nom}.`);
+        ecrireLog(`[STATION] Fixée sur ${nom}.`);
         dessinerGlobe3D();
+    }
+
+    // Résolution sécurisée de la fonction de calcul VSOP2013
+    function extrairePositionVsop(astreKey, T) {
+        if (typeof vsop2013 === 'undefined') return null;
+        const candidats = MAP_VSOP_KEYS[astreKey] || [astreKey];
+        for (let key of candidats) {
+            let obj = vsop2013[key];
+            if (obj) {
+                if (typeof obj.position === 'function') return obj.position(T);
+                if (typeof obj === 'function') return obj(T);
+            }
+        }
+        return null;
     }
 
     function calculerAstronomieDirecte() {
@@ -186,21 +212,36 @@
             const cosLat = Math.cos(latRad), sinLat = Math.sin(latRad);
             const cosLon = Math.cos(lonRad), sinLon = Math.sin(lonRad);
 
-            let pT = vsop2013.Earth.position(T);
-            const terreHelio = { x: pT.x, y: pT.y, z: pT.z };
+            // Position Héliocentrique de la Terre (VSOP2013)
+            let pT = extrairePositionVsop('earth', T);
+            if (!pT) throw new Error("Impossible d'extraire la position de la Terre dans vsop2013");
+            
+            const terreHelio = { x: pT.x !== undefined ? pT.x : pT[0], y: pT.y !== undefined ? pT.y : pT[1], z: pT.z !== undefined ? pT.z : pT[2] };
             let resultats = {};
+
+            // Calcul de la dépression de l'horizon physique selon l'altitude
+            const depressionHorizonDeg = 0.0161 * Math.sqrt(Math.max(0, station3D.altGps));
+            document.getElementById('val-parabole').innerText = "-" + depressionHorizonDeg.toFixed(4) + "°";
 
             ASTRES.forEach(astre => {
                 let vecJ2000UA = { x: 0, y: 0, z: 0 };
+
                 if (astre === 'soleil') {
                     vecJ2000UA = { x: -terreHelio.x, y: -terreHelio.y, z: -terreHelio.z };
                 } else if (astre === 'lune') {
-                    let pLune = getX2000_DE(T);
-                    vecJ2000UA = { x: pLune.X, y: pLune.Y, z: pLune.Z };
-                } else if (vsop2013[astre] && typeof vsop2013[astre].position === 'function') {
-                    let pA = vsop2013[astre].position(T);
-                    vecJ2000UA = { x: pA.x - terreHelio.x, y: pA.y - terreHelio.y, z: pA.z - terreHelio.z };
-                } else { return; }
+                    if (typeof getX2000_DE === 'function') {
+                        let pLune = getX2000_DE(T);
+                        vecJ2000UA = { x: pLune.X || pLune.x, y: pLune.Y || pLune.y, z: pLune.Z || pLune.z };
+                    } else { return; }
+                } else {
+                    let pA = extrairePositionVsop(astre, T);
+                    if (pA) {
+                        let ax = pA.x !== undefined ? pA.x : pA[0];
+                        let ay = pA.y !== undefined ? pA.y : pA[1];
+                        let az = pA.z !== undefined ? pA.z : pA[2];
+                        vecJ2000UA = { x: ax - terreHelio.x, y: ay - terreHelio.y, z: az - terreHelio.z };
+                    } else { return; }
+                }
 
                 const UA_TO_M = 149597870700.0;
                 const xM = vecJ2000UA.x * UA_TO_M, yM = vecJ2000UA.y * UA_TO_M, zM = vecJ2000UA.z * UA_TO_M;
@@ -220,21 +261,27 @@
 
                 let elDeg = elRad * 180.0 / Math.PI, azDeg = azRad * 180.0 / Math.PI;
 
-                // Billard météo 10 strates
+                // Modèle de réfraction à 10 strates (Billard météo)
                 let elRefractee = elDeg, inflexionStr = "0.0000°";
-                if (elDeg > 0 && elDeg < 90) {
+                if (elDeg > -2.0 && elDeg < 90) {
                     const n0 = 1.0 + 0.000293 * (station3D.pres / 1013.25) * (273.15 / (273.15 + station3D.temp));
                     let angleZ = (90 - elDeg) * Math.PI / 180.0;
                     for (let couche = 10; couche >= 1; couche--) {
                         let n_couche = 1.0 + (n0 - 1.0) * (couche / 10.0);
                         let n_dessus = 1.0 + (n0 - 1.0) * ((couche - 1) / 10.0);
-                        angleZ = Math.asin((n_dessus / n_couche) * Math.sin(angleZ));
+                        angleZ = Math.asin(Math.min(1.0, (n_dessus / n_couche) * Math.sin(angleZ)));
                     }
                     elRefractee = 90.0 - (angleZ * 180.0 / Math.PI);
                     inflexionStr = (elRefractee - elDeg).toFixed(4) + "°";
                 }
 
-                resultats[astre] = { azVrai: azDeg, elRefractee, distanceUA: distM / UA_TO_M, inflexion: inflexionStr };
+                resultats[astre] = { 
+                    azVrai: azDeg, 
+                    elRefractee: elRefractee, 
+                    distanceUA: distM / UA_TO_M, 
+                    inflexion: inflexionStr,
+                    deprHorizon: depressionHorizonDeg 
+                };
             });
 
             mettreAJourInterface(resultats);
@@ -243,6 +290,7 @@
         }
     }
 
+    // Moteur de rendu 3D Géodésique Cartésien Réel (X, Y, Z)
     function dessinerGlobe3D() {
         const canvas = document.getElementById('globeCanvas');
         const ctx = canvas.getContext('2d');
@@ -256,31 +304,66 @@
 
         const phi0 = globeRotationLat * Math.PI / 180.0;
         const lam0 = globeRotationLon * Math.PI / 180.0;
+        const cosLat0 = Math.cos(phi0), sinLat0 = Math.sin(phi0);
+        const cosLon0 = Math.cos(lam0), sinLon0 = Math.sin(lam0);
 
-        ctx.strokeStyle = modeJourActif ? '#cbd5e1' : '#1e293b';
+        // Tracé du maillage 3D sphérique en coordonnées cartésiennes
+        ctx.strokeStyle = modeJourActif ? 'rgba(0,0,0,0.12)' : 'rgba(88,166,255,0.2)';
         ctx.lineWidth = 0.75;
-        for (let lat = -60; lat <= 60; lat += 30) {
+
+        for (let lat = -75; lat <= 75; lat += 15) {
+            let phi = lat * Math.PI / 180.0;
+            let cosPhi = Math.cos(phi), sinPhi = Math.sin(phi);
             ctx.beginPath();
-            let first = true;
+            let started = false;
+
             for (let lon = -180; lon <= 180; lon += 5) {
-                const phi = lat * Math.PI / 180.0, lam = lon * Math.PI / 180.0;
-                const cosC = Math.sin(phi0)*Math.sin(phi) + Math.cos(phi0)*Math.cos(phi)*Math.cos(lam - lam0);
-                if (cosC > 0) {
-                    const x = cx + R * Math.cos(phi) * Math.sin(lam - lam0);
-                    const y = cy - R * (Math.cos(phi0)*Math.sin(phi) - Math.sin(phi0)*Math.cos(phi)*Math.cos(lam - lam0));
-                    if (first) { ctx.moveTo(x, y); first = false; } else { ctx.lineTo(x, y); }
-                }
+                let lam = lon * Math.PI / 180.0;
+                let X3D = cosPhi * Math.cos(lam);
+                let Y3D = cosPhi * Math.sin(lam);
+                let Z3D = sinPhi;
+
+                // Rotation 3D par rapport à l'axe de la caméra
+                let xRot = -sinLon0 * X3D + cosLon0 * Y3D;
+                let yRot = -sinLat0 * cosLon0 * X3D - sinLat0 * sinLon0 * Y3D + cosLat0 * Z3D;
+                let zRot =  cosLat0 * cosLon0 * X3D + cosLat0 * sinLon0 * Y3D + sinLat0 * Z3D;
+
+                if (zRot > 0) {
+                    let xScreen = cx + R * xRot;
+                    let yScreen = cy - R * yRot;
+                    if (!started) { ctx.moveTo(xScreen, yScreen); started = true; }
+                    else { ctx.lineTo(xScreen, yScreen); }
+                } else { started = false; }
             }
             ctx.stroke();
         }
 
-        const phiSt = station3D.lat * Math.PI / 180.0, lamSt = station3D.lon * Math.PI / 180.0;
-        if ((Math.sin(phi0)*Math.sin(phiSt) + Math.cos(phi0)*Math.cos(phiSt)*Math.cos(lamSt - lam0)) > 0) {
-            const xSt = cx + R * Math.cos(phiSt) * Math.sin(lamSt - lam0);
-            const ySt = cy - R * (Math.cos(phi0)*Math.sin(phiSt) - Math.sin(phi0)*Math.cos(phiSt)*Math.cos(lamSt - lam0));
+        // Projection 3D de la station en coordonnées cartésiennes ECEF
+        let phiSt = station3D.lat * Math.PI / 180.0;
+        let lamSt = station3D.lon * Math.PI / 180.0;
+        let cosSt = Math.cos(phiSt);
+        
+        let X_st = cosSt * Math.cos(lamSt);
+        let Y_st = cosSt * Math.sin(lamSt);
+        let Z_st = Math.sin(phiSt);
+
+        let xRSt = -sinLon0 * X_st + cosLon0 * Y_st;
+        let yRSt = -sinLat0 * cosLon0 * X_st - sinLat0 * sinLon0 * Y_st + cosLat0 * Z_st;
+        let zRSt =  cosLat0 * cosLon0 * X_st + cosLat0 * sinLon0 * Y_st + sinLat0 * Z_st;
+
+        if (zRSt > 0) {
+            let xStScreen = cx + R * xRSt;
+            let yStScreen = cy - R * yRSt;
+            
             ctx.fillStyle = 'var(--rose)';
-            ctx.beginPath(); ctx.arc(xSt, ySt, 4.5, 0, 2 * Math.PI); ctx.fill();
+            ctx.beginPath(); ctx.arc(xStScreen, yStScreen, 4.5, 0, 2 * Math.PI); ctx.fill();
             ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+
+            // Rendu textuel des coordonnées cartésiennes
+            ctx.fillStyle = modeJourActif ? '#000' : '#c9d1d9';
+            ctx.font = '8px Consolas';
+            ctx.fillText(`X:${(station3D.X_itrs/1000).toFixed(0)}km`, xStScreen + 6, yStScreen - 2);
+            ctx.fillText(`Y:${(station3D.Y_itrs/1000).toFixed(0)}km`, xStScreen + 6, yStScreen + 7);
         }
     }
 
@@ -333,7 +416,7 @@
         });
         for (const astre in positions) {
             const data = positions[astre];
-            if (data.el > -1.0) {
+            if (data.el > -2.0) {
                 const r = rMax * (1.0 - Math.max(0, data.el) / 90.0);
                 const theta = (data.az - yawAbsolu - 90) * Math.PI / 180.0;
                 ctx.fillStyle = astre === 'soleil' ? '#d29922' : '#3fb950';
@@ -355,9 +438,10 @@
             let oeilEl = document.getElementById(`oeil-${astre}`);
             let jumEl = document.getElementById(`jum-${astre}`);
             if (oeilEl) {
-                oeilEl.innerText = d.elRefractee > 0 ? "OUI" : "NON";
-                oeilEl.style.color = d.elRefractee > 0 ? "var(--neon-green)" : "var(--rose)";
-                jumEl.innerText = d.elRefractee > -2.0 ? "OUI" : "NON";
+                let visOeil = d.elRefractee > -d.deprHorizon;
+                oeilEl.innerText = visOeil ? "OUI" : "SOUS HORIZON";
+                oeilEl.style.color = visOeil ? "var(--neon-green)" : "var(--rose)";
+                jumEl.innerText = d.elRefractee > (-d.deprHorizon - 2.0) ? "OUI" : "SOUS HORIZON";
             }
         }
         dessinerRadar(positionsRadar, yawSommetAbsolu);
@@ -374,9 +458,8 @@
         initialiserTableauHtml();
         actualiserVecteurStationITRS();
         dessinerGlobe3D();
-        ecrireLog("[SENTINELA v15.5] Noyau direct initialisé. Calcul éphémérides...");
+        ecrireLog("[SENTINELA v15.6] Noyau direct initialisé. Calcul éphémérides...");
         calculerAstronomieDirecte();
-        // Rafraîchissement automatique toutes les secondes
         setInterval(calculerAstronomieDirecte, 1000);
     });
 </script>
