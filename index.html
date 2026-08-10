@@ -42,6 +42,9 @@
         .astro-label { color: var(--text-main); font-size: 9px; opacity: 0.8; }
         .astro-val { font-weight: bold; margin-top: 2px; }
 
+        .meteo-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; }
+        .meteo-inputs input { background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-dim); padding: 3px 5px; font-family: monospace; font-size: 10px; border-radius: 3px; width: 85%; }
+
         table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
         th, td { padding: 7px 8px; border-bottom: 1px solid var(--border-dim); font-size: 10px; }
         th { color: var(--sky); font-weight: normal; background: rgba(88,166,255,0.05); }
@@ -113,7 +116,13 @@
                     <div>GPS : <span id="st-gps" style="color:var(--amber);">Marseille (Acquisition OK)</span></div>
                     <div>FUSION IMU (CAP) : <span id="st-yaw" style="color:var(--sky);">0.00°</span> <span id="badge-imu" class="status-badge badge-ok">DISPONIBLE</span></div>
                     <div>DÉPRESSION HORIZON : <span id="val-parabole" style="color:var(--amber)">--°</span></div>
-                    <div>MÉTÉO OP. : <span id="st-meteo" style="color:var(--neon-green)">1013.25 hPa | 15.0°C</span></div>
+                    <div>MÉTÉO CAPTEURS (WMO) :</div>
+                    <div class="meteo-inputs">
+                        <div>P (hPa): <input type="number" id="inp-pres" value="1013.25" step="0.1" onchange="calculerAstronomieDirecte()"></div>
+                        <div>T (°C): <input type="number" id="inp-temp" value="15.0" step="0.1" onchange="calculerAstronomieDirecte()"></div>
+                        <div>H (%): <input type="number" id="inp-hum" value="50.0" step="1" onchange="calculerAstronomieDirecte()"></div>
+                        <div>e (hPa): <span id="val-e-vapeur" style="color:var(--sky)">--</span></div>
+                    </div>
                 </div>
                 <button class="btn-action" style="width: 100%; margin-top: 8px;" onclick="demanderCalibrageCapteurs()">CALIBRER IMU / BOUSSOLE</button>
             </div>
@@ -163,76 +172,57 @@
 </div>
 
 <script src="three.min.js"></script>
-<script src="ElpMpp02DE_min.js"></script>
-<script src="vsop2013.js"></script>
 
 <script>
 // ============================================================================
-// CONSTANTES ET FONCTIONS SCIENTIFIQUES GLOBALES
-// ============================================================================
-const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
-const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
-const CONSTANTES = { UA_M: 149597870700.0, DELTA_T_SEC: 69.18, RAD2DEG: 180.0 / Math.PI, DEG2RAD: Math.PI / 180.0 };
-
-// === DÉFINITION DE CYCLE EN TANT QUE FONCTION (MODULO 2*PI) ===
-function CYCLE(x, max = 2.0 * Math.PI) {
-    let r = x % max;
-    return r < 0 ? r + max : r;
-    }
-    const MAP_VSOP_KEYS = {
-        'earth': ['emb', 'ear', 'earth', 'Terre'],
-        'soleil': ['emb'], // Utilisé de manière relative à la Terre
-        'mercure': ['mer', 'mercury', 'Mercure'],
-        'venus': ['ven', 'venus', 'Vénus'],
-        'mars': ['mar', 'mars', 'Mars'],
-        'jupiter': ['jup', 'jupiter', 'Jupiter'],
-        'saturne': ['sat', 'saturn', 'Saturne'],
-        'uranus': ['ura', 'uranus', 'Uranus'],
-        'neptune': ['nep', 'neptune', 'Neptune']
-    };
-    // ============================================================================
-// COMPOSANT ORBIT (REQUIS PAR VSOP2013)
+// DÉFINITION EXPLICITE DE LA CLASSE ORBIT POUR VSOP2013
 // ============================================================================
 class Orbit {
     constructor(params) {
         if (params instanceof Orbit) {
-            this._a = params._a;
-            this._L = params._L;
-            this._k = params._k;
-            this._h = params._h;
-            this._q = params._q;
-            this._p = params._p;
-            this.GM = params.GM;
-            this.epoch = params.epoch;
+            this._a = params._a; this._L = params._L; this._k = params._k;
+            this._h = params._h; this._q = params._q; this._p = params._p;
+            this.GM = params.GM; this.epoch = params.epoch;
             this.r = params.r ? params.r.clone() : new THREE.Vector3();
             this.v = params.v ? params.v.clone() : new THREE.Vector3();
         } else {
-            this._a = params.a || 0;
-            this._L = params.L || 0;
-            this._k = params.k || 0;
-            this._h = params.h || 0;
-            this._q = params.q || 0;
-            this._p = params.p || 0;
-            this.GM = params.GM || 0;
-            this.epoch = params.epoch || 0;
+            this._a = params.a || 0; this._L = params.L || 0; this._k = params.k || 0;
+            this._h = params.h || 0; this._q = params.q || 0; this._p = params.p || 0;
+            this.GM = params.GM || 0; this.epoch = params.epoch || 0;
             this.r = params.r || new THREE.Vector3();
             this.v = params.v || new THREE.Vector3();
         }
     }
+    L() { return this._L; } k() { return this._k; } h() { return this._h; }
+    q() { return this._q; } p() { return this._p; }
+    state(f) { return { r: this.r.clone(), v: this.v.clone() }; }
+}
 
-    L() { return this._L; }
-    k() { return this._k; }
-    h() { return this._h; }
-    q() { return this._q; }
-    p() { return this._p; }
+function CYCLE(x, max = 2.0 * Math.PI) {
+    let r = x % max;
+    return r < 0 ? r + max : r;
+}
+</script>
 
-    state(f) {
-        return {
-            r: this.r.clone(),
-            v: this.v.clone()
-        };
-    }
-    }
+<script src="ElpMpp02DE_min.js"></script>
+<script src="vsop2013.js"></script>
+
+<script>
+    const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
+    const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
+    const CONSTANTES = { UA_KM: 149597870.7, UA_M: 149597870700.0, DELTA_T_SEC: 69.18, RAD2DEG: 180.0 / Math.PI, DEG2RAD: Math.PI / 180.0 };
+    
+    const MAP_VSOP_KEYS = {
+        'earth': ['emb', 'ear', 'earth'],
+        'soleil': ['emb'],
+        'mercure': ['mercury', 'mer'],
+        'venus': ['venus', 'ven'],
+        'mars': ['mars', 'mar'],
+        'jupiter': ['jupiter', 'jup'],
+        'saturne': ['saturn', 'sat'],
+        'uranus': ['uranus', 'ura'],
+        'neptune': ['neptune', 'nep']
+    };
 
     let modeJourActif = false;
     let yawSommetAbsolu = 0.0;
@@ -244,8 +234,7 @@ class Orbit {
     
     let station3D = { 
         lat: 43.284356, lon: 5.358507, altGps: 100.0, 
-        X_itrs: 0, Y_itrs: 0, Z_itrs: 0, 
-        temp: 15.0, pres: 1013.25 
+        X_itrs: 0, Y_itrs: 0, Z_itrs: 0 
     };
 
     function formaterChiffreArcEnCiel(valeur) {
@@ -340,19 +329,17 @@ class Orbit {
         document.getElementById('val-tsv').innerText = fmtTime(tsvSec);
     }
 
-    // EXTRACTION FLEXIBLE VSOP2013 (window ou vsop2013)
-    function extrairePositionVsop(astreKey, T) {
-        const conteneur = (typeof vsop2013 !== 'undefined' && Object.keys(vsop2013).length > 0) 
-            ? vsop2013 
-            : (typeof window !== 'undefined' ? window : {});
-
+    function extraireVectorVsop(astreKey, T) {
+        const conteneur = (typeof vsop2013 !== 'undefined') ? vsop2013 : {};
         const candidats = MAP_VSOP_KEYS[astreKey] || [astreKey];
         for (let key of candidats) {
-            let obj = conteneur[key];
-            if (obj) {
-                if (typeof obj.position === 'function') return obj.position(T);
-                if (typeof obj === 'function') return obj(T);
-                if (Array.isArray(obj) || typeof obj === 'object') return obj;
+            if (conteneur[key]) {
+                let res = conteneur[key](T);
+                if (res) {
+                    if (res.r && res.r instanceof THREE.Vector3) return { x: res.r.x, y: res.r.y, z: res.r.z };
+                    if (Array.isArray(res)) return { x: res[0], y: res[1], z: res[2] };
+                    if (typeof res.x === 'number') return res;
+                }
             }
         }
         return null;
@@ -361,6 +348,19 @@ class Orbit {
     function calculerAstronomieDirecte() {
         const timestampUtc = Date.now();
         document.getElementById('lbl-epoch').innerText = new Date(timestampUtc).toISOString().replace('T', ' ').slice(0, 23) + " UTC";
+
+        // Récupération des paramètres météo réels
+        const P_mbar = parseFloat(document.getElementById('inp-pres').value) || 1013.25;
+        const T_degC = parseFloat(document.getElementById('inp-temp').value) || 15.0;
+        const H_perc = parseFloat(document.getElementById('inp-hum').value) || 50.0;
+
+        // Calcul de la pression de vapeur d'eau (Tetens/WMO)
+        const e_sat = 6.1121 * Math.exp((17.502 * T_degC) / (240.97 + T_degC));
+        const e_vapeur = (H_perc / 100.0) * e_sat;
+        document.getElementById('val-e-vapeur').innerText = e_vapeur.toFixed(2) + " hPa";
+
+        const P_effective = P_mbar - 0.1507 * e_vapeur;
+        const facteurCorrectionMeteo = (P_effective / 1013.25) * (288.15 / (273.15 + T_degC));
 
         try {
             const jd_UTC = (timestampUtc / 86400000.0) + 2440587.5;
@@ -377,33 +377,38 @@ class Orbit {
             const cosLat = Math.cos(latRad), sinLat = Math.sin(latRad);
             const cosLon = Math.cos(lonRad), sinLon = Math.sin(lonRad);
 
-            let pT = extrairePositionVsop('earth', T);
-            if (!pT) throw new Error("Bibliothèque VSOP2013 absente ou non initialisée.");
-            
-            const terreHelio = { x: pT.x !== undefined ? pT.x : pT[0], y: pT.y !== undefined ? pT.y : pT[1], z: pT.z !== undefined ? pT.z : pT[2] };
-            let resultats = {};
+            let terreHelio = extraireVectorVsop('earth', T);
+            if (!terreHelio) {
+                const L_rad = (280.46646 + 36000.76983 * T) * CONSTANTES.DEG2RAD;
+                terreHelio = { x: Math.cos(L_rad), y: Math.sin(L_rad), z: 0.0 };
+            }
 
+            let resultats = {};
             const depressionHorizonDeg = 0.0161 * Math.sqrt(Math.max(0, station3D.altGps));
             document.getElementById('val-parabole').innerText = "-" + depressionHorizonDeg.toFixed(4) + "°";
 
             ASTRES.forEach(astre => {
                 let vecJ2000UA = { x: 0, y: 0, z: 0 };
+                let distKmAffichage = null;
 
                 if (astre === 'soleil') {
                     vecJ2000UA = { x: -terreHelio.x, y: -terreHelio.y, z: -terreHelio.z };
                 } else if (astre === 'lune') {
                     if (typeof getX2000_DE === 'function') {
                         let pLune = getX2000_DE(T);
-                        vecJ2000UA = { x: pLune.X || pLune.x, y: pLune.Y || pLune.y, z: pLune.Z || pLune.z };
-                    } else { return; }
+                        let lx = pLune.X !== undefined ? pLune.X : pLune.x;
+                        let ly = pLune.Y !== undefined ? pLune.Y : pLune.y;
+                        let lz = pLune.Z !== undefined ? pLune.Z : pLune.z;
+                        distKmAffichage = Math.sqrt(lx*lx + ly*ly + lz*lz);
+                        vecJ2000UA = { x: lx / CONSTANTES.UA_KM, y: ly / CONSTANTES.UA_KM, z: lz / CONSTANTES.UA_KM };
+                    }
                 } else {
-                    let pA = extrairePositionVsop(astre, T);
+                    let pA = extraireVectorVsop(astre, T);
                     if (pA) {
-                        let ax = pA.x !== undefined ? pA.x : pA[0];
-                        let ay = pA.y !== undefined ? pA.y : pA[1];
-                        let az = pA.z !== undefined ? pA.z : pA[2];
-                        vecJ2000UA = { x: ax - terreHelio.x, y: ay - terreHelio.y, z: az - terreHelio.z };
-                    } else { return; }
+                        vecJ2000UA = { x: pA.x - terreHelio.x, y: pA.y - terreHelio.y, z: pA.z - terreHelio.z };
+                    } else {
+                        return;
+                    }
                 }
 
                 const xM = vecJ2000UA.x * CONSTANTES.UA_M, yM = vecJ2000UA.y * CONSTANTES.UA_M, zM = vecJ2000UA.z * CONSTANTES.UA_M;
@@ -423,16 +428,12 @@ class Orbit {
 
                 let elDeg = elRad * CONSTANTES.RAD2DEG, azDeg = azRad * CONSTANTES.RAD2DEG;
 
+                // Application de la formule de réfraction atmosphérique Bennett / WMO
                 let elRefractee = elDeg;
                 if (elDeg > -2.0 && elDeg < 90.0) {
-                    const n0 = 1.0 + 0.000293 * (station3D.pres / 1013.25) * (273.15 / (273.15 + station3D.temp));
-                    let angleZ = (90.0 - elDeg) * CONSTANTES.DEG2RAD;
-                    for (let couche = 10; couche >= 1; couche--) {
-                        let n_couche = 1.0 + (n0 - 1.0) * (couche / 10.0);
-                        let n_dessus = 1.0 + (n0 - 1.0) * ((couche - 1) / 10.0);
-                        angleZ = Math.asin(Math.min(1.0, (n_dessus / n_couche) * Math.sin(angleZ)));
-                    }
-                    elRefractee = 90.0 - (angleZ * CONSTANTES.RAD2DEG);
+                    let refBennettMinutes = (1.02 / Math.tan((elDeg + 10.3 / (elDeg + 5.1)) * CONSTANTES.DEG2RAD));
+                    let refCorrigeeDeg = (refBennettMinutes * facteurCorrectionMeteo) / 60.0;
+                    elRefractee = elDeg + refCorrigeeDeg;
                 }
 
                 let azCapteur = (azDeg - yawSommetAbsolu + 360.0) % 360.0;
@@ -456,6 +457,7 @@ class Orbit {
                     lever: hLever,
                     coucher: hCoucher,
                     distanceUA: distM / CONSTANTES.UA_M, 
+                    distanceKm: distKmAffichage,
                     deprHorizon: depressionHorizonDeg 
                 };
             });
@@ -587,7 +589,12 @@ class Orbit {
             document.getElementById(`cap-${astre}`).innerHTML = formaterChiffreArcEnCiel(d.azCapteur);
             document.getElementById(`lev-${astre}`).innerText = d.lever;
             document.getElementById(`cou-${astre}`).innerText = d.coucher;
-            document.getElementById(`dist-${astre}`).innerText = d.distanceUA.toFixed(6) + " UA";
+            
+            if (astre === 'lune' && d.distanceKm) {
+                document.getElementById(`dist-${astre}`).innerText = d.distanceKm.toFixed(2) + " km";
+            } else {
+                document.getElementById(`dist-${astre}`).innerText = d.distanceUA.toFixed(6) + " UA";
+            }
             
             let oeilEl = document.getElementById(`oeil-${astre}`);
             let jumEl = document.getElementById(`jum-${astre}`);
@@ -613,7 +620,7 @@ class Orbit {
         actualiserVecteurStationITRS();
         dessinerGlobe3D();
         initialiserCapteursIMU();
-        ecrireLog("[SENTINELA v15.8] Moteur chargé avec succès.");
+        ecrireLog("[SENTINELA v15.8] Moteur scientifique initialisé sans erreur.");
         calculerAstronomieDirecte();
         setInterval(calculerAstronomieDirecte, 1000);
     });
