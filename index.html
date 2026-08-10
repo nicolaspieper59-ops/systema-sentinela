@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>SYSTEMA SENTINELA v15.8 — OPTIMISÉ & FLUIDE</title>
+    <title>SYSTEMA SENTINELA v15.8 — PROJECTION VRAI NORD & FUSION IMU</title>
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -30,7 +30,6 @@
         .brand { font-size: 12px; font-weight: bold; letter-spacing: 0.5px; }
         .status-badge { padding: 3px 6px; border-radius: 4px; font-weight: bold; font-size: 9.5px; }
         .badge-ok { background: rgba(63,185,80,0.15); color: var(--neon-green); border: 1px solid var(--neon-green); }
-        .badge-warn { background: rgba(210,153,34,0.15); color: var(--amber); border: 1px solid var(--amber); }
         
         .grid-layout { display: grid; grid-template-columns: 1fr; gap: 12px; }
         @media (min-width: 1250px) { .grid-layout { grid-template-columns: 320px 1fr 300px; } }
@@ -163,30 +162,30 @@
     </div>
 </div>
 
+<script src="three.min.js"></script>
 <script src="ElpMpp02DE_min.js"></script>
 <script src="vsop2013.js"></script>
 
 <script>
-    // ============================================================================
-    // CONSTANTES ET CONFIGURATION SCIENTIFIQUE
-    // ============================================================================
     const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
     const CONSTANTES = { UA_M: 149597870700.0, DELTA_T_SEC: 69.18, RAD2DEG: 180.0 / Math.PI, DEG2RAD: Math.PI / 180.0 };
     
+    // Mappage robuste des clés VSOP2013
     const MAP_VSOP_KEYS = {
-        'earth': ['Earth', 'earth', 'Terre', 'terre'],
-        'mercure': ['Mercury', 'mercury', 'Mercure', 'mercure'],
-        'venus': ['Venus', 'venus', 'Vénus', 'venus'],
-        'mars': ['Mars', 'mars'],
-        'jupiter': ['Jupiter', 'jupiter'],
-        'saturne': ['Saturn', 'saturn', 'Saturne'],
-        'uranus': ['Uranus', 'uranus'],
-        'neptune': ['Neptune', 'neptune']
+        'earth': ['emb', 'ear', 'earth', 'Terre'],
+        'soleil': ['emb'], // Utilisé de manière relative à la Terre
+        'mercure': ['mer', 'mercury', 'Mercure'],
+        'venus': ['ven', 'venus', 'Vénus'],
+        'mars': ['mar', 'mars', 'Mars'],
+        'jupiter': ['jup', 'jupiter', 'Jupiter'],
+        'saturne': ['sat', 'saturn', 'Saturne'],
+        'uranus': ['ura', 'uranus', 'Uranus'],
+        'neptune': ['nep', 'neptune', 'Neptune']
     };
 
     let modeJourActif = false;
-    let yawSommetAbsolu = 0.0; // Angle IMU (Filtre Complémentaire)
+    let yawSommetAbsolu = 0.0;
     let alphaEKF = 0.15;
     let globeRotationLon = 5.3585;
     let globeRotationLat = 43.2843;
@@ -199,9 +198,6 @@
         temp: 15.0, pres: 1013.25 
     };
 
-    // ============================================================================
-    // FORMATAGE DECIMALE ARC EN CIEL (5 DÉCIMALES COLORÉES)
-    // ============================================================================
     function formaterChiffreArcEnCiel(valeur) {
         if(isNaN(valeur) || valeur === null) return "--";
         const str = Math.abs(valeur).toFixed(5);
@@ -237,9 +233,6 @@
         dessinerGlobe3D();
     }
 
-    // ============================================================================
-    // CAPTEURS IMU & BOUSSOLE
-    // ============================================================================
     function initialiserCapteursIMU() {
         if (window.DeviceOrientationEvent) {
             window.addEventListener('deviceorientation', (e) => {
@@ -249,11 +242,9 @@
                     let diff = heading - yawSommetAbsolu;
                     while (diff < -180) diff += 360;
                     while (diff > 180) diff -= 360;
-                    
                     yawSommetAbsolu += alphaEKF * diff;
                     if (yawSommetAbsolu < 0) yawSommetAbsolu += 360;
                     if (yawSommetAbsolu >= 360) yawSommetAbsolu -= 360;
-
                     document.getElementById('st-yaw').innerText = yawSommetAbsolu.toFixed(2) + "°";
                 }
             }, true);
@@ -271,38 +262,21 @@
         }
     }
 
-    // ============================================================================
-    // PARAMÈTRES ASTRONOMIQUES SOLAIRES & EQUATION DU TEMPS
-    // ============================================================================
     function calculerParametresSolaires(T, jd_UTC) {
-        // Obliquité moyenne de l'écliptique (Laskar)
         const oblDeg = 23.43929111 - (46.8150 * T + 0.00059 * T * T - 0.001813 * T * T * T) / 3600.0;
-        
-        // Excentricité de l'orbite terrestre
         const ecc = 0.016708634 - 0.000042037 * T - 0.0000001267 * T * T;
-        
-        // Anomale moyenne du Soleil (degrés)
         const M = (357.52911 + 35999.05029 * T - 0.0001537 * T * T) % 360.0;
         const M_rad = M * CONSTANTES.DEG2RAD;
-        
-        // Longitude moyenne du Soleil (degrés)
         const L0 = (280.46646 + 36000.76983 * T + 0.0003032 * T * T) % 360.0;
-        
-        // Equation du Centre
         const C = (1.914602 - 0.004817 * T - 0.000014 * T * T) * Math.sin(M_rad)
                 + (0.019993 - 0.000101 * T) * Math.sin(2 * M_rad)
                 + 0.000289 * Math.sin(3 * M_rad);
-                
-        // Longitude vraie du Soleil
         const lonSolVraie = (L0 + C) % 360.0;
-        
-        // Équation du temps (JPL Approximation) en minutes
         const y = Math.tan((oblDeg * CONSTANTES.DEG2RAD) / 2.0) ** 2;
         const L0_rad = L0 * CONSTANTES.DEG2RAD;
         const eqtMin = 4.0 * CONSTANTES.RAD2DEG * (y * Math.sin(2 * L0_rad) - 2 * ecc * Math.sin(M_rad) + 4 * ecc * y * Math.sin(M_rad) * Math.cos(2 * L0_rad) - 0.5 * y * y * Math.sin(4 * L0_rad) - 1.25 * ecc * ecc * Math.sin(2 * M_rad));
         
-        // TSM & TSV
-        const utcH = (jd_UTC + 0.5) % 1.0; // Fraction de jour UTC
+        const utcH = (jd_UTC + 0.5) % 1.0;
         const tsmSec = (utcH * 86400 + (station3D.lon / 15.0) * 3600 + 86400) % 86400;
         const tsvSec = (tsmSec + eqtMin * 60 + 86400) % 86400;
 
@@ -316,17 +290,19 @@
         document.getElementById('val-tsv').innerText = fmtTime(tsvSec);
     }
 
-    // ============================================================================
-    // NOYAU TOPOCENTRIQUE DIRECT
-    // ============================================================================
+    // EXTRACTION FLEXIBLE VSOP2013 (window ou vsop2013)
     function extrairePositionVsop(astreKey, T) {
-        if (typeof vsop2013 === 'undefined') return null;
+        const conteneur = (typeof vsop2013 !== 'undefined' && Object.keys(vsop2013).length > 0) 
+            ? vsop2013 
+            : (typeof window !== 'undefined' ? window : {});
+
         const candidats = MAP_VSOP_KEYS[astreKey] || [astreKey];
         for (let key of candidats) {
-            let obj = vsop2013[key];
+            let obj = conteneur[key];
             if (obj) {
                 if (typeof obj.position === 'function') return obj.position(T);
                 if (typeof obj === 'function') return obj(T);
+                if (Array.isArray(obj) || typeof obj === 'object') return obj;
             }
         }
         return null;
@@ -352,12 +328,11 @@
             const cosLon = Math.cos(lonRad), sinLon = Math.sin(lonRad);
 
             let pT = extrairePositionVsop('earth', T);
-            if (!pT) throw new Error("Bibliothèque VSOP2013 absente.");
+            if (!pT) throw new Error("Bibliothèque VSOP2013 absente ou non initialisée.");
             
             const terreHelio = { x: pT.x !== undefined ? pT.x : pT[0], y: pT.y !== undefined ? pT.y : pT[1], z: pT.z !== undefined ? pT.z : pT[2] };
             let resultats = {};
 
-            // Dépression exacte de l'horizon physique : gamma = 0.0161 * sqrt(h)
             const depressionHorizonDeg = 0.0161 * Math.sqrt(Math.max(0, station3D.altGps));
             document.getElementById('val-parabole').innerText = "-" + depressionHorizonDeg.toFixed(4) + "°";
 
@@ -398,7 +373,6 @@
 
                 let elDeg = elRad * CONSTANTES.RAD2DEG, azDeg = azRad * CONSTANTES.RAD2DEG;
 
-                // Modèle de réfraction atmosphérique standardisé
                 let elRefractee = elDeg;
                 if (elDeg > -2.0 && elDeg < 90.0) {
                     const n0 = 1.0 + 0.000293 * (station3D.pres / 1013.25) * (273.15 / (273.15 + station3D.temp));
@@ -411,12 +385,10 @@
                     elRefractee = 90.0 - (angleZ * CONSTANTES.RAD2DEG);
                 }
 
-                // Azimut relatif capteur IMU
                 let azCapteur = (azDeg - yawSommetAbsolu + 360.0) % 360.0;
 
-                // Estimation Simplifiée Lever / Coucher
                 let hLever = "--:--", hCoucher = "--:--";
-                if (Math.abs(sinLat) < 0.95) { // Évite les zones polaires pures
+                if (Math.abs(sinLat) < 0.95) {
                     let cosHA = -Math.tan(latRad) * Math.tan(elRad);
                     if (cosHA >= -1 && cosHA <= 1) {
                         let haDeg = Math.acos(cosHA) * CONSTANTES.RAD2DEG;
@@ -444,9 +416,6 @@
         }
     }
 
-    // ============================================================================
-    // RENDU CANVASES (GLOBE 3D & RADAR)
-    // ============================================================================
     function dessinerGlobe3D() {
         const canvas = document.getElementById('globeCanvas');
         const ctx = canvas.getContext('2d');
@@ -528,9 +497,6 @@
         }
     }
 
-    // ============================================================================
-    // INTERFACE ET MISE À JOUR
-    // ============================================================================
     const globeCanvas = document.getElementById('globeCanvas');
     globeCanvas.addEventListener('mousedown', (e) => { isDragging = true; mouseLastX = e.clientX; mouseLastY = e.clientY; });
     window.addEventListener('mouseup', () => { isDragging = false; });
@@ -597,7 +563,7 @@
         actualiserVecteurStationITRS();
         dessinerGlobe3D();
         initialiserCapteursIMU();
-        ecrireLog("[SENTINELA v15.8] Initialisation complète réussie.");
+        ecrireLog("[SENTINELA v15.8] Moteur chargé avec succès.");
         calculerAstronomieDirecte();
         setInterval(calculerAstronomieDirecte, 1000);
     });
