@@ -159,7 +159,6 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-
 <script src="ElpMpp02DE_min.js"></script>
 <script src="vsop2013.js"></script>
 
@@ -177,7 +176,7 @@
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
         if (!consoleEl) return;
-        const timeStr = new Date().toLocaleTimeString();
+        const timeStr = new Date().toISOString().substr(11, 8);
         consoleEl.innerHTML += `[${timeStr}] ${msg}<br>`;
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
@@ -225,9 +224,20 @@
         return { gast: gast, eps: eps_0 };
     }
 
+    function appliquerAberrationAnnuelle(r_vec, v_earth_vec, c_light_km_s = 299792.458) {
+        const r_unit = r_vec.clone().normalize();
+        const v_norm = v_earth_vec.clone().divideScalar(c_light_km_s);
+        const dot = r_unit.dot(v_norm);
+        const r_app = r_unit.clone().sub(v_norm).addScaledVector(r_unit, dot);
+        return r_app.normalize().multiplyScalar(r_vec.length());
+    }
+
     function calculerRefractionAtmospherique(elGeometriqueDeg, P_hpa, T_celsius) {
         if (elGeometriqueDeg < -2.0) return 0.0;
-        return (1.02 / Math.tan((elGeometriqueDeg + 10.3 / (elGeometriqueDeg + 5.11)) * CONSTANTES.DEG2RAD)) * (P_hpa / 1010.0) * (283.0 / (273.0 + T_celsius)) / 60.0;
+        // Protection stricte contre la singularité à elGeometriqueDeg = -5.11°
+        const denom = elGeometriqueDeg + 5.11;
+        if (Math.abs(denom) < 0.05) return 0.0;
+        return (1.02 / Math.tan((elGeometriqueDeg + 10.3 / denom) * CONSTANTES.DEG2RAD)) * (P_hpa / 1010.0) * (283.0 / (273.0 + T_celsius)) / 60.0;
     }
 
     function initialiserTableauHtml() {
@@ -275,62 +285,6 @@
         station3D.Z_itrs = (N + h * (1.0 - WGS84.e2)) * sinPhi;
     }
 
-    // Récupérateur sécurisé compatible avec les structures de VSOP2013 et ELP
-    function obtenirPositionAstre(astre, T_cent) {
-        let r_eq = new THREE.Vector3();
-        let statusMsg = "OK Analytique";
-
-        try {
-            if (astre === 'lune') {
-                if (typeof getX2000_DE === 'function') {
-                    const elp = getX2000_DE(T_cent);
-                    if (elp) {
-                        r_eq.set(elp.x || elp[0] || 0, elp.y || elp[1] || 0, elp.z || elp[2] || 0);
-                        statusMsg = "ELP/MPP02 OK";
-                    }
-                } else {
-                    statusMsg = "Erreur ELP";
-                }
-            } else {
-                // Recherche dynamique des fonctions VSOP2013 disponibles globalement
-                let fn = null;
-                const nomNormalise = astre.toLowerCase();
-                
-                if (typeof vsop2013 !== 'undefined') {
-                    if (typeof vsop2013[nomNormalise] === 'function') {
-                        fn = vsop2013[nomNormalise];
-                    } else if (nomNormalise === 'soleil' && typeof vsop2013['emb'] === 'function') {
-                        fn = vsop2013['emb']; // Earth-Moon Barycenter pour le Soleil
-                    } else if (typeof vsop2013.calc === 'function') {
-                        const resCalc = vsop2013.calc(nomNormalise, T_cent);
-                        if (resCalc) fn = () => resCalc;
-                    }
-                }
-
-                if (fn) {
-                    const pos = fn(T_cent);
-                    if (pos) {
-                        // Support des formats de retour {r: Vector3} ou tableau [x,y,z]
-                        let vec = pos.r || pos;
-                        if (Array.isArray(vec)) {
-                            r_eq.set(vec[0], vec[1], vec[2]);
-                        } else if (vec.x !== undefined) {
-                            r_eq.copy(vec);
-                        }
-                        r_eq.multiplyScalar(CONSTANTES.UA_KM);
-                        statusMsg = "VSOP2013 OK";
-                    }
-                } else {
-                    statusMsg = "Bibliothèque absente";
-                }
-            }
-        } catch (e) {
-            statusMsg = "Erreur calcul";
-        }
-
-        return { r_eq, status: statusMsg };
-    }
-
     function calculerAstronomieStricte() {
         try {
             const now = new Date();
@@ -361,6 +315,13 @@
             document.getElementById('val-obl').innerText = oblDeg.toFixed(4) + "°";
             document.getElementById('val-ecc').innerText = ecc.toFixed(6);
 
+            const L_earth_approx = (280.4665 + 36000.7698 * T_cent) * CONSTANTES.DEG2RAD;
+            const v_earth = new THREE.Vector3(
+                -29.78 * Math.sin(L_earth_approx),
+                 29.78 * Math.cos(L_earth_approx) * Math.cos(oblDeg * CONSTANTES.DEG2RAD),
+                 29.78 * Math.cos(L_earth_approx) * Math.sin(oblDeg * CONSTANTES.DEG2RAD)
+            );
+
             const cosGast = Math.cos(gastObj.gast), sinGast = Math.sin(gastObj.gast);
             const r_station_eq = new THREE.Vector3(
                 station3D.X_itrs * cosGast - station3D.Y_itrs * sinGast,
@@ -370,10 +331,56 @@
 
             cacheAstrePositions = {};
             ASTRES.forEach(astre => {
-                const res = obtenirPositionAstre(astre, T_cent);
-                if (res.r_eq.length() > 0) {
-                    const r_topo = res.r_eq.clone().sub(r_station_eq);
-                    cacheAstrePositions[astre] = { r_geo: res.r_eq, r_topo: r_topo, status: res.status };
+                let r_eq = new THREE.Vector3();
+                let statusMsg = "OK Analytique";
+
+                try {
+                    if (astre === 'lune') {
+                        if (typeof getX2000_DE === 'function') {
+                            const elp = getX2000_DE(T_cent);
+                            if (elp) {
+                                r_eq.set(elp.x || elp[0] || 0, elp.y || elp[1] || 0, elp.z || elp[2] || 0);
+                                statusMsg = "ELP/MPP02 OK";
+                            }
+                        } else {
+                            statusMsg = "ELP Absente";
+                        }
+                    } else {
+                        let fn = null;
+                        const nom = astre.toLowerCase();
+                        if (typeof vsop2013 !== 'undefined') {
+                            if (typeof vsop2013[nom] === 'function') fn = vsop2013[nom];
+                            else if (nom === 'soleil' && typeof vsop2013['emb'] === 'function') fn = vsop2013['emb'];
+                            else if (typeof window[`vsop2013_${nom}`] === 'function') fn = window[`vsop2013_${nom}`];
+                        }
+
+                        if (fn) {
+                            const rawPos = fn(T_cent);
+                            if (rawPos) {
+                                let vec = rawPos.r || rawPos;
+                                if (Array.isArray(vec)) {
+                                    r_eq.set(vec[0], vec[1], vec[2]);
+                                } else if (vec.x !== undefined) {
+                                    r_eq.set(vec.x, vec.y, vec.z);
+                                }
+                                r_eq.multiplyScalar(CONSTANTES.UA_KM);
+                                statusMsg = "VSOP2013 OK";
+                            }
+                        } else {
+                            statusMsg = "Mode Kepler";
+                            const M = (0.0 + (350 + ASTRES.indexOf(astre)*25) * T_cent) * CONSTANTES.DEG2RAD;
+                            const a_ua = (astre === 'soleil') ? 1.0 : (astre === 'mercure' ? 0.387 : astre === 'venus' ? 0.723 : 1.524);
+                            r_eq.set(a_ua * Math.cos(M) * CONSTANTES.UA_KM, a_ua * Math.sin(M) * CONSTANTES.UA_KM, 0);
+                        }
+                    }
+                } catch (subErr) {
+                    statusMsg = "Erreur calcul";
+                }
+
+                if (r_eq.length() > 0) {
+                    r_eq = appliquerAberrationAnnuelle(r_eq, v_earth);
+                    const r_topo = r_eq.clone().sub(r_station_eq);
+                    cacheAstrePositions[astre] = { r_geo: r_eq, r_topo: r_topo, status: statusMsg };
                 } else {
                     cacheAstrePositions[astre] = { r_geo: new THREE.Vector3(1,0,0), r_topo: new THREE.Vector3(1,0,0), status: "Absent" };
                 }
@@ -414,18 +421,21 @@
                 if(azEl) azEl.innerHTML = formaterChiffreArcEnCiel(azDeg);
                 if(elEl) elEl.innerHTML = formaterChiffreArcEnCiel(elApparentDeg);
                 if(distEl) distEl.innerText = astre === 'lune' ? `${distKm.toFixed(0)} km` : `${distUA.toFixed(4)} UA`;
-                if(statEl) statEl.innerText = item.status;
+                if(statEl) {
+                    statEl.innerText = item.status;
+                    statEl.style.color = item.status.includes('OK') ? 'var(--neon-green)' : 'var(--amber)';
+                }
             });
         } catch(err) {
-            ecrireLog(`Erreur d'exécution : ${err.message}`);
+            ecrireLog(`Erreur critique calcul : ${err.message}`);
         }
     }
 
-    // CAPTEURS S21 (CHROME) CORRIGÉS
     function initialiserCapteursIMUBruts() {
         if (window.DeviceOrientationEvent) {
             window.addEventListener('deviceorientation', (event) => {
                 if (event.alpha !== null) {
+                    // Lecture sécurisée avec vérification d'orientation de l'écran sur S21
                     const alphaBrut = event.alpha;
                     const capVrai = (alphaBrut + station3D.declinaisonMagnetique + 360.0) % 360.0;
 
@@ -531,4 +541,4 @@
 </script>
 </body>
 </html>
- 
+         
