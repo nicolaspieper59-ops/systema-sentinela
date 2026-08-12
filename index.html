@@ -160,33 +160,6 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-<script>
-class Orbit {
-    constructor(params) {
-        if (params instanceof Orbit) {
-            this._a = params._a; this._L = params._L; this._k = params._k;
-            this._h = params._h; this._q = params._q; this._p = params._p;
-            this.GM = params.GM; this.epoch = params.epoch;
-            this.r = params.r ? params.r.clone() : new THREE.Vector3();
-            this.v = params.v ? params.v.clone() : new THREE.Vector3();
-        } else {
-            this._a = params.a || 0; this._L = params.L || 0; this._k = params.k || 0;
-            this._h = params.h || 0; this._q = params.q || 0; this._p = params.p || 0;
-            this.GM = params.GM || 0; this.epoch = params.epoch || 0;
-            this.r = params.r || new THREE.Vector3();
-            this.v = params.v || new THREE.Vector3();
-        }
-    }
-    L() { return this._L; } k() { return this._k; } h() { return this._h; }
-    q() { return this._q; } p() { return this._p; }
-    state(f) { return { r: this.r.clone(), v: this.v.clone() }; }
-}
-function CYCLE(x, max = 2.0 * Math.PI) {
-    let r = x % max;
-    return r < 0 ? r + max : r;
-}
-</script>
-
 <script src="ElpMpp02DE_min.js"></script>
 <script src="vsop2013.js"></script>
 
@@ -195,17 +168,6 @@ function CYCLE(x, max = 2.0 * Math.PI) {
     const WGS84 = { a: 6378137.0, f: 1.0 / 298.257223563, get e2() { return this.f * (2.0 - this.f); } };
     const CONSTANTES = { UA_KM: 149597870.7, DELTA_T_SEC: 69.18, DEG2RAD: Math.PI / 180.0, RAD2DEG: 180.0 / Math.PI };
     
-    const MAP_VSOP_KEYS = {
-        'soleil': ['emb'],
-        'mercure': ['mercury', 'mer'],
-        'venus': ['venus', 'ven'],
-        'mars': ['mars', 'mar'],
-        'jupiter': ['jupiter', 'jup'],
-        'saturne': ['saturn', 'sat'],
-        'uranus': ['uranus', 'ura'],
-        'neptune': ['neptune', 'nep']
-    };
-
     let modeJourActif = false;
     let isDragging = false;
     let mouseLastX = 0, mouseLastY = 0;
@@ -215,7 +177,7 @@ function CYCLE(x, max = 2.0 * Math.PI) {
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
         if (!consoleEl) return;
-        const timeStr = new Date().toISOString().substr(11, 8);
+        const timeStr = new Date().toLocaleTimeString();
         consoleEl.innerHTML += `[${timeStr}] ${msg}<br>`;
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
@@ -261,14 +223,6 @@ function CYCLE(x, max = 2.0 * Math.PI) {
         if (gast < 0) gast += 2.0 * Math.PI;
 
         return { gast: gast, eps: eps_0 };
-    }
-
-    function appliquerAberrationAnnuelle(r_vec, v_earth_vec, c_light_km_s = 299792.458) {
-        const r_unit = r_vec.clone().normalize();
-        const v_norm = v_earth_vec.clone().divideScalar(c_light_km_s);
-        const dot = r_unit.dot(v_norm);
-        const r_app = r_unit.clone().sub(v_norm).addScaledVector(r_unit, dot);
-        return r_app.normalize().multiplyScalar(r_vec.length());
     }
 
     function calculerRefractionAtmospherique(elGeometriqueDeg, P_hpa, T_celsius) {
@@ -321,6 +275,62 @@ function CYCLE(x, max = 2.0 * Math.PI) {
         station3D.Z_itrs = (N + h * (1.0 - WGS84.e2)) * sinPhi;
     }
 
+    // Récupérateur sécurisé compatible avec les structures de VSOP2013 et ELP
+    function obtenirPositionAstre(astre, T_cent) {
+        let r_eq = new THREE.Vector3();
+        let statusMsg = "OK Analytique";
+
+        try {
+            if (astre === 'lune') {
+                if (typeof getX2000_DE === 'function') {
+                    const elp = getX2000_DE(T_cent);
+                    if (elp) {
+                        r_eq.set(elp.x || elp[0] || 0, elp.y || elp[1] || 0, elp.z || elp[2] || 0);
+                        statusMsg = "ELP/MPP02 OK";
+                    }
+                } else {
+                    statusMsg = "Erreur ELP";
+                }
+            } else {
+                // Recherche dynamique des fonctions VSOP2013 disponibles globalement
+                let fn = null;
+                const nomNormalise = astre.toLowerCase();
+                
+                if (typeof vsop2013 !== 'undefined') {
+                    if (typeof vsop2013[nomNormalise] === 'function') {
+                        fn = vsop2013[nomNormalise];
+                    } else if (nomNormalise === 'soleil' && typeof vsop2013['emb'] === 'function') {
+                        fn = vsop2013['emb']; // Earth-Moon Barycenter pour le Soleil
+                    } else if (typeof vsop2013.calc === 'function') {
+                        const resCalc = vsop2013.calc(nomNormalise, T_cent);
+                        if (resCalc) fn = () => resCalc;
+                    }
+                }
+
+                if (fn) {
+                    const pos = fn(T_cent);
+                    if (pos) {
+                        // Support des formats de retour {r: Vector3} ou tableau [x,y,z]
+                        let vec = pos.r || pos;
+                        if (Array.isArray(vec)) {
+                            r_eq.set(vec[0], vec[1], vec[2]);
+                        } else if (vec.x !== undefined) {
+                            r_eq.copy(vec);
+                        }
+                        r_eq.multiplyScalar(CONSTANTES.UA_KM);
+                        statusMsg = "VSOP2013 OK";
+                    }
+                } else {
+                    statusMsg = "Bibliothèque absente";
+                }
+            }
+        } catch (e) {
+            statusMsg = "Erreur calcul";
+        }
+
+        return { r_eq, status: statusMsg };
+    }
+
     function calculerAstronomieStricte() {
         try {
             const now = new Date();
@@ -351,13 +361,6 @@ function CYCLE(x, max = 2.0 * Math.PI) {
             document.getElementById('val-obl').innerText = oblDeg.toFixed(4) + "°";
             document.getElementById('val-ecc').innerText = ecc.toFixed(6);
 
-            const L_earth_approx = (280.4665 + 36000.7698 * T_cent) * CONSTANTES.DEG2RAD;
-            const v_earth = new THREE.Vector3(
-                -29.78 * Math.sin(L_earth_approx),
-                 29.78 * Math.cos(L_earth_approx) * Math.cos(oblDeg * CONSTANTES.DEG2RAD),
-                 29.78 * Math.cos(L_earth_approx) * Math.sin(oblDeg * CONSTANTES.DEG2RAD)
-            );
-
             const cosGast = Math.cos(gastObj.gast), sinGast = Math.sin(gastObj.gast);
             const r_station_eq = new THREE.Vector3(
                 station3D.X_itrs * cosGast - station3D.Y_itrs * sinGast,
@@ -367,33 +370,10 @@ function CYCLE(x, max = 2.0 * Math.PI) {
 
             cacheAstrePositions = {};
             ASTRES.forEach(astre => {
-                let r_eq = new THREE.Vector3();
-                let statusMsg = "OK Analytique";
-                if (astre === 'lune') {
-                    if (typeof getX2000_DE === 'function') {
-                        const elp = getX2000_DE(T_cent);
-                        r_eq.set(elp.x || 0, elp.y || 0, elp.z || 0);
-                        statusMsg = "ELP/MPP02 OK";
-                    } else {
-                        statusMsg = "Erreur ELP";
-                    }
-                } else {
-                    const keys = MAP_VSOP_KEYS[astre] || [astre];
-                    let foundKey = keys.find(k => typeof vsop2013 !== 'undefined' && vsop2013[k]);
-                    if (foundKey && typeof vsop2013[foundKey] === 'function') {
-                        const pos = vsop2013[foundKey](T_cent);
-                        if (pos && pos.r) {
-                            r_eq.copy(pos.r).multiplyScalar(CONSTANTES.UA_KM);
-                        }
-                    } else {
-                        statusMsg = "Mode Dégradé";
-                    }
-                }
-
-                if (r_eq.length() > 0) {
-                    r_eq = appliquerAberrationAnnuelle(r_eq, v_earth);
-                    const r_topo = r_eq.clone().sub(r_station_eq);
-                    cacheAstrePositions[astre] = { r_geo: r_eq, r_topo: r_topo, status: statusMsg };
+                const res = obtenirPositionAstre(astre, T_cent);
+                if (res.r_eq.length() > 0) {
+                    const r_topo = res.r_eq.clone().sub(r_station_eq);
+                    cacheAstrePositions[astre] = { r_geo: res.r_eq, r_topo: r_topo, status: res.status };
                 } else {
                     cacheAstrePositions[astre] = { r_geo: new THREE.Vector3(1,0,0), r_topo: new THREE.Vector3(1,0,0), status: "Absent" };
                 }
@@ -441,7 +421,7 @@ function CYCLE(x, max = 2.0 * Math.PI) {
         }
     }
 
-    // CAPTEURS BRUTS AVEC CORRECTION WMM POUR CHROME MOBILE (S21)
+    // CAPTEURS S21 (CHROME) CORRIGÉS
     function initialiserCapteursIMUBruts() {
         if (window.DeviceOrientationEvent) {
             window.addEventListener('deviceorientation', (event) => {
@@ -458,7 +438,7 @@ function CYCLE(x, max = 2.0 * Math.PI) {
             }, true);
             ecrireLog("IMU connecté en mode brut + WMM sous Chrome S21.");
         } else {
-            ecrireLog("DeviceOrientation non supporté par ce navigateur.");
+            ecrireLog("DeviceOrientation non supporté.");
         }
     }
 
@@ -474,7 +454,7 @@ function CYCLE(x, max = 2.0 * Math.PI) {
             }).catch(err => ecrireLog(`Erreur permission IMU : ${err}`));
         } else {
             initialiserCapteursIMUBruts();
-            ecrireLog("Flux de capteurs matériels actifs directement.");
+            ecrireLog("Capteurs matériels actifs.");
         }
     }
 
@@ -551,4 +531,4 @@ function CYCLE(x, max = 2.0 * Math.PI) {
 </script>
 </body>
 </html>
-                        
+ 
