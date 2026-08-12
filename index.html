@@ -538,6 +538,17 @@
         setInterval(calculerAstronomieStricte, 1000);
         ecrireLog("[SENTINELA v17.2] Prêt sur GitHub Pages.");
     });
+    // Attendre que les moteurs externes soient réellement injectés en mémoire avant de calculer
+function verifierEtLancer() {
+    if (typeof vsop2013 !== 'undefined' && typeof getX2000_DE !== 'undefined') {
+        ecrireLog("Bibliothèques VSOP2013 et ELP détectées avec succès.");
+        calculerAstronomieStricte();
+        setInterval(calculerAstronomieStricte, 1000);
+    } else {
+        ecrireLog("En attente du chargement des moteurs d'éphémérides...");
+        setTimeout(verifierEtLancer, 500); // Réessaie toutes les 500ms
+    }
+                     }
 </script>
 </body>
 </html>
