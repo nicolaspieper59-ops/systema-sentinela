@@ -1,40 +1,26 @@
-// worker_astronomie.js - Worker dédié aux calculs d'éphémérides lourds
-let moduleWasmPret = false;
+// Dans worker_astronomie.js
+importScripts('astro_engine.js');
 
-// Importation ou chargement du module Celeste Wasm
-self.importScripts('astro_engine.js'); // Assurez-vous d'inclure le fichier de liaison généré par Emscripten
+let astroWasmInstance = null;
 
-// Si vous utilisez Emscripten, l'initialisation se fait souvent via un hook onRuntimeInitialized
-var Module = {
-    onRuntimeInitialized: function() {
-        moduleWasmPret = true;
-        self.postMessage({ type: 'READY', message: 'Moteur C++ Wasm initialisé.' });
-    }
-};
+// Initialisation asynchrone du module Wasm
+AstroEngineModule().then(Module => {
+    astroWasmInstance = Module;
+    
+    // Liaison d'une fonction C++ (exemple : calculer_position)
+    // C++ : double calculer_azimuth(double julianDay, double lat, double lon)
+    self.calculerAzimuth = Module.cwrap('calculer_azimuth', 'number', ['number', 'number', 'number']);
+    
+    console.log("[Worker] Moteur C++/Wasm chargé avec succès.");
+    self.postMessage({ status: 'WASM_READY' });
+});
 
 self.onmessage = function(e) {
-    const data = e.data;
-    if (data.type === ' CALCULER_EPHEMERIDES') {
-        if (!moduleWasmPret) {
-            self.postMessage({ type: 'ERREUR', message: 'Moteur Wasm non prêt.' });
-            return;
-        }
-
-        try {
-            const T_cent = data.T_cent;
-            
-            // Appel sécurisé des fonctions exportées depuis le C++ (ex: calculs vectoriels intensifs)
-            // Exemple : let resultatPtr = _calculer_position_astred(T_cent, data.astreId);
-            
-            // Traitement des données sans fuite mémoire (libération explicite si allocation dynamique en C++)
-            
-            self.postMessage({
-                type: 'RESULTAT_CALCUL',
-                astre: data.astreId,
-                // Données calculées renvoyées proprement au thread principal
-            });
-        } catch (err) {
-            self.postMessage({ type: 'ERREUR', message: err.toString() });
-        }
+    if (!astroWasmInstance) return;
+    
+    const { command, data } = e.data;
+    if (command === 'COMPUTE_POSITION') {
+        const az = self.calculerAzimuth(data.jd, data.lat, data.lon);
+        self.postMessage({ command: 'POSITION_RESULT', result: { azimuth: az } });
     }
 };
