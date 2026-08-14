@@ -1,70 +1,78 @@
-// worker_astronomie.js — MOTEUR HYBRIDE D'ÉPHÉMÉRIDES (CORRIGÉ)
+// worker_astronomie.js — PONT WASM & INJECTION DE440s
 importScripts('vsop2013.js', 'ElpMpp02DE_min.js');
 
-let wasmReady = false;
-let calcAzimuthWasm = null, calcElevationWasm = null, calcDistanceWasm = null;
-let fluxLiveJPLData = null;
-let stationActuelle = { lat: 43.2843, lon: 5.3585, alt: 0.1 };
+let wasmInstance = null;
+let fluxLiveJPL = null;
+let resultPtr = null;
 
-const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne'];
+let stationActuelle = { lat: 43.284356, lon: 5.358507, alt: 99.31 };
+const MAGNITUDES = { soleil: -26.74, lune: -12.74, mercure: 0.23, venus: -4.4, mars: 0.71, jupiter: -2.2, saturne: 0.46, uranus: 5.68, neptune: 7.78 };
+const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
 
-// 1. Chargement de flux_live.json (DE440s JPL)
+// 1. Chargement de flux_live.json
 fetch('flux_live.json')
     .then(r => r.json())
     .then(data => {
-        fluxLiveJPLData = data;
-        console.log("[Worker] Matrice JPL DE440s chargée avec succès.");
+        fluxLiveJPL = data;
+        console.log("[Worker] Matrices JPL DE440s (flux_live.json) chargées.");
     })
-    .catch(err => console.warn("[Worker] flux_live.json non chargé, bascule sur VSOP/Wasm."));
+    .catch(() => console.warn("[Worker] flux_live.json indisponible, bascule Wasm/VSOP."));
 
-// 2. Chargement sécurisé du Module WebAssembly C++
+// 2. Chargement Wasm
 try {
     importScripts('astro_engine.js');
     if (typeof AstroEngineModule !== 'undefined') {
-        AstroEngineModule().then(Instance => {
-            calcAzimuthWasm = Instance.cwrap('calculer_azimuth', 'number', ['number', 'number', 'number', 'number']);
-            calcElevationWasm = Instance.cwrap('calculer_elevation', 'number', ['number', 'number', 'number', 'number']);
-            calcDistanceWasm = Instance.cwrap('calculer_distance', 'number', ['number', 'number', 'number', 'number']);
-            wasmReady = true;
-            console.log("[Worker] Noyau Wasm C++ opérationnel.");
-            calculerPositions(); // Recalcul immédiat dès initialisation
+        AstroEngineModule().then(Module => {
+            wasmInstance = Module;
+            // Reservation de 72 octets pour la structure AstroResult (9 doubles + 1 int)
+            resultPtr = wasmInstance._malloc(72);
+            console.log("[Worker] Moteur C++/Wasm instancié.");
+            calculerPositions();
         });
     }
 } catch (e) {
-    console.warn("[Worker] Wasm non disponible, mode fallback activé.");
+    console.warn("[Worker] Erreur de chargement Wasm.");
 }
 
-function getJulianDay(d) {
-    return (d.getTime() / 86400000.0) + 2440587.5;
+function lireAstroResult(ptr) {
+    return {
+        az: wasmInstance.getValue(ptr, 'double'),
+        elGeom: wasmInstance.getValue(ptr + 8, 'double'),
+        el: wasmInstance.getValue(ptr + 16, 'double'),
+        ra: wasmInstance.getValue(ptr + 24, 'double'),
+        dec: wasmInstance.getValue(ptr + 32, 'double'),
+        dist: wasmInstance.getValue(ptr + 40, 'double'),
+        visibilite: wasmInstance.getValue(ptr + 64, 'i32')
+    };
 }
 
 function calculerPositions() {
-    const jd = getJulianDay(new Date());
+    const maintenant = new Date();
+    const minuteDuJour = maintenant.getUTCHours() * 60 + maintenant.getUTCMinutes();
     const resultats = [];
 
-    ASTRES.forEach((nomAstre, idAstre) => {
-        let az = 0, el = 0, dist = 0, source = "INITIALISATION";
+    ASTRES.forEach((nomAstre) => {
+        let az = 0, el = 0, dist = 0, source = "VSOP/ELP";
 
-        // PRIORITÉ 1 : Données interpolées depuis flux_live.json (JPL DE440s)
-        if (fluxLiveJPLData && fluxLiveJPLData[nomAstre]) {
-            const stateVec = fluxLiveJPLData[nomAstre];
-            az = stateVec.az; el = stateVec.el; dist = stateVec.dist;
-            source = "JPL DE440s (LIVE)";
-        }
-        // PRIORITÉ 2 : Calcul C++ / WebAssembly
-        else if (wasmReady && calcAzimuthWasm) {
-            try {
-                az = calcAzimuthWasm(jd, stationActuelle.lat, stationActuelle.lon, idAstre);
-                el = calcElevationWasm(jd, stationActuelle.lat, stationActuelle.lon, idAstre);
-                dist = calcDistanceWasm(jd, stationActuelle.lat, stationActuelle.lon, idAstre);
-                source = "WASM C++";
-            } catch (err) {
-                source = "VSOP2013/ELP";
+        // TENTATIVE 1 : Utilisation des vecteurs ECEF de flux_live.json (JPL DE440s)
+        if (fluxLiveJPL && fluxLiveJPL.DATA && fluxLiveJPL.DATA[nomAstre] && wasmInstance) {
+            const ecefPoint = fluxLiveJPL.DATA[nomAstre][minuteDuJour];
+            if (ecefPoint) {
+                wasmInstance.ccall(
+                    'calculerDepuisECEF',
+                    'void',
+                    ['number', 'number', 'number', 'number', 'number', 'number', 'number', 'number', 'number', 'number'],
+                    [ecefPoint.x, ecefPoint.y, ecefPoint.z, stationActuelle.lat, stationActuelle.lon, stationActuelle.alt, 15.0, 1013.25, MAGNITUDES[nomAstre] || 0, resultPtr]
+                );
+                const res = lireAstroResult(resultPtr);
+                az = res.az; el = res.el; dist = res.dist;
+                source = "JPL DE440s (Wasm)";
             }
         }
-        
-        // PRIORITÉ 3 : Fallback JS (VSOP2013 / ELP-MPP02)
-        if (source === "INITIALISATION" || source === "VSOP2013/ELP") {
+
+        // TENTATIVE 2 : Fallback VSOP2013 / ELP-MPP02
+        if (source === "VSOP/ELP") {
+            const jd = (maintenant.getTime() / 86400000.0) + 2440587.5;
             if (nomAstre === 'lune' && typeof ElpMpp02 !== 'undefined') {
                 const r = ElpMpp02.getCoordinates(jd, stationActuelle.lat, stationActuelle.lon);
                 az = r.azimuth; el = r.elevation; dist = r.distance;
@@ -74,9 +82,8 @@ function calculerPositions() {
                 az = r.azimuth; el = r.elevation; dist = r.distance;
                 source = "VSOP2013";
             } else {
-                az = (jd * 15 + idAstre * 45 + stationActuelle.lon) % 360;
-                el = 20 + Math.sin(jd + idAstre) * 40;
-                dist = 1.0 + idAstre * 0.4;
+                az = (jd * 15 + stationActuelle.lon) % 360;
+                el = 30.0; dist = 1.0;
                 source = "SECOURS LOCAL";
             }
         }
@@ -84,7 +91,7 @@ function calculerPositions() {
         resultats.push({ nom: nomAstre, az: (az + 360) % 360, el: el, dist: dist, source: source });
     });
 
-    self.postMessage({ type: 'ASTRO_DATA', astres: resultats, jd: jd });
+    self.postMessage({ type: 'ASTRO_DATA', astres: resultats, utc: maintenant.toUTCString() });
 }
 
 self.onmessage = function(e) {
