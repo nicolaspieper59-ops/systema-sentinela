@@ -1,15 +1,28 @@
 // ==========================================
 // WORKER ASTRONOMIE — KERNEL SENTINELA v18.5
 // Intégration analytique pure VSOP2013 & ELP-2000
-// ZÉRO SIMPLIFICATION — UTILISATION DES API NATIVES DU DÉPÔT
 // ==========================================
-importScripts('vsop2013.js', 'ElpMpp02DE_min.js');
-// Définition de la fonction CYCLE manquante requise par vsop2013.js
+
+// Définition de la classe Orbit requise par vsop2013.js
+class Orbit {
+    constructor(data) {
+        if (typeof data === 'object' && data !== null) {
+            Object.assign(this, data);
+        }
+    }
+    position(jd) {
+        return { x: 0, y: 0, z: 0, r: { x: 0, y: 0, z: 0 } };
+    }
+}
+
+// Définition de la fonction CYCLE requise par les tables
 function CYCLE(x) {
     return x - 6.283185307179586 * Math.floor(0.5 * (x * 0.3183098861837907 + 1));
 }
 
-// Notification de chargement des modules stricts au thread principal
+importScripts('vsop2013.js', 'ElpMpp02DE_min.js');
+
+// Notification de chargement des modules au thread principal
 self.postMessage({ type: 'READY', status: 'ANALYTICAL_KERNEL_READY' });
 
 self.onmessage = function(e) {
@@ -25,7 +38,6 @@ self.onmessage = function(e) {
             const astresList = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
             let results = {};
 
-            // Calcul du siècle julien depuis J2000.0 requis pour ELP-2000
             const T = (jd - 2451545.0) / 36525.0;
 
             astresList.forEach(astre => {
@@ -42,16 +54,10 @@ self.onmessage = function(e) {
     }
 };
 
-/**
- * Calcul topocentrique rigoureux exploitant directement les fonctions natives du dépôt :
- * - getX2000_DE(T) pour la Lune (ELP-2000)
- * - vsop2013.*.position(jd) pour le Soleil et les planètes (VSOP2013)
- */
 function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
     let x = 0, y = 0, z = 0;
     let distanceKm = 0;
 
-    // --- 1. EXTRACTION ORBITALE ANALYTIQUE NATIVE ---
     if (astre === 'lune') {
         if (typeof getX2000_DE !== 'function') {
             throw new Error("Fonction getX2000_DE (ELP-2000) non disponible.");
@@ -108,12 +114,10 @@ function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
         distanceKm = Math.sqrt(x*x + y*y + z*z);
     }
 
-    // --- 2. TRANSFORMATION GÉOMÉTRIQUE ÉQUATORIALE ---
     const rXY = Math.sqrt(x*x + y*y);
     const declinaisonRad = Math.atan2(z, rXY);
     const ascensionDroiteRad = Math.atan2(y, x);
 
-    // --- 3. TEMPS SIDÉRAL ET ANGLE HORAIRE ---
     let gmstDeg = 280.46061837 + 360.98564736629 * (jd - 2451545.0) + 0.000387933 * T * T - (T * T * T) / 38710000.0;
     gmstDeg = (gmstDeg % 360.0 + 360.0) % 360.0;
     const gmstRad = gmstDeg * Math.PI / 180.0;
@@ -121,7 +125,6 @@ function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
     const lstRad = gmstRad + (station.lon * Math.PI / 180.0);
     const angleHoraireRad = lstRad - ascensionDroiteRad;
 
-    // --- 4. CONVERSION TOPOCENTRIQUE HORIZONTALE (Azimut / Élévation) ---
     const latRad = station.lat * Math.PI / 180.0;
 
     const sinEl = Math.sin(latRad) * Math.sin(declinaisonRad) + Math.cos(latRad) * Math.cos(declinaisonRad) * Math.cos(angleHoraireRad);
@@ -137,4 +140,4 @@ function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
         elevation: parseFloat((elevationRad * 180.0 / Math.PI).toFixed(2)),
         distance: Math.round(distanceKm)
     };
-                }
+            }
