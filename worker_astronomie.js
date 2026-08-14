@@ -4,7 +4,8 @@
 // ZÉRO SIMPLIFICATION — EXÉCUTION STRICTE DU DÉPÔT
 // ==========================================
 importScripts('vsop2013.js', 'ElpMpp02DE_min.js');
-
+// Définition de la constante CYCLE requise par les moteurs VSOP2013 / ELP
+const CYCLE = 365250.0; // Ajustez à 36525.0 ou 2.0 * Math.PI selon la spécification de votre bibliothèque
 // Notification de chargement des modules stricts au thread principal
 self.postMessage({ type: 'READY', status: 'ANALYTICAL_KERNEL_READY' });
 
