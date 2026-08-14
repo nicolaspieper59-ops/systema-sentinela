@@ -292,6 +292,7 @@ function initialiserGeolocalisationTempsReel() {
         document.getElementById('val-f-wmm').innerText = `${Math.round(resultatWmmCourant.F)} nT`;
     }
     
+// --- CORRECTION DU RÉCEPTEUR WORKER DANS INDEX.HTML ---
 function initialiserWorkerAstronomie() {
     if (typeof Worker === 'undefined') {
         ecrireLog("Erreur critique : Web Workers non supportés.");
@@ -303,14 +304,11 @@ function initialiserWorkerAstronomie() {
     astroWorker.onmessage = function(e) {
         const data = e.data;
         
-        // Validation stricte du statut de préparation du worker
         if (data.status === 'WASM_READY' || data.type === 'READY') {
             document.getElementById('lbl-worker-status').innerText = "ACTIF (DÉPÔT STRICT)";
             document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
             ecrireLog("Worker Astronomie lié aux modules VSOP2013 / ELP-2000.");
         } 
-        
-        // Traitement des éphémérides calculées
         else if (data.type === 'RESULTS' && data.results) {
             const resMap = data.results;
             const astres = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
@@ -318,25 +316,28 @@ function initialiserWorkerAstronomie() {
             astres.forEach(astre => {
                 if (resMap[astre]) {
                     const obj = resMap[astre];
-                    document.getElementById(`az-${astre}`).innerText = `${obj.azimuth.toFixed(2)}°`;
-                    document.getElementById(`el-${astre}`).innerText = `${obj.elevation.toFixed(2)}°`;
-                    document.getElementById(`dist-${astre}`).innerText = `${Math.round(obj.distance).toLocaleString()} km`;
-                    
-                    const statusEl = document.getElementById(`status-${astre}`);
-                    if (statusEl) {
-                        statusEl.innerText = "SYNCHRONISÉ";
-                        statusEl.style.color = "var(--neon-green)";
+                    const elAz = document.getElementById(`az-${astre}`);
+                    const elEl = document.getElementById(`el-${astre}`);
+                    const elDist = document.getElementById(`dist-${astre}`);
+                    const elStatus = document.getElementById(`status-${astre}`);
+
+                    if (elAz) elAz.innerText = `${obj.azimuth.toFixed(2)}°`;
+                    if (elEl) elEl.innerText = `${obj.elevation.toFixed(2)}°`;
+                    if (elDist) elDist.innerText = `${Math.round(obj.distance).toLocaleString()} km`;
+                    if (elStatus) {
+                        elStatus.innerText = "SYNCHRONISÉ";
+                        elStatus.style.color = "var(--neon-green)";
                     }
                 }
             });
         }
         else if (data.type === 'ERROR') {
-            ecrireLog(`Erreur Worker calcul : ${data.message}`);
+            ecrireLog(`Erreur Worker : ${data.message}`);
         }
     };
 
     astroWorker.onerror = function(err) {
-        ecrireLog(`Erreur critique thread Worker : ${err.message} (Vérifier la présence des fichiers .js dans le répertoire racine).`);
+        ecrireLog(`Erreur critique thread Worker : ${err.message}`);
     };
     }
 
@@ -435,8 +436,11 @@ function initialiserWorkerAstronomie() {
     }
 
     // --- INITIALISATION AU CHARGEMENT ---
-    window.addEventListener('load', () => {
-        const tbody = document.getElementById('table-body');
+// --- BOUCLE D'EXÉCUTION TEMPORELLE STRICTE ---
+window.addEventListener('load', () => {
+    const tbody = document.getElementById('table-body');
+    if (tbody) {
+        tbody.innerHTML = "";
         ASTRES.forEach(astre => {
             tbody.innerHTML += `<tr>
                 <td style="color:var(--sky); text-transform:uppercase; font-weight:bold;">${astre}</td>
@@ -446,33 +450,42 @@ function initialiserWorkerAstronomie() {
                 <td id="status-${astre}" style="color:var(--amber)">En attente...</td>
             </tr>`;
         });
+    }
 
-        dessinerRadar();
-        initGlobe3D();
-        chargerEtParserWMM();
-        initialiserWorkerAstronomie();
-        initialiserGeolocalisation();
+    dessinerRadar();
+    initGlobe3D();
+    chargerEtParserWMM();
+    initialiserWorkerAstronomie();
+    initialiserGeolocalisationTempsReel();
 
-        setInterval(() => {
-            const now = new Date();
-            const jd = getJulianDay(now);
-            const gmst = getGMST(jd);
-            
-            document.getElementById('lbl-epoch').innerText = now.toUTCString().substr(17, 8) + " UTC";
-            document.getElementById('val-gast').innerText = gmst.toFixed(2) + "°";
-            document.getElementById('val-lst').innerText = ((gmst + stationCourante.lon) % 360.0).toFixed(2) + "°";
+    // Boucle d'actualisation temps réel (1 seconde)
+    setInterval(() => {
+        const now = new Date();
+        const jd = getJulianDay(now);
+        const gmst = getGMST(jd);
+        const lst = (gmst + stationCourante.lon) % 360.0;
+        const lstPositif = (lst < 0 ? lst + 360.0 : lst);
+        
+        // Injection sécurisée avec les identifiants corrects du DOM
+        const elEpoch = document.getElementById('lbl-epoch');
+        const elGast = document.getElementById('val-gast');
+        const elLst = document.getElementById('val-lst');
 
-            if (astroWorker) {
-                astroWorker.postMessage({
-                    type: 'COMPUTE',
-                    jd: jd,
-                    station: stationCourante
-                });
-            }
-        }, 1000);
+        if (elEpoch) elEpoch.innerText = now.toUTCString().substr(17, 8) + " UTC";
+        if (elGast) elGast.innerText = gmst.toFixed(2) + "°";
+        if (elLst) elLst.innerText = lstPositif.toFixed(2) + "°";
 
-        ecrireLog("SYSTEMA SENTINELA v18.5 initialisé sans simulation ni simplification.");
-    });
+        if (astroWorker) {
+            astroWorker.postMessage({
+                type: 'COMPUTE',
+                jd: jd,
+                station: stationCourante
+            });
+        }
+    }, 1000);
+
+    ecrireLog("SYSTEMA SENTINELA v18.5 initialisé avec succès (Liaisons DOM rectifiées).");
+});
 </script>
 </body>
 </html>
