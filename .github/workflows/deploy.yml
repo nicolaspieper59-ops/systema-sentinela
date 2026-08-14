@@ -20,12 +20,12 @@ jobs:
       - name: Récupération du dépôt Git
         uses: actions/checkout@v4
 
-      - name: Installation du SDK Emscripten (Compiler C++ -> Wasm)
+      - name: Installation du SDK Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
           version: 'latest'
 
-      - name: Compilation du moteur C++
+      - name: Compilation C++ vers Wasm
         run: |
           mkdir -p build
           emcc src/astro_engine.cpp -O3 \
@@ -34,11 +34,15 @@ jobs:
             -s ALLOW_MEMORY_GROWTH=1 \
             -o build/astro_engine.js
 
-          # Copie des ressources Web dans le sous-dossier de publication
-          cp index.html build/ 2>/dev/null || true
-          cp manifest.json build/ 2>/dev/null || true
-          cp sw.js build/ 2>/dev/null || true
+      - name: Copie Intégrale des Ressources du Dépôt
+        run: |
+          cp index.html build/
+          cp manifest.json build/
+          cp sw.js build/
           cp *.js build/ 2>/dev/null || true
+          cp *.json build/ 2>/dev/null || true
+          cp *.COF build/ 2>/dev/null || true
+          cp *.csv build/ 2>/dev/null || true
 
       - name: Configuration de GitHub Pages
         uses: actions/configure-pages@v4
