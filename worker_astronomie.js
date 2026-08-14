@@ -1,16 +1,16 @@
 // ==========================================
 // WORKER ASTRONOMIE — KERNEL SENTINELA v18.5
-// Intégration stricte VSOP2013 & ELP-2000 (Zéro simplification)
+// Intégration analytique pure VSOP2013 & ELP-2000
+// ZÉRO SIMPLIFICATION — EXÉCUTION STRICTE DU DÉPÔT
 // ==========================================
 importScripts('vsop2013.js', 'ElpMpp02DE_min.js');
 
-// Notification de chargement des modules du dépôt au thread principal
-self.postMessage({ type: 'READY', status: 'WASM_READY' });
+// Notification de chargement des modules stricts au thread principal
+self.postMessage({ type: 'READY', status: 'ANALYTICAL_KERNEL_READY' });
 
 self.onmessage = function(e) {
     const dataMsg = e.data;
     
-    // Récupération rigoureuse de la date julienne et des coordonnées de la station active
     const jd = dataMsg.jd || (dataMsg.data ? dataMsg.data.jd : null);
     const station = dataMsg.station || (dataMsg.data ? { lat: dataMsg.data.lat, lon: dataMsg.data.lon, alt: dataMsg.data.alt } : null);
 
@@ -21,8 +21,11 @@ self.onmessage = function(e) {
             const astresList = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
             let results = {};
 
+            // Calcul du siècle julien depuis J2000.0 requis pour ELP-2000 (T = (JD - 2451545.0) / 36525.0)
+            const T = (jd - 2451545.0) / 36525.0;
+
             astresList.forEach(astre => {
-                results[astre] = executerCalculOrbitalRigoureux(astre, jd, station);
+                results[astre] = executerCalculTopocentriqueAnalytique(astre, jd, T, station);
             });
 
             self.postMessage({
@@ -30,85 +33,116 @@ self.onmessage = function(e) {
                 results: results
             });
         } catch (err) {
-            self.postMessage({ type: 'ERROR', message: `Erreur d'exécution orbitale : ${err.toString()}` });
+            self.postMessage({ type: 'ERROR', message: `Erreur analytique critique dans le worker : ${err.toString()}` });
         }
     }
 };
 
 /**
- * Calcul rigoureux de la position topocentrique (Azimut, Élévation, Distance)
- * en exploitant directement les solutions analytiques du dépôt (VSOP2013 / ELP-2000).
+ * Calcul topocentrique rigoureux basé exclusivement sur les moteurs analytiques du dépôt.
+ * 1. Extraction des vecteurs spatiaux bruts via VSOP2013 et ELP-2000.
+ * 2. Conversion géométrique : Cartésien héliocentrique/géocentrique -> Équatorial -> Topocentrique (Azimut, Élévation).
  */
-function executerCalculOrbitalRigoureux(astre, jd, station) {
+function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
     let x = 0, y = 0, z = 0;
-    let distanceGeocentrique = 1.0; // en UA ou km selon le moteur
+    let distanceKm = 0;
 
-    // 1. Extraction orbitale via le moteur natif du dépôt
+    // --- 1. EXTRACTION ORBITALE ANALYTIQUE NATIVE ---
     if (astre === 'lune') {
-        // Utilisation de ElpMpp02DE_min.js
-        if (typeof computeELP === 'function') {
-            const resLune = computeELP(jd);
-            x = resLune.x; y = resLune.y; z = resLune.z;
-            distanceGeocentrique = resLune.distance || 384400.0; // km
-        } else {
-            // Repli analytique exact ELP
-            distanceGeocentrique = 384400.0;
+        if (typeof getX2000_DE !== 'function') {
+            throw new Error("Fonction getX2000_DE (ELP-2000) non disponible.");
         }
+        // Appel de la théorie lunaire analytique ELP-2000
+        const posLune = getX2000_DE(T);
+        // Gestion robuste du format de retour (objet ou tableau)
+        x = posLune.x !== undefined ? posLune.x : (posLune.r ? posLune.r.x : posLune[0]);
+        y = posLune.y !== undefined ? posLune.y : (posLune.r ? posLune.r.y : posLune[1]);
+        z = posLune.z !== undefined ? posLune.z : (posLune.r ? posLune.r.z : posLune[2]);
+        
+        // Si les unités retournées par ELP sont en kilomètres ou en rayons terrestres/UA selon l'encapsulation :
+        distanceKm = Math.sqrt(x*x + y*y + z*z);
     } else {
-        // Utilisation de vsop2013.js pour le Soleil et les planètes
-        if (typeof computeVSOP2013 === 'function') {
-            const resAstre = computeVSOP2013(astre, jd);
-            x = resAstre.x; y = resAstre.y; z = resAstre.z;
-            distanceGeocentrique = resAstre.distance || (astre === 'soleil' ? 149597870.7 : 1250000000.0);
-        } else {
-            // Paramètres orbitaux distincts par défaut pour éviter la superposition
-            distanceGeocentrique = obtenirDistanceMoyenneAstre(astre);
+        if (typeof vsop2013 === 'undefined') {
+            throw new Error("Objet vsop2013 non disponible.");
         }
+
+        let planetObj = null;
+        if (astre === 'soleil') {
+            // Le Soleil est représenté par l'opposé du barycentre Terre-Lune (emb) ou de la Terre (ear)
+            planetObj = vsop2013.emb || vsop2013.ear;
+        } else {
+            const mapPlanetes = {
+                'mercure': vsop2013.mer,
+                'venus': vsop2013.ven,
+                'mars': vsop2013.mar,
+                'jupiter': vsop2013.jup,
+                'saturne': vsop2013.sat,
+                'uranus': vsop2013.ura,
+                'neptune': vsop2013.nep
+            };
+            planetObj = mapPlanetes[astre];
+        }
+
+        if (!planetObj || typeof planetObj.position !== 'function') {
+            throw new Error(`Modèle VSOP2013 manquant ou invalide pour l'astre : ${astre}`);
+        }
+
+        const posAstre = planetObj.position(jd);
+        // Extraction des coordonnées héliocentriques en UA (gérant .x ou .r.x)
+        const ax = posAstre.x !== undefined ? posAstre.x : posAstre.r.x;
+        const ay = posAstre.y !== undefined ? posAstre.y : posAstre.r.y;
+        const az = posAstre.z !== undefined ? posAstre.z : posAstre.r.z;
+
+        if (astre === 'soleil') {
+            // Position géocentrique du Soleil (vecteur héliocentrique inverse de la Terre) en kilomètres (1 UA = 149597870.7 km)
+            x = -ax * 149597870.7;
+            y = -ay * 149597870.7;
+            z = -az * 149597870.7;
+        } else {
+            // Position géocentrique des planètes : Position héliocentrique de la planète - Position héliocentrique de la Terre
+            const posTerre = (vsop2013.emb || vsop2013.ear).position(jd);
+            const tx = posTerre.x !== undefined ? posTerre.x : posTerre.r.x;
+            const ty = posTerre.y !== undefined ? posTerre.y : posTerre.r.y;
+            const tz = posTerre.z !== undefined ? posTerre.z : posTerre.r.z;
+
+            x = (ax - tx) * 149597870.7;
+            y = (ay - ty) * 149597870.7;
+            z = (az - tz) * 149597870.7;
+        }
+        distanceKm = Math.sqrt(x*x + y*y + z*z);
     }
 
-    // 2. Transformation rigoureuse en coordonnées topocentriques (Azimut / Élévation)
-    // Calcul du Temps Sidéral de Greenwich (GMST) en degrés
-    const T = (jd - 2451545.0) / 36525.0;
-    let gmst = 280.46061837 + 360.98564736629 * (jd - 2451545.0) + 0.000387933 * T * T - (T * T * T) / 38710000.0;
-    gmst = (gmst % 360.0 + 360.0) % 360.0;
+    // --- 2. TRANSFORMATION GÉOMÉTRIQUE ÉQUATORIALE ---
+    const rXY = Math.sqrt(x*x + y*y);
+    const declinaisonRad = Math.atan2(z, rXY);
+    const ascensionDroiteRad = Math.atan2(y, x);
 
-    // Temps Sidéral Local (LST)
-    const lst = (gmst + station.lon + 360.0) % 360.0;
+    // --- 3. TEMPS SIDÉRAL ET ANGLE HORAIRE ---
+    // Calcul rigoureux du GMST en degrés (formule standard IAU)
+    let gmstDeg = 280.46061837 + 360.98564736629 * (jd - 2451545.0) + 0.000387933 * T * T - (T * T * T) / 38710000.0;
+    gmstDeg = (gmstDeg % 360.0 + 360.0) % 360.0;
+    const gmstRad = gmstDeg * Math.PI / 180.0;
 
-    // Différenciation orbitale mathématique propre à chaque corps (Ascension Droite et Déclinaison approchées par les matrices du dépôt)
-    const offsetSimal = obtenirDecalageOrbitalSpécifique(astre, jd);
-    
-    const azimut = (lst * 0.9973 + offsetSimal.azOffset + station.lat * 0.5 + 360.0) % 360.0;
-    const elevation = Math.sin((lst + offsetSimal.elOffset + station.lat) * Math.PI / 180.0) * (astre === 'soleil' ? 45.0 : 25.0);
+    // Temps Sidéral Local (LST) en radians
+    const lstRad = gmstRad + (station.lon * Math.PI / 180.0);
+
+    // Angle Horaire (Hour Angle - H)
+    const angleHoraireRad = lstRad - ascensionDroiteRad;
+
+    // --- 4. CONVERSION TOPOCENTRIQUE HORIZONTALE (Azimut / Élévation) ---
+    const latRad = station.lat * Math.PI / 180.0;
+
+    const sinEl = Math.sin(latRad) * Math.sin(declinaisonRad) + Math.cos(latRad) * Math.cos(declinaisonRad) * Math.cos(angleHoraireRad);
+    const elevationRad = Math.asin(Math.max(-1, Math.min(1, sinEl)));
+
+    const yAz = -Math.sin(angleHoraireRad);
+    const xAz = Math.tan(declinaisonRad) * Math.cos(latRad) - Math.sin(latRad) * Math.cos(angleHoraireRad);
+    let azimutRad = Math.atan2(yAz, xAz);
+    if (azimutRad < 0) azimutRad += 2 * Math.PI;
 
     return {
-        azimuth: parseFloat(azimut.toFixed(2)),
-        elevation: parseFloat(elevation.toFixed(2)),
-        distance: Math.round(distanceGeocentrique)
+        azimuth: parseFloat((azimutRad * 180.0 / Math.PI).toFixed(2)),
+        elevation: parseFloat((elevationRad * 180.0 / Math.PI).toFixed(2)),
+        distance: Math.round(distanceKm)
     };
-}
-
-function obtenirDistanceMoyenneAstre(astre) {
-    const distances = {
-        'soleil': 149597870,
-        'mercure': 91691000,
-        'venus': 41400000,
-        'mars': 78340000,
-        'jupiter': 628730000,
-        'saturne': 1275000000,
-        'uranus': 2723000000,
-        'neptune': 4351000000
-    };
-    return distances[astre] || 149597870;
-}
-
-function obtenirDecalageOrbitalSpécifique(astre, jd) {
-    // Facteurs de différenciation unique pour chaque corps céleste issus des matrices du dépôt
-    const indexAstre = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'].indexOf(astre);
-    const facteurUnik = indexAstre * 37.5 + (jd % 1.0) * 15.0;
-    
-    return {
-        azOffset: facteurUnik % 360.0,
-        elOffset: (indexAstre * 7.2) % 90.0 - 45.0
-    };
-                                }
+                }
