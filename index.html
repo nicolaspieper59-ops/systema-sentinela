@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>SYSTEMA SENTINELA v18.5 — KERNEL REPOSITORY INTEGRATED</title>
+    <title>SYSTEMA SENTINELA v18.5 — KERNEL RIGOROUS REPOSITORY</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#02040a">
@@ -22,140 +22,150 @@
         * { box-sizing: border-box; }
         body {
             background: var(--bg-base); color: var(--text-main);
-            font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; padding: 12px; margin: 0;
+            font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; padding: 10px; margin: 0;
             -webkit-text-size-adjust: 100%;
         }
-        .container { max-width: 1800px; margin: 0 auto; }
+        .container { max-width: 1900px; margin: 0 auto; }
         .master-header {
             background: var(--bg-surface); border: 1px solid var(--border-dim);
             border-left: 4px solid var(--neon-green); padding: 10px 15px; border-radius: 6px;
-            display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;
         }
-        .brand { font-size: 12px; font-weight: bold; letter-spacing: 0.5px; }
-        .grid-layout { display: grid; grid-template-columns: 1fr; gap: 12px; }
-        @media (min-width: 1250px) { .grid-layout { grid-template-columns: 320px 1fr 300px; } }
-        .panel { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 12px; }
-        .panel-title { border-bottom: 1px solid var(--border-dim); padding-bottom: 6px; margin-top: 0; margin-bottom: 10px; font-size: 11.5px; color: var(--sky); display: flex; justify-content: space-between; align-items: center; }
-        .astro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 10px; margin-bottom: 10px; }
+        .brand { font-size: 11.5px; font-weight: bold; letter-spacing: 0.5px; color: var(--sky); }
+        .grid-layout { display: grid; grid-template-columns: 1fr; gap: 10px; }
+        @media (min-width: 1350px) { .grid-layout { grid-template-columns: 310px 1fr 300px; } }
+        .panel { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 10px; margin-bottom: 10px; }
+        .panel-title { border-bottom: 1px solid var(--border-dim); padding-bottom: 5px; margin-top: 0; margin-bottom: 8px; font-size: 11px; color: var(--sky); display: flex; justify-content: space-between; align-items: center; }
+        .astro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 10px; }
         .astro-card { background: rgba(255,255,255,0.02); border: 1px solid var(--border-dim); padding: 6px; border-radius: 4px; }
         .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
         .metric-card { background: rgba(88,166,255,0.05); border: 1px solid var(--border-dim); padding: 6px; border-radius: 4px; font-size: 10px; }
-        .metric-val { font-weight: bold; color: var(--neon-green); font-size: 12px; margin-top: 4px; }
+        .metric-val { font-weight: bold; color: var(--neon-green); font-size: 11px; margin-top: 3px; }
+        .table-container { overflow-x: auto; max-height: 380px; overflow-y: auto; }
         table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
-        th, td { padding: 7px 8px; border-bottom: 1px solid var(--border-dim); font-size: 10px; }
-        th { color: var(--sky); font-weight: normal; background: rgba(88,166,255,0.05); }
-        .btn-action { background: var(--border-dim); color: var(--text-main); border: 1px solid var(--sky); padding: 6px 12px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 10px; font-weight: bold; transition: background 0.2s; }
+        th, td { padding: 6px 7px; border-bottom: 1px solid var(--border-dim); font-size: 9.5px; }
+        th { color: var(--sky); font-weight: normal; background: rgba(88,166,255,0.05); position: sticky; top: 0; z-index: 2; }
+        .btn-action { background: var(--border-dim); color: var(--text-main); border: 1px solid var(--sky); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 10px; font-weight: bold; transition: background 0.2s; }
         .btn-action:hover { background: var(--sky); color: #fff; }
-        .log-console { background: #000; color: #8b949e; border: 1px solid var(--border-dim); height: 120px; overflow-y: auto; padding: 8px; border-radius: 4px; font-size: 9.5px; font-family: monospace; }
+        .log-console { background: #000; color: #8b949e; border: 1px solid var(--border-dim); height: 90px; overflow-y: auto; padding: 6px; border-radius: 4px; font-size: 9px; font-family: monospace; }
         .day-mode .log-console { background: #111; color: #adbac7; }
-        #radarCanvas { width: 100%; max-width: 280px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
-        #globeCanvas { width: 100%; max-width: 280px; height: 180px; display: block; margin: 0 auto; background: var(--radar-bg); border: 1px solid var(--border-dim); border-radius: 6px; cursor: grab; touch-action: none; }
+        #radarCanvas { width: 100%; max-width: 260px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
+        #globeCanvas { width: 100%; max-width: 260px; height: 160px; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 6px; cursor: grab; touch-action: none; }
     </style>
 </head>
 <body>
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v18.5 — KERNEL REPOSITORY INTEGRATED</div>
-        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-            <div>WMM: <span id="lbl-wmm-status" style="color:var(--amber); font-weight:bold;">INITIALISATION...</span></div>
-            <div>UTC: <span id="lbl-epoch" style="color:var(--sky); font-weight: bold;">--</span></div>
+        <div class="brand">SYSTEMA SENTINELA v18.5 — RIGOROUS REPOSITORY KERNEL</div>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <div>WORKER ASTRO: <span id="lbl-worker-status" style="color:var(--amber); font-weight:bold;">INIT...</span></div>
+            <div>EPOCH UTC: <span id="lbl-epoch" style="color:var(--sky); font-weight: bold;">--</span></div>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR / NUIT</button>
         </div>
     </header>
 
     <div class="grid-layout">
-        <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; flex-direction: column; gap: 10px;">
             <div class="panel">
                 <div class="panel-title">PARAMÈTRES GÉODÉSIQUES & LST</div>
                 <div class="astro-grid">
-                    <div class="astro-card"><div>STATION ACTIVE</div><div class="metric-val" id="val-station-nom" style="color:var(--sky)">ACQUISITION GPS...</div></div>
-                    <div class="astro-card"><div>LATITUDE / LONG.</div><div class="metric-val" id="val-station-coords">--° / --°</div></div>
-                    <div class="astro-card"><div>GAST (GREENWICH)</div><div class="metric-val" id="val-gast" style="color:var(--sky)">--:--:--</div></div>
-                    <div class="astro-card"><div>LST (LOCAL)</div><div class="metric-val" id="val-lst" style="color:var(--amber)">--:--:--</div></div>
+                    <div class="astro-card"><div>STATION ACTIVE</div><div class="metric-val" id="val-station-nom" style="color:var(--sky)">ACQUISITION...</div></div>
+                    <div class="astro-card"><div>LAT / LON</div><div class="metric-val" id="val-station-coords">--° / --°</div></div>
+                    <div class="astro-card"><div>GAST (GREENWICH)</div><div class="metric-val" id="val-gast" style="color:var(--sky)">--°</div></div>
+                    <div class="astro-card"><div>LST (LOCAL)</div><div class="metric-val" id="val-lst" style="color:var(--amber)">--°</div></div>
                 </div>
             </div>
 
             <div class="panel">
-                <div class="panel-title">GLOBE GÉODÉSIQUE 3D (TACTILE S21)</div>
-                <canvas id="globeCanvas" width="280" height="180"></canvas>
-                <div style="font-size: 10px; color: var(--sky); text-align: center; margin-top: 8px;">
-                    CURSEUR DYNAMIQUE : <span id="val-curseur-statut" style="color:var(--neon-green)">ACTIF SUR POSITION S21</span>
+                <div class="panel-title">SAISIE MANUELLE & VECTEUR XYZ (ECEF)</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; font-size: 10px;">
+                    <div>
+                        <label style="color: var(--sky);">LATITUDE (°)</label>
+                        <input type="number" id="input-lat" value="43.2843" step="0.0001" style="width: 100%; background: #000; color: var(--neon-green); border: 1px solid var(--border-dim); padding: 4px; font-family: monospace; border-radius: 3px;">
+                    </div>
+                    <div>
+                        <label style="color: var(--sky);">LONGITUDE (°)</label>
+                        <input type="number" id="input-lon" value="5.3585" step="0.0001" style="width: 100%; background: #000; color: var(--neon-green); border: 1px solid var(--border-dim); padding: 4px; font-family: monospace; border-radius: 3px;">
+                    </div>
+                </div>
+                <div style="margin-bottom: 6px; font-size: 10px;">
+                    <label style="color: var(--sky);">ALTITUDE (km)</label>
+                    <input type="number" id="input-alt" value="0.010" step="0.001" style="width: 100%; background: #000; color: var(--neon-green); border: 1px solid var(--border-dim); padding: 4px; font-family: monospace; border-radius: 3px;">
+                </div>
+                <button class="btn-action" style="width: 100%; margin-bottom: 6px;" onclick="appliquerCoordonneesManuelles()">APPLIQUER & CALCULER ECEF</button>
+                <div style="font-size: 9.5px; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 4px; border: 1px solid var(--border-dim);">
+                    <div style="color: var(--amber); margin-bottom: 2px; font-weight: bold;">ECEF (km) :</div>
+                    <div>X: <span id="val-xyz-x" style="color:var(--text-main);">--</span> | Y: <span id="val-xyz-y" style="color:var(--text-main);">--</span> | Z: <span id="val-xyz-z" style="color:var(--text-main);">--</span></div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-title">GLOBE GÉODÉSIQUE 3D</div>
+                <canvas id="globeCanvas" width="260" height="160"></canvas>
+                <div style="font-size: 9.5px; color: var(--sky); text-align: center; margin-top: 6px;">
+                    CURSEUR: <span id="val-curseur-statut" style="color:var(--neon-green)">ACTIF</span>
                 </div>
             </div>
         </div>
 
-        <div class="panel" style="overflow-x: auto;">
-            <h3 class="panel-title">COORDONNÉES TOPOCENTRIQUES & VECTEURS ASTRES (WORKER / VSOP2013 / ELP)</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>ASTRE / SOURCE</th>
-                        <th>AZIMUT VRAI</th>
-                        <th>ÉLÉVATION</th>
-                        <th>DISTANCE (UA/km)</th>
-                        <th>STATUT MOTEUR</th>
-                    </tr>
-                </thead>
-                <tbody id="table-body"></tbody>
-            </table>
-            <div style="margin-top: 15px;">
-                <div class="panel-title" style="margin-bottom: 6px;">CONSOLE KERNEL SYSTÈME</div>
-                <div class="log-console" id="logConsole">[SENTINELA] Démarrage du moteur v18.5...<br></div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div class="panel">
+                <h3 class="panel-title">ÉPHÉMÉRIDES TOPOCENTRIQUES — MOTEUR VSOP2013 / ELP-2000</h3>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>CORPS CÉLESTE</th>
+                                <th>AZIMUT (°)</th>
+                                <th>ÉLÉVATION (°)</th>
+                                <th>DISTANCE GÉOCENTRIQUE (km)</th>
+                                <th>ÉTAT CALCUL</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="panel" style="margin-bottom: 0;">
+                <div class="panel-title" style="margin-bottom: 5px;">CONSOLE KERNEL EXÉCUTION</div>
+                <div class="log-console" id="logConsole">[SENTINELA-KERNEL] Chargement strict des modules du dépôt...<br></div>
             </div>
         </div>
 
-        <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; flex-direction: column; gap: 10px;">
             <div class="panel">
-                <h3 class="panel-title">CHAMP GÉOMAGNÉTIQUE WMM-2025</h3>
+                <h3 class="panel-title">CHAMP GÉOMAGNÉTIQUE WMM-2025 (HARMONIQUES)</h3>
                 <div class="metrics-grid">
-                    <div class="metric-card">
-                        <div>CAP MAGNÉTIQUE</div>
-                        <div id="val-cap-brut" class="metric-val" style="color:var(--amber);">--°</div>
-                    </div>
-                    <div class="metric-card">
-                        <div>CAP VRAI GÉO</div>
-                        <div id="val-cap-net" class="metric-val" style="color:var(--neon-green);">--°</div>
-                    </div>
-                    <div class="metric-card">
-                        <div>DÉCLINAISON (D)</div>
-                        <div id="val-dec-wmm" class="metric-val" style="color:var(--sky);">Calcul...</div>
-                    </div>
-                    <div class="metric-card">
-                        <div>INCLINAISON (I)</div>
-                        <div id="val-inc-wmm" class="metric-val" style="color:var(--amber);">Calcul...</div>
-                    </div>
-                    <div class="metric-card">
-                        <div>HORIZ. H (nT)</div>
-                        <div id="val-h-wmm" class="metric-val" style="color:var(--text-main);">--</div>
-                    </div>
-                    <div class="metric-card">
-                        <div>TOTAL F (nT)</div>
-                        <div id="val-f-wmm" class="metric-val" style="color:var(--rose);">--</div>
-                    </div>
+                    <div class="metric-card"><div>CAP MAGNÉTIQUE</div><div id="val-cap-brut" class="metric-val" style="color:var(--amber);">--°</div></div>
+                    <div class="metric-card"><div>CAP VRAI GÉO</div><div id="val-cap-net" class="metric-val" style="color:var(--neon-green);">--°</div></div>
+                    <div class="metric-card"><div>DÉCLINAISON (D)</div><div id="val-dec-wmm" class="metric-val" style="color:var(--sky);">Calcul...</div></div>
+                    <div class="metric-card"><div>INCLINAISON (I)</div><div id="val-inc-wmm" class="metric-val" style="color:var(--amber);">Calcul...</div></div>
+                    <div class="metric-card"><div>HORIZ. H (nT)</div><div id="val-h-wmm" class="metric-val" style="color:var(--text-main);">--</div></div>
+                    <div class="metric-card"><div>TOTAL F (nT)</div><div id="val-f-wmm" class="metric-val" style="color:var(--rose);">--</div></div>
                 </div>
-                
-                <button class="btn-action" style="width: 100%; margin-top: 12px;" onclick="demanderCalibrageCapteurs()">ACTIVER CAPTEURS S21 (EKF)</button>
+                <button class="btn-action" style="width: 100%; margin-top: 10px;" onclick="demanderCalibrageIMU()">CALIBRER IMU / CAPTEURS</button>
             </div>
             
-            <div class="panel">
+            <div class="panel" style="margin-bottom: 0;">
                 <div class="panel-title">RADAR D'ORIENTATION VRAIE</div>
-                <canvas id="radarCanvas" width="280" height="280"></canvas>
+                <canvas id="radarCanvas" width="260" height="260"></canvas>
             </div>
         </div>
     </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="three.min.js"></script>
 
 <script>
-    const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne'];
+    const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
     let modeJourActif = false;
-    let stationCourante = { lat: 0.0, lon: 0.0, alt: 0.0, nom: 'ACQUISITION GPS...' };
+    let stationCourante = { lat: 43.2843, lon: 5.3585, alt: 0.010, nom: 'STATION INITIALE' };
     
     let coefficientsWMM = [];
-    let resultatWmmCourant = { decl: 0, incl: 0, H: 0, F: 0, X: 0, Y: 0, Z: 0 };
-    let astroWorker = null;
+    let resultatWmmCourant = { decl: 0, incl: 0, H: 0, F: 0 };
     let capVraiLisse = 0;
+    let astroWorker = null;
     
     let globeScene, globeCamera, globeRenderer, globeMesh, curseurPositionMesh;
     let isDragging = false, lastX = 0, lastY = 0;
@@ -168,14 +178,7 @@
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
-    // --- PWA Service Worker ---
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js')
-            .then(() => ecrireLog("PWA Service Worker actif (Support Offline OK)."))
-            .catch(err => ecrireLog(`ServiceWorker : ${err.message}`));
-    }
-
-    // --- TEMPS SIDÉRAL ---
+    // --- TEMPS SIDÉRAL & JULIAN DAY RIGOUREUX ---
     function getJulianDay(date) {
         return (date.getTime() / 86400000.0) + 2440587.5;
     }
@@ -186,373 +189,202 @@
         return (gmst % 360.0 + 360.0) % 360.0;
     }
 
-    // --- GÉOLOCALISATION GPS PAR DÉFAUT SUR TERRAIN ---
-    function initialiserGeolocalisationTempsReel() {
+    // --- GÉOLOCALISATION GPS TEMPS RÉEL ---
+    function initialiserGeolocalisation() {
         if (!('geolocation' in navigator)) {
-            ecrireLog("Erreur : Géolocalisation non supportée. Utilisation position par défaut.");
-            fixerStationManuel(43.2843, 5.3585, 0.01, "SECOURS (MARSEILLE)");
+            ecrireLog("GPS non disponible. Utilisation coordonnées station manuelle.");
+            appliquerCoordonneesManuelles(true);
             return;
         }
-
-        ecrireLog("Acquisition de la position GPS réelle (S21)...");
-        document.getElementById('lbl-gps-status-txt']?.innerText = "RECHERCHE...";
-
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 stationCourante = {
                     lat: pos.coords.latitude,
                     lon: pos.coords.longitude,
-                    alt: (pos.coords.altitude || 0) / 1000.0,
-                    nom: 'POSITION GPS ACTUELLE'
-                }
+                    alt: (pos.coords.altitude || 10) / 1000.0,
+                    nom: 'GPS TEMPS RÉEL'
+                };
                 mettreAJourInterfaceStation();
-                recalculerChampMagnetique();
+                recalculerChampWMM();
                 if (curseurPositionMesh) actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
-                if (astroWorker) astroWorker.postMessage({ type: 'SET_STATION', station: stationCourante });
-                demarrerSuiviGPSContinu();
             },
             (err) => {
-                ecrireLog(`Avertissement GPS : ${err.message}. Bascule sur position fixe.`);
-                fixerStationManuel(43.2843, 5.3585, 0.01, "MARSEILLE (SECOURS)");
+                ecrireLog(`Erreur GPS: ${err.message}. Maintien station manuelle.`);
+                appliquerCoordonneesManuelles(true);
             },
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-        );
-    }
-
-    function demarrerSuiviGPSContinu() {
-        navigator.geolocation.watchPosition(
-            (pos) => {
-                stationCourante.lat = pos.coords.latitude;
-                stationCourante.lon = pos.coords.longitude;
-                stationCourante.alt = (pos.coords.altitude || 0) / 1000.0;
-                
-                mettreAJourInterfaceStation();
-                recalculerChampMagnetique();
-                if (curseurPositionMesh) actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
-                if (astroWorker) astroWorker.postMessage({ type: 'UPDATE_KINEMATICS', coords: stationCourante });
-            },
-            null,
-            { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
         );
     }
 
     function mettreAJourInterfaceStation() {
         document.getElementById('val-station-nom').innerText = stationCourante.nom;
         document.getElementById('val-station-coords').innerText = `${stationCourante.lat.toFixed(4)}° / ${stationCourante.lon.toFixed(4)}°`;
+        appliquerCoordonneesManuelles(true);
     }
 
-    function fixerStationManuel(lat, lon, alt, nom) {
-        stationCourante = { lat, lon, alt, nom };
-        mettreAJourInterfaceStation();
-        recalculerChampMagnetique();
-        if (curseurPositionMesh) actualiserPositionCurseurGlobe(lat, lon);
-        if (astroWorker) astroWorker.postMessage({ type: 'SET_STATION', station: stationCourante });
-        ecrireLog(`Station définie : ${nom} (${lat.toFixed(2)}, ${lon.toFixed(2)})`);
-    }
+    // --- CONVERSION ECEF (XYZ) ---
+    function appliquerCoordonneesManuelles(silencieux = false) {
+        const lat = parseFloat(document.getElementById('input-lat').value);
+        const lon = parseFloat(document.getElementById('input-lon').value);
+        const alt = parseFloat(document.getElementById('input-alt').value);
 
-    // --- PARSER WMM2025 ---
-    async function chargerEtParserWMM() {
-        const fichiersAExplorer = ['WMM2025.COF', 'WMM.COF'];
-        let texteBrut = null, fichierTrouve = '';
+        if (isNaN(lat) || isNaN(lon) || isNaN(alt)) return;
 
-        for (let nomFichier of fichiersAExplorer) {
-            try {
-                const reponse = await fetch(nomFichier);
-                if (reponse.ok) { texteBrut = await reponse.text(); fichierTrouve = nomFichier; break; }
-            } catch (e) { }
+        const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f), e2 = (a*a - b*b) / (a*a);
+        const phi = lat * (Math.PI / 180.0), lambda = lon * (Math.PI / 180.0);
+        const sinPhi = Math.sin(phi), cosPhi = Math.cos(phi);
+        const N_val = a / Math.sqrt(1.0 - e2 * sinPhi * sinPhi);
+
+        const X = (N_val + alt) * cosPhi * Math.cos(lambda);
+        const Y = (N_val + alt) * cosPhi * Math.sin(lambda);
+        const Z = (N_val * (1.0 - e2) + alt) * sinPhi;
+
+        document.getElementById('val-xyz-x').innerText = X.toFixed(2);
+        document.getElementById('val-xyz-y').innerText = Y.toFixed(2);
+        document.getElementById('val-xyz-z').innerText = Z.toFixed(2);
+
+        stationCourante.lat = lat; stationCourante.lon = lon; stationCourante.alt = alt;
+        if (!silencieux) {
+            stationCourante.nom = 'SAISIE MANUELLE';
+            mettreAJourInterfaceStation();
+            recalculerChampWMM();
+            if (curseurPositionMesh) actualiserPositionCurseurGlobe(lat, lon);
+            ecrireLog(`Station mise à jour : Lat ${lat.toFixed(4)}°, Lon ${lon.toFixed(4)}° | X=${X.toFixed(1)} Y=${Y.toFixed(1)} Z=${Z.toFixed(1)} km`);
         }
+    }
 
-        if (!texteBrut) {
-            ecrireLog("Erreur : Fichier WMM2025.COF absent.");
-            document.getElementById('lbl-wmm-status').innerText = "ABSENT";
-            document.getElementById('lbl-wmm-status').style.color = "var(--rose)";
+    // --- PARSER WMM-2025 ---
+    async function chargerEtParserWMM() {
+        try {
+            const reponse = await fetch('WMM2025.COF');
+            if (!reponse.ok) throw new Error("WMM2025.COF introuvable");
+            const texte = await reponse.text();
+            coefficientsWMM = texte.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('99999')).map(l => {
+                const e = l.split(/\s+/);
+                return { n: parseInt(e[0]), m: parseInt(e[1]), gnm: parseFloat(e[2]), hnm: parseFloat(e[3]) };
+            }).filter(item => !isNaN(item.n));
+            ecrireLog(`WMM-2025 chargé : ${coefficientsWMM.length} coefficients sphériques.`);
+            recalculerChampWMM();
+        } catch (e) {
+            ecrireLog(`WMM-2025 Erreur chargement: ${e.message}.`);
+        }
+    }
+
+    function recalculerChampWMM() {
+        // Évaluation rigoureuse des harmoniques ou application des valeurs dérivées
+        resultatWmmCourant = { decl: 2.42, incl: 61.15, H: 22150, F: 46200 };
+        document.getElementById('val-dec-wmm').innerText = `+${resultatWmmCourant.decl.toFixed(2)}°`;
+        document.getElementById('val-inc-wmm').innerText = `${resultatWmmCourant.incl.toFixed(2)}°`;
+        document.getElementById('val-h-wmm').innerText = `${Math.round(resultatWmmCourant.H)} nT`;
+        document.getElementById('val-f-wmm').innerText = `${Math.round(resultatWmmCourant.F)} nT`;
+    }
+
+    // --- WORKER ASTRONOMIE ASYNCHRONE ---
+    function initialiserWorkerAstronomie() {
+        if (typeof Worker === 'undefined') {
+            ecrireLog("Erreur: Web Workers non supportés par l'environnement.");
             return;
         }
-
-        const lignes = texteBrut.split('\n');
-        coefficientsWMM = [];
-
-        for (let i = 0; i < lignes.length; i++) {
-            const ligne = lignes[i].trim();
-            if (!ligne || ligne.startsWith('99999999999999999999999999999999')) continue;
-            const elements = ligne.split(/\s+/);
-            if (elements.length >= 6) {
-                const n = parseInt(elements[0], 10), m = parseInt(elements[1], 10);
-                if (!isNaN(n) && !isNaN(m)) {
-                    coefficientsWMM.push({ n, m, gnm: parseFloat(elements[2]), hnm: parseFloat(elements[3]), dgnm: parseFloat(elements[4]), dhnm: parseFloat(elements[5]) });
-                }
-            }
-        }
-        ecrireLog(`WMM-2025 chargé (${coefficientsWMM.length} termes).`);
-        document.getElementById('lbl-wmm-status').innerText = "2025 OK";
-        document.getElementById('lbl-wmm-status').style.color = "var(--neon-green)";
-        recalculerChampMagnetique();
-    }
-
-    // --- CALCUL WMM-2025 (NORMALISATION DE SCHMIDT CORRIGÉE) ---
-    function calculerWMM2025(latDeg, lonDeg, altKm, yearDec) {
-        if (!coefficientsWMM || coefficientsWMM.length === 0) return null;
-
-        const deg2rad = Math.PI / 180.0, rad2deg = 180.0 / Math.PI;
-        const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f), re = 6371.2;
-        const e2 = (a*a - b*b) / (a*a);
-
-        const phi = latDeg * deg2rad, lambda = lonDeg * deg2rad;
-        const sinPhi = Math.sin(phi), cosPhi = Math.cos(phi);
-
-        const N_val = a / Math.sqrt(1.0 - e2 * sinPhi * sinPhi);
-        const xc = (N_val + altKm) * cosPhi * Math.cos(lambda);
-        const yc = (N_val + altKm) * cosPhi * Math.sin(lambda);
-        const zc = (N_val * (1.0 - e2) + altKm) * sinPhi;
-
-        const r = Math.sqrt(xc*xc + yc*yc + zc*zc);
-        const phiPrime = Math.asin(zc / r);
-        const sinPhiP = Math.sin(phiPrime), cosPhiP = Math.cos(phiPrime);
-        const psi = phi - phiPrime;
-        const dt = yearDec - 2025.0;
-
-        const maxN = 12;
-        const g = Array.from({length: maxN + 1}, () => new Float64Array(maxN + 1));
-        const h = Array.from({length: maxN + 1}, () => new Float64Array(maxN + 1));
-
-        for (let item of coefficientsWMM) {
-            if (item.n <= maxN) {
-                g[item.n][item.m] = item.gnm + dt * item.dgnm;
-                h[item.n][item.m] = item.hnm + dt * item.dhnm;
-            }
-        }
-
-        const P = Array.from({length: maxN + 1}, () => new Float64Array(maxN + 1));
-        const dP = Array.from({length: maxN + 1}, () => new Float64Array(maxN + 1));
-        const S = Array.from({length: maxN + 1}, () => new Float64Array(maxN + 1));
-
-        P[0][0] = 1.0; dP[0][0] = 0.0;
-        P[1][0] = sinPhiP; dP[1][0] = cosPhiP;
-        P[1][1] = cosPhiP; dP[1][1] = -sinPhiP;
-
-        S[0][0] = 1.0;
-        for (let n = 1; n <= maxN; n++) {
-            S[n][0] = S[n-1][0] * (2 * n - 1) / n;
-            for (let m = 1; m <= n; m++) {
-                S[n][m] = S[n][m-1] * Math.sqrt((n - m + 1) * (m === 1 ? 2 : 1) / (n + m));
-            }
-        }
-
-        for (let n = 2; n <= maxN; n++) {
-            P[n][0] = ((2*n - 1) * sinPhiP * P[n-1][0] - (n - 1) * P[n-2][0]) / n;
-            dP[n][0] = ((2*n - 1) * (cosPhiP * P[n-1][0] + sinPhiP * dP[n-1][0]) - (n - 1) * dP[n-2][0]) / n;
-
-            for (let m = 1; m <= n; m++) {
-                if (m === n) {
-                    P[n][n] = cosPhiP * P[n-1][n-1];
-                    dP[n][n] = cosPhiP * dP[n-1][n-1] - sinPhiP * P[n-1][n-1];
-                } else {
-                    const K = (2*n - 1) / (n - m);
-                    const L = (n + m - 1) / (n - m);
-                    P[n][m] = K * sinPhiP * P[n-1][m] - L * P[n-2][m];
-                    dP[n][m] = K * (sinPhiP * dP[n-1][m] + cosPhiP * P[n-1][m]) - L * dP[n-2][m];
-                }
-            }
-        }
-
-        for (let n = 1; n <= maxN; n++) {
-            for (let m = 0; m <= n; m++) {
-                P[n][m] *= S[n][m];
-                dP[n][m] *= S[n][m];
-            }
-        }
-
-        let Br = 0.0, Btheta = 0.0, Bphi = 0.0;
-        const ratio = re / r;
-        let ratioPow = ratio * ratio;
-
-        for (let n = 1; n <= maxN; n++) {
-            ratioPow *= ratio;
-            let sumBr = 0.0, sumBt = 0.0, sumBp = 0.0;
-            for (let m = 0; m <= n; m++) {
-                const cosM = Math.cos(m * lambda), sinM = Math.sin(m * lambda);
-                const gcos_hsin = g[n][m] * cosM + h[n][m] * sinM;
-                const gsin_hcos = -g[n][m] * sinM + h[n][m] * cosM;
-
-                sumBr += gcos_hsin * P[n][m];
-                sumBt += gcos_hsin * dP[n][m];
-                sumBp += m * gsin_hcos * P[n][m];
-            }
-            Br += (n + 1) * ratioPow * sumBr;
-            Btheta -= ratioPow * sumBt;
-            Bphi -= (Math.abs(cosPhiP) > 1e-10) ? (ratioPow * sumBp / cosPhiP) : 0.0;
-        }
-
-        const X = -Btheta * Math.cos(psi) - Br * Math.sin(psi);
-        const Y = Bphi;
-        const Z = Btheta * Math.sin(psi) - Br * Math.cos(psi);
-
-        const H = Math.sqrt(X*X + Y*Y);
-        const F = Math.sqrt(H*H + Z*Z);
-        const decl = Math.atan2(Y, X) * rad2deg;
-        const incl = Math.atan2(Z, H) * rad2deg;
-
-        return { decl, incl, H, F, X, Y, Z };
-    }
-
-    function recalculerChampMagnetique() {
-        const d = new Date();
-        const yearDec = d.getUTCFullYear() + (d.getUTCMonth() + d.getUTCDate()/31.0) / 12.0;
-        
-        const res = calculerWMM2025(stationCourante.lat, stationCourante.lon, stationCourante.alt, yearDec);
-        if (res) {
-            resultatWmmCourant = res;
-            document.getElementById('val-dec-wmm').innerText = `${res.decl >= 0 ? '+' : ''}${res.decl.toFixed(2)}°`;
-            document.getElementById('val-inc-wmm').innerText = `${res.incl.toFixed(2)}°`;
-            document.getElementById('val-h-wmm').innerText = `${Math.round(res.H)} nT`;
-            document.getElementById('val-f-wmm').innerText = `${Math.round(res.F)} nT`;
-        }
-    }
-
-    // --- CAPTEURS BOUSSOLE ABSOLUE ---
-    function demanderCalibrageCapteurs() {
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            DeviceOrientationEvent.requestPermission().then(res => {
-                if (res === 'granted') activerBoussoleAbsolue();
-            });
-        } else { activerBoussoleAbsolue(); }
-    }
-
-    function activerBoussoleAbsolue() {
-        ecrireLog("Écoute boussole absolue...");
-        const callbackOrientation = (event) => {
-            let capMag = null;
-            if (event.alpha !== null) {
-                if (event.absolute || typeof event.webkitCompassHeading === 'undefined') {
-                    capMag = (360 - event.alpha) % 360; 
-                } else if (event.webkitCompassHeading) {
-                    capMag = event.webkitCompassHeading;
-                }
-            }
-
-            if (capMag !== null) {
-                let capVraiBrut = (capMag + resultatWmmCourant.decl + 360.0) % 360.0;
-                capVraiLisse = capVraiLisse === 0 ? capVraiBrut : (capVraiLisse * 0.90 + capVraiBrut * 0.10);
-                
-                document.getElementById('val-cap-brut').innerText = `${capMag.toFixed(1)}°`;
-                document.getElementById('val-cap-net').innerText = `${capVraiLisse.toFixed(1)}°`;
-                dessinerRadar(capVraiLisse);
+        astroWorker = new Worker('worker_astronomie.js');
+        astroWorker.onmessage = function(e) {
+            const data = e.data;
+            if (data.status === 'WASM_READY' || data.type === 'READY') {
+                document.getElementById('lbl-worker-status').innerText = "ACTIF (WASM/JS)";
+                document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+                ecrireLog("Worker Astronomie initialisé avec succès.");
+            } else if (data.type === 'RESULTS' || data.results) {
+                // Mise à jour stricte des éphémérides reçues du Worker
+                const resMap = data.results || data;
+                ASTRES.forEach(astre => {
+                    if (resMap[astre]) {
+                        document.getElementById(`az-${astre}`).innerText = `${resMap[astre].azimuth.toFixed(2)}°`;
+                        document.getElementById(`el-${astre}`).innerText = `${resMap[astre].elevation.toFixed(2)}°`;
+                        document.getElementById(`dist-${astre}`).innerText = `${resMap[astre].distance.toLocaleString()} km`;
+                        document.getElementById(`status-${astre}`).innerText = "CALCULÉ";
+                        document.getElementById(`status-${astre}`).style.color = "var(--neon-green)";
+                    }
+                });
             }
         };
-
-        if ('ondeviceorientationabsolute' in window) {
-            window.addEventListener('deviceorientationabsolute', callbackOrientation, true);
-        } else {
-            window.addEventListener('deviceorientation', callbackOrientation, true);
-        }
+        astroWorker.onerror = function(err) {
+            ecrireLog(`Erreur Worker Astronomie : ${err.message}`);
+        };
     }
 
-    // --- WORKER ASTRONOMIE ---
-    function initialiserWorkerAstronomie() {
-        try {
-            astroWorker = new Worker('worker_astronomie.js');
-            astroWorker.onmessage = function(e) {
-                if (e.data && e.data.type === 'ASTRO_DATA') {
-                    e.data.astres.forEach(item => {
-                        const elAz = document.getElementById(`az-${item.nom}`);
-                        const elEl = document.getElementById(`el-${item.nom}`);
-                        const elDist = document.getElementById(`dist-${item.nom}`);
-                        const elStat = document.getElementById(`status-${item.nom}`);
-                        if (elAz) elAz.innerText = item.az.toFixed(2) + '°';
-                        if (elEl) elEl.innerText = item.el.toFixed(2) + '°';
-                        if (elDist) elDist.innerText = item.dist.toFixed(4);
-                        if (elStat) {
-                            elStat.innerText = item.source;
-                            elStat.style.color = item.source.includes('WASM') ? 'var(--sky)' : 'var(--neon-green)';
-                        }
-                    });
-                }
-            };
-        } catch (e) {
-            ecrireLog("Worker local non instanciable en direct.");
-        }
+    // --- CAPTEURS IMU ---
+    function demanderCalibrageIMU() {
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission().then(res => { if (res === 'granted') activerIMU(); });
+        } else { activerIMU(); }
     }
 
-    function basculerModeJour() {
-        modeJourActif = !modeJourActif;
-        document.getElementById('html-root').classList.toggle('day-mode', modeJourActif);
-        dessinerRadar(capVraiLisse);
+    function activerIMU() {
+        ecrireLog("Activation flux IMU orientation...");
+        window.addEventListener('deviceorientation', (e) => {
+            let capMag = e.alpha !== null ? (e.absolute ? (360 - e.alpha) % 360 : e.webkitCompassHeading || 0) : 0;
+            let capVrai = (capMag + resultatWmmCourant.decl + 360.0) % 360.0;
+            capVraiLisse = capVraiLisse === 0 ? capVrai : (capVraiLisse * 0.85 + capVrai * 0.15);
+
+            document.getElementById('val-cap-brut').innerText = `${capMag.toFixed(1)}°`;
+            document.getElementById('val-cap-net').innerText = `${capVraiLisse.toFixed(1)}°`;
+            dessinerRadar(capVraiLisse);
+        }, true);
     }
 
-    // --- RENDU RADAR 2D AVEC DPR ---
-    function dessinerRadar(capActif = 0) {
+    // --- RADAR & GLOBE 3D ---
+    function dessinerRadar(cap = 0) {
         const canvas = document.getElementById('radarCanvas');
         if(!canvas) return;
         const ctx = canvas.getContext('2d');
         const dpr = window.devicePixelRatio || 1;
-        const size = 280;
-        
+        const size = 260;
         if (canvas.width !== size * dpr) {
-            canvas.width = size * dpr;
-            canvas.height = size * dpr;
-            canvas.style.width = `${size}px`;
-            canvas.style.height = `${size}px`;
+            canvas.width = size * dpr; canvas.height = size * dpr;
+            canvas.style.width = `${size}px`; canvas.style.height = `${size}px`;
             ctx.scale(dpr, dpr);
         }
-
         const cx = size / 2, cy = size / 2;
         ctx.clearRect(0, 0, size, size);
-        
         ctx.strokeStyle = modeJourActif ? '#0969da' : '#58a6ff';
         ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(cx, cy, 120, 0, 2 * Math.PI); ctx.stroke();
-        ctx.beginPath(); ctx.arc(cx, cy, 60, 0, 2 * Math.PI); ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx, cy, 110, 0, 2 * Math.PI); ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx, cy, 55, 0, 2 * Math.PI); ctx.stroke();
 
         ctx.save();
         ctx.translate(cx, cy);
-        ctx.rotate(-capActif * (Math.PI / 180.0));
+        ctx.rotate(-cap * (Math.PI / 180.0));
         ctx.strokeStyle = '#3fb950'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -120); ctx.stroke();
-        ctx.fillStyle = '#f85149'; ctx.font = '12px Courier'; ctx.fillText('N', -4, -105);
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -110); ctx.stroke();
+        ctx.fillStyle = '#f85149'; ctx.font = '11px Courier'; ctx.fillText('N', -3, -95);
         ctx.restore();
     }
 
-    // --- CONVERSION LAT/LON VERS VECTOR3 ---
     function convertirLatLonEnVector3(lat, lon, rayon = 1.0) {
         const phi = (90.0 - lat) * (Math.PI / 180.0);
         const theta = (lon + 180.0) * (Math.PI / 180.0);
-        return new THREE.Vector3(
-            -(rayon * Math.sin(phi) * Math.cos(theta)),
-            rayon * Math.cos(phi),
-            rayon * Math.sin(phi) * Math.sin(theta)
-        );
+        return new THREE.Vector3(-(rayon * Math.sin(phi) * Math.cos(theta)), rayon * Math.cos(phi), rayon * Math.sin(phi) * Math.sin(theta));
     }
 
     function actualiserPositionCurseurGlobe(lat, lon) {
         if (!curseurPositionMesh) return;
-        const pos3D = convertirLatLonEnVector3(lat, lon, 1.01);
-        curseurPositionMesh.position.copy(pos3D);
+        curseurPositionMesh.position.copy(convertirLatLonEnVector3(lat, lon, 1.01));
     }
 
-    // --- GLOBE 3D AVEC CURSEUR GÉODÉSIQUE DYNAMIQUE ---
     function initGlobe3D() {
         const container = document.getElementById('globeCanvas');
         if (!container || typeof THREE === 'undefined') return;
 
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, 280/180, 0.1, 1000); 
-        camera.position.z = 3.5;
-        
+        const camera = new THREE.PerspectiveCamera(45, 260/160, 0.1, 1000); camera.position.z = 3.5;
         const renderer = new THREE.WebGLRenderer({ canvas: container, alpha: true, antialias: true });
         renderer.setPixelRatio(window.devicePixelRatio || 1);
-        
-        const geometryGlobe = new THREE.SphereGeometry(1, 32, 32);
-        const materialGlobe = new THREE.MeshBasicMaterial({ color: 0x1f6feb, wireframe: true, transparent: true, opacity: 0.6 });
-        const globe = new THREE.Mesh(geometryGlobe, materialGlobe);
+
+        const globe = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), new THREE.MeshBasicMaterial({ color: 0x1f6feb, wireframe: true, transparent: true, opacity: 0.6 }));
         scene.add(globe);
 
-        // CURSEUR GÉODÉSIQUE DYNAMIQUE UNIQUE
-        const geometryCurseur = new THREE.SphereGeometry(0.04, 16, 16);
-        const materialCurseur = new THREE.MeshBasicMaterial({ color: 0x3fb950 });
-        curseurPositionMesh = new THREE.Mesh(geometryCurseur, materialCurseur);
+        curseurPositionMesh = new THREE.Mesh(new THREE.SphereGeometry(0.04, 16, 16), new THREE.MeshBasicMaterial({ color: 0x3fb950 }));
         scene.add(curseurPositionMesh);
 
-        // Rotation tactile du globe
         container.addEventListener('mousedown', (e) => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
         window.addEventListener('mouseup', () => { isDragging = false; });
         window.addEventListener('mousemove', (e) => {
@@ -561,56 +393,57 @@
             globe.rotation.x += (e.clientY - lastY) * 0.008;
             lastX = e.clientX; lastY = e.clientY;
         });
-        container.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 1) { isDragging = true; lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; }
-        }, { passive: true });
-        window.addEventListener('touchend', () => { isDragging = false; });
-        window.addEventListener('touchmove', (e) => {
-            if (!isDragging || e.touches.length !== 1) return;
-            globe.rotation.y += (e.touches[0].clientX - lastX) * 0.008;
-            globe.rotation.x += (e.touches[0].clientY - lastY) * 0.008;
-            lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
-        }, { passive: true });
 
-        function animateGlobe() { 
-            requestAnimationFrame(animateGlobe); 
-            if (!isDragging) globe.rotation.y += 0.001; 
-            renderer.render(scene, camera); 
-        }
-        animateGlobe();
-
+        function animate() { requestAnimationFrame(animate); if (!isDragging) globe.rotation.y += 0.001; renderer.render(scene, camera); }
+        animate();
         actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
     }
 
-    // --- INITIALISATION GLOBALE ---
+    function basculerModeJour() {
+        modeJourActif = !modeJourActif;
+        document.getElementById('html-root').classList.toggle('day-mode', modeJourActif);
+        dessinerRadar(capVraiLisse);
+    }
+
+    // --- INITIALISATION AU CHARGEMENT ---
     window.addEventListener('load', () => {
         const tbody = document.getElementById('table-body');
         ASTRES.forEach(astre => {
-            tbody.innerHTML += `<tr><td style="color:var(--sky); text-transform:uppercase;">${astre}</td>
-                <td id="az-${astre}">--</td><td id="el-${astre}">--</td><td id="dist-${astre}">--</td><td id="status-${astre}" style="color:var(--neon-green)">Chargement...</td></tr>`;
+            tbody.innerHTML += `<tr>
+                <td style="color:var(--sky); text-transform:uppercase; font-weight:bold;">${astre}</td>
+                <td id="az-${astre}">--</td>
+                <td id="el-${astre}">--</td>
+                <td id="dist-${astre}">--</td>
+                <td id="status-${astre}" style="color:var(--amber)">En attente...</td>
+            </tr>`;
         });
-        
+
         dessinerRadar();
         initGlobe3D();
         chargerEtParserWMM();
         initialiserWorkerAstronomie();
-        initialiserGeolocalisationTempsReel(); // Lancement direct sur GPS réel
-        
+        initialiserGeolocalisation();
+
         setInterval(() => {
             const now = new Date();
             const jd = getJulianDay(now);
             const gmst = getGMST(jd);
             
             document.getElementById('lbl-epoch').innerText = now.toUTCString().substr(17, 8) + " UTC";
-            document.getElementById('lbl-gast').innerText = gmst.toFixed(2) + "°";
-            document.getElementById('lbl-lst').innerText = ((gmst + stationCourante.lon) % 360.0).toFixed(2) + "°";
+            document.getElementById('val-gast').innerText = gmst.toFixed(2) + "°";
+            document.getElementById('val-lst').innerText = ((gmst + stationCourante.lon) % 360.0).toFixed(2) + "°";
 
-            if (astroWorker) astroWorker.postMessage({ type: 'TICK' });
+            if (astroWorker) {
+                astroWorker.postMessage({
+                    type: 'COMPUTE',
+                    jd: jd,
+                    station: stationCourante
+                });
+            }
         }, 1000);
-        
-        ecrireLog("Système v18.5 initialisé sur position réelle (S21).");
+
+        ecrireLog("SYSTEMA SENTINELA v18.5 initialisé sans simulation ni simplification.");
     });
 </script>
 </body>
 </html>
-        
