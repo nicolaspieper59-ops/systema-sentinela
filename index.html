@@ -57,7 +57,7 @@
     <header class="master-header">
         <div class="brand">SYSTEMA SENTINELA v18.5 — KERNEL REPOSITORY INTEGRATED</div>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-            <div>STATUT WMM: <span id="lbl-wmm-status" style="color:var(--amber); font-weight:bold;">INITIALISATION...</span></div>
+            <div>WMM: <span id="lbl-wmm-status" style="color:var(--amber); font-weight:bold;">INITIALISATION...</span></div>
             <div>UTC: <span id="lbl-epoch" style="color:var(--sky); font-weight: bold;">--</span></div>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR / NUIT</button>
         </div>
@@ -68,8 +68,8 @@
             <div class="panel">
                 <div class="panel-title">PARAMÈTRES GÉODÉSIQUES & LST</div>
                 <div class="astro-grid">
-                    <div class="astro-card"><div>STATION ACTIVE</div><div class="metric-val" id="val-station-nom" style="color:var(--sky)">Marseille</div></div>
-                    <div class="astro-card"><div>LATITUDE / LONG.</div><div class="metric-val" id="val-station-coords">43.28°N / 5.36°E</div></div>
+                    <div class="astro-card"><div>STATION ACTIVE</div><div class="metric-val" id="val-station-nom" style="color:var(--sky)">ACQUISITION GPS...</div></div>
+                    <div class="astro-card"><div>LATITUDE / LONG.</div><div class="metric-val" id="val-station-coords">--° / --°</div></div>
                     <div class="astro-card"><div>GAST (GREENWICH)</div><div class="metric-val" id="val-gast" style="color:var(--sky)">--:--:--</div></div>
                     <div class="astro-card"><div>LST (LOCAL)</div><div class="metric-val" id="val-lst" style="color:var(--amber)">--:--:--</div></div>
                 </div>
@@ -78,10 +78,8 @@
             <div class="panel">
                 <div class="panel-title">GLOBE GÉODÉSIQUE 3D (TACTILE S21)</div>
                 <canvas id="globeCanvas" width="280" height="180"></canvas>
-                <div style="display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; justify-content: center;">
-                    <button class="btn-action" onclick="fixerStation(43.2843, 5.3585, 0.1, 'Marseille')">Marseille</button>
-                    <button class="btn-action" onclick="fixerStation(48.8566, 2.3522, 0.06, 'Paris')">Paris</button>
-                    <button class="btn-action" onclick="fixerStation(40.7128, -74.0060, 0.01, 'New York')">New York</button>
+                <div style="font-size: 10px; color: var(--sky); text-align: center; margin-top: 8px;">
+                    CURSEUR DYNAMIQUE : <span id="val-curseur-statut" style="color:var(--neon-green)">ACTIF SUR POSITION S21</span>
                 </div>
             </div>
         </div>
@@ -147,26 +145,20 @@
     </div>
 </div>
 
-<script src="three.min.js"></script>
-<script>
-    if (typeof THREE === 'undefined') {
-        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>');
-    }
-</script>
-
-<script src="vsop2013.js" onerror="console.warn('vsop2013.js non chargé directement, passage par worker')"></script>
-<script src="ElpMpp02DE_min.js" onerror="console.warn('ElpMpp02DE_min.js non chargé directement')"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
 <script>
     const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne'];
     let modeJourActif = false;
-    let modeGPSActif = true;
-    let stationCourante = { lat: 43.2843, lon: 5.3585, alt: 0.1, nom: 'GPS MOBILE' };
+    let stationCourante = { lat: 0.0, lon: 0.0, alt: 0.0, nom: 'ACQUISITION GPS...' };
     
     let coefficientsWMM = [];
     let resultatWmmCourant = { decl: 0, incl: 0, H: 0, F: 0, X: 0, Y: 0, Z: 0 };
     let astroWorker = null;
-    let capVraiLisse = 0; // Pour le lissage de la boussole en mouvement
+    let capVraiLisse = 0;
+    
+    let globeScene, globeCamera, globeRenderer, globeMesh, curseurPositionMesh;
+    let isDragging = false, lastX = 0, lastY = 0;
 
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
@@ -183,15 +175,79 @@
             .catch(err => ecrireLog(`ServiceWorker : ${err.message}`));
     }
 
-    // --- TEMPS SIDÉRAL (CORRECTION ASTRONOMIQUE) ---
+    // --- TEMPS SIDÉRAL ---
     function getJulianDay(date) {
         return (date.getTime() / 86400000.0) + 2440587.5;
     }
     
     function getGMST(jd) {
-        const d = jd - 2451545.0; // Jours depuis J2000.0
+        const d = jd - 2451545.0;
         let gmst = 280.46061837 + 360.98564736629 * d;
         return (gmst % 360.0 + 360.0) % 360.0;
+    }
+
+    // --- GÉOLOCALISATION GPS PAR DÉFAUT SUR TERRAIN ---
+    function initialiserGeolocalisationTempsReel() {
+        if (!('geolocation' in navigator)) {
+            ecrireLog("Erreur : Géolocalisation non supportée. Utilisation position par défaut.");
+            fixerStationManuel(43.2843, 5.3585, 0.01, "SECOURS (MARSEILLE)");
+            return;
+        }
+
+        ecrireLog("Acquisition de la position GPS réelle (S21)...");
+        document.getElementById('lbl-gps-status-txt']?.innerText = "RECHERCHE...";
+
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                stationCourante = {
+                    lat: pos.coords.latitude,
+                    lon: pos.coords.longitude,
+                    alt: (pos.coords.altitude || 0) / 1000.0,
+                    nom: 'POSITION GPS ACTUELLE'
+                }
+                mettreAJourInterfaceStation();
+                recalculerChampMagnetique();
+                if (curseurPositionMesh) actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
+                if (astroWorker) astroWorker.postMessage({ type: 'SET_STATION', station: stationCourante });
+                demarrerSuiviGPSContinu();
+            },
+            (err) => {
+                ecrireLog(`Avertissement GPS : ${err.message}. Bascule sur position fixe.`);
+                fixerStationManuel(43.2843, 5.3585, 0.01, "MARSEILLE (SECOURS)");
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+    }
+
+    function demarrerSuiviGPSContinu() {
+        navigator.geolocation.watchPosition(
+            (pos) => {
+                stationCourante.lat = pos.coords.latitude;
+                stationCourante.lon = pos.coords.longitude;
+                stationCourante.alt = (pos.coords.altitude || 0) / 1000.0;
+                
+                mettreAJourInterfaceStation();
+                recalculerChampMagnetique();
+                if (curseurPositionMesh) actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
+                if (astroWorker) astroWorker.postMessage({ type: 'UPDATE_KINEMATICS', coords: stationCourante });
+            },
+            null,
+            { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+        );
+    }
+
+    function mettreAJourInterfaceStation() {
+        document.getElementById('val-station-nom').innerText = stationCourante.nom;
+        document.getElementById('val-station-coords').innerText = `${stationCourante.lat.toFixed(4)}° / ${stationCourante.lon.toFixed(4)}°`;
+    }
+
+    function fixerStationManuel(lat, lon, alt, nom) {
+        stationCourante = { lat, lon, alt, nom };
+        mettreAJourInterfaceStation();
+        recalculerChampMagnetique();
+        if (curseurPositionMesh) actualiserPositionCurseurGlobe(lat, lon);
+        if (astroWorker) astroWorker.postMessage({ type: 'SET_STATION', station: stationCourante });
+        ecrireLog(`Station définie : ${nom} (${lat.toFixed(2)}, ${lon.toFixed(2)})`);
     }
 
     // --- PARSER WMM2025 ---
@@ -208,6 +264,8 @@
 
         if (!texteBrut) {
             ecrireLog("Erreur : Fichier WMM2025.COF absent.");
+            document.getElementById('lbl-wmm-status').innerText = "ABSENT";
+            document.getElementById('lbl-wmm-status').style.color = "var(--rose)";
             return;
         }
 
@@ -226,10 +284,12 @@
             }
         }
         ecrireLog(`WMM-2025 chargé (${coefficientsWMM.length} termes).`);
+        document.getElementById('lbl-wmm-status').innerText = "2025 OK";
+        document.getElementById('lbl-wmm-status').style.color = "var(--neon-green)";
         recalculerChampMagnetique();
     }
 
-    // --- WMM-2025 CORRIGÉ (SEMI-NORMALISATION DE SCHMIDT) ---
+    // --- CALCUL WMM-2025 (NORMALISATION DE SCHMIDT CORRIGÉE) ---
     function calculerWMM2025(latDeg, lonDeg, altKm, yearDec) {
         if (!coefficientsWMM || coefficientsWMM.length === 0) return null;
 
@@ -264,13 +324,12 @@
 
         const P = Array.from({length: maxN + 1}, () => new Float64Array(maxN + 1));
         const dP = Array.from({length: maxN + 1}, () => new Float64Array(maxN + 1));
-        const S = Array.from({length: maxN + 1}, () => new Float64Array(maxN + 1)); // Facteurs de Schmidt
+        const S = Array.from({length: maxN + 1}, () => new Float64Array(maxN + 1));
 
         P[0][0] = 1.0; dP[0][0] = 0.0;
         P[1][0] = sinPhiP; dP[1][0] = cosPhiP;
         P[1][1] = cosPhiP; dP[1][1] = -sinPhiP;
 
-        // Calcul des facteurs de Schmidt rigoureux
         S[0][0] = 1.0;
         for (let n = 1; n <= maxN; n++) {
             S[n][0] = S[n-1][0] * (2 * n - 1) / n;
@@ -279,7 +338,6 @@
             }
         }
 
-        // Récurrence
         for (let n = 2; n <= maxN; n++) {
             P[n][0] = ((2*n - 1) * sinPhiP * P[n-1][0] - (n - 1) * P[n-2][0]) / n;
             dP[n][0] = ((2*n - 1) * (cosPhiP * P[n-1][0] + sinPhiP * dP[n-1][0]) - (n - 1) * dP[n-2][0]) / n;
@@ -297,7 +355,6 @@
             }
         }
 
-        // Application de la Normalisation de Schmidt
         for (let n = 1; n <= maxN; n++) {
             for (let m = 0; m <= n; m++) {
                 P[n][m] *= S[n][m];
@@ -352,7 +409,7 @@
         }
     }
 
-    // --- CAPTEURS (LISSAGE CINÉMATIQUE BASIQUE) ---
+    // --- CAPTEURS BOUSSOLE ABSOLUE ---
     function demanderCalibrageCapteurs() {
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             DeviceOrientationEvent.requestPermission().then(res => {
@@ -362,7 +419,7 @@
     }
 
     function activerBoussoleAbsolue() {
-        ecrireLog("Écoute orientation magnétique absolue...");
+        ecrireLog("Écoute boussole absolue...");
         const callbackOrientation = (event) => {
             let capMag = null;
             if (event.alpha !== null) {
@@ -375,7 +432,6 @@
 
             if (capMag !== null) {
                 let capVraiBrut = (capMag + resultatWmmCourant.decl + 360.0) % 360.0;
-                // Lissage exponentiel (filtre passe-bas) pour amortir les vibrations en véhicule
                 capVraiLisse = capVraiLisse === 0 ? capVraiBrut : (capVraiLisse * 0.90 + capVraiBrut * 0.10);
                 
                 document.getElementById('val-cap-brut').innerText = `${capMag.toFixed(1)}°`;
@@ -389,43 +445,6 @@
         } else {
             window.addEventListener('deviceorientation', callbackOrientation, true);
         }
-    }
-
-    // --- GÉOLOCALISATION GPS ---
-    function demarrerSuiviGPS() {
-        if (!('geolocation' in navigator)) return;
-        navigator.geolocation.watchPosition(
-            (pos) => {
-                if (!modeGPSActif) return;
-                stationCourante.lat = pos.coords.latitude;
-                stationCourante.lon = pos.coords.longitude;
-                stationCourante.alt = (pos.coords.altitude || 0) / 1000.0;
-                document.getElementById('lbl-gps-status').innerText = "FIXÉ (OK)";
-                document.getElementById('lbl-gps-status').style.color = "var(--neon-green)";
-                document.getElementById('val-station-coords').innerText = `${stationCourante.lat.toFixed(3)}° / ${stationCourante.lon.toFixed(3)}°`;
-                recalculerChampMagnetique();
-                if (astroWorker) astroWorker.postMessage({ type: 'UPDATE_KINEMATICS', coords: stationCourante });
-            },
-            (err) => {
-                document.getElementById('lbl-gps-status').innerText = "PERDU";
-                document.getElementById('lbl-gps-status').style.color = "var(--rose)";
-            },
-            { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
-        );
-    }
-
-    function reactiverGPSCinematique() {
-        modeGPSActif = true;
-        document.getElementById('val-station-nom').innerText = "GPS MOBILE";
-    }
-
-    function fixerStationManuel(lat, lon, alt, nom) {
-        modeGPSActif = false;
-        stationCourante = { lat, lon, alt, nom };
-        document.getElementById('val-station-nom').innerText = nom;
-        document.getElementById('val-station-coords').innerText = `${lat.toFixed(2)}°N / ${lon.toFixed(2)}°E`;
-        recalculerChampMagnetique();
-        if (astroWorker) astroWorker.postMessage({ type: 'SET_STATION', station: stationCourante });
     }
 
     // --- WORKER ASTRONOMIE ---
@@ -450,7 +469,7 @@
                 }
             };
         } catch (e) {
-            ecrireLog("Worker local non instanciable (erreur CORS).");
+            ecrireLog("Worker local non instanciable en direct.");
         }
     }
 
@@ -460,17 +479,14 @@
         dessinerRadar(capVraiLisse);
     }
 
-    // --- RENDU HAUTE DENSITÉ (DPR) : RADAR 2D ---
+    // --- RENDU RADAR 2D AVEC DPR ---
     function dessinerRadar(capActif = 0) {
         const canvas = document.getElementById('radarCanvas');
         if(!canvas) return;
         const ctx = canvas.getContext('2d');
-        
-        // Gestion du DPR pour affichage net sur S21
         const dpr = window.devicePixelRatio || 1;
         const size = 280;
         
-        // Configuration unique du canvas si elle n'a pas été faite
         if (canvas.width !== size * dpr) {
             canvas.width = size * dpr;
             canvas.height = size * dpr;
@@ -496,7 +512,24 @@
         ctx.restore();
     }
 
-    // --- RENDU HAUTE DENSITÉ (DPR) : GLOBE 3D ---
+    // --- CONVERSION LAT/LON VERS VECTOR3 ---
+    function convertirLatLonEnVector3(lat, lon, rayon = 1.0) {
+        const phi = (90.0 - lat) * (Math.PI / 180.0);
+        const theta = (lon + 180.0) * (Math.PI / 180.0);
+        return new THREE.Vector3(
+            -(rayon * Math.sin(phi) * Math.cos(theta)),
+            rayon * Math.cos(phi),
+            rayon * Math.sin(phi) * Math.sin(theta)
+        );
+    }
+
+    function actualiserPositionCurseurGlobe(lat, lon) {
+        if (!curseurPositionMesh) return;
+        const pos3D = convertirLatLonEnVector3(lat, lon, 1.01);
+        curseurPositionMesh.position.copy(pos3D);
+    }
+
+    // --- GLOBE 3D AVEC CURSEUR GÉODÉSIQUE DYNAMIQUE ---
     function initGlobe3D() {
         const container = document.getElementById('globeCanvas');
         if (!container || typeof THREE === 'undefined') return;
@@ -506,12 +539,20 @@
         camera.position.z = 3.5;
         
         const renderer = new THREE.WebGLRenderer({ canvas: container, alpha: true, antialias: true });
-        renderer.setPixelRatio(window.devicePixelRatio || 1); // Correction flou S21
+        renderer.setPixelRatio(window.devicePixelRatio || 1);
         
-        const globe = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), new THREE.MeshBasicMaterial({ color: 0x1f6feb, wireframe: true }));
+        const geometryGlobe = new THREE.SphereGeometry(1, 32, 32);
+        const materialGlobe = new THREE.MeshBasicMaterial({ color: 0x1f6feb, wireframe: true, transparent: true, opacity: 0.6 });
+        const globe = new THREE.Mesh(geometryGlobe, materialGlobe);
         scene.add(globe);
 
-        let isDragging = false, lastX = 0, lastY = 0;
+        // CURSEUR GÉODÉSIQUE DYNAMIQUE UNIQUE
+        const geometryCurseur = new THREE.SphereGeometry(0.04, 16, 16);
+        const materialCurseur = new THREE.MeshBasicMaterial({ color: 0x3fb950 });
+        curseurPositionMesh = new THREE.Mesh(geometryCurseur, materialCurseur);
+        scene.add(curseurPositionMesh);
+
+        // Rotation tactile du globe
         container.addEventListener('mousedown', (e) => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
         window.addEventListener('mouseup', () => { isDragging = false; });
         window.addEventListener('mousemove', (e) => {
@@ -533,13 +574,15 @@
 
         function animateGlobe() { 
             requestAnimationFrame(animateGlobe); 
-            if (!isDragging) globe.rotation.y += 0.002; 
+            if (!isDragging) globe.rotation.y += 0.001; 
             renderer.render(scene, camera); 
         }
         animateGlobe();
+
+        actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
     }
 
-    // --- INITIALISATION ---
+    // --- INITIALISATION GLOBALE ---
     window.addEventListener('load', () => {
         const tbody = document.getElementById('table-body');
         ASTRES.forEach(astre => {
@@ -551,22 +594,23 @@
         initGlobe3D();
         chargerEtParserWMM();
         initialiserWorkerAstronomie();
-        demarrerSuiviGPS();
+        initialiserGeolocalisationTempsReel(); // Lancement direct sur GPS réel
         
         setInterval(() => {
             const now = new Date();
             const jd = getJulianDay(now);
-            const gmst = getGMST(jd); // Vrai Temps Sidéral
+            const gmst = getGMST(jd);
             
             document.getElementById('lbl-epoch').innerText = now.toUTCString().substr(17, 8) + " UTC";
-            document.getElementById('val-gast').innerText = gmst.toFixed(2) + "°";
-            document.getElementById('val-lst').innerText = ((gmst + stationCourante.lon) % 360.0).toFixed(2) + "°";
+            document.getElementById('lbl-gast').innerText = gmst.toFixed(2) + "°";
+            document.getElementById('lbl-lst').innerText = ((gmst + stationCourante.lon) % 360.0).toFixed(2) + "°";
 
             if (astroWorker) astroWorker.postMessage({ type: 'TICK' });
         }, 1000);
         
-        ecrireLog("Système v18.5 corrigé prêt avec intégration complète.");
+        ecrireLog("Système v18.5 initialisé sur position réelle (S21).");
     });
-    </script>
-    </body>
+</script>
+</body>
 </html>
+        
