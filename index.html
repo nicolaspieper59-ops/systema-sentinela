@@ -190,30 +190,43 @@
     }
 
     // --- GÉOLOCALISATION GPS TEMPS RÉEL ---
-    function initialiserGeolocalisation() {
-        if (!('geolocation' in navigator)) {
-            ecrireLog("GPS non disponible. Utilisation coordonnées station manuelle.");
-            appliquerCoordonneesManuelles(true);
-            return;
-        }
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                stationCourante = {
-                    lat: pos.coords.latitude,
-                    lon: pos.coords.longitude,
-                    alt: (pos.coords.altitude || 10) / 1000.0,
-                    nom: 'GPS TEMPS RÉEL'
-                };
-                mettreAJourInterfaceStation();
-                recalculerChampWMM();
-                if (curseurPositionMesh) actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
-            },
-            (err) => {
-                ecrireLog(`Erreur GPS: ${err.message}. Maintien station manuelle.`);
-                appliquerCoordonneesManuelles(true);
-            },
-            { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-        );
+    // Extrait corrigé de la mise à jour GPS dans index.html pour synchroniser l'ECEF
+function initialiserGeolocalisationTempsReel() {
+    if (!('geolocation' in navigator)) {
+        ecrireLog("Géolocalisation indisponible. Utilisation de la station par défaut.");
+        return;
+    }
+    navigator.geolocation.watchPosition(
+        (pos) => {
+            stationCourante = {
+                lat: pos.coords.latitude,
+                lon: pos.coords.longitude,
+                alt: (pos.coords.altitude || 10) / 1000.0,
+                nom: 'GPS TEMPS RÉEL (ACTIF)'
+            };
+            
+            // Synchronisation impérative des champs de saisie manuelle et du calcul ECEF
+            const inputLat = document.getElementById('input-lat');
+            const inputLon = document.getElementById('input-lon');
+            const inputAlt = document.getElementById('input-alt');
+            
+            if (inputLat && inputLon && inputAlt) {
+                inputLat.value = stationCourante.lat.toFixed(4);
+                inputLon.value = stationCourante.lon.toFixed(4);
+                inputAlt.value = stationCourante.alt.toFixed(3);
+            }
+
+            mettreAJourInterfaceStation();
+            recalculerChampWMM();
+            if (typeof actualiserPositionCurseurGlobe === 'function') {
+                actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
+            }
+        },
+        (err) => {
+            ecrireLog(`Avertissement GPS : ${err.message}. Maintien des coordonnées de station.`);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
     }
 
     function mettreAJourInterfaceStation() {
