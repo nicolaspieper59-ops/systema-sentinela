@@ -4,6 +4,10 @@
 // ZÉRO SIMPLIFICATION — UTILISATION DES API NATIVES DU DÉPÔT
 // ==========================================
 importScripts('vsop2013.js', 'ElpMpp02DE_min.js');
+// Définition de la fonction CYCLE manquante requise par vsop2013.js
+function CYCLE(x) {
+    return x - 6.283185307179586 * Math.floor(0.5 * (x * 0.3183098861837907 + 1));
+}
 
 // Notification de chargement des modules stricts au thread principal
 self.postMessage({ type: 'READY', status: 'ANALYTICAL_KERNEL_READY' });
