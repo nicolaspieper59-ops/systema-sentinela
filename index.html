@@ -160,11 +160,13 @@
 <script>
     const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne'];
     let modeJourActif = false;
-    let stationCourante = { lat: 43.2843, lon: 5.3585, alt: 0.1, nom: 'Marseille' };
+    let modeGPSActif = true;
+    let stationCourante = { lat: 43.2843, lon: 5.3585, alt: 0.1, nom: 'GPS MOBILE' };
     
     let coefficientsWMM = [];
     let resultatWmmCourant = { decl: 0, incl: 0, H: 0, F: 0, X: 0, Y: 0, Z: 0 };
     let astroWorker = null;
+    let capVraiLisse = 0; // Pour le lissage de la boussole en mouvement
 
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
@@ -174,34 +176,38 @@
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
-    // --- Enregistrement du Service Worker PWA local ---
+    // --- PWA Service Worker ---
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js')
-            .then(() => ecrireLog("ServiceWorker enregistré (Support Offline OK)"))
+            .then(() => ecrireLog("PWA Service Worker actif (Support Offline OK)."))
             .catch(err => ecrireLog(`ServiceWorker : ${err.message}`));
     }
 
-    // --- Chargement intelligent de WMM2025.COF ou WMM.COF ---
+    // --- TEMPS SIDÉRAL (CORRECTION ASTRONOMIQUE) ---
+    function getJulianDay(date) {
+        return (date.getTime() / 86400000.0) + 2440587.5;
+    }
+    
+    function getGMST(jd) {
+        const d = jd - 2451545.0; // Jours depuis J2000.0
+        let gmst = 280.46061837 + 360.98564736629 * d;
+        return (gmst % 360.0 + 360.0) % 360.0;
+    }
+
+    // --- PARSER WMM2025 ---
     async function chargerEtParserWMM() {
         const fichiersAExplorer = ['WMM2025.COF', 'WMM.COF'];
-        let texteBrut = null;
-        let fichierTrouve = '';
+        let texteBrut = null, fichierTrouve = '';
 
         for (let nomFichier of fichiersAExplorer) {
             try {
                 const reponse = await fetch(nomFichier);
-                if (reponse.ok) {
-                    texteBrut = await reponse.text();
-                    fichierTrouve = nomFichier;
-                    break;
-                }
+                if (reponse.ok) { texteBrut = await reponse.text(); fichierTrouve = nomFichier; break; }
             } catch (e) { }
         }
 
         if (!texteBrut) {
-            ecrireLog("Erreur : Ni WMM2025.COF ni WMM.COF n'ont pu être chargés.");
-            document.getElementById('lbl-wmm-status').innerText = "FICHIER ABSENT";
-            document.getElementById('lbl-wmm-status').style.color = "var(--rose)";
+            ecrireLog("Erreur : Fichier WMM2025.COF absent.");
             return;
         }
 
@@ -212,56 +218,36 @@
             const ligne = lignes[i].trim();
             if (!ligne || ligne.startsWith('99999999999999999999999999999999')) continue;
             const elements = ligne.split(/\s+/);
-            
             if (elements.length >= 6) {
-                const n = parseInt(elements[0], 10);
-                const m = parseInt(elements[1], 10);
+                const n = parseInt(elements[0], 10), m = parseInt(elements[1], 10);
                 if (!isNaN(n) && !isNaN(m)) {
-                    coefficientsWMM.push({
-                        n: n, m: m,
-                        gnm: parseFloat(elements[2]),
-                        hnm: parseFloat(elements[3]),
-                        dgnm: parseFloat(elements[4]),
-                        dhnm: parseFloat(elements[5])
-                    });
+                    coefficientsWMM.push({ n, m, gnm: parseFloat(elements[2]), hnm: parseFloat(elements[3]), dgnm: parseFloat(elements[4]), dhnm: parseFloat(elements[5]) });
                 }
             }
         }
-
-        ecrireLog(`Succès : ${coefficientsWMM.length} coefficients parsés depuis [${fichierTrouve}].`);
-        document.getElementById('lbl-wmm-status').innerText = `WMM-2025 (${fichierTrouve})`;
-        document.getElementById('lbl-wmm-status').style.color = "var(--neon-green)";
+        ecrireLog(`WMM-2025 chargé (${coefficientsWMM.length} termes).`);
         recalculerChampMagnetique();
     }
 
-    // --- CALCULATEUR HARMONIQUES SPHÉRIQUES WMM-2025 ---
+    // --- WMM-2025 CORRIGÉ (SEMI-NORMALISATION DE SCHMIDT) ---
     function calculerWMM2025(latDeg, lonDeg, altKm, yearDec) {
         if (!coefficientsWMM || coefficientsWMM.length === 0) return null;
 
-        const deg2rad = Math.PI / 180.0;
-        const rad2deg = 180.0 / Math.PI;
-
-        const a = 6378.137;
-        const f = 1.0 / 298.257223563;
-        const b = a * (1.0 - f);
-        const re = 6371.2;
+        const deg2rad = Math.PI / 180.0, rad2deg = 180.0 / Math.PI;
+        const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f), re = 6371.2;
         const e2 = (a*a - b*b) / (a*a);
 
-        const phi = latDeg * deg2rad;
-        const lambda = lonDeg * deg2rad;
-        const sinPhi = Math.sin(phi);
-        const cosPhi = Math.cos(phi);
+        const phi = latDeg * deg2rad, lambda = lonDeg * deg2rad;
+        const sinPhi = Math.sin(phi), cosPhi = Math.cos(phi);
 
-        const N = a / Math.sqrt(1.0 - e2 * sinPhi * sinPhi);
-        const xc = (N + altKm) * cosPhi * Math.cos(lambda);
-        const yc = (N + altKm) * cosPhi * Math.sin(lambda);
-        const zc = (N * (1.0 - e2) + altKm) * sinPhi;
+        const N_val = a / Math.sqrt(1.0 - e2 * sinPhi * sinPhi);
+        const xc = (N_val + altKm) * cosPhi * Math.cos(lambda);
+        const yc = (N_val + altKm) * cosPhi * Math.sin(lambda);
+        const zc = (N_val * (1.0 - e2) + altKm) * sinPhi;
 
         const r = Math.sqrt(xc*xc + yc*yc + zc*zc);
         const phiPrime = Math.asin(zc / r);
-        const sinPhiP = Math.sin(phiPrime);
-        const cosPhiP = Math.cos(phiPrime);
-
+        const sinPhiP = Math.sin(phiPrime), cosPhiP = Math.cos(phiPrime);
         const psi = phi - phiPrime;
         const dt = yearDec - 2025.0;
 
@@ -278,26 +264,44 @@
 
         const P = Array.from({length: maxN + 1}, () => new Float64Array(maxN + 1));
         const dP = Array.from({length: maxN + 1}, () => new Float64Array(maxN + 1));
+        const S = Array.from({length: maxN + 1}, () => new Float64Array(maxN + 1)); // Facteurs de Schmidt
 
         P[0][0] = 1.0; dP[0][0] = 0.0;
         P[1][0] = sinPhiP; dP[1][0] = cosPhiP;
         P[1][1] = cosPhiP; dP[1][1] = -sinPhiP;
 
+        // Calcul des facteurs de Schmidt rigoureux
+        S[0][0] = 1.0;
+        for (let n = 1; n <= maxN; n++) {
+            S[n][0] = S[n-1][0] * (2 * n - 1) / n;
+            for (let m = 1; m <= n; m++) {
+                S[n][m] = S[n][m-1] * Math.sqrt((n - m + 1) * (m === 1 ? 2 : 1) / (n + m));
+            }
+        }
+
+        // Récurrence
         for (let n = 2; n <= maxN; n++) {
             P[n][0] = ((2*n - 1) * sinPhiP * P[n-1][0] - (n - 1) * P[n-2][0]) / n;
             dP[n][0] = ((2*n - 1) * (cosPhiP * P[n-1][0] + sinPhiP * dP[n-1][0]) - (n - 1) * dP[n-2][0]) / n;
 
             for (let m = 1; m <= n; m++) {
                 if (m === n) {
-                    const norm = Math.sqrt((2*n - 1) / (2*n));
-                    P[n][n] = norm * cosPhiP * P[n-1][n-1];
-                    dP[n][n] = norm * (cosPhiP * dP[n-1][n-1] - sinPhiP * P[n-1][n-1]);
+                    P[n][n] = cosPhiP * P[n-1][n-1];
+                    dP[n][n] = cosPhiP * dP[n-1][n-1] - sinPhiP * P[n-1][n-1];
                 } else {
-                    const K = (2*n - 1) / Math.sqrt(n*n - m*m);
-                    const L = Math.sqrt((n-1)*(n-1) - m*m) / Math.sqrt(n*n - m*m);
+                    const K = (2*n - 1) / (n - m);
+                    const L = (n + m - 1) / (n - m);
                     P[n][m] = K * sinPhiP * P[n-1][m] - L * P[n-2][m];
                     dP[n][m] = K * (sinPhiP * dP[n-1][m] + cosPhiP * P[n-1][m]) - L * dP[n-2][m];
                 }
+            }
+        }
+
+        // Application de la Normalisation de Schmidt
+        for (let n = 1; n <= maxN; n++) {
+            for (let m = 0; m <= n; m++) {
+                P[n][m] *= S[n][m];
+                dP[n][m] *= S[n][m];
             }
         }
 
@@ -308,11 +312,8 @@
         for (let n = 1; n <= maxN; n++) {
             ratioPow *= ratio;
             let sumBr = 0.0, sumBt = 0.0, sumBp = 0.0;
-
             for (let m = 0; m <= n; m++) {
-                const cosM = Math.cos(m * lambda);
-                const sinM = Math.sin(m * lambda);
-
+                const cosM = Math.cos(m * lambda), sinM = Math.sin(m * lambda);
                 const gcos_hsin = g[n][m] * cosM + h[n][m] * sinM;
                 const gsin_hcos = -g[n][m] * sinM + h[n][m] * cosM;
 
@@ -320,7 +321,6 @@
                 sumBt += gcos_hsin * dP[n][m];
                 sumBp += m * gsin_hcos * P[n][m];
             }
-
             Br += (n + 1) * ratioPow * sumBr;
             Btheta -= ratioPow * sumBt;
             Bphi -= (Math.abs(cosPhiP) > 1e-10) ? (ratioPow * sumBp / cosPhiP) : 0.0;
@@ -352,7 +352,83 @@
         }
     }
 
-    // --- Connexion avec le Web Worker d'Astronomie (worker_astronomie.js) ---
+    // --- CAPTEURS (LISSAGE CINÉMATIQUE BASIQUE) ---
+    function demanderCalibrageCapteurs() {
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission().then(res => {
+                if (res === 'granted') activerBoussoleAbsolue();
+            });
+        } else { activerBoussoleAbsolue(); }
+    }
+
+    function activerBoussoleAbsolue() {
+        ecrireLog("Écoute orientation magnétique absolue...");
+        const callbackOrientation = (event) => {
+            let capMag = null;
+            if (event.alpha !== null) {
+                if (event.absolute || typeof event.webkitCompassHeading === 'undefined') {
+                    capMag = (360 - event.alpha) % 360; 
+                } else if (event.webkitCompassHeading) {
+                    capMag = event.webkitCompassHeading;
+                }
+            }
+
+            if (capMag !== null) {
+                let capVraiBrut = (capMag + resultatWmmCourant.decl + 360.0) % 360.0;
+                // Lissage exponentiel (filtre passe-bas) pour amortir les vibrations en véhicule
+                capVraiLisse = capVraiLisse === 0 ? capVraiBrut : (capVraiLisse * 0.90 + capVraiBrut * 0.10);
+                
+                document.getElementById('val-cap-brut').innerText = `${capMag.toFixed(1)}°`;
+                document.getElementById('val-cap-net').innerText = `${capVraiLisse.toFixed(1)}°`;
+                dessinerRadar(capVraiLisse);
+            }
+        };
+
+        if ('ondeviceorientationabsolute' in window) {
+            window.addEventListener('deviceorientationabsolute', callbackOrientation, true);
+        } else {
+            window.addEventListener('deviceorientation', callbackOrientation, true);
+        }
+    }
+
+    // --- GÉOLOCALISATION GPS ---
+    function demarrerSuiviGPS() {
+        if (!('geolocation' in navigator)) return;
+        navigator.geolocation.watchPosition(
+            (pos) => {
+                if (!modeGPSActif) return;
+                stationCourante.lat = pos.coords.latitude;
+                stationCourante.lon = pos.coords.longitude;
+                stationCourante.alt = (pos.coords.altitude || 0) / 1000.0;
+                document.getElementById('lbl-gps-status').innerText = "FIXÉ (OK)";
+                document.getElementById('lbl-gps-status').style.color = "var(--neon-green)";
+                document.getElementById('val-station-coords').innerText = `${stationCourante.lat.toFixed(3)}° / ${stationCourante.lon.toFixed(3)}°`;
+                recalculerChampMagnetique();
+                if (astroWorker) astroWorker.postMessage({ type: 'UPDATE_KINEMATICS', coords: stationCourante });
+            },
+            (err) => {
+                document.getElementById('lbl-gps-status').innerText = "PERDU";
+                document.getElementById('lbl-gps-status').style.color = "var(--rose)";
+            },
+            { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+        );
+    }
+
+    function reactiverGPSCinematique() {
+        modeGPSActif = true;
+        document.getElementById('val-station-nom').innerText = "GPS MOBILE";
+    }
+
+    function fixerStationManuel(lat, lon, alt, nom) {
+        modeGPSActif = false;
+        stationCourante = { lat, lon, alt, nom };
+        document.getElementById('val-station-nom').innerText = nom;
+        document.getElementById('val-station-coords').innerText = `${lat.toFixed(2)}°N / ${lon.toFixed(2)}°E`;
+        recalculerChampMagnetique();
+        if (astroWorker) astroWorker.postMessage({ type: 'SET_STATION', station: stationCourante });
+    }
+
+    // --- WORKER ASTRONOMIE ---
     function initialiserWorkerAstronomie() {
         try {
             astroWorker = new Worker('worker_astronomie.js');
@@ -363,67 +439,54 @@
                         const elEl = document.getElementById(`el-${item.nom}`);
                         const elDist = document.getElementById(`dist-${item.nom}`);
                         const elStat = document.getElementById(`status-${item.nom}`);
-
                         if (elAz) elAz.innerText = item.az.toFixed(2) + '°';
                         if (elEl) elEl.innerText = item.el.toFixed(2) + '°';
                         if (elDist) elDist.innerText = item.dist.toFixed(4);
-                        if (elStat) elStat.innerText = "VSOP2013/ELP";
+                        if (elStat) {
+                            elStat.innerText = item.source;
+                            elStat.style.color = item.source.includes('WASM') ? 'var(--sky)' : 'var(--neon-green)';
+                        }
                     });
                 }
             };
-            ecrireLog("WebWorker Astronomie (worker_astronomie.js) connecté.");
         } catch (e) {
-            ecrireLog("Mode direct : worker_astronomie.js non instanciable en direct local.");
+            ecrireLog("Worker local non instanciable (erreur CORS).");
         }
-    }
-
-    function fixerStation(lat, lon, alt, nom) {
-        stationCourante = { lat, lon, alt, nom };
-        document.getElementById('val-station-nom').innerText = nom;
-        document.getElementById('val-station-coords').innerText = `${lat.toFixed(2)}°N / ${lon.toFixed(2)}°E`;
-        ecrireLog(`Changement de station : ${nom}`);
-        recalculerChampMagnetique();
-        if (astroWorker) astroWorker.postMessage({ type: 'SET_STATION', station: stationCourante });
-    }
-
-    function demanderCalibrageCapteurs() {
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            DeviceOrientationEvent.requestPermission().then(res => {
-                if (res === 'granted') activerCapteursEKF();
-            }).catch(err => ecrireLog(`Permission capteurs refusée : ${err}`));
-        } else { activerCapteursEKF(); }
-    }
-
-    function activerCapteursEKF() {
-        ecrireLog("Flux gyroscopique/magnétique accédé.");
-        window.addEventListener('deviceorientation', (event) => {
-            if (event.alpha !== null) {
-                let capMag = event.alpha;
-                let capVrai = (capMag + resultatWmmCourant.decl + 360.0) % 360.0; 
-                document.getElementById('val-cap-brut').innerText = `${capMag.toFixed(1)}°`;
-                document.getElementById('val-cap-net').innerText = `${capVrai.toFixed(1)}°`;
-                dessinerRadar(capVrai);
-            }
-        }, true);
     }
 
     function basculerModeJour() {
         modeJourActif = !modeJourActif;
         document.getElementById('html-root').classList.toggle('day-mode', modeJourActif);
-        dessinerRadar(0);
+        dessinerRadar(capVraiLisse);
     }
 
+    // --- RENDU HAUTE DENSITÉ (DPR) : RADAR 2D ---
     function dessinerRadar(capActif = 0) {
         const canvas = document.getElementById('radarCanvas');
         if(!canvas) return;
         const ctx = canvas.getContext('2d');
-        const cx = canvas.width / 2, cy = canvas.height / 2;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Gestion du DPR pour affichage net sur S21
+        const dpr = window.devicePixelRatio || 1;
+        const size = 280;
+        
+        // Configuration unique du canvas si elle n'a pas été faite
+        if (canvas.width !== size * dpr) {
+            canvas.width = size * dpr;
+            canvas.height = size * dpr;
+            canvas.style.width = `${size}px`;
+            canvas.style.height = `${size}px`;
+            ctx.scale(dpr, dpr);
+        }
+
+        const cx = size / 2, cy = size / 2;
+        ctx.clearRect(0, 0, size, size);
+        
         ctx.strokeStyle = modeJourActif ? '#0969da' : '#58a6ff';
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(cx, cy, 120, 0, 2 * Math.PI); ctx.stroke();
         ctx.beginPath(); ctx.arc(cx, cy, 60, 0, 2 * Math.PI); ctx.stroke();
-        
+
         ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(-capActif * (Math.PI / 180.0));
@@ -433,22 +496,22 @@
         ctx.restore();
     }
 
-    // --- GLOBE 3D THREE.JS AVEC ÉVÉNEMENTS TACTILES ---
+    // --- RENDU HAUTE DENSITÉ (DPR) : GLOBE 3D ---
     function initGlobe3D() {
         const container = document.getElementById('globeCanvas');
-        if (!container || typeof THREE === 'undefined') {
-            ecrireLog("Three.js non chargé.");
-            return;
-        }
+        if (!container || typeof THREE === 'undefined') return;
+
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, 280/180, 0.1, 1000); camera.position.z = 3.5;
+        const camera = new THREE.PerspectiveCamera(45, 280/180, 0.1, 1000); 
+        camera.position.z = 3.5;
+        
         const renderer = new THREE.WebGLRenderer({ canvas: container, alpha: true, antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio || 1); // Correction flou S21
+        
         const globe = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), new THREE.MeshBasicMaterial({ color: 0x1f6feb, wireframe: true }));
         scene.add(globe);
 
-        let isDragging = false;
-        let lastX = 0, lastY = 0;
-
+        let isDragging = false, lastX = 0, lastY = 0;
         container.addEventListener('mousedown', (e) => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
         window.addEventListener('mouseup', () => { isDragging = false; });
         window.addEventListener('mousemove', (e) => {
@@ -457,24 +520,15 @@
             globe.rotation.x += (e.clientY - lastY) * 0.008;
             lastX = e.clientX; lastY = e.clientY;
         });
-
         container.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 1) {
-                isDragging = true;
-                lastX = e.touches[0].clientX;
-                lastY = e.touches[0].clientY;
-            }
+            if (e.touches.length === 1) { isDragging = true; lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; }
         }, { passive: true });
-
         window.addEventListener('touchend', () => { isDragging = false; });
         window.addEventListener('touchmove', (e) => {
             if (!isDragging || e.touches.length !== 1) return;
-            let deltaX = e.touches[0].clientX - lastX;
-            let deltaY = e.touches[0].clientY - lastY;
-            globe.rotation.y += deltaX * 0.008;
-            globe.rotation.x += deltaY * 0.008;
-            lastX = e.touches[0].clientX;
-            lastY = e.touches[0].clientY;
+            globe.rotation.y += (e.touches[0].clientX - lastX) * 0.008;
+            globe.rotation.x += (e.touches[0].clientY - lastY) * 0.008;
+            lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
         }, { passive: true });
 
         function animateGlobe() { 
@@ -485,31 +539,34 @@
         animateGlobe();
     }
 
-    // --- INITIALISATION AU CHARGEMENT ---
+    // --- INITIALISATION ---
     window.addEventListener('load', () => {
         const tbody = document.getElementById('table-body');
         ASTRES.forEach(astre => {
             tbody.innerHTML += `<tr><td style="color:var(--sky); text-transform:uppercase;">${astre}</td>
-                <td id="az-${astre}">--</td><td id="el-${astre}">--</td><td id="dist-${astre}">--</td><td id="status-${astre}" style="color:var(--neon-green)">En attente...</td></tr>`;
+                <td id="az-${astre}">--</td><td id="el-${astre}">--</td><td id="dist-${astre}">--</td><td id="status-${astre}" style="color:var(--neon-green)">Chargement...</td></tr>`;
         });
         
-        fixerStation(43.2843, 5.3585, 0.1, 'Marseille');
         dessinerRadar();
         initGlobe3D();
         chargerEtParserWMM();
         initialiserWorkerAstronomie();
+        demarrerSuiviGPS();
         
         setInterval(() => {
             const now = new Date();
+            const jd = getJulianDay(now);
+            const gmst = getGMST(jd); // Vrai Temps Sidéral
+            
             document.getElementById('lbl-epoch').innerText = now.toUTCString().substr(17, 8) + " UTC";
-            const hSec = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
-            const gastVal = (hSec / 3600 * 15).toFixed(2);
-            document.getElementById('val-gast').innerText = gastVal + "°";
-            document.getElementById('val-lst').innerText = (parseFloat(gastVal) + stationCourante.lon).toFixed(2) + "°";
+            document.getElementById('val-gast').innerText = gmst.toFixed(2) + "°";
+            document.getElementById('val-lst').innerText = ((gmst + stationCourante.lon) % 360.0).toFixed(2) + "°";
+
+            if (astroWorker) astroWorker.postMessage({ type: 'TICK' });
         }, 1000);
         
-        ecrireLog("Kernel v18.5 prêt et interconnecté avec le dépôt.");
+        ecrireLog("Système v18.5 corrigé prêt avec intégration complète.");
     });
-</script>
-</body>
+    </script>
+    </body>
 </html>
