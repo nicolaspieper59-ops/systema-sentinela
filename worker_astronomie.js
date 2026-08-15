@@ -1,6 +1,6 @@
 // ==========================================
 // WORKER ASTRONOMIE — KERNEL SENTINELA v18.5
-// Basé sur le moteur analytique du dépôt
+// Moteur Analytique Rigoureux Unifié (Sans dépendances externes obsolètes)
 // ==========================================
 
 function CYCLE(x) {
@@ -33,7 +33,7 @@ self.onmessage = function(e) {
             }
         }
 
-        // Soleil
+        // Calcul topocentrique Soleil
         results.soleil = calculerTopocentrique({ x: -earthPos.x, y: -earthPos.y, z: -earthPos.z }, jd, station, -26.74);
 
         const planetMap = {
@@ -48,11 +48,13 @@ self.onmessage = function(e) {
 
         for (const [nom, obj] of Object.entries(planetMap)) {
             let pPos = null;
-            if (typeof obj.mod === 'function') {
-                const arr = obj.mod(jy2k);
-                pPos = { x: arr[0], y: arr[1], z: arr[2] };
-            } else if (obj.mod && typeof obj.mod.position === 'function') {
-                pPos = obj.mod.position(jd);
+            if (obj.mod) {
+                if (typeof obj.mod === 'function') {
+                    const arr = obj.mod(jy2k);
+                    pPos = { x: arr[0], y: arr[1], z: arr[2] };
+                } else if (typeof obj.mod.position === 'function') {
+                    pPos = obj.mod.position(jd);
+                }
             }
 
             if (pPos) {
@@ -61,11 +63,11 @@ self.onmessage = function(e) {
                 const gz = pPos.z - earthPos.z;
                 results[nom] = calculerTopocentrique({ x: gx, y: gy, z: gz }, jd, station, obj.mag);
             } else {
-                results[nom] = { azimuth: 0, elevation: 0, distance: 0, visibiliteCode: 0 };
+                results[nom] = { azimuth: 0, elevation: -99, distance: 0, visibiliteCode: 0 };
             }
         }
 
-        // Lune
+        // Calcul topocentrique Lune (ELP-2000)
         if (typeof getX2000_DE === 'function') {
             const T_siecles = (jd - 2451545.0) / 36525.0;
             const luneState = getX2000_DE(T_siecles);
@@ -78,13 +80,13 @@ self.onmessage = function(e) {
                 if (!isNaN(lx) && !isNaN(ly) && !isNaN(lz)) {
                     results.lune = calculerTopocentriqueDirectKm(lx, ly, lz, jd, station, -12.7);
                 } else {
-                    results.lune = { azimuth: 0, elevation: 0, distance: 0, visibiliteCode: 0 };
+                    results.lune = { azimuth: 0, elevation: -99, distance: 0, visibiliteCode: 0 };
                 }
             } else {
-                results.lune = { azimuth: 0, elevation: 0, distance: 0, visibiliteCode: 0 };
+                results.lune = { azimuth: 0, elevation: -99, distance: 0, visibiliteCode: 0 };
             }
         } else {
-            results.lune = { azimuth: 0, elevation: 0, distance: 0, visibiliteCode: 0 };
+            results.lune = { azimuth: 0, elevation: -99, distance: 0, visibiliteCode: 0 };
         }
 
         self.postMessage({ type: 'RESULTS', results: results });
@@ -95,7 +97,7 @@ self.onmessage = function(e) {
 };
 
 function calculerTopocentrique(geoVec, jd, station, magApparente) {
-    const x = geoVec.x * 149597870700.0; // Conversion UA en mètres (cohérent avec astro_engine.cpp)
+    const x = geoVec.x * 149597870700.0; // Conversion UA en mètres (aligné sur astro_engine.cpp)
     const y = geoVec.y * 149597870700.0;
     const z = geoVec.z * 149597870700.0;
     return calculerTopocentriqueDirectMètres(x, y, z, jd, station, magApparente);
@@ -125,17 +127,18 @@ function calculerTopocentriqueDirectMètres(xECEF, yECEF, zECEF, jd, station, ma
     const dy = yECEF - yObs;
     const dz = zECEF - zObs;
 
+    // Passage ECEF -> ENU (East, North, Up) conforme au noyau C++
     const E = -Math.sin(lambda) * dx + Math.cos(lambda) * dy;
     const N_top = -Math.sin(phi) * Math.cos(lambda) * dx - Math.sin(phi) * Math.sin(lambda) * dy + Math.cos(phi) * dz;
     const U = Math.cos(phi) * Math.cos(lambda) * dx + Math.cos(phi) * Math.sin(lambda) * dy + Math.sin(phi) * dz;
 
     const distM = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    const distUA = distM / 149597870700.0;
-
     const azim = (Math.atan2(E, N_top) * (180.0 / Math.PI) + 360.0) % 360.0;
+    
     const rhoHorizontal = Math.sqrt(E * E + N_top * N_top);
     const elevGeom = Math.atan2(U, rhoHorizontal) * (180.0 / Math.PI);
 
+    // Réfraction atmosphérique de Bennett (identique au code C++)
     let elevRefractee = elevGeom;
     if (elevGeom > -2.0) {
         const refArcMin = 1.02 / Math.tan((elevGeom + 10.3 / (elevGeom + 5.1)) * (Math.PI / 180.0));
@@ -148,4 +151,4 @@ function calculerTopocentriqueDirectMètres(xECEF, yECEF, zECEF, jd, station, ma
         elevation: parseFloat(elevRefractee.toFixed(2)),
         distance: Math.round(distM / 1000.0)
     };
-                }
+                    }
