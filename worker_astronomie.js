@@ -3,11 +3,51 @@
 // Intégration analytique pure VSOP2013 & ELP-2000
 // ==========================================
 
-// DÉFINITION CRITIQUE REQUISE PAR VSOP2013 / ELP-2000
+// 1. DÉFINITION DE LA CLASSE ORBIT (DOIT IMPÉRATIVEMENT PRÉCÉDER importScripts)
+class Orbit {
+    constructor(data) {
+        if (typeof data === 'object' && data !== null) {
+            Object.assign(this, data);
+        }
+        if (!this.r || typeof this.r !== 'object') {
+            this.r = { x: 0, y: 0, z: 0, applyMatrix3: function() {} };
+        }
+        if (!this.v || typeof this.v !== 'object') {
+            this.v = { x: 0, y: 0, z: 0, applyMatrix3: function() {} };
+        }
+    }
+
+    position(jd) {
+        return { x: this.r.x || 0, y: this.r.y || 0, z: this.r.z || 0 };
+    }
+
+    state(jd) {
+        return {
+            r: this.r,
+            v: this.v,
+            _a: this._a !== undefined ? this._a : (this.a || 0),
+            L: () => this.L_val || 0,
+            k: () => this.k_val || 0,
+            h: () => this.h_val || 0,
+            q: () => this.q_val || 0,
+            p: () => this.p_val || 0
+        };
+    }
+
+    _a() { return this.a || 0; }
+    L() { return this.L_val || 0; }
+    k() { return this.k_val || 0; }
+    h() { return this.h_val || 0; }
+    q() { return this.q_val || 0; }
+    p() { return this.p_val || 0; }
+}
+
+// 2. DÉFINITION DE LA FONCTION CYCLE REQUISE PAR LES TABLES
 function CYCLE(x) {
     return x - 6.283185307179586 * Math.floor(0.5 * (x * 0.3183098861837907 + 1));
 }
 
+// 3. CHARGEMENT DES MODULES DU DÉPÔT
 importScripts('vsop2013.js', 'ElpMpp02DE_min.js');
 
 self.postMessage({ type: 'READY', status: 'ANALYTICAL_KERNEL_READY' });
@@ -24,12 +64,10 @@ self.onmessage = function(e) {
             const results = {};
             const T = (jd - 2451545.0) / 36525.0;
 
-            // 1. Position de la Terre (VSOP2013 - EMB ou Earth)
             const earthPos = (typeof vsop2013 !== 'undefined' && vsop2013.ear) 
                 ? vsop2013.ear.position(jd) 
                 : (vsop2013 && vsop2013.emb ? vsop2013.emb.position(jd) : {x:0, y:0, z:0});
 
-            // Dictionnaire des planètes VSOP2013 disponibles
             const planetes = {
                 mercure: vsop2013.mer,
                 venus: vsop2013.ven,
@@ -40,11 +78,9 @@ self.onmessage = function(e) {
                 neptune: vsop2013.nep
             };
 
-            // Calcul pour le Soleil (depuis la Terre -> inverser le vecteur Terre-Soleil)
             const soleilGeo = { x: -earthPos.x, y: -earthPos.y, z: -earthPos.z };
             results.soleil = calculerTopocentrique(soleilGeo, jd, station);
 
-            // Calcul pour les planètes (Position Héliocentrique Planète - Position Héliocentrique Terre)
             for (const [nom, modulePlanete] of Object.entries(planetes)) {
                 if (modulePlanete && typeof modulePlanete.position === 'function') {
                     const pPos = modulePlanete.position(jd);
@@ -55,9 +91,8 @@ self.onmessage = function(e) {
                 }
             }
 
-            // Calcul pour la Lune (ELP-2000)
             if (typeof getX2000_DE === 'function') {
-                const luneState = getX2000_DE(T); // Retourne la position géocentrique de la Lune en km
+                const luneState = getX2000_DE(T);
                 results.lune = calculerTopocentriqueLune(luneState, jd, station);
             }
 
@@ -69,7 +104,6 @@ self.onmessage = function(e) {
 };
 
 function calculerTopocentrique(geoVec, jd, station) {
-    // Conversion des coordonnées géocentriques héliocentriques (UA vers km)
     const x = geoVec.x * 149597870.7;
     const y = geoVec.y * 149597870.7;
     const z = geoVec.z * 149597870.7;
@@ -105,7 +139,6 @@ function calculerTopocentrique(geoVec, jd, station) {
 }
 
 function calculerTopocentriqueLune(luneState, jd, station) {
-    // La lune via ELP-2000 est déjà en km, il ne faut pas la multiplier par 1 UA
     const x = luneState.x !== undefined ? luneState.x : luneState[0];
     const y = luneState.y !== undefined ? luneState.y : luneState[1];
     const z = luneState.z !== undefined ? luneState.z : luneState[2];
@@ -138,4 +171,4 @@ function calculerTopocentriqueLune(luneState, jd, station) {
         elevation: parseFloat((elevationRad * 180.0 / Math.PI).toFixed(2)),
         distance: Math.round(distanceKm)
     };
-                }
+            }
