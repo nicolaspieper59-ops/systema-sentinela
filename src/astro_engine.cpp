@@ -80,7 +80,7 @@ void calculerDepuisECEF(
         result->visibiliteCode = 0;
     } else {
         double k = 0.2;
-        double magEff = magApparente + (k / std::sin(std::max(1.0, result->elevRefractee) * DEG2RAD));
+        double magEff = magApparente + (k / std::sin(std::fmax(1.0, result->elevRefractee) * DEG2RAD));
         if (magEff <= 5.5) result->visibiliteCode = 1;
         else if (magEff <= 9.5) result->visibiliteCode = 2;
         else result->visibiliteCode = 3;
