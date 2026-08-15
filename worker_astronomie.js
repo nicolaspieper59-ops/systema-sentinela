@@ -131,4 +131,4 @@ function calculerTopocentriqueLune(luneState, jd, station) {
         elevation: parseFloat((elevationRad * 180.0 / Math.PI).toFixed(2)),
         distance: Math.round(distanceKm)
     };
-        }
+                                                         }
