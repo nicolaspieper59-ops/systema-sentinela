@@ -1,4 +1,17 @@
 // ==========================================
+// 1. DÉFINITION DE LA FONCTION CYCLE (OBLIGATOIRE POUR VSOP2013)
+// ==========================================
+function CYCLE(x) {
+    return x - 6.283185307179586 * Math.floor(0.5 * (x * 0.3183098861837907 + 1));
+}
+
+// 2. IMPORTATION DES MODULES DU DÉPÔT
+importScripts('vsop2013.js', 'ElpMpp02DE_min.js');
+
+self.postMessage({ type: 'READY', status: 'ANALYTICAL_KERNEL_READY' });
+
+// ... suite de votre code de calcul worker ...
+// ==========================================
 // WORKER ASTRONOMIE — KERNEL SENTINELA 
 // Utilisation stricte VSOP2013 & ELP-2000
 // ==========================================
