@@ -9,32 +9,18 @@ class Orbit {
         if (typeof data === 'object' && data !== null) {
             Object.assign(this, data);
         }
-        // S'assurer que les vecteurs r et v existent et possèdent des méthodes de repli 
-        // pour éviter tout plantage si applyMatrix3 est appelé en interne.
-        if (!this.r || typeof this.r.applyMatrix3 !== 'function') {
-            this.r = {
-                x: this.r ? (this.r.x || 0) : 0,
-                y: this.r ? (this.r.y || 0) : 0,
-                z: this.r ? (this.r.z || 0) : 0,
-                applyMatrix3: function() {}
-            };
+        if (!this.r || typeof this.r !== 'object') {
+            this.r = { x: 0, y: 0, z: 0, applyMatrix3: function() {} };
         }
-        if (!this.v || typeof this.v.applyMatrix3 !== 'function') {
-            this.v = {
-                x: this.v ? (this.v.x || 0) : 0,
-                y: this.v ? (this.v.y || 0) : 0,
-                z: this.v ? (this.v.z || 0) : 0,
-                applyMatrix3: function() {}
-            };
+        if (!this.v || typeof this.v !== 'object') {
+            this.v = { x: 0, y: 0, z: 0, applyMatrix3: function() {} };
         }
     }
 
-    // Méthode standard de position
     position(jd) {
-        return { x: this.r.x, y: this.r.y, z: this.r.z };
+        return { x: this.r.x || 0, y: this.r.y || 0, z: this.r.z || 0 };
     }
 
-    // Méthode .state() appelée de manière critique par vsop2013.js sur les valeurs intermédiaires
     state(jd) {
         return {
             r: this.r,
@@ -48,7 +34,6 @@ class Orbit {
         };
     }
 
-    // Accesseurs orbitaux requis par la désérialisation interne de vsop2013
     _a() { return this.a || 0; }
     L() { return this.L_val || 0; }
     k() { return this.k_val || 0; }
@@ -96,18 +81,44 @@ self.onmessage = function(e) {
     }
 };
 
+// Extracteur universel ultra-blindé contre les undefined, objets et tableaux
+function getCoord(p, coordName) {
+    if (!p) return 0;
+
+    // Si c'est un tableau [x, y, z] ou [0, 1, 2]
+    if (Array.isArray(p)) {
+        if (coordName === 'x') return p[0] !== undefined ? p[0] : 0;
+        if (coordName === 'y') return p[1] !== undefined ? p[1] : 0;
+        if (coordName === 'z') return p[2] !== undefined ? p[2] : 0;
+    }
+
+    // Si c'est un objet
+    if (typeof p === 'object') {
+        // Accès direct (ex: p.x)
+        if (p[coordName] !== undefined) return p[coordName];
+        
+        // Accès via la sous-propriété .r (ex: p.r.x)
+        if (p.r) {
+            if (typeof p.r === 'object' && p.r[coordName] !== undefined) return p.r[coordName];
+            if (Array.isArray(p.r)) {
+                if (coordName === 'x') return p.r[0] !== undefined ? p.r[0] : 0;
+                if (coordName === 'y') return p.r[1] !== undefined ? p.r[1] : 0;
+                if (coordName === 'z') return p.r[2] !== undefined ? p.r[2] : 0;
+            }
+        }
+
+        // Accès par index numérique sur l'objet lui-même
+        if (coordName === 'x' && p[0] !== undefined) return p[0];
+        if (coordName === 'y' && p[1] !== undefined) return p[1];
+        if (coordName === 'z' && p[2] !== undefined) return p[2];
+    }
+
+    return 0;
+}
+
 function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
     let x = 0, y = 0, z = 0;
     let distanceKm = 0;
-
-    // Fonction utilitaire sécurisée d'extraction de coordonnées (objet, tableau ou structure r)
-    const getCoord = (p, coord) => {
-        if (!p) return 0;
-        if (p[coord] !== undefined) return p[coord];
-        if (p.r && p.r[coord] !== undefined) return p.r[coord];
-        if (Array.isArray(p)) return p[coord === 'x' ? 0 : (coord === 'y' ? 1 : 2)] || 0;
-        return 0;
-    };
 
     if (astre === 'lune') {
         if (typeof getX2000_DE !== 'function') {
@@ -143,7 +154,6 @@ function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
             throw new Error(`Modèle VSOP2013 manquant pour l'astre : ${astre}`);
         }
 
-        // Évaluation robuste de la position via les différentes API possibles de l'objet planète
         let posAstre;
         if (typeof planetObj.position === 'function') {
             posAstre = planetObj.position(jd);
@@ -165,7 +175,7 @@ function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
             z = -az * 149597870.7;
         } else {
             const terreObj = vsop2013.emb || vsop2013.ear;
-            let posTerre;
+            let posTerre = null;
             if (terreObj) {
                 if (typeof terreObj.position === 'function') posTerre = terreObj.position(jd);
                 else if (typeof terreObj.state === 'function') posTerre = terreObj.state(jd);
@@ -208,4 +218,4 @@ function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
         elevation: parseFloat((elevationRad * 180.0 / Math.PI).toFixed(2)),
         distance: Math.round(distanceKm)
     };
-        }
+}
