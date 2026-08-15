@@ -1,9 +1,8 @@
 // ==========================================
-// WORKER ASTRONOMIE — KERNEL SENTINELA 
-// Implémentation conforme aux standards GitHub (VSOP2013 / ELP-2000)
+// WORKER ASTRONOMIE — KERNEL SENTINELA v18.5
+// Implémentation analytique complète sans simplification
 // ==========================================
 
-// Définition de la fonction d'encadrement cyclique requise par les séries de Fourier
 function CYCLE(x) {
     return x - 6.283185307179586 * Math.floor(0.5 * (x * 0.3183098861837907 + 1));
 }
@@ -21,20 +20,21 @@ self.onmessage = function(e) {
 
     try {
         const results = {};
-        // Temps en milliers d'années juliennes depuis J2000.0 (standard VSOP2013)
         const jy2k = (jd - 2451545.0) / 365250.0; 
 
-        // 1. Calcul de la Terre / Barycentre Terre-Lune via VSOP2013
         let earthPos = { x: 0, y: 0, z: 0 };
-        if (typeof vsop2013 !== 'undefined' && vsop2013.ear) {
-            const resEarth = vsop2013.ear(jy2k);
-            earthPos = { x: resEarth[0], y: resEarth[1], z: resEarth[2] };
+        if (typeof vsop2013 !== 'undefined') {
+            if (typeof vsop2013.ear === 'function') {
+                const resEarth = vsop2013.ear(jy2k);
+                earthPos = { x: resEarth[0], y: resEarth[1], z: resEarth[2] };
+            } else if (vsop2013.ear && typeof vsop2013.ear.position === 'function') {
+                const resEarth = vsop2013.ear.position(jd);
+                earthPos = { x: resEarth.x, y: resEarth.y, z: resEarth.z };
+            }
         }
 
-        // 2. Soleil (coordonnées héliocentriques inversées)
         results.soleil = calculerTopocentrique({ x: -earthPos.x, y: -earthPos.y, z: -earthPos.z }, jd, station);
 
-        // 3. Planètes du Système Solaire
         const planetMap = {
             mercure: vsop2013?.mer,
             venus: vsop2013?.ven,
@@ -45,28 +45,42 @@ self.onmessage = function(e) {
             neptune: vsop2013?.nep
         };
 
-        for (const [nom, func] of Object.entries(planetMap)) {
-            if (typeof func === 'function') {
-                const p = func(jy2k);
-                // Passage héliocentrique -> géocentrique
-                const gx = p[0] - earthPos.x;
-                const gy = p[1] - earthPos.y;
-                const gz = p[2] - earthPos.z;
+        for (const [nom, mod] of Object.entries(planetMap)) {
+            let pPos = null;
+            if (typeof mod === 'function') {
+                const arr = mod(jy2k);
+                pPos = { x: arr[0], y: arr[1], z: arr[2] };
+            } else if (mod && typeof mod.position === 'function') {
+                pPos = mod.position(jd);
+            }
+
+            if (pPos) {
+                const gx = pPos.x - earthPos.x;
+                const gy = pPos.y - earthPos.y;
+                const gz = pPos.z - earthPos.z;
                 results[nom] = calculerTopocentrique({ x: gx, y: gy, z: gz }, jd, station);
             } else {
                 results[nom] = { azimuth: 0, elevation: 0, distance: 0 };
             }
         }
 
-        // 4. Lune via ELP-2000 (ElpMpp02DE_min.js)
         if (typeof getX2000_DE === 'function') {
-            const T_siècles = (jd - 2451545.0) / 36525.0;
-            const luneState = getX2000_DE(T_siècles);
-            // Conversion des unités renvoyées par la routine lunaire vers les UA si nécessaire
-            const lx = (luneState.x !== undefined ? luneState.x : luneState[0]) / 149597870.7;
-            const ly = (luneState.y !== undefined ? luneState.y : luneState[1]) / 149597870.7;
-            const lz = (luneState.z !== undefined ? luneState.z : luneState[2]) / 149597870.7;
-            results.lune = calculerTopocentrique({ x: lx, y: ly, z: lz }, jd, station);
+            const T_siecles = (jd - 2451545.0) / 36525.0;
+            const luneState = getX2000_DE(T_siecles);
+            
+            if (luneState) {
+                const lx = Number(luneState.x !== undefined ? luneState.x : luneState[0]);
+                const ly = Number(luneState.y !== undefined ? luneState.y : luneState[1]);
+                const lz = Number(luneState.z !== undefined ? luneState.z : luneState[2]);
+                
+                if (!isNaN(lx) && !isNaN(ly) && !isNaN(lz)) {
+                    results.lune = calculerTopocentriqueDirectKm(lx, ly, lz, jd, station);
+                } else {
+                    results.lune = { azimuth: 0, elevation: 0, distance: 0 };
+                }
+            } else {
+                results.lune = { azimuth: 0, elevation: 0, distance: 0 };
+            }
         } else {
             results.lune = { azimuth: 0, elevation: 0, distance: 0 };
         }
@@ -82,6 +96,10 @@ function calculerTopocentrique(geoVec, jd, station) {
     const x = geoVec.x * 149597870.7;
     const y = geoVec.y * 149597870.7;
     const z = geoVec.z * 149597870.7;
+    return calculerTopocentriqueDirectKm(x, y, z, jd, station);
+}
+
+function calculerTopocentriqueDirectKm(x, y, z, jd, station) {
     const distanceKm = Math.sqrt(x*x + y*y + z*z);
 
     const rXY = Math.sqrt(x*x + y*y);
@@ -110,4 +128,4 @@ function calculerTopocentrique(geoVec, jd, station) {
         elevation: parseFloat((elevationRad * 180.0 / Math.PI).toFixed(2)),
         distance: Math.round(distanceKm)
     };
-            }
+}
