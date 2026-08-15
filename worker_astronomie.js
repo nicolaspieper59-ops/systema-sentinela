@@ -3,19 +3,29 @@
 // Intégration analytique pure VSOP2013 & ELP-2000
 // ==========================================
 
-// Définition de la classe Orbit requise par vsop2013.js
+// Définition rigoureuse de la classe Orbit requise par vsop2013.js
 class Orbit {
     constructor(data) {
         if (typeof data === 'object' && data !== null) {
             Object.assign(this, data);
         }
     }
+    
+    // Méthode de calcul de position standard
     position(jd) {
+        return { x: 0, y: 0, z: 0, r: { x: 0, y: 0, z: 0 } };
+    }
+
+    // Méthode .state() exigée en interne par certaines versions de vsop2013.js
+    state(jd) {
+        if (typeof this.position === 'function') {
+            return this.position(jd);
+        }
         return { x: 0, y: 0, z: 0, r: { x: 0, y: 0, z: 0 } };
     }
 }
 
-// Définition de la fonction CYCLE requise par les tables
+// Définition de la fonction CYCLE requise par les tables analytiques
 function CYCLE(x) {
     return x - 6.283185307179586 * Math.floor(0.5 * (x * 0.3183098861837907 + 1));
 }
@@ -88,11 +98,12 @@ function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
             planetObj = mapPlanetes[astre];
         }
 
-        if (!planetObj || typeof planetObj.position !== 'function') {
+        if (!planetObj || (typeof planetObj.position !== 'function' && typeof planetObj.state !== 'function')) {
             throw new Error(`Modèle VSOP2013 manquant ou invalide pour l'astre : ${astre}`);
         }
 
-        const posAstre = planetObj.position(jd);
+        // Évaluation sécurisée via .position() ou .state()
+        const posAstre = typeof planetObj.position === 'function' ? planetObj.position(jd) : planetObj.state(jd);
         const ax = posAstre.x !== undefined ? posAstre.x : posAstre.r.x;
         const ay = posAstre.y !== undefined ? posAstre.y : posAstre.r.y;
         const az = posAstre.z !== undefined ? posAstre.z : posAstre.r.z;
@@ -102,7 +113,8 @@ function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
             y = -ay * 149597870.7;
             z = -az * 149597870.7;
         } else {
-            const posTerre = (vsop2013.emb || vsop2013.ear).position(jd);
+            const terreObj = vsop2013.emb || vsop2013.ear;
+            const posTerre = typeof terreObj.position === 'function' ? terreObj.position(jd) : terreObj.state(jd);
             const tx = posTerre.x !== undefined ? posTerre.x : posTerre.r.x;
             const ty = posTerre.y !== undefined ? posTerre.y : posTerre.r.y;
             const tz = posTerre.z !== undefined ? posTerre.z : posTerre.r.z;
@@ -140,4 +152,4 @@ function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
         elevation: parseFloat((elevationRad * 180.0 / Math.PI).toFixed(2)),
         distance: Math.round(distanceKm)
     };
-            }
+    }
