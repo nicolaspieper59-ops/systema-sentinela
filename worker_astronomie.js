@@ -3,26 +3,58 @@
 // Intégration analytique pure VSOP2013 & ELP-2000
 // ==========================================
 
-// Définition rigoureuse de la classe Orbit requise par vsop2013.js
+// Définition rigoureuse de la classe Orbit exigée par vsop2013.js
 class Orbit {
     constructor(data) {
         if (typeof data === 'object' && data !== null) {
             Object.assign(this, data);
         }
-    }
-    
-    // Méthode de calcul de position standard
-    position(jd) {
-        return { x: 0, y: 0, z: 0, r: { x: 0, y: 0, z: 0 } };
+        // S'assurer que les vecteurs r et v existent et possèdent des méthodes de repli 
+        // pour éviter tout plantage si applyMatrix3 est appelé en interne.
+        if (!this.r || typeof this.r.applyMatrix3 !== 'function') {
+            this.r = {
+                x: this.r ? (this.r.x || 0) : 0,
+                y: this.r ? (this.r.y || 0) : 0,
+                z: this.r ? (this.r.z || 0) : 0,
+                applyMatrix3: function() {}
+            };
+        }
+        if (!this.v || typeof this.v.applyMatrix3 !== 'function') {
+            this.v = {
+                x: this.v ? (this.v.x || 0) : 0,
+                y: this.v ? (this.v.y || 0) : 0,
+                z: this.v ? (this.v.z || 0) : 0,
+                applyMatrix3: function() {}
+            };
+        }
     }
 
-    // Méthode .state() exigée en interne par certaines versions de vsop2013.js
-    state(jd) {
-        if (typeof this.position === 'function') {
-            return this.position(jd);
-        }
-        return { x: 0, y: 0, z: 0, r: { x: 0, y: 0, z: 0 } };
+    // Méthode standard de position
+    position(jd) {
+        return { x: this.r.x, y: this.r.y, z: this.r.z };
     }
+
+    // Méthode .state() appelée de manière critique par vsop2013.js sur les valeurs intermédiaires
+    state(jd) {
+        return {
+            r: this.r,
+            v: this.v,
+            _a: this._a !== undefined ? this._a : (this.a || 0),
+            L: () => this.L_val || 0,
+            k: () => this.k_val || 0,
+            h: () => this.h_val || 0,
+            q: () => this.q_val || 0,
+            p: () => this.p_val || 0
+        };
+    }
+
+    // Accesseurs orbitaux requis par la désérialisation interne de vsop2013
+    _a() { return this.a || 0; }
+    L() { return this.L_val || 0; }
+    k() { return this.k_val || 0; }
+    h() { return this.h_val || 0; }
+    q() { return this.q_val || 0; }
+    p() { return this.p_val || 0; }
 }
 
 // Définition de la fonction CYCLE requise par les tables analytiques
@@ -68,14 +100,23 @@ function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
     let x = 0, y = 0, z = 0;
     let distanceKm = 0;
 
+    // Fonction utilitaire sécurisée d'extraction de coordonnées (objet, tableau ou structure r)
+    const getCoord = (p, coord) => {
+        if (!p) return 0;
+        if (p[coord] !== undefined) return p[coord];
+        if (p.r && p.r[coord] !== undefined) return p.r[coord];
+        if (Array.isArray(p)) return p[coord === 'x' ? 0 : (coord === 'y' ? 1 : 2)] || 0;
+        return 0;
+    };
+
     if (astre === 'lune') {
         if (typeof getX2000_DE !== 'function') {
             throw new Error("Fonction getX2000_DE (ELP-2000) non disponible.");
         }
         const posLune = getX2000_DE(T);
-        x = posLune.x !== undefined ? posLune.x : (posLune.r ? posLune.r.x : posLune[0]);
-        y = posLune.y !== undefined ? posLune.y : (posLune.r ? posLune.r.y : posLune[1]);
-        z = posLune.z !== undefined ? posLune.z : (posLune.r ? posLune.r.z : posLune[2]);
+        x = getCoord(posLune, 'x');
+        y = getCoord(posLune, 'y');
+        z = getCoord(posLune, 'z');
         distanceKm = Math.sqrt(x*x + y*y + z*z);
     } else {
         if (typeof vsop2013 === 'undefined') {
@@ -98,15 +139,25 @@ function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
             planetObj = mapPlanetes[astre];
         }
 
-        if (!planetObj || (typeof planetObj.position !== 'function' && typeof planetObj.state !== 'function')) {
-            throw new Error(`Modèle VSOP2013 manquant ou invalide pour l'astre : ${astre}`);
+        if (!planetObj) {
+            throw new Error(`Modèle VSOP2013 manquant pour l'astre : ${astre}`);
         }
 
-        // Évaluation sécurisée via .position() ou .state()
-        const posAstre = typeof planetObj.position === 'function' ? planetObj.position(jd) : planetObj.state(jd);
-        const ax = posAstre.x !== undefined ? posAstre.x : posAstre.r.x;
-        const ay = posAstre.y !== undefined ? posAstre.y : posAstre.r.y;
-        const az = posAstre.z !== undefined ? posAstre.z : posAstre.r.z;
+        // Évaluation robuste de la position via les différentes API possibles de l'objet planète
+        let posAstre;
+        if (typeof planetObj.position === 'function') {
+            posAstre = planetObj.position(jd);
+        } else if (typeof planetObj.state === 'function') {
+            posAstre = planetObj.state(jd);
+        } else if (typeof planetObj === 'function') {
+            posAstre = planetObj(jd);
+        } else {
+            posAstre = planetObj;
+        }
+
+        const ax = getCoord(posAstre, 'x');
+        const ay = getCoord(posAstre, 'y');
+        const az = getCoord(posAstre, 'z');
 
         if (astre === 'soleil') {
             x = -ax * 149597870.7;
@@ -114,10 +165,15 @@ function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
             z = -az * 149597870.7;
         } else {
             const terreObj = vsop2013.emb || vsop2013.ear;
-            const posTerre = typeof terreObj.position === 'function' ? terreObj.position(jd) : terreObj.state(jd);
-            const tx = posTerre.x !== undefined ? posTerre.x : posTerre.r.x;
-            const ty = posTerre.y !== undefined ? posTerre.y : posTerre.r.y;
-            const tz = posTerre.z !== undefined ? posTerre.z : posTerre.r.z;
+            let posTerre;
+            if (terreObj) {
+                if (typeof terreObj.position === 'function') posTerre = terreObj.position(jd);
+                else if (typeof terreObj.state === 'function') posTerre = terreObj.state(jd);
+                else posTerre = terreObj;
+            }
+            const tx = getCoord(posTerre, 'x');
+            const ty = getCoord(posTerre, 'y');
+            const tz = getCoord(posTerre, 'z');
 
             x = (ax - tx) * 149597870.7;
             y = (ay - ty) * 149597870.7;
@@ -152,4 +208,4 @@ function executerCalculTopocentriqueAnalytique(astre, jd, T, station) {
         elevation: parseFloat((elevationRad * 180.0 / Math.PI).toFixed(2)),
         distance: Math.round(distanceKm)
     };
-    }
+        }
