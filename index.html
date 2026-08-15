@@ -46,7 +46,7 @@
         th, td { padding: 6px 7px; border-bottom: 1px solid var(--border-dim); font-size: 9.5px; }
         th { color: var(--sky); font-weight: normal; background: rgba(88,166,255,0.05); position: sticky; top: 0; z-index: 2; }
         
-        /* Classes de visibilité pour le tri du tableau */
+        /* Classes de visibilité pour le tri dynamique */
         tr.visible-row { opacity: 1; }
         tr.hidden-row { opacity: 0.55; }
 
@@ -280,7 +280,7 @@
             ecrireLog(`WMM-2025 chargé : ${coefficientsWMM.length} coefficients sphériques.`);
             recalculerChampWMM();
         } catch (e) {
-            ecrireLog(`WMM-2025 Avertissement / Erreur chargement: ${e.message}.`);
+            ecrireLog(`WMM-2025 Avertissement / Mode secours actif: ${e.message}.`);
         }
     }
 
@@ -323,155 +323,13 @@
         };
     }
 
-    // Fonction clé : Tri par visibilité (les astres visibles >= 0° en haut du tableau)
+    // Fonction de tri dynamique : les astres visibles (>= 0°) remontent en haut
     function mettreAJourTableauEtTrier(results) {
         const tbody = document.getElementById('table-body');
         if (!tbody) return;
 
         let entries = Object.entries(results);
 
-        // Tri : Élévation >= 0 en premier (décroissante), puis astres couchés
-        entries.sort((a, b) => {
-            const elA = a[1].elevation;
-            const elB = b[1].elevation;
-            const visA = elA >= 0 ? 1 : 0;
-            const visB = elB >= 0 ? 1 : 0;
-
-            if (visA !== visB) return visB - visA;
-            return elB - elA;
-        });
-
-        tbody.innerHTML = '';
-
-        entries.forEach(([astre, data]) => {
-            const row = document.createElement('tr');
-            const isVisible = data.elevation >= 0;
-            row.className = isVisible ? 'visible-row' : 'hidden-row';
-
-            row.innerHTML = `
-                <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--text-main)'}; text-transform:uppercase; font-weight:bold;">${astre}</td>
-                <td>${data.elevation.toFixed(2)}°</td>
-                <td>${data.azimuth.toFixed(2)}°</td>
-                <td>${Math.round(data.distance).toLocaleString()} km</td>
-                <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--rose)'}; font-weight:bold;">
-                    ${isVisible ? 'VISIBLE' : 'SOUS L\'HORIZON'}
-                </td>
-            `;
-            tbody.appendChild(row);
-        });
-    }
-
-    function demanderCalibrageIMU() {
-        if (typeof actualiserPositionCurseurGlobe === 'function') {
-                    actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
-                }
-            },
-            (err) => {
-                ecrireLog(`Avertissement GPS : ${err.message}. Maintien des coordonnées de station.`);
-            },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-    }
-
-    function mettreAJourInterfaceStation() {
-        document.getElementById('val-station-nom').innerText = stationCourante.nom;
-        document.getElementById('val-station-coords').innerText = `${stationCourante.lat.toFixed(4)}° / ${stationCourante.lon.toFixed(4)}°`;
-        appliquerCoordonneesManuelles(true);
-    }
-
-    function appliquerCoordonneesManuelles(silencieux = false) {
-        const lat = parseFloat(document.getElementById('input-lat').value);
-        const lon = parseFloat(document.getElementById('input-lon').value);
-        const alt = parseFloat(document.getElementById('input-alt').value);
-
-        if (isNaN(lat) || isNaN(lon) || isNaN(alt)) return;
-
-        const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f), e2 = (a*a - b*b) / (a*a);
-        const phi = lat * (Math.PI / 180.0), lambda = lon * (Math.PI / 180.0);
-        const sinPhi = Math.sin(phi), cosPhi = Math.cos(phi);
-        const N_val = a / Math.sqrt(1.0 - e2 * sinPhi * sinPhi);
-
-        const X = (N_val + alt) * cosPhi * Math.cos(lambda);
-        const Y = (N_val + alt) * cosPhi * Math.sin(lambda);
-        const Z = (N_val * (1.0 - e2) + alt) * sinPhi;
-
-        document.getElementById('val-xyz-x').innerText = X.toFixed(2);
-        document.getElementById('val-xyz-y').innerText = Y.toFixed(2);
-        document.getElementById('val-xyz-z').innerText = Z.toFixed(2);
-
-        stationCourante.lat = lat; stationCourante.lon = lon; stationCourante.alt = alt;
-        if (!silencieux) {
-            stationCourante.nom = 'SAISIE MANUELLE';
-            mettreAJourInterfaceStation();
-            recalculerChampWMM();
-            if (curseurPositionMesh) actualiserPositionCurseurGlobe(lat, lon);
-            ecrireLog(`Station mise à jour : Lat ${lat.toFixed(4)}°, Lon ${lon.toFixed(4)}° | X=${X.toFixed(1)} Y=${Y.toFixed(1)} Z=${Z.toFixed(1)} km`);
-        }
-    }
-
-    async function chargerEtParserWMM() {
-        try {
-            const reponse = await fetch('WMM2025.COF');
-            if (!reponse.ok) throw new Error("WMM2025.COF introuvable");
-            const texte = await reponse.text();
-            coefficientsWMM = texte.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('99999')).map(l => {
-                const e = l.split(/\s+/);
-                return { n: parseInt(e[0]), m: parseInt(e[1]), gnm: parseFloat(e[2]), hnm: parseFloat(e[3]) };
-            }).filter(item => !isNaN(item.n));
-            ecrireLog(`WMM-2025 chargé : ${coefficientsWMM.length} coefficients sphériques.`);
-            recalculerChampWMM();
-        } catch (e) {
-            ecrireLog(`WMM-2025 Avertissement / Erreur chargement: ${e.message}.`);
-        }
-    }
-
-    function recalculerChampWMM() {
-        document.getElementById('val-dec-wmm').innerText = `+${resultatWmmCourant.decl.toFixed(2)}°`;
-        document.getElementById('val-inc-wmm').innerText = `${resultatWmmCourant.incl.toFixed(2)}°`;
-        document.getElementById('val-h-wmm').innerText = `${Math.round(resultatWmmCourant.H)} nT`;
-        document.getElementById('val-f-wmm').innerText = `${Math.round(resultatWmmCourant.F)} nT`;
-    }
-    
-    // --- WORKER & TRI DYNAMIQUE PAR VISIBILITÉ DU TABLEAU ---
-    function initialiserWorkerAstronomie() {
-        if (typeof Worker === 'undefined') {
-            ecrireLog("Erreur critique : Web Workers non supportés.");
-            return;
-        }
-        
-        astroWorker = new Worker('worker_astronomie.js');
-        
-        astroWorker.onmessage = function(e) {
-            const data = e.data;
-            
-            if (data.status === 'WASM_READY' || data.type === 'READY') {
-                document.getElementById('lbl-worker-status').innerText = "ACTIF (DÉPÔT STRICT)";
-                document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-                ecrireLog("Worker Astronomie lié aux modules VSOP2013 / ELP-2000.");
-            } 
-            else if (data.type === 'RESULTS' && data.results) {
-                derniersResultatsAstres = data.results;
-                mettreAJourTableauEtTrier(derniersResultatsAstres);
-                dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
-            }
-            else if (data.type === 'ERROR') {
-                ecrireLog(`Erreur Worker : ${data.message}`);
-            }
-        };
-
-        astroWorker.onerror = function(err) {
-            ecrireLog(`Erreur critique thread Worker : ${err.message}`);
-        };
-    }
-
-    // Fonction clé : Tri par visibilité (les astres visibles >= 0° en haut du tableau)
-    function mettreAJourTableauEtTrier(results) {
-        const tbody = document.getElementById('table-body');
-        if (!tbody) return;
-
-        let entries = Object.entries(results);
-
-        // Tri : Élévation >= 0 en premier (décroissante), puis astres couchés
         entries.sort((a, b) => {
             const elA = a[1].elevation;
             const elB = b[1].elevation;
@@ -521,7 +379,7 @@
         }, true);
     }
 
-    // --- RADAR CORRIGÉ (Nord en haut, sens horaire) & TRACÉ DES ASTRES ---
+    // --- RADAR CORRIGÉ (Nord en haut, sens horaire) & TRACÉ DES CORPS CÉLESTES ---
     function dessinerRadarAstres(astresData, cap = 0) {
         const canvas = document.getElementById('radarCanvas');
         if(!canvas) return;
@@ -563,7 +421,7 @@
         ctx.fillText('E', cx + maxRadius - 10, cy + 3);
         ctx.fillText('O', cx - maxRadius + 3, cy + 3);
 
-        // Tracé des astres visibles sur le radar
+        // Tracé des astres visibles sur le radar polaire
         if (astresData) {
             for (const [astre, data] of Object.entries(astresData)) {
                 if (data.elevation < 0) continue; // Masquer les astres sous l'horizon
@@ -665,8 +523,8 @@
             }
         }, 1000);
 
-        ecrireLog("SYSTEMA SENTINELA v18.5 initialisé avec succès (Tri par visibilité et Radar corrigés).");
+        ecrireLog("SYSTEMA SENTINELA v18.5 initialisé avec succès (Tri par visibilité et Radar astres restaurés).");
     });
 </script>
 </body>
-</html> 
+</html>
