@@ -3,6 +3,11 @@
 // Intégration analytique pure VSOP2013 & ELP-2000
 // ==========================================
 
+// DÉFINITION CRITIQUE REQUISE PAR VSOP2013 / ELP-2000
+function CYCLE(x) {
+    return x - 6.283185307179586 * Math.floor(0.5 * (x * 0.3183098861837907 + 1));
+}
+
 importScripts('vsop2013.js', 'ElpMpp02DE_min.js');
 
 self.postMessage({ type: 'READY', status: 'ANALYTICAL_KERNEL_READY' });
@@ -20,7 +25,9 @@ self.onmessage = function(e) {
             const T = (jd - 2451545.0) / 36525.0;
 
             // 1. Position de la Terre (VSOP2013 - EMB ou Earth)
-            const earthPos = (typeof vsop2013 !== 'undefined' && vsop2013.ear) ? vsop2013.ear.position(jd) : (vsop2013 && vsop2013.emb ? vsop2013.emb.position(jd) : {x:0, y:0, z:0});
+            const earthPos = (typeof vsop2013 !== 'undefined' && vsop2013.ear) 
+                ? vsop2013.ear.position(jd) 
+                : (vsop2013 && vsop2013.emb ? vsop2013.emb.position(jd) : {x:0, y:0, z:0});
 
             // Dictionnaire des planètes VSOP2013 disponibles
             const planetes = {
@@ -50,7 +57,7 @@ self.onmessage = function(e) {
 
             // Calcul pour la Lune (ELP-2000)
             if (typeof getX2000_DE === 'function') {
-                const luneState = getX2000_DE(T); // Retourne la position géocentrique de la Lune en km ou UA
+                const luneState = getX2000_DE(T); // Retourne la position géocentrique de la Lune en km
                 results.lune = calculerTopocentriqueLune(luneState, jd, station);
             }
 
@@ -98,7 +105,7 @@ function calculerTopocentrique(geoVec, jd, station) {
 }
 
 function calculerTopocentriqueLune(luneState, jd, station) {
-    // Si la lune est déjà en km (selon format ELP-2000)
+    // La lune via ELP-2000 est déjà en km, il ne faut pas la multiplier par 1 UA
     const x = luneState.x !== undefined ? luneState.x : luneState[0];
     const y = luneState.y !== undefined ? luneState.y : luneState[1];
     const z = luneState.z !== undefined ? luneState.z : luneState[2];
@@ -131,4 +138,4 @@ function calculerTopocentriqueLune(luneState, jd, station) {
         elevation: parseFloat((elevationRad * 180.0 / Math.PI).toFixed(2)),
         distance: Math.round(distanceKm)
     };
-                                                         }
+                }
