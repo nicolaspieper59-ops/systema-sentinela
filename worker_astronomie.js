@@ -19,9 +19,9 @@ self.postMessage({ type: 'READY', status: 'WASM_READY' });
 // ==========================================
 class TopocentricCalculator {
     constructor(station) {
-        const latDeg = station.lat;
-        const lonDeg = station.lon;
-        const altM = (station.alt || 0) * 1000.0;
+        const latDeg = Number(station.lat) || 0;
+        const lonDeg = Number(station.lon) || 0;
+        const altM = (Number(station.alt) || 0) * 1000.0;
 
         this.phi = latDeg * (Math.PI / 180.0);
         this.lambda = lonDeg * (Math.PI / 180.0);
@@ -83,7 +83,7 @@ class TopocentricCalculator {
 }
 
 // ==========================================
-// CLASSE : ORBIT (Ex-AstronomicalEngine)
+// CLASSE : ORBIT
 // ==========================================
 class Orbit {
     constructor(jd, station) {
@@ -96,12 +96,16 @@ class Orbit {
     _computeEarthPosition() {
         if (typeof vsop2013 === 'undefined') return { x: 0, y: 0, z: 0 };
         
-        if (typeof vsop2013.ear === 'function') {
-            const res = vsop2013.ear(this.jy2k);
-            return { x: res[0], y: res[1], z: res[2] };
-        } else if (vsop2013.ear && typeof vsop2013.ear.position === 'function') {
-            const res = vsop2013.ear.position(this.jd);
-            return { x: res.x, y: res.y, z: res.z };
+        try {
+            if (typeof vsop2013.ear === 'function') {
+                const res = vsop2013.ear(this.jy2k);
+                return { x: res[0], y: res[1], z: res[2] };
+            } else if (vsop2013.ear && typeof vsop2013.ear.position === 'function') {
+                const res = vsop2013.ear.position(this.jd);
+                return { x: res.x, y: res.y, z: res.z };
+            }
+        } catch (e) {
+            // Sécurité en cas de défaillance du module VSOP Terre
         }
         return { x: 0, y: 0, z: 0 };
     }
@@ -115,11 +119,15 @@ class Orbit {
         if (!planetModule) return this._nullResult();
 
         let pPos = null;
-        if (typeof planetModule === 'function') {
-            const arr = planetModule(this.jy2k);
-            pPos = { x: arr[0], y: arr[1], z: arr[2] };
-        } else if (typeof planetModule.position === 'function') {
-            pPos = planetModule.position(this.jd);
+        try {
+            if (typeof planetModule === 'function') {
+                const arr = planetModule(this.jy2k);
+                pPos = { x: arr[0], y: arr[1], z: arr[2] };
+            } else if (typeof planetModule.position === 'function') {
+                pPos = planetModule.position(this.jd);
+            }
+        } catch (e) {
+            return this._nullResult();
         }
 
         if (!pPos) return this._nullResult();
@@ -135,18 +143,22 @@ class Orbit {
     computeMoon() {
         if (typeof getX2000_DE !== 'function') return this._nullResult();
 
-        const T_siecles = (this.jd - 2451545.0) / 36525.0;
-        const luneState = getX2000_DE(T_siecles);
-        
-        if (!luneState) return this._nullResult();
+        try {
+            const T_siecles = (this.jd - 2451545.0) / 36525.0;
+            const luneState = getX2000_DE(T_siecles);
+            
+            if (!luneState) return this._nullResult();
 
-        const lx = Number(luneState.x !== undefined ? luneState.x : luneState[0]);
-        const ly = Number(luneState.y !== undefined ? luneState.y : luneState[1]);
-        const lz = Number(luneState.z !== undefined ? luneState.z : luneState[2]);
-        
-        if (isNaN(lx) || isNaN(ly) || isNaN(lz)) return this._nullResult();
+            const lx = Number(luneState.x !== undefined ? luneState.x : luneState[0]);
+            const ly = Number(luneState.y !== undefined ? luneState.y : luneState[1]);
+            const lz = Number(luneState.z !== undefined ? luneState.z : luneState[2]);
+            
+            if (isNaN(lx) || isNaN(ly) || isNaN(lz)) return this._nullResult();
 
-        return this.calculator.computeFromKm(lx, ly, lz, -12.7);
+            return this.calculator.computeFromKm(lx, ly, lz, -12.7);
+        } catch (e) {
+            return this._nullResult();
+        }
     }
 
     _nullResult() {
@@ -176,12 +188,9 @@ class Orbit {
         return results;
     }
 }
-// 2. EXPOSITION GLOBALE DE LA CLASSE (Pour les scripts externes)
+
 self.Orbit = Orbit;
 
-// ==========================================
-// ÉCOUTEUR PRINCIPAL DU WORKER
-// ==========================================
 // ==========================================
 // ÉCOUTEUR PRINCIPAL DU WORKER (Sécurisé)
 // ==========================================
@@ -189,19 +198,17 @@ self.onmessage = function(e) {
     const dataMsg = e.data || {};
     const jd = dataMsg.jd;
     
-    // Sécurité : Fournir une station par défaut (ex: Lisbonne) si absente ou mal transmise
-    const station = (dataMsg.station && typeof dataMsg.station.lat === 'number' && typeof dataMsg.station.lon === 'number') 
-        ? dataMsg.station 
-        : { lat: 38.7314, lon: -9.1338, alt: 0.116 };
+    let station = dataMsg.station;
+    if (!station || typeof station.lat !== 'number' || typeof station.lon !== 'number') {
+        station = { lat: 38.7314, lon: -9.1338, alt: 0.116 };
+    }
 
     if (!jd) return;
 
     try {
         const engine = new Orbit(jd, station);
         const results = engine.runEphemeris();
-
         self.postMessage({ type: 'RESULTS', results: results });
-
     } catch (err) {
         self.postMessage({ type: 'ERROR', message: `Erreur calcul worker : ${err.toString()}` });
     }
