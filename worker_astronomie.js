@@ -4,23 +4,23 @@
 // ==========================================
 "use strict";
 
+// 1. DÉCLARATION GLOBALE REQUISE PAR LES DÉPENDANCES
+function CYCLE(x) {
+    return x - 6.283185307179586 * Math.floor(0.5 * (x * 0.3183098861837907 + 1));
+}
+self.CYCLE = CYCLE; // Verrouillage dans l'espace global du Worker
+
+// 2. IMPORTATION DES MODULES
 importScripts('vsop2013.js', 'ElpMpp02DE_min.js');
 
 self.postMessage({ type: 'READY', status: 'WASM_READY' });
 
 // ==========================================
-// UTILITAIRES MATHÉMATIQUES
-// ==========================================
-class MathUtils {
-    static cycle(x) {
-        return x - 6.283185307179586 * Math.floor(0.5 * (x * 0.3183098861837907 + 1));
-    }
-}
-
-// ==========================================
 // CLASSE : CALCULATEUR TOPOCENTRIQUE
 // ==========================================
 class TopocentricCalculator {
+    // ... (Le reste du code reste strictement identique à la version POO précédente)
+// ...
     constructor(station) {
         const latDeg = station.lat;
         const lonDeg = station.lon;
