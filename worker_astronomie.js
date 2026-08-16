@@ -1,14 +1,15 @@
 // ==========================================
 // WORKER ASTRONOMIE — KERNEL SENTINELA v18.5
-// Version Refactorisée Orientée Objet (ES6)
+// Version Refactorisée Orientée Objet (ES6) + Correctif Global
 // ==========================================
 "use strict";
 
-// 1. DÉCLARATION GLOBALE REQUISE PAR LES DÉPENDANCES
+// 1. DÉCLARATION GLOBALE REQUISE PAR LES DÉPENDANCES (ELP2000 / VSOP2013)
+// Cette fonction DOIT être attachée à 'self' pour que les anciens scripts la trouvent.
 function CYCLE(x) {
     return x - 6.283185307179586 * Math.floor(0.5 * (x * 0.3183098861837907 + 1));
 }
-self.CYCLE = CYCLE; // Verrouillage dans l'espace global du Worker
+self.CYCLE = CYCLE; 
 
 // 2. IMPORTATION DES MODULES
 importScripts('vsop2013.js', 'ElpMpp02DE_min.js');
@@ -19,8 +20,6 @@ self.postMessage({ type: 'READY', status: 'WASM_READY' });
 // CLASSE : CALCULATEUR TOPOCENTRIQUE
 // ==========================================
 class TopocentricCalculator {
-    // ... (Le reste du code reste strictement identique à la version POO précédente)
-// ...
     constructor(station) {
         const latDeg = station.lat;
         const lonDeg = station.lon;
@@ -36,7 +35,7 @@ class TopocentricCalculator {
 
         const N = a / Math.sqrt(1.0 - e2 * Math.sin(this.phi) * Math.sin(this.phi));
         
-        // Coordonnées de l'observateur en ECEF
+        // Coordonnées de l'observateur en ECEF (Calculées une seule fois)
         this.xObs = (N + altM) * Math.cos(this.phi) * Math.cos(this.lambda);
         this.yObs = (N + altM) * Math.cos(this.phi) * Math.sin(this.lambda);
         this.zObs = (N * (1.0 - e2) + altM) * Math.sin(this.phi);
@@ -61,7 +60,7 @@ class TopocentricCalculator {
         const dy = yECEF - this.yObs;
         const dz = zECEF - this.zObs;
 
-        // Passage ECEF -> ENU (East, North, Up)
+        // Passage ECEF -> ENU (East, North, Up) conforme au noyau C++
         const E = -Math.sin(this.lambda) * dx + Math.cos(this.lambda) * dy;
         const N_top = -Math.sin(this.phi) * Math.cos(this.lambda) * dx - Math.sin(this.phi) * Math.sin(this.lambda) * dy + Math.cos(this.phi) * dz;
         const U = Math.cos(this.phi) * Math.cos(this.lambda) * dx + Math.cos(this.phi) * Math.sin(this.lambda) * dy + Math.sin(this.phi) * dz;
@@ -83,7 +82,8 @@ class TopocentricCalculator {
         return {
             azimuth: parseFloat(azim.toFixed(2)),
             elevation: parseFloat(elevRefractee.toFixed(2)),
-            distance: Math.round(distM / 1000.0)
+            distance: Math.round(distM / 1000.0),
+            visibiliteCode: elevRefractee > 0 ? 1 : 0
         };
     }
 }
@@ -131,7 +131,7 @@ class AstronomicalEngine {
 
         if (!pPos) return this._nullResult();
 
-        // Calcul du vecteur géocentrique
+        // Calcul du vecteur géocentrique de la planète par rapport à la Terre
         const geoVec = {
             x: pPos.x - this.earthPos.x,
             y: pPos.y - this.earthPos.y,
