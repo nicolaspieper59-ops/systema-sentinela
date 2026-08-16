@@ -93,26 +93,24 @@ class Orbit {
         this.earthPos = this._computeEarthPosition();
     }
 
-    _computeEarthPosition() {
+_computeEarthPosition() {
         if (typeof vsop2013 === 'undefined') return { x: 0, y: 0, z: 0 };
         
         try {
+            // Test 1: Appel direct si la fonction existe
             if (typeof vsop2013.ear === 'function') {
                 const res = vsop2013.ear(this.jy2k);
-                return { x: res[0], y: res[1], z: res[2] };
-            } else if (vsop2013.ear && typeof vsop2013.ear.position === 'function') {
-                const res = vsop2013.ear.position(this.jd);
-                return { x: res.x, y: res.y, z: res.z };
+                if (res) return { x: res[0] ?? res.x, y: res[1] ?? res.y, z: res[2] ?? res.z };
+            }
+            // Test 2: Si vsop2013 possède un objet global de calcul planétaire standardisé
+            if (typeof vsop2013.getElement === 'function') {
+                const res = vsop2013.getElement('Earth', this.jy2k);
+                if (res) return { x: res[0], y: res[1], z: res[2] };
             }
         } catch (e) {
-            // Sécurité en cas de défaillance du module VSOP Terre
+            // Gestion silencieuse pour capturer l'échec de signature
         }
         return { x: 0, y: 0, z: 0 };
-    }
-
-    computeSun() {
-        const geoVec = { x: -this.earthPos.x, y: -this.earthPos.y, z: -this.earthPos.z };
-        return this.calculator.computeFromAU(geoVec, -26.74);
     }
 
     computePlanet(planetModule, mag) {
@@ -122,7 +120,7 @@ class Orbit {
         try {
             if (typeof planetModule === 'function') {
                 const arr = planetModule(this.jy2k);
-                pPos = { x: arr[0], y: arr[1], z: arr[2] };
+                if (arr) pPos = { x: arr[0] ?? arr.x, y: arr[1] ?? arr.y, z: arr[2] ?? arr.z };
             } else if (typeof planetModule.position === 'function') {
                 pPos = planetModule.position(this.jd);
             }
@@ -138,7 +136,7 @@ class Orbit {
             z: pPos.z - this.earthPos.z
         };
         return this.calculator.computeFromAU(geoVec, mag);
-    }
+            }
 
     computeMoon() {
         if (typeof getX2000_DE !== 'function') return this._nullResult();
