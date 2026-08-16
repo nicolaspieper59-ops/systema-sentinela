@@ -136,7 +136,7 @@ _computeEarthPosition() {
             z: pPos.z - this.earthPos.z
         };
         return this.calculator.computeFromAU(geoVec, mag);
-            }
+}
 
     computeMoon() {
         if (typeof getX2000_DE !== 'function') return this._nullResult();
