@@ -182,13 +182,21 @@ self.Orbit = Orbit;
 // ==========================================
 // ÉCOUTEUR PRINCIPAL DU WORKER
 // ==========================================
+// ==========================================
+// ÉCOUTEUR PRINCIPAL DU WORKER (Sécurisé)
+// ==========================================
 self.onmessage = function(e) {
-    const { jd, station } = e.data;
+    const dataMsg = e.data || {};
+    const jd = dataMsg.jd;
+    
+    // Sécurité : Fournir une station par défaut (ex: Lisbonne) si absente ou mal transmise
+    const station = (dataMsg.station && typeof dataMsg.station.lat === 'number' && typeof dataMsg.station.lon === 'number') 
+        ? dataMsg.station 
+        : { lat: 38.7314, lon: -9.1338, alt: 0.116 };
 
-    if (!jd || !station) return;
+    if (!jd) return;
 
     try {
-        // Instanciation via la classe attendue
         const engine = new Orbit(jd, station);
         const results = engine.runEphemeris();
 
