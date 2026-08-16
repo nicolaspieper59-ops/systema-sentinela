@@ -1,17 +1,15 @@
 // ==========================================
 // WORKER ASTRONOMIE — KERNEL SENTINELA v18.5
-// Version Refactorisée Orientée Objet (ES6) + Correctif Global
+// Version Refactorisée POO + Correctifs Globaux (CYCLE & Orbit)
 // ==========================================
 "use strict";
 
-// 1. DÉCLARATION GLOBALE REQUISE PAR LES DÉPENDANCES (ELP2000 / VSOP2013)
-// Cette fonction DOIT être attachée à 'self' pour que les anciens scripts la trouvent.
+// 1. DÉCLARATIONS GLOBALES REQUISES PAR LES DÉPENDANCES
 function CYCLE(x) {
     return x - 6.283185307179586 * Math.floor(0.5 * (x * 0.3183098861837907 + 1));
 }
 self.CYCLE = CYCLE; 
 
-// 2. IMPORTATION DES MODULES
 importScripts('vsop2013.js', 'ElpMpp02DE_min.js');
 
 self.postMessage({ type: 'READY', status: 'WASM_READY' });
@@ -28,14 +26,12 @@ class TopocentricCalculator {
         this.phi = latDeg * (Math.PI / 180.0);
         this.lambda = lonDeg * (Math.PI / 180.0);
 
-        // Paramètres de l'ellipsoïde WGS84
         const a = 6378137.0;
         const f = 1.0 / 298.257223563;
         const e2 = f * (2.0 - f);
 
         const N = a / Math.sqrt(1.0 - e2 * Math.sin(this.phi) * Math.sin(this.phi));
         
-        // Coordonnées de l'observateur en ECEF (Calculées une seule fois)
         this.xObs = (N + altM) * Math.cos(this.phi) * Math.cos(this.lambda);
         this.yObs = (N + altM) * Math.cos(this.phi) * Math.sin(this.lambda);
         this.zObs = (N * (1.0 - e2) + altM) * Math.sin(this.phi);
@@ -60,7 +56,6 @@ class TopocentricCalculator {
         const dy = yECEF - this.yObs;
         const dz = zECEF - this.zObs;
 
-        // Passage ECEF -> ENU (East, North, Up) conforme au noyau C++
         const E = -Math.sin(this.lambda) * dx + Math.cos(this.lambda) * dy;
         const N_top = -Math.sin(this.phi) * Math.cos(this.lambda) * dx - Math.sin(this.phi) * Math.sin(this.lambda) * dy + Math.cos(this.phi) * dz;
         const U = Math.cos(this.phi) * Math.cos(this.lambda) * dx + Math.cos(this.phi) * Math.sin(this.lambda) * dy + Math.sin(this.phi) * dz;
@@ -71,7 +66,6 @@ class TopocentricCalculator {
         const rhoHorizontal = Math.sqrt(E * E + N_top * N_top);
         const elevGeom = Math.atan2(U, rhoHorizontal) * (180.0 / Math.PI);
 
-        // Réfraction atmosphérique de Bennett
         let elevRefractee = elevGeom;
         if (elevGeom > -2.0) {
             const refArcMin = 1.02 / Math.tan((elevGeom + 10.3 / (elevGeom + 5.1)) * (Math.PI / 180.0));
@@ -89,9 +83,9 @@ class TopocentricCalculator {
 }
 
 // ==========================================
-// CLASSE : MOTEUR ASTRONOMIQUE (ORBITE)
+// CLASSE : ORBIT (Ex-AstronomicalEngine)
 // ==========================================
-class AstronomicalEngine {
+class Orbit {
     constructor(jd, station) {
         this.jd = jd;
         this.jy2k = (jd - 2451545.0) / 365250.0;
@@ -113,7 +107,6 @@ class AstronomicalEngine {
     }
 
     computeSun() {
-        // Vecteur inverse de la Terre pour trouver le Soleil
         const geoVec = { x: -this.earthPos.x, y: -this.earthPos.y, z: -this.earthPos.z };
         return this.calculator.computeFromAU(geoVec, -26.74);
     }
@@ -131,7 +124,6 @@ class AstronomicalEngine {
 
         if (!pPos) return this._nullResult();
 
-        // Calcul du vecteur géocentrique de la planète par rapport à la Terre
         const geoVec = {
             x: pPos.x - this.earthPos.x,
             y: pPos.y - this.earthPos.y,
@@ -184,6 +176,8 @@ class AstronomicalEngine {
         return results;
     }
 }
+// 2. EXPOSITION GLOBALE DE LA CLASSE (Pour les scripts externes)
+self.Orbit = Orbit;
 
 // ==========================================
 // ÉCOUTEUR PRINCIPAL DU WORKER
@@ -194,8 +188,8 @@ self.onmessage = function(e) {
     if (!jd || !station) return;
 
     try {
-        // Instanciation de notre moteur objet
-        const engine = new AstronomicalEngine(jd, station);
+        // Instanciation via la classe attendue
+        const engine = new Orbit(jd, station);
         const results = engine.runEphemeris();
 
         self.postMessage({ type: 'RESULTS', results: results });
