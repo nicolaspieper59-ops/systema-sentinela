@@ -85,6 +85,9 @@ class TopocentricCalculator {
 // ==========================================
 // CLASSE : ORBIT
 // ==========================================
+// ==========================================
+// CLASSE : ORBIT (Corrigée et consolidée)
+// ==========================================
 class Orbit {
     constructor(jd, station) {
         this.jd = jd;
@@ -93,24 +96,23 @@ class Orbit {
         this.earthPos = this._computeEarthPosition();
     }
 
-_computeEarthPosition() {
+    _computeEarthPosition() {
         if (typeof vsop2013 === 'undefined') return { x: 0, y: 0, z: 0 };
         
         try {
-            // Test 1: Appel direct si la fonction existe
             if (typeof vsop2013.ear === 'function') {
                 const res = vsop2013.ear(this.jy2k);
                 if (res) return { x: res[0] ?? res.x, y: res[1] ?? res.y, z: res[2] ?? res.z };
             }
-            // Test 2: Si vsop2013 possède un objet global de calcul planétaire standardisé
-            if (typeof vsop2013.getElement === 'function') {
-                const res = vsop2013.getElement('Earth', this.jy2k);
-                if (res) return { x: res[0], y: res[1], z: res[2] };
-            }
         } catch (e) {
-            // Gestion silencieuse pour capturer l'échec de signature
+            // Repli sécurisé
         }
         return { x: 0, y: 0, z: 0 };
+    }
+
+    computeSun() {
+        const geoVec = { x: -this.earthPos.x, y: -this.earthPos.y, z: -this.earthPos.z };
+        return this.calculator.computeFromAU(geoVec, -26.74);
     }
 
     computePlanet(planetModule, mag) {
@@ -136,7 +138,7 @@ _computeEarthPosition() {
             z: pPos.z - this.earthPos.z
         };
         return this.calculator.computeFromAU(geoVec, mag);
-}
+    }
 
     computeMoon() {
         if (typeof getX2000_DE !== 'function') return this._nullResult();
@@ -185,7 +187,7 @@ _computeEarthPosition() {
 
         return results;
     }
-}
+            }
 
 self.Orbit = Orbit;
 
