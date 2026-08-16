@@ -239,35 +239,43 @@
     }
 
     function appliquerCoordonneesManuelles(silencieux = false) {
-        const lat = parseFloat(document.getElementById('input-lat').value);
-        const lon = parseFloat(document.getElementById('input-lon').value);
-        const alt = parseFloat(document.getElementById('input-alt').value);
+    const rawLat = document.getElementById('input-lat').value.replace(',', '.');
+    const rawLon = document.getElementById('input-lon').value.replace(',', '.');
+    const rawAlt = document.getElementById('input-alt').value.replace(',', '.');
 
-        if (isNaN(lat) || isNaN(lon) || isNaN(alt)) return;
+    const lat = parseFloat(rawLat);
+    const lon = parseFloat(rawLon);
+    const alt = parseFloat(rawAlt);
 
-        const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f), e2 = (a*a - b*b) / (a*a);
-        const phi = lat * (Math.PI / 180.0), lambda = lon * (Math.PI / 180.0);
-        const sinPhi = Math.sin(phi), cosPhi = Math.cos(phi);
-        const N_val = a / Math.sqrt(1.0 - e2 * sinPhi * sinPhi);
+    if (isNaN(lat) || isNaN(lon) || isNaN(alt)) return;
 
-        const X = (N_val + alt) * cosPhi * Math.cos(lambda);
-        const Y = (N_val + alt) * cosPhi * Math.sin(lambda);
-        const Z = (N_val * (1.0 - e2) + alt) * sinPhi;
+    const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f), e2 = (a*a - b*b) / (a*a);
+    const phi = lat * (Math.PI / 180.0), lambda = lon * (Math.PI / 180.0);
+    const sinPhi = Math.sin(phi), cosPhi = Math.cos(phi);
+    const N_val = a / Math.sqrt(1.0 - e2 * sinPhi * sinPhi);
 
-        document.getElementById('val-xyz-x').innerText = X.toFixed(2);
-        document.getElementById('val-xyz-y').innerText = Y.toFixed(2);
-        document.getElementById('val-xyz-z').innerText = Z.toFixed(2);
+    const X = (N_val + alt) * cosPhi * Math.cos(lambda);
+    const Y = (N_val + alt) * cosPhi * Math.sin(lambda);
+    const Z = (N_val * (1.0 - e2) + alt) * sinPhi;
 
-        stationCourante.lat = lat; stationCourante.lon = lon; stationCourante.alt = alt;
-        if (!silencieux) {
-            stationCourante.nom = 'SAISIE MANUELLE';
-            mettreAJourInterfaceStation();
-            recalculerChampWMM();
-            if (curseurPositionMesh) actualiserPositionCurseurGlobe(lat, lon);
-            ecrireLog(`Station mise à jour : Lat ${lat.toFixed(4)}°, Lon ${lon.toFixed(4)}° | X=${X.toFixed(1)} Y=${Y.toFixed(1)} Z=${Z.toFixed(1)} km`);
+    document.getElementById('val-xyz-x').innerText = X.toFixed(2);
+    document.getElementById('val-xyz-y').innerText = Y.toFixed(2);
+    document.getElementById('val-xyz-z').innerText = Z.toFixed(2);
+
+    stationCourante.lat = lat; 
+    stationCourante.lon = lon; 
+    stationCourante.alt = alt;
+
+    if (!silencieux) {
+        stationCourante.nom = 'SAISIE MANUELLE';
+        mettreAJourInterfaceStation();
+        recalculerChampWMM();
+        if (typeof actualiserPositionCurseurGlobe === 'function') {
+            actualiserPositionCurseurGlobe(lat, lon);
         }
+        ecrireLog(`Station mise à jour : Lat ${lat.toFixed(4)}°, Lon ${lon.toFixed(4)}°`);
     }
-
+    }
     async function chargerEtParserWMM() {
         try {
             const reponse = await fetch('WMM2025.COF');
