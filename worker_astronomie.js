@@ -47,6 +47,22 @@ self.onmessage = function(event) {
                 }
             }
 
+            let resultData;
+const t = (jd - 2451545.0) / 365250.0; // Millénaires juliens pour VSOP
+
+switch(astre) {
+    let raw;
+    case 'mercure': raw = vsop2013.mer(t); break;
+    case 'venus':   raw = vsop2013.ven(t); break;
+    case 'soleil':  raw = vsop2013.sun(t); break; // ou équivalent terre inversée
+    case 'mars':    raw = vsop2013.mar(t); break;
+    case 'jupiter': raw = vsop2013.jup(t); break;
+    case 'saturne': raw = vsop2013.sat(t); break;
+    case 'uranus':  raw = vsop2013.ura(t); break;
+    case 'neptune': raw = vsop2013.nep(t); break;
+    default: throw new Error(`Astre non supporté : ${astre}`);
+        }
+
             // Renvoi du succès vers le thread principal
             self.postMessage({
                 type: 'SUCCESS',
