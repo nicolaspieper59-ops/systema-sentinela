@@ -504,6 +504,47 @@ function lancerCalculsEphemerides(jd) {
         actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
     }
 
+    // Tableau global pour stocker les résultats temporaires
+const cacheEphemerides = {};
+
+astronomerWorker.onmessage = function(event) {
+    const { type, astre, data, message } = event.data;
+
+    if (type === 'ERROR') {
+        console.error(`Erreur sur ${astre}:`, message);
+        return;
+    }
+
+    if (type === 'SUCCESS') {
+        // Stockage et calcul topocentrique final (Azimut, Élévation, Distance)
+        cacheEphemerides[astre] = data;
+        
+        // Mise à jour dynamique du tableau HTML
+        actualiserLigneTableauHTML(astre, data);
+    }
+};
+
+function actualiserLigneTableauHTML(astre, data) {
+    const tbody = document.getElementById('ephemerides-tbody'); // Vérifiez cet ID dans votre HTML
+    if (!tbody) return;
+
+    let tr = document.getElementById(row-${astre});
+    if (!tr) {
+        tr = document.createElement('tr');
+        tr.id = row-${astre};
+        tbody.appendChild(tr);
+    }
+
+    // Exemple d'insertion des données calculées
+    tr.innerHTML = `
+        <td>${astre.toUpperCase()}</td>
+        <td>${data.elevation ? data.elevation.toFixed(2) : '--'}°</td>
+        <td>${data.azimuth ? data.azimuth.toFixed(2) : '--'}°</td>
+        <td>${data.distance ? data.distance.toFixed(2) : '--'} km</td>
+        <td><span class="badge-actif">ACTIF</span></td>
+    `;
+    }
+
     function basculerModeJour() {
         modeJourActif = !modeJourActif;
         document.getElementById('html-root').classList.toggle('day-mode', modeJourActif);
