@@ -507,43 +507,59 @@ function lancerCalculsEphemerides(jd) {
     // Tableau global pour stocker les résultats temporaires
 const cacheEphemerides = {};
 
-astronomerWorker.onmessage = function(event) {
-    const { type, astre, data, message } = event.data;
-
-    if (type === 'ERROR') {
-        console.error(`Erreur sur ${astre}:`, message);
-        return;
+// Écouteur unique et propre des résultats globaux du Worker
+astroWorker.onmessage = function(e) {
+    const data = e.data;
+    
+    if (data.status === 'WASM_READY' || data.type === 'READY') {
+        document.getElementById('lbl-worker-status').innerText = "ACTIF (DÉPÔT STRICT)";
+        document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+        ecrireLog("Worker Astronomie lié aux modules VSOP2013 / ELP-2000.");
+    } 
+    else if (data.type === 'RESULTS' && data.results) {
+        derniersResultatsAstres = data.results;
+        mettreAJourTableauEtTrier(derniersResultatsAstres);
+        dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
     }
-
-    if (type === 'SUCCESS') {
-        // Stockage et calcul topocentrique final (Azimut, Élévation, Distance)
-        cacheEphemerides[astre] = data;
-        
-        // Mise à jour dynamique du tableau HTML
-        actualiserLigneTableauHTML(astre, data);
+    else if (data.type === 'ERROR') {
+        ecrireLog(`Erreur Worker : ${data.message}`);
     }
 };
 
-function actualiserLigneTableauHTML(astre, data) {
-    const tbody = document.getElementById('ephemerides-tbody'); // Vérifiez cet ID dans votre HTML
+function mettreAJourTableauEtTrier(results) {
+    const tbody = document.getElementById('table-body'); // Corrigé pour correspondre au HTML existant
     if (!tbody) return;
 
-    let tr = document.getElementById(row-${astre});
-    if (!tr) {
-        tr = document.createElement('tr');
-        tr.id = row-${astre};
-        tbody.appendChild(tr);
+    let entries = Object.entries(results);
+
+    entries.sort((a, b) => {
+        const visA = a[1].elevation >= 0 ? 1 : 0;
+        const visB = b[1].elevation >= 0 ? 1 : 0;
+        if (visA !== visB) return visB - visA;
+        return b[1].elevation - a[1].elevation;
+    });
+
+    tbody.innerHTML = '';
+
+    entries.forEach(([astre, data]) => {
+        const row = document.createElement('tr');
+        const isVisible = data.elevation >= 0;
+        row.className = isVisible ? 'visible-row' : 'hidden-row';
+        row.id = `row-${astre}`; // Template string corrigée avec des backticks
+
+        row.innerHTML = `
+            <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--text-main)'}; text-transform:uppercase; font-weight:bold;">${astre}</td>
+            <td>${data.elevation.toFixed(2)}°</td>
+            <td>${data.azimuth.toFixed(2)}°</td>
+            <td>${Math.round(data.distance).toLocaleString()} km</td>
+            <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--rose)'}; font-weight:bold;">
+                ${isVisible ? 'VISIBLE' : 'SOUS L\'HORIZON'}
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
     }
 
-    // Exemple d'insertion des données calculées
-    tr.innerHTML = `
-        <td>${astre.toUpperCase()}</td>
-        <td>${data.elevation ? data.elevation.toFixed(2) : '--'}°</td>
-        <td>${data.azimuth ? data.azimuth.toFixed(2) : '--'}°</td>
-        <td>${data.distance ? data.distance.toFixed(2) : '--'} km</td>
-        <td><span class="badge-actif">ACTIF</span></td>
-    `;
-    }
 
     function basculerModeJour() {
         modeJourActif = !modeJourActif;
