@@ -368,6 +368,18 @@
         });
     }
 
+    const CORPS_CELESTES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
+
+function lancerCalculsEphemerides(jd) {
+    CORPS_CELESTES.forEach(astre => {
+        astronomerWorker.postMessage({
+            action: 'CALCULATE',
+            astre: astre,
+            jd: jd
+        });
+    });
+    }
+
     function demanderCalibrageIMU() {
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             DeviceOrientationEvent.requestPermission().then(res => { if (res === 'granted') activerIMU(); });
