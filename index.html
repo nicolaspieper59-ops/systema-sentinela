@@ -206,26 +206,31 @@
         };
     }
 
-    function mettreAJourTableauFlux(results) {
-        const tbody = document.getElementById('table-body');
-        if (!tbody) return;
-        tbody.innerHTML = '';
-        
-        Object.entries(results).forEach(([astreNom, d]) => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td style="font-weight:bold; color:var(--sky);">${astreNom.toUpperCase()}</td>
-                <td>${d.azimuth !== undefined ? d.azimuth.toFixed(2) + '°' : '--'}</td>
-                <td>${d.elevation !== undefined ? d.elevation.toFixed(2) + '°' : '--'}</td>
-                <td>${d.oeilNu || '--'}</td>
-                <td>${d.jumelles || '--'}</td>
-                <td>${d.capteur || 'OUI'}</td>
-                <td>${d.lever || '--:--'}</td>
-                <td>${d.coucher || '--:--'}</td>
-                <td>${d.distance ? Math.round(d.distance).toLocaleString() + ' km' : '--'}</td>
-            `;
-            tbody.appendChild(row);
-        });
+    function mettreAJourTableauFlux(astresData) {
+    const tbody = document.getElementById('table-body');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    
+    // Convertit proprement l'entrée selon qu'il s'agit d'un Array ou d'un Objet
+    const entrees = Array.isArray(astresData) 
+        ? astresData.map(item => [item.nom || item.astre || 'inconnu', item])
+        : Object.entries(astresData);
+
+    entrees.forEach(([astreNom, d]) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td style="font-weight:bold; color:var(--sky);">${astreNom.toUpperCase()}</td>
+            <td>${d.azimuth !== undefined ? Number(d.azimuth).toFixed(2) + '°' : '--'}</td>
+            <td>${d.elevation !== undefined ? Number(d.elevation).toFixed(2) + '°' : '--'}</td>
+            <td>${d.oeilNu || '--'}</td>
+            <td>${d.jumelles || '--'}</td>
+            <td>${d.capteur || 'OUI'}</td>
+            <td>${d.lever || '--:--'}</td>
+            <td>${d.coucher || '--:--'}</td>
+            <td>${d.distance ? Math.round(Number(d.distance)).toLocaleString() + ' km' : '--'}</td>
+        `;
+        tbody.appendChild(row);
+    });
     }
 
     async function chargerFichierWMM() {
