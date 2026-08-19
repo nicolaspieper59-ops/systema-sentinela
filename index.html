@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>SYSTEMA SENTINELA v18.5 — KERNEL RIGOROUS REPOSITORY</title>
+    <title>SYSTEMA SENTINELA v18.6 — KERNEL RIGOROUS REPOSITORY</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#02040a">
@@ -33,20 +33,23 @@
         }
         .brand { font-size: 11.5px; font-weight: bold; letter-spacing: 0.5px; color: var(--sky); }
         .grid-layout { display: grid; grid-template-columns: 1fr; gap: 10px; }
-        @media (min-width: 1350px) { .grid-layout { grid-template-columns: 310px 1fr 300px; } }
+        @media (min-width: 1400px) { .grid-layout { grid-template-columns: 420px 1fr 300px; } }
         .panel { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 10px; margin-bottom: 10px; }
         .panel-title { border-bottom: 1px solid var(--border-dim); padding-bottom: 5px; margin-top: 0; margin-bottom: 8px; font-size: 11px; color: var(--sky); display: flex; justify-content: space-between; align-items: center; }
-        .astro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 10px; }
-        .astro-card { background: rgba(255,255,255,0.02); border: 1px solid var(--border-dim); padding: 6px; border-radius: 4px; }
+        
+        /* Grille pour aligner Géodésie et Saisie manuelle sur la même ligne */
+        .geo-control-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+        @media (min-width: 700px) { .geo-control-grid { grid-template-columns: 1fr 1fr; } }
+
+        .astro-grid { display: grid; grid-template-columns: 1fr; gap: 6px; font-size: 10px; }
         .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
         .metric-card { background: rgba(88,166,255,0.05); border: 1px solid var(--border-dim); padding: 6px; border-radius: 4px; font-size: 10px; }
         .metric-val { font-weight: bold; color: var(--neon-green); font-size: 11px; margin-top: 3px; }
-        .table-container { overflow-x: auto; max-height: 380px; overflow-y: auto; }
+        .table-container { overflow-x: auto; max-height: 420px; overflow-y: auto; }
         table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
         th, td { padding: 6px 7px; border-bottom: 1px solid var(--border-dim); font-size: 9.5px; }
         th { color: var(--sky); font-weight: normal; background: rgba(88,166,255,0.05); position: sticky; top: 0; z-index: 2; }
         
-        /* Classes de visibilité pour le tri dynamique */
         tr.visible-row { opacity: 1; }
         tr.hidden-row { opacity: 0.55; }
 
@@ -55,13 +58,13 @@
         .log-console { background: #000; color: #8b949e; border: 1px solid var(--border-dim); height: 90px; overflow-y: auto; padding: 6px; border-radius: 4px; font-size: 9px; font-family: monospace; }
         .day-mode .log-console { background: #111; color: #adbac7; }
         #radarCanvas { width: 100%; max-width: 260px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
-        #globeCanvas { width: 100%; max-width: 260px; height: 160px; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 6px; cursor: grab; touch-action: none; }
+        #globeCanvas { width: 100%; max-width: 260px; height: 150px; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 6px; cursor: grab; touch-action: none; }
     </style>
 </head>
-<body>
+<body class="day-mode"> <!-- Mode jour activé par défaut à la base -->
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v18.5 — RIGOROUS REPOSITORY KERNEL</div>
+        <div class="brand">SYSTEMA SENTINELA v18.6 — KERNEL RIGOROUS REPOSITORY</div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <div>WORKER ASTRO: <span id="lbl-worker-status" style="color:var(--amber); font-weight:bold;">INIT...</span></div>
             <div>EPOCH UTC: <span id="lbl-epoch" style="color:var(--sky); font-weight: bold;">--</span></div>
@@ -70,49 +73,56 @@
     </header>
 
     <div class="grid-layout">
+        <!-- Colonne de gauche : Contrôles et Géodésie -->
         <div style="display: flex; flex-direction: column; gap: 10px;">
-            <div class="panel">
-                <div class="panel-title">PARAMÈTRES GÉODÉSIQUES & LST</div>
-                <div class="astro-grid">
-                    <div class="astro-card"><div>STATION ACTIVE</div><div class="metric-val" id="val-station-nom" style="color:var(--sky)">ACQUISITION...</div></div>
-                    <div class="astro-card"><div>LAT / LON</div><div class="metric-val" id="val-station-coords">--° / --°</div></div>
-                    <div class="astro-card"><div>GAST (GREENWICH)</div><div class="metric-val" id="val-gast" style="color:var(--sky)">--°</div></div>
-                    <div class="astro-card"><div>LST (LOCAL)</div><div class="metric-val" id="val-lst" style="color:var(--amber)">--°</div></div>
+            
+            <!-- Ligne unifiée : Géodésie & Saisie manuelle côte à côte -->
+            <div class="geo-control-grid">
+                <div class="panel" style="margin-bottom:0;">
+                    <div class="panel-title">GÉODÉSIE & LST</div>
+                    <div class="astro-grid">
+                        <div class="metric-card"><div>STATION ACTIVE</div><div class="metric-val" id="val-station-nom" style="color:var(--sky)">ACQUISITION...</div></div>
+                        <div class="metric-card"><div>LAT / LON / ALT</div><div class="metric-val" id="val-station-coords">--° / --° / --km</div></div>
+                        <div class="metric-card"><div>GAST (GREENWICH)</div><div class="metric-val" id="val-gast" style="color:var(--sky)">--°</div></div>
+                        <div class="metric-card"><div>LST (LOCAL)</div><div class="metric-val" id="val-lst" style="color:var(--amber)">--°</div></div>
+                    </div>
+                </div>
+
+                <div class="panel" style="margin-bottom:0;">
+                    <div class="panel-title">SAISIE & ECEF</div>
+                    <div style="display: flex; flex-direction: column; gap: 4px; font-size: 10px;">
+                        <div>
+                            <label style="color: var(--sky);">LAT (°)</label>
+                            <input type="number" id="input-lat" value="43.2843" step="0.0001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
+                        </div>
+                        <div>
+                            <label style="color: var(--sky);">LON (°)</label>
+                            <input type="number" id="input-lon" value="5.3585" step="0.0001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
+                        </div>
+                        <div>
+                            <label style="color: var(--sky);">ALT (km) [GPS+Baro]</label>
+                            <input type="number" id="input-alt" value="0.010" step="0.001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
+                        </div>
+                    </div>
+                    <button class="btn-action" style="width: 100%; margin-top: 6px;" onclick="appliquerCoordonneesManuelles()">APPLIQUER</button>
                 </div>
             </div>
 
+            <!-- ECEF & Globe 3D -->
             <div class="panel">
-                <div class="panel-title">SAISIE MANUELLE & VECTEUR XYZ (ECEF)</div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; font-size: 10px;">
-                    <div>
-                        <label style="color: var(--sky);">LATITUDE (°)</label>
-                        <input type="number" id="input-lat" value="43.2843" step="0.0001" style="width: 100%; background: #000; color: var(--neon-green); border: 1px solid var(--border-dim); padding: 4px; font-family: monospace; border-radius: 3px;">
-                    </div>
-                    <div>
-                        <label style="color: var(--sky);">LONGITUDE (°)</label>
-                        <input type="number" id="input-lon" value="5.3585" step="0.0001" style="width: 100%; background: #000; color: var(--neon-green); border: 1px solid var(--border-dim); padding: 4px; font-family: monospace; border-radius: 3px;">
-                    </div>
-                </div>
-                <div style="margin-bottom: 6px; font-size: 10px;">
-                    <label style="color: var(--sky);">ALTITUDE (km)</label>
-                    <input type="number" id="input-alt" value="0.010" step="0.001" style="width: 100%; background: #000; color: var(--neon-green); border: 1px solid var(--border-dim); padding: 4px; font-family: monospace; border-radius: 3px;">
-                </div>
-                <button class="btn-action" style="width: 100%; margin-bottom: 6px;" onclick="appliquerCoordonneesManuelles()">APPLIQUER & CALCULER ECEF</button>
-                <div style="font-size: 9.5px; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 4px; border: 1px solid var(--border-dim);">
+                <div class="panel-title">VECTEUR XYZ (ECEF) & GLOBE 3D</div>
+                <div style="font-size: 9.5px; background: rgba(0,0,0,0.03); padding: 5px; border-radius: 4px; border: 1px solid var(--border-dim); margin-bottom: 8px;">
                     <div style="color: var(--amber); margin-bottom: 2px; font-weight: bold;">ECEF (km) :</div>
                     <div>X: <span id="val-xyz-x" style="color:var(--text-main);">--</span> | Y: <span id="val-xyz-y" style="color:var(--text-main);">--</span> | Z: <span id="val-xyz-z" style="color:var(--text-main);">--</span></div>
                 </div>
-            </div>
-
-            <div class="panel">
-                <div class="panel-title">GLOBE GÉODÉSIQUE 3D</div>
-                <canvas id="globeCanvas" width="260" height="160"></canvas>
-                <div style="font-size: 9.5px; color: var(--sky); text-align: center; margin-top: 6px;">
-                    CURSEUR: <span id="val-curseur-statut" style="color:var(--neon-green)">ACTIF</span>
+                <canvas id="globeCanvas" width="260" height="150"></canvas>
+                <div style="font-size: 9.5px; color: var(--sky); text-align: center; margin-top: 4px;">
+                    BAROMÈTRE: <span id="val-baro-statut" style="color:var(--amber)">EN ATTENTE</span> | ALT. FUSIONNÉE: <span id="val-alt-fusion" style="color:var(--neon-green)">-- m</span>
                 </div>
             </div>
         </div>
 
+        <!-- Colonne centrale : Éphémérides et Console -->
         <div style="display: flex; flex-direction: column; gap: 10px;">
             <div class="panel">
                 <h3 class="panel-title">ÉPHÉMÉRIDES TOPOCENTRIQUES — VISIBILITÉ PRIORITAIRE</h3>
@@ -123,22 +133,22 @@
                                 <th>CORPS CÉLESTE</th>
                                 <th>ÉLÉVATION (°)</th>
                                 <th>AZIMUT (°)</th>
-                                <th>DISTANCE GÉOCENTRIQUE (km)</th>
+                                <th>DISTANCE (km)</th>
                                 <th>ÉTAT CALCUL</th>
                             </tr>
                         </thead>
-                        <tbody id="table-body">
-                            </tbody>
+                        <tbody id="table-body"></tbody>
                     </table>
                 </div>
             </div>
 
             <div class="panel" style="margin-bottom: 0;">
                 <div class="panel-title" style="margin-bottom: 5px;">CONSOLE KERNEL EXÉCUTION</div>
-                <div class="log-console" id="logConsole">[SENTINELA-KERNEL] Chargement strict des modules du dépôt...<br></div>
+                <div class="log-console" id="logConsole">[SENTINELA-KERNEL] Initialisation du noyau avec mode jour par défaut...<br></div>
             </div>
         </div>
 
+        <!-- Colonne de droite : WMM et Radar -->
         <div style="display: flex; flex-direction: column; gap: 10px;">
             <div class="panel">
                 <h3 class="panel-title">CHAMP GÉOMAGNÉTIQUE WMM-2025</h3>
@@ -147,10 +157,8 @@
                     <div class="metric-card"><div>CAP VRAI GÉO</div><div id="val-cap-net" class="metric-val" style="color:var(--neon-green);">--°</div></div>
                     <div class="metric-card"><div>DÉCLINAISON (D)</div><div id="val-dec-wmm" class="metric-val" style="color:var(--sky);">Calcul...</div></div>
                     <div class="metric-card"><div>INCLINAISON (I)</div><div id="val-inc-wmm" class="metric-val" style="color:var(--amber);">Calcul...</div></div>
-                    <div class="metric-card"><div>HORIZ. H (nT)</div><div id="val-h-wmm" class="metric-val" style="color:var(--text-main);">--</div></div>
-                    <div class="metric-card"><div>TOTAL F (nT)</div><div id="val-f-wmm" class="metric-val" style="color:var(--rose);">--</div></div>
                 </div>
-                <button class="btn-action" style="width: 100%; margin-top: 10px;" onclick="demanderCalibrageIMU()">CALIBRER IMU / CAPTEURS</button>
+                <button class="btn-action" style="width: 100%; margin-top: 8px;" onclick="demanderCalibrageIMU()">CALIBRER IMU / CAPTEURS</button>
             </div>
             
             <div class="panel" style="margin-bottom: 0;">
@@ -165,7 +173,7 @@
 
 <script>
     const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
-    let modeJourActif = false;
+    let modeJourActif = true; // Mode jour actif par défaut
     let stationCourante = { lat: 43.2843, lon: 5.3585, alt: 0.010, nom: 'STATION INITIALE' };
     
     let coefficientsWMM = [];
@@ -173,6 +181,7 @@
     let capVraiLisse = 0;
     let astroWorker = null;
     let derniersResultatsAstres = {};
+    let pressionBarometriqueRef = 1013.25; // hPa standard au niveau de la mer
     
     let globeScene, globeCamera, globeRenderer, globeMesh, curseurPositionMesh;
     let isDragging = false, lastX = 0, lastY = 0;
@@ -195,87 +204,118 @@
         return (gmst % 360.0 + 360.0) % 360.0;
     }
 
-    function initialiserGeolocalisationTempsReel() {
-        if (!('geolocation' in navigator)) {
-            ecrireLog("Géolocalisation indisponible. Utilisation de la station par défaut.");
-            return;
-        }
-        navigator.geolocation.watchPosition(
-            (pos) => {
-                stationCourante = {
-                    lat: pos.coords.latitude,
-                    lon: pos.coords.longitude,
-                    alt: (pos.coords.altitude || 10) / 1000.0,
-                    nom: 'GPS TEMPS RÉEL (ACTIF)'
-                };
-                
-                const inputLat = document.getElementById('input-lat');
-                const inputLon = document.getElementById('input-lon');
-                const inputAlt = document.getElementById('input-alt');
-                
-                if (inputLat && inputLon && inputAlt) {
-                    inputLat.value = stationCourante.lat.toFixed(4);
-                    inputLon.value = stationCourante.lon.toFixed(4);
-                    inputAlt.value = stationCourante.alt.toFixed(3);
-                }
+    // --- FUSION GÉOMÉTRIQUE GPS & BAROMÈTRE POUR L'ALTITUDE ---
+    function initialiserCapteursAltitudeEtGPS() {
+        // 1. Baromètre (API Pressure)
+        if ('Pressure' in window) {
+            try {
+                const barometer = new Pressure({ frequency: 1 });
+                barometer.addEventListener('reading', () => {
+                    const pressureHpa = barometer.pressure;
+                    // Formule barométrique internationale pour estimer l'altitude en mètres à partir de la pression
+                    const altBarometriqueMètres = 44330 * (1.0 - Math.pow(pressureHpa / pressionBarometriqueRef, 0.1903));
+                    
+                    document.getElementById('val-baro-statut').innerText = `${pressureHpa.toFixed(1)} hPa`;
+                    document.getElementById('val-baro-statut').style.color = "var(--neon-green)";
 
-                mettreAJourInterfaceStation();
-                recalculerChampWMM();
-                if (typeof actualiserPositionCurseurGlobe === 'function') {
-                    actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
-                }
-            },
-            (err) => {
-                ecrireLog(`Avertissement GPS : ${err.message}. Maintien des coordonnées de station.`);
-            },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
+                    // Coïncidence géométrique / Fusion pondérée (70% GPS / 30% Baromètre pour stabiliser les micro-variations)
+                    if (stationCourante.altGps !== undefined) {
+                        const altFusionMeters = (stationCourante.altGps * 1000 * 0.7) + (altBarometriqueMètres * 0.3);
+                        stationCourante.alt = altFusionMeters / 1000.0; // en km
+                        document.getElementById('val-alt-fusion').innerText = `${altFusionMeters.toFixed(1)} m`;
+                        document.getElementById('input-alt').value = stationCourante.alt.toFixed(3);
+                    }
+                });
+                barometer.start();
+                ecrireLog("Capteur barométrique initialisé pour la coïncidence géométrique.");
+            } catch (e) {
+                ecrireLog("Impossible de démarrer le capteur barométrique : " + e.message);
+            }
+        } else {
+            document.getElementById('val-baro-statut').innerText = "NON SUPPORTÉ";
+        }
+
+        // 2. Géolocalisation GPS
+        if ('geolocation' in navigator) {
+            navigator.geolocation.watchPosition(
+                (pos) => {
+                    const altGpsMeters = pos.coords.altitude !== null ? pos.coords.altitude : 10;
+                    stationCourante.altGps = altGpsMeters / 1000.0; // km
+                    
+                    stationCourante.lat = pos.coords.latitude;
+                    stationCourante.lon = pos.coords.longitude;
+                    stationCourante.alt = stationCourante.altGps; // Valeur initiale par défaut
+                    stationCourante.nom = 'GPS + BARO FUSION';
+
+                    const inputLat = document.getElementById('input-lat');
+                    const inputLon = document.getElementById('input-lon');
+                    const inputAlt = document.getElementById('input-alt');
+                    
+                    if (inputLat && inputLon && inputAlt) {
+                        inputLat.value = stationCourante.lat.toFixed(4);
+                        inputLon.value = stationCourante.lon.toFixed(4);
+                        inputAlt.value = stationCourante.alt.toFixed(3);
+                    }
+
+                    mettreAJourInterfaceStation();
+                    recalculerChampWMM();
+                    if (typeof actualiserPositionCurseurGlobe === 'function') {
+                        actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
+                    }
+                },
+                (err) => {
+                    ecrireLog(`Avertissement GPS : ${err.message}.`);
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        }
     }
 
     function mettreAJourInterfaceStation() {
         document.getElementById('val-station-nom').innerText = stationCourante.nom;
-        document.getElementById('val-station-coords').innerText = `${stationCourante.lat.toFixed(4)}° / ${stationCourante.lon.toFixed(4)}°`;
+        document.getElementById('val-station-coords').innerText = `${stationCourante.lat.toFixed(4)}° / ${stationCourante.lon.toFixed(4)}° / ${(stationCourante.alt*1000).toFixed(0)}m`;
         appliquerCoordonneesManuelles(true);
     }
 
     function appliquerCoordonneesManuelles(silencieux = false) {
-    const rawLat = document.getElementById('input-lat').value.replace(',', '.');
-    const rawLon = document.getElementById('input-lon').value.replace(',', '.');
-    const rawAlt = document.getElementById('input-alt').value.replace(',', '.');
+        const rawLat = document.getElementById('input-lat').value.replace(',', '.');
+        const rawLon = document.getElementById('input-lon').value.replace(',', '.');
+        const rawAlt = document.getElementById('input-alt').value.replace(',', '.');
 
-    const lat = parseFloat(rawLat);
-    const lon = parseFloat(rawLon);
-    const alt = parseFloat(rawAlt);
+        const lat = parseFloat(rawLat);
+        const lon = parseFloat(rawLon);
+        const alt = parseFloat(rawAlt);
 
-    if (isNaN(lat) || isNaN(lon) || isNaN(alt)) return;
+        if (isNaN(lat) || isNaN(lon) || isNaN(alt)) return;
 
-    const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f), e2 = (a*a - b*b) / (a*a);
-    const phi = lat * (Math.PI / 180.0), lambda = lon * (Math.PI / 180.0);
-    const sinPhi = Math.sin(phi), cosPhi = Math.cos(phi);
-    const N_val = a / Math.sqrt(1.0 - e2 * sinPhi * sinPhi);
+        const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f), e2 = (a*a - b*b) / (a*a);
+        const phi = lat * (Math.PI / 180.0), lambda = lon * (Math.PI / 180.0);
+        const sinPhi = Math.sin(phi), cosPhi = Math.cos(phi);
+        const N_val = a / Math.sqrt(1.0 - e2 * sinPhi * sinPhi);
 
-    const X = (N_val + alt) * cosPhi * Math.cos(lambda);
-    const Y = (N_val + alt) * cosPhi * Math.sin(lambda);
-    const Z = (N_val * (1.0 - e2) + alt) * sinPhi;
+        const X = (N_val + alt) * cosPhi * Math.cos(lambda);
+        const Y = (N_val + alt) * cosPhi * Math.sin(lambda);
+        const Z = (N_val * (1.0 - e2) + alt) * sinPhi;
 
-    document.getElementById('val-xyz-x').innerText = X.toFixed(2);
-    document.getElementById('val-xyz-y').innerText = Y.toFixed(2);
-    document.getElementById('val-xyz-z').innerText = Z.toFixed(2);
+        document.getElementById('val-xyz-x').innerText = X.toFixed(2);
+        document.getElementById('val-xyz-y').innerText = Y.toFixed(2);
+        document.getElementById('val-xyz-z').innerText = Z.toFixed(2);
 
-    stationCourante.lat = lat; 
-    stationCourante.lon = lon; 
-    stationCourante.alt = alt;
+        stationCourante.lat = lat; 
+        stationCourante.lon = lon; 
+        stationCourante.alt = alt;
 
-    if (!silencieux) {
-        stationCourante.nom = 'SAISIE MANUELLE';
-        mettreAJourInterfaceStation();
-        recalculerChampWMM();
-        if (typeof actualiserPositionCurseurGlobe === 'function') {
-            actualiserPositionCurseurGlobe(lat, lon);
+        if (!silencieux) {
+            stationCourante.nom = 'SAISIE MANUELLE';
+            mettreAJourInterfaceStation();
+            recalculerChampWMM();
+            if (typeof actualiserPositionCurseurGlobe === 'function') {
+                actualiserPositionCurseurGlobe(lat, lon);
+            }
+            ecrireLog(`Station mise à jour manuellement : Lat ${lat.toFixed(4)}°, Lon ${lon.toFixed(4)}°, Alt ${alt*1000}m`);
         }
-        ecrireLog(`Station mise à jour : Lat ${lat.toFixed(4)}°, Lon ${lon.toFixed(4)}°`);
     }
-    }
+
     async function chargerEtParserWMM() {
         try {
             const reponse = await fetch('WMM2025.COF');
@@ -285,104 +325,64 @@
                 const e = l.split(/\s+/);
                 return { n: parseInt(e[0]), m: parseInt(e[1]), gnm: parseFloat(e[2]), hnm: parseFloat(e[3]) };
             }).filter(item => !isNaN(item.n));
-            ecrireLog(`WMM-2025 chargé : ${coefficientsWMM.length} coefficients sphériques.`);
             recalculerChampWMM();
         } catch (e) {
-            ecrireLog(`WMM-2025 Avertissement / Mode secours actif: ${e.message}.`);
+            ecrireLog(`WMM-2025 Mode secours actif.`);
         }
     }
 
     function recalculerChampWMM() {
         document.getElementById('val-dec-wmm').innerText = `+${resultatWmmCourant.decl.toFixed(2)}°`;
         document.getElementById('val-inc-wmm').innerText = `${resultatWmmCourant.incl.toFixed(2)}°`;
-        document.getElementById('val-h-wmm').innerText = `${Math.round(resultatWmmCourant.H)} nT`;
-        document.getElementById('val-f-wmm').innerText = `${Math.round(resultatWmmCourant.F)} nT`;
     }
     
-    // --- WORKER & TRI DYNAMIQUE PAR VISIBILITÉ DU TABLEAU ---
     function initialiserWorkerAstronomie() {
-    if (typeof Worker === 'undefined') {
-        ecrireLog("Erreur critique : Web Workers non supportés.");
-        return;
-    }
-    
-    astroWorker = new Worker('worker_astronomie.js');
-    
-    astroWorker.onmessage = function(e) {
-        const data = e.data;
+        if (typeof Worker === 'undefined') return;
+        astroWorker = new Worker('worker_astronomie.js');
         
-        if (data.status === 'WASM_READY' || data.type === 'READY') {
-            document.getElementById('lbl-worker-status').innerText = "ACTIF (DÉPÔT STRICT)";
-            document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-            ecrireLog("Worker Astronomie lié aux modules VSOP2013 / ELP-2000.");
-        } 
-        else if (data.type === 'RESULTS' && data.results) {
-            derniersResultatsAstres = data.results;
-            mettreAJourTableauEtTrier(derniersResultatsAstres);
-            dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
-        }
-        else if (data.type === 'ERROR') {
-            ecrireLog(`Erreur Worker : ${data.message}`);
-        }
-    };
-
-    astroWorker.onerror = function(err) {
-        ecrireLog(`Erreur critique thread Worker : ${err.message}`);
-    };
+        astroWorker.onmessage = function(e) {
+            const data = e.data;
+            if (data.status === 'WASM_READY' || data.type === 'READY') {
+                document.getElementById('lbl-worker-status').innerText = "ACTIF";
+                document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+            } 
+            else if (data.type === 'RESULTS' && data.results) {
+                derniersResultatsAstres = data.results;
+                mettreAJourTableauEtTrier(derniersResultatsAstres);
+                dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
+            }
+        };
     }
 
-    // Fonction de tri dynamique : les astres visibles (>= 0°) remontent en haut
     function mettreAJourTableauEtTrier(results) {
-    const tbody = document.getElementById('table-body');
-    if (!tbody) return;
+        const tbody = document.getElementById('table-body');
+        if (!tbody) return;
 
-    let entries = Object.entries(results);
-
-    entries.sort((a, b) => {
-        const elA = (a[1] && a[1].elevation !== undefined) ? a[1].elevation : -999;
-        const elB = (b[1] && b[1].elevation !== undefined) ? b[1].elevation : -999;
-        const visA = elA >= 0 ? 1 : 0;
-        const visB = elB >= 0 ? 1 : 0;
-
-        if (visA !== visB) return visB - visA;
-        return elB - elA;
-    });
-
-    tbody.innerHTML = '';
-
-    entries.forEach(([astre, data]) => {
-        const row = document.createElement('tr');
-        const elevation = (data && data.elevation !== undefined) ? data.elevation : 0;
-        const azimuth = (data && data.azimuth !== undefined) ? data.azimuth : 0;
-        const distance = (data && data.distance !== undefined) ? data.distance : 0;
-        
-        const isVisible = elevation >= 0;
-        row.className = isVisible ? 'visible-row' : 'hidden-row';
-        row.id = `row-${astre}`;
-
-        row.innerHTML = `
-            <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--text-main)'}; text-transform:uppercase; font-weight:bold;">${astre}</td>
-            <td>${elevation.toFixed(2)}°</td>
-            <td>${azimuth.toFixed(2)}°</td>
-            <td>${Math.round(distance).toLocaleString()} km</td>
-            <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--rose)'}; font-weight:bold;">
-                ${isVisible ? 'VISIBLE' : 'SOUS L\'HORIZON'}
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-    }
-
-    const CORPS_CELESTES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
-
-function lancerCalculsEphemerides(jd) {
-    CORPS_CELESTES.forEach(astre => {
-        astronomerWorker.postMessage({
-            action: 'CALCULATE',
-            astre: astre,
-            jd: jd
+        let entries = Object.entries(results);
+        entries.sort((a, b) => {
+            const elA = (a[1] && a[1].elevation !== undefined) ? a[1].elevation : -999;
+            const elB = (b[1] && b[1].elevation !== undefined) ? b[1].elevation : -999;
+            return (elB >= 0 ? 1 : 0) - (elA >= 0 ? 1 : 0) || elB - elA;
         });
-    });
+
+        tbody.innerHTML = '';
+        entries.forEach(([astre, data]) => {
+            const row = document.createElement('tr');
+            const elevation = (data && data.elevation !== undefined) ? data.elevation : 0;
+            const azimuth = (data && data.azimuth !== undefined) ? data.azimuth : 0;
+            const distance = (data && data.distance !== undefined) ? data.distance : 0;
+            const isVisible = elevation >= 0;
+            
+            row.className = isVisible ? 'visible-row' : 'hidden-row';
+            row.innerHTML = `
+                <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--text-main)'}; text-transform:uppercase; font-weight:bold;">${astre}</td>
+                <td>${elevation.toFixed(2)}°</td>
+                <td>${azimuth.toFixed(2)}°</td>
+                <td>${Math.round(distance).toLocaleString()} km</td>
+                <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--rose)'}; font-weight:bold;">${isVisible ? 'VISIBLE' : 'SOUS L\'HORIZON'}</td>
+            `;
+            tbody.appendChild(row);
+        });
     }
 
     function demanderCalibrageIMU() {
@@ -392,7 +392,6 @@ function lancerCalculsEphemerides(jd) {
     }
 
     function activerIMU() {
-        ecrireLog("Activation flux IMU orientation...");
         window.addEventListener('deviceorientation', (e) => {
             let capMag = e.alpha !== null ? (e.absolute ? (360 - e.alpha) % 360 : e.webkitCompassHeading || 0) : 0;
             let capVrai = (capMag + resultatWmmCourant.decl + 360.0) % 360.0;
@@ -404,7 +403,6 @@ function lancerCalculsEphemerides(jd) {
         }, true);
     }
 
-    // --- RADAR CORRIGÉ (Nord en haut, sens horaire) & TRACÉ DES CORPS CÉLESTES ---
     function dessinerRadarAstres(astresData, cap = 0) {
         const canvas = document.getElementById('radarCanvas');
         if(!canvas) return;
@@ -416,54 +414,39 @@ function lancerCalculsEphemerides(jd) {
             canvas.style.width = `${size}px`; canvas.style.height = `${size}px`;
             ctx.scale(dpr, dpr);
         }
-        const cx = size / 2, cy = size / 2;
-        const maxRadius = 110;
+        const cx = size / 2, cy = size / 2, maxRadius = 110;
 
         ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--radar-bg').trim() || '#01040a';
         ctx.fillRect(0, 0, size, size);
 
-        // Cercles d'élévation concentriques
         ctx.strokeStyle = '#21262d';
         ctx.lineWidth = 1;
         [0.33, 0.66, 1].forEach(ratio => {
-            ctx.beginPath();
-            ctx.arc(cx, cy, maxRadius * ratio, 0, 2 * Math.PI);
-            ctx.stroke();
+            ctx.beginPath(); ctx.arc(cx, cy, maxRadius * ratio, 0, 2 * Math.PI); ctx.stroke();
         });
 
-        // Axes cardinaux
         ctx.beginPath();
         ctx.moveTo(cx, cy - maxRadius); ctx.lineTo(cx, cy + maxRadius);
         ctx.moveTo(cx - maxRadius, cy); ctx.lineTo(cx + maxRadius, cy);
-        ctx.strokeStyle = '#30363d';
-        ctx.stroke();
+        ctx.strokeStyle = '#30363d'; ctx.stroke();
 
-        // Labels cardinaux
-        ctx.fillStyle = '#8b949e';
-        ctx.font = '9px monospace';
+        ctx.fillStyle = '#8b949e'; ctx.font = '9px monospace';
         ctx.fillText('N', cx - 3, cy - maxRadius + 10);
         ctx.fillText('S', cx - 3, cy + maxRadius - 3);
         ctx.fillText('E', cx + maxRadius - 10, cy + 3);
         ctx.fillText('O', cx - maxRadius + 3, cy + 3);
 
-        // Tracé des astres visibles sur le radar polaire
         if (astresData) {
             for (const [astre, data] of Object.entries(astresData)) {
-                if (data.elevation < 0) continue; // Masquer les astres sous l'horizon
-
+                if (data.elevation < 0) continue;
                 const azRad = data.azimuth * Math.PI / 180.0;
                 const r = maxRadius * (1 - (data.elevation / 90.0));
-
                 const x = cx + r * Math.sin(azRad);
                 const y = cy - r * Math.cos(azRad);
 
                 ctx.fillStyle = '#3fb950';
-                ctx.beginPath();
-                ctx.arc(x, y, 3, 0, 2 * Math.PI);
-                ctx.fill();
-
-                ctx.fillStyle = '#c9d1d9';
-                ctx.font = '8px monospace';
+                ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI); ctx.fill();
+                ctx.fillStyle = '#c9d1d9'; ctx.font = '8px monospace';
                 ctx.fillText(astre.toUpperCase(), x + 5, y + 3);
             }
         }
@@ -485,7 +468,7 @@ function lancerCalculsEphemerides(jd) {
         if (!container || typeof THREE === 'undefined') return;
 
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, 260/160, 0.1, 1000); camera.position.z = 3.5;
+        const camera = new THREE.PerspectiveCamera(45, 260/150, 0.1, 1000); camera.position.z = 3.5;
         const renderer = new THREE.WebGLRenderer({ canvas: container, alpha: true, antialias: true });
         renderer.setPixelRatio(window.devicePixelRatio || 1);
 
@@ -509,78 +492,19 @@ function lancerCalculsEphemerides(jd) {
         actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
     }
 
-    // Tableau global pour stocker les résultats temporaires
-const cacheEphemerides = {};
-
-// Écouteur unique et propre des résultats globaux du Worker
-astroWorker.onmessage = function(e) {
-    const data = e.data;
-    
-    if (data.status === 'WASM_READY' || data.type === 'READY') {
-        document.getElementById('lbl-worker-status').innerText = "ACTIF (DÉPÔT STRICT)";
-        document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-        ecrireLog("Worker Astronomie lié aux modules VSOP2013 / ELP-2000.");
-    } 
-    else if (data.type === 'RESULTS' && data.results) {
-        derniersResultatsAstres = data.results;
-        mettreAJourTableauEtTrier(derniersResultatsAstres);
-        dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
-    }
-    else if (data.type === 'ERROR') {
-        ecrireLog(`Erreur Worker : ${data.message}`);
-    }
-};
-
-function mettreAJourTableauEtTrier(results) {
-    const tbody = document.getElementById('table-body'); // Corrigé pour correspondre au HTML existant
-    if (!tbody) return;
-
-    let entries = Object.entries(results);
-
-    entries.sort((a, b) => {
-        const visA = a[1].elevation >= 0 ? 1 : 0;
-        const visB = b[1].elevation >= 0 ? 1 : 0;
-        if (visA !== visB) return visB - visA;
-        return b[1].elevation - a[1].elevation;
-    });
-
-    tbody.innerHTML = '';
-
-    entries.forEach(([astre, data]) => {
-        const row = document.createElement('tr');
-        const isVisible = data.elevation >= 0;
-        row.className = isVisible ? 'visible-row' : 'hidden-row';
-        row.id = `row-${astre}`; // Template string corrigée avec des backticks
-
-        row.innerHTML = `
-            <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--text-main)'}; text-transform:uppercase; font-weight:bold;">${astre}</td>
-            <td>${data.elevation.toFixed(2)}°</td>
-            <td>${data.azimuth.toFixed(2)}°</td>
-            <td>${Math.round(data.distance).toLocaleString()} km</td>
-            <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--rose)'}; font-weight:bold;">
-                ${isVisible ? 'VISIBLE' : 'SOUS L\'HORIZON'}
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-    }
-
-
     function basculerModeJour() {
         modeJourActif = !modeJourActif;
         document.getElementById('html-root').classList.toggle('day-mode', modeJourActif);
         dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
     }
 
-    // --- INITIALISATION AU CHARGEMENT ---
     window.addEventListener('load', () => {
         dessinerRadarAstres({}, 0);
         initGlobe3D();
         chargerEtParserWMM();
         initialiserWorkerAstronomie();
-        initialiserGeolocalisationTempsReel();
+        initialiserCapteursAltitudeEtGPS();
 
-        // Boucle d'actualisation temps réel (1 seconde)
         setInterval(() => {
             const now = new Date();
             const jd = getJulianDay(now);
@@ -588,24 +512,21 @@ function mettreAJourTableauEtTrier(results) {
             const lst = (gmst + stationCourante.lon) % 360.0;
             const lstPositif = (lst < 0 ? lst + 360.0 : lst);
             
-            const elEpoch = document.getElementById('lbl-epoch');
-            const elGast = document.getElementById('val-gast');
-            const elLst = document.getElementById('val-lst');
-
-            if (elEpoch) elEpoch.innerText = now.toUTCString().substr(17, 8) + " UTC";
-            if (elGast) elGast.innerText = gmst.toFixed(2) + "°";
-            if (elLst) elLst.innerText = lstPositif.toFixed(2) + "°";
+            document.getElementById('lbl-epoch').innerText = now.toUTCString().substr(17, 8) + " UTC";
+            document.getElementById('val-gast').innerText = gmst.toFixed(2) + "°";
+            document.getElementById('val-lst').innerText = lstPositif.toFixed(2) + "°";
 
             if (astroWorker) {
                 astroWorker.postMessage({
                     type: 'COMPUTE',
                     jd: jd,
-                    station: stationCourante
+                    station: stationCourante,
+                    astres: ASTRES
                 });
             }
         }, 1000);
 
-        ecrireLog("SYSTEMA SENTINELA v18.5 initialisé avec succès (Tri par visibilité et Radar astres restaurés).");
+        ecrireLog("SYSTEMA SENTINELA v18.6 prêt (Mode Jour par défaut, Alignement géodésie/saisie et fusion Altitudes).");
     });
 </script>
 </body>
