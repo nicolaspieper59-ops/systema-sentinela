@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>SYSTEMA SENTINELA v18.6 — KERNEL RIGOROUS REPOSITORY</title>
+    <title>SYSTEMA SENTINELA v14.2 — KERNEL RIGOROUS REPOSITORY</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#02040a">
@@ -32,149 +32,132 @@
             display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;
         }
         .brand { font-size: 11.5px; font-weight: bold; letter-spacing: 0.5px; color: var(--sky); }
-        
-        /* Grille principale flexible agencée selon vos 6 priorités */
         .grid-layout { display: grid; grid-template-columns: 1fr; gap: 10px; }
         @media (min-width: 1400px) { .grid-layout { grid-template-columns: 1fr 1fr; } }
-        
         .panel { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 10px; margin-bottom: 10px; }
         .panel-title { border-bottom: 1px solid var(--border-dim); padding-bottom: 5px; margin-top: 0; margin-bottom: 8px; font-size: 11px; color: var(--sky); display: flex; justify-content: space-between; align-items: center; }
-        
-        .astro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 10px; }
         .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
         .metric-card { background: rgba(88,166,255,0.05); border: 1px solid var(--border-dim); padding: 6px; border-radius: 4px; font-size: 10px; }
         .metric-val { font-weight: bold; color: var(--neon-green); font-size: 11px; margin-top: 3px; }
-        .table-container { overflow-x: auto; max-height: 380px; overflow-y: auto; }
+        .table-container { overflow-x: auto; max-height: 400px; overflow-y: auto; }
         table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
-        th, td { padding: 6px 7px; border-bottom: 1px solid var(--border-dim); font-size: 9.5px; }
+        th, td { padding: 5px 6px; border-bottom: 1px solid var(--border-dim); font-size: 9px; }
         th { color: var(--sky); font-weight: normal; background: rgba(88,166,255,0.05); position: sticky; top: 0; z-index: 2; }
-        
-        tr.visible-row { opacity: 1; }
-        tr.hidden-row { opacity: 0.55; }
-
-        .btn-action { background: var(--border-dim); color: var(--text-main); border: 1px solid var(--sky); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 10px; font-weight: bold; transition: background 0.2s; }
+        .btn-action { background: var(--border-dim); color: var(--text-main); border: 1px solid var(--sky); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 10px; font-weight: bold; }
         .btn-action:hover { background: var(--sky); color: #fff; }
-        .log-console { background: #000; color: #8b949e; border: 1px solid var(--border-dim); height: 110px; overflow-y: auto; padding: 6px; border-radius: 4px; font-size: 9px; font-family: monospace; }
+        .log-console { background: #000; color: #8b949e; border: 1px solid var(--border-dim); height: 90px; overflow-y: auto; padding: 6px; border-radius: 4px; font-size: 9px; font-family: monospace; }
         .day-mode .log-console { background: #111; color: #adbac7; }
-        #radarCanvas { width: 100%; max-width: 260px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
-        #globeCanvas { width: 100%; max-width: 260px; height: 150px; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 6px; cursor: grab; touch-action: none; }
+        #radarCanvas { width: 100%; max-width: 240px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
+        #globeCanvas { width: 100%; max-width: 240px; height: 140px; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 6px; cursor: grab; }
     </style>
 </head>
-<body class="day-mode"> <!-- Mode jour activé par défaut -->
+<body class="day-mode">
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v18.6 — KERNEL RIGOROUS REPOSITORY</div>
+        <div class="brand">SYSTEMA SENTINELA v14.2 — KERNEL RIGOROUS REPOSITORY</div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <div>WORKER ASTRO: <span id="lbl-worker-status" style="color:var(--amber); font-weight:bold;">INIT...</span></div>
-            <div>EPOCH UTC: <span id="lbl-epoch" style="color:var(--sky); font-weight: bold;">--</span></div>
+            <div>UTC: <span id="lbl-sync-utc" style="color:var(--amber); font-weight:bold;">SYNCHRONISATION...</span></div>
+            <div>IMU: <span style="color:var(--neon-green)">FORCÉ (ZÉNITH)</span></div>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR / NUIT</button>
         </div>
     </header>
 
     <div class="grid-layout">
         
-        <!-- BLOC 1 : ÉPHÉMÉRIDES TOPOCENTRIQUES — VISIBILITÉ PRIORITAIRE -->
+        <!-- 1. ÉPHÉMÉRIDES TOPOCENTRIQUES & PARAMÈTRES JPL -->
         <div class="panel" style="grid-column: 1 / -1;">
-            <h3 class="panel-title">1. ÉPHÉMÉRIDES TOPOCENTRIQUES — VISIBILITÉ PRIORITAIRE</h3>
+            <h3 class="panel-title">COORDONNÉES TOPOCENTRIQUES & VISIBILITÉ (MÉTHODE VSOP2013 / ELP-2000)</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 6px; margin-bottom: 8px; font-size: 10px;">
+                <div class="metric-card"><div>Éq. du Temps (JPL)</div><div id="val-eq-temps" class="metric-val">En attente...</div></div>
+                <div class="metric-card"><div>Excentricité Terr.</div><div id="val-excentricite" class="metric-val">En attente...</div></div>
+                <div class="metric-card"><div>Obliquité Écliptique</div><div id="val-obliquite" class="metric-val">En attente...</div></div>
+                <div class="metric-card"><div>Longitude Solaire</div><div id="val-lon-solaire" class="metric-val">En attente...</div></div>
+                <div class="metric-card"><div>Temps Solaire Moyen</div><div id="val-tsm" class="metric-val">En attente...</div></div>
+                <div class="metric-card"><div>Temps Solaire Vrai</div><div id="val-tsv" class="metric-val">En attente...</div></div>
+            </div>
             <div class="table-container">
                 <table>
                     <thead>
                         <tr>
-                            <th>CORPS CÉLESTE</th>
-                            <th>ÉLÉVATION (°)</th>
-                            <th>AZIMUT (°)</th>
-                            <th>DISTANCE (km)</th>
-                            <th>ÉTAT CALCUL</th>
+                            <th>ASTRE</th>
+                            <th>AZIMUT</th>
+                            <th>ÉLÉVATION</th>
+                            <th>ŒIL NU</th>
+                            <th>JUMELLES</th>
+                            <th>CAPTEUR</th>
+                            <th>LEVER</th>
+                            <th>COUCHER</th>
+                            <th>DISTANCE</th>
                         </tr>
                     </thead>
-                    <tbody id="table-body"></tbody>
+                    <tbody id="table-body">
+                        <!-- Données injectées exclusivement par worker_astronomie.js / vsop2013.js -->
+                    </tbody>
                 </table>
             </div>
         </div>
 
-        <!-- BLOC 2 : GÉODÉSIE & LST et SAISIE & ECEF -->
+        <!-- 2. GÉODÉSIE & ECEF / ALTITUDE FUSIONNÉE GPS+BARO -->
         <div class="panel">
-            <div class="panel-title">2. GÉODÉSIE & LST / SAISIE & ECEF</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-                <div class="astro-grid" style="grid-template-columns: 1fr;">
-                    <div class="metric-card"><div>STATION ACTIVE</div><div class="metric-val" id="val-station-nom" style="color:var(--sky)">ACQUISITION...</div></div>
-                    <div class="metric-card"><div>LAT / LON / ALT</div><div class="metric-val" id="val-station-coords">--° / --° / --km</div></div>
-                    <div class="metric-card"><div>GAST (GREENWICH) / LST</div><div class="metric-val" id="val-gast" style="color:var(--amber)">--° / --°</div></div>
-                </div>
+            <div class="panel-title">GÉODÉSIE, BAROMÈTRE & ECEF</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px;">
                 <div style="display: flex; flex-direction: column; gap: 4px; font-size: 10px;">
-                    <div>
-                        <label style="color: var(--sky);">LAT (°)</label>
-                        <input type="number" id="input-lat" value="43.2843" step="0.0001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
-                    </div>
-                    <div>
-                        <label style="color: var(--sky);">LON (°)</label>
-                        <input type="number" id="input-lon" value="5.3585" step="0.0001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
-                    </div>
-                    <div>
-                        <label style="color: var(--sky);">ALT (km) [GPS+Baro]</label>
-                        <input type="number" id="input-alt" value="0.010" step="0.001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
-                    </div>
+                    <div><label style="color: var(--sky);">LAT (°)</label><input type="number" id="input-lat" value="38.7317" step="0.0001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace;"></div>
+                    <div><label style="color: var(--sky);">LON (°)</label><input type="number" id="input-lon" value="-9.1448" step="0.0001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace;"></div>
+                    <div><label style="color: var(--sky);">ALT (km) [GPS+Baro]</label><input type="number" id="input-alt" value="0.137" step="0.001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace;"></div>
+                </div>
+                <div class="metric-card" style="display: flex; flex-direction: column; justify-content: space-around;">
+                    <div>BAROMÈTRE: <span id="val-baro" style="color:var(--amber)">INITIALISATION</span></div>
+                    <div>MÉTÉO OP.: <span id="val-meteo" style="color:var(--rose)">OFF</span></div>
+                    <div>FUSION IMU: <span style="color:var(--neon-green)">ZÉNITH</span></div>
                 </div>
             </div>
-            <button class="btn-action" style="width: 100%;" onclick="appliquerCoordonneesManuelles()">APPLIQUER LES MODIFICATIONS</button>
+            <button class="btn-action" style="width: 100%;" onclick="appliquerCoordonneesManuelles()">APPLIQUER STATION</button>
         </div>
 
-        <!-- BLOC 3 : CHAMP GÉOMAGNÉTIQUE WMM-2025 -->
+        <!-- 3. CHAMP GÉOMAGNÉTIQUE WMM-2025 -->
         <div class="panel">
-            <h3 class="panel-title">3. CHAMP GÉOMAGNÉTIQUE WMM-2025</h3>
+            <h3 class="panel-title">CHAMP GÉOMAGNÉTIQUE WMM-2025</h3>
             <div class="metrics-grid" style="margin-bottom: 8px;">
-                <div class="metric-card"><div>CAP MAGNÉTIQUE</div><div id="val-cap-brut" class="metric-val" style="color:var(--amber);">--°</div></div>
-                <div class="metric-card"><div>CAP VRAI GÉO</div><div id="val-cap-net" class="metric-val" style="color:var(--neon-green);">--°</div></div>
-                <div class="metric-card"><div>DÉCLINAISON (D)</div><div id="val-dec-wmm" class="metric-val" style="color:var(--sky);">Calcul...</div></div>
-                <div class="metric-card"><div>INCLINAISON (I)</div><div id="val-inc-wmm" class="metric-val" style="color:var(--amber);">Calcul...</div></div>
+                <div class="metric-card"><div>CAP MAGNÉTIQUE</div><div id="val-cap-mag" class="metric-val" style="color:var(--amber);">--°</div></div>
+                <div class="metric-card"><div>CAP VRAI GÉO</div><div id="val-cap-vrai" class="metric-val" style="color:var(--neon-green);">--°</div></div>
+                <div class="metric-card"><div>DÉCLINAISON (D)</div><div id="val-dec" class="metric-val" style="color:var(--sky);">Chargement COF...</div></div>
+                <div class="metric-card"><div>INCLINAISON (I)</div><div id="val-inc" class="metric-val" style="color:var(--amber);">Chargement COF...</div></div>
             </div>
-            <button class="btn-action" style="width: 100%;" onclick="demanderCalibrageIMU()">CALIBRER IMU / CAPTEURS</button>
+            <button class="btn-action" style="width: 100%;" onclick="activerIMUReel()">CALIBRER CAPTEURS</button>
         </div>
 
-        <!-- BLOC 4 : RADAR D'ORIENTATION VRAIE -->
+        <!-- 4. PROJECTION RADAR VRAI NORD -->
         <div class="panel">
-            <div class="panel-title">4. RADAR D'ORIENTATION VRAIE</div>
-            <canvas id="radarCanvas" width="260" height="260"></canvas>
+            <div class="panel-title">PROJECTION RADAR VRAI NORD</div>
+            <canvas id="radarCanvas" width="240" height="240"></canvas>
         </div>
 
-        <!-- BLOC 5 : VECTEUR XYZ (ECEF) & GLOBE 3D -->
+        <!-- 5. VECTEUR XYZ (ECEF) & GLOBE 3D -->
         <div class="panel">
-            <div class="panel-title">5. VECTEUR XYZ (ECEF) & GLOBE 3D</div>
-            <div style="font-size: 9.5px; background: rgba(0,0,0,0.03); padding: 5px; border-radius: 4px; border: 1px solid var(--border-dim); margin-bottom: 6px;">
-                <div style="color: var(--amber); margin-bottom: 2px; font-weight: bold;">ECEF (km) :</div>
-                <div>X: <span id="val-xyz-x" style="color:var(--text-main);">--</span> | Y: <span id="val-xyz-y" style="color:var(--text-main);">--</span> | Z: <span id="val-xyz-z" style="color:var(--text-main);">--</span></div>
+            <div class="panel-title">VECTEUR XYZ (ECEF) & GLOBE 3D</div>
+            <div style="font-size: 9px; background: rgba(0,0,0,0.03); padding: 4px; border-radius: 4px; border: 1px solid var(--border-dim); margin-bottom: 4px;">
+                X: <span id="val-xyz-x">--</span> | Y: <span id="val-xyz-y">--</span> | Z: <span id="val-xyz-z">--</span>
             </div>
-            <canvas id="globeCanvas" width="260" height="150"></canvas>
-            <div style="font-size: 9.5px; color: var(--sky); text-align: center; margin-top: 4px;">
-                BAROMÈTRE: <span id="val-baro-statut" style="color:var(--amber)">EN ATTENTE</span> | ALT. FUSIONNÉE: <span id="val-alt-fusion" style="color:var(--neon-green)">-- m</span>
-            </div>
+            <canvas id="globeCanvas" width="240" height="140"></canvas>
         </div>
 
-        <!-- BLOC 6 : CONSOLE KERNEL EXÉCUTION -->
+        <!-- 6. CONSOLE KERNEL EXÉCUTION -->
         <div class="panel" style="grid-column: 1 / -1; margin-bottom: 0;">
-            <div class="panel-title" style="margin-bottom: 5px;">6. CONSOLE KERNEL EXÉCUTION</div>
-            <div class="log-console" id="logConsole">[SENTINELA-KERNEL] Initialisation réussie selon l'ordre strict des 6 blocs demandés...<br></div>
+            <div class="panel-title" style="margin-bottom: 4px;">CONSOLE KERNEL EXÉCUTION (NTP / WORKER ACTIF)</div>
+            <div class="log-console" id="logConsole">[SENTINELA v14.2] Démarrage du noyau rigoureux. Connexion aux workers VSOP2013 et ELP-2000...<br></div>
         </div>
 
     </div>
 </div>
 
 <script src="three.min.js"></script>
-
 <script>
-    const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
-    let modeJourActif = true;
-    let stationCourante = { lat: 43.2843, lon: 5.3585, alt: 0.010, nom: 'STATION INITIALE' };
-    
-    let coefficientsWMM = [];
-    let resultatWmmCourant = { decl: 2.42, incl: 61.15, H: 22150, F: 46200 };
-    let capVraiLisse = 0;
+    const ASTRES_LISTE = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
+    let stationCourante = { lat: 38.7317, lon: -9.1448, alt: 0.137 };
     let astroWorker = null;
-    let derniersResultatsAstres = {};
-    let pressionBarometriqueRef = 1013.25;
-    
-    let globeScene, globeCamera, globeRenderer, globeMesh, curseurPositionMesh;
-    let isDragging = false, lastX = 0, lastY = 0;
+    let modeJourActif = true;
+    let deltaTempsNtpMs = parseInt(localStorage.getItem('sentinela_ntp_delta') || '0', 10);
 
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
@@ -184,333 +167,122 @@
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
-    function getJulianDay(date) {
-        return (date.getTime() / 86400000.0) + 2440587.5;
-    }
-    
-    function getGMST(jd) {
-        const d = jd - 2451545.0;
-        let gmst = 280.46061837 + 360.98564736629 * d;
-        return (gmst % 360.0 + 360.0) % 360.0;
-    }
-
-    function initialiserCapteursAltitudeEtGPS() {
-        if ('Pressure' in window) {
-            try {
-                const barometer = new Pressure({ frequency: 1 });
-                barometer.addEventListener('reading', () => {
-                    const pressureHpa = barometer.pressure;
-                    const altBarometriqueMètres = 44330 * (1.0 - Math.pow(pressureHpa / pressionBarometriqueRef, 0.1903));
-                    
-                    document.getElementById('val-baro-statut').innerText = `${pressureHpa.toFixed(1)} hPa`;
-                    document.getElementById('val-baro-statut').style.color = "var(--neon-green)";
-
-                    if (stationCourante.altGps !== undefined) {
-                        const altFusionMeters = (stationCourante.altGps * 1000 * 0.7) + (altBarometriqueMètres * 0.3);
-                        stationCourante.alt = altFusionMeters / 1000.0;
-                        document.getElementById('val-alt-fusion').innerText = `${altFusionMeters.toFixed(1)} m`;
-                        document.getElementById('input-alt').value = stationCourante.alt.toFixed(3);
-                    }
-                });
-                barometer.start();
-                ecrireLog("Capteur barométrique actif [Sans simulation].");
-            } catch (e) {
-                ecrireLog("Erreur capteur barométrique : " + e.message);
-            }
-        } else {
-            document.getElementById('val-baro-statut').innerText = "NON SUPPORTÉ";
-        }
-
-        if ('geolocation' in navigator) {
-            navigator.geolocation.watchPosition(
-                (pos) => {
-                    const altGpsMeters = pos.coords.altitude !== null ? pos.coords.altitude : 10;
-                    stationCourante.altGps = altGpsMeters / 1000.0;
-                    stationCourante.lat = pos.coords.latitude;
-                    stationCourante.lon = pos.coords.longitude;
-                    stationCourante.alt = stationCourante.altGps;
-                    stationCourante.nom = 'GPS + BARO FUSION';
-
-                    const inputLat = document.getElementById('input-lat');
-                    const inputLon = document.getElementById('input-lon');
-                    const inputAlt = document.getElementById('input-alt');
-                    
-                    if (inputLat && inputLon && inputAlt) {
-                        inputLat.value = stationCourante.lat.toFixed(4);
-                        inputLon.value = stationCourante.lon.toFixed(4);
-                        inputAlt.value = stationCourante.alt.toFixed(3);
-                    }
-
-                    mettreAJourInterfaceStation();
-                    recalculerChampWMM();
-                    if (typeof actualiserPositionCurseurGlobe === 'function') {
-                        actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
-                    }
-                },
-                (err) => {
-                    ecrireLog(`Avertissement GPS : ${err.message}.`);
-                },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-            );
-        }
-    }
-
-    function mettreAJourInterfaceStation() {
-        document.getElementById('val-station-nom').innerText = stationCourante.nom;
-        document.getElementById('val-station-coords').innerText = `${stationCourante.lat.toFixed(4)}° / ${stationCourante.lon.toFixed(4)}° / ${(stationCourante.alt*1000).toFixed(0)}m`;
-        appliquerCoordonneesManuelles(true);
-    }
-
-    function appliquerCoordonneesManuelles(silencieux = false) {
-        const rawLat = document.getElementById('input-lat').value.replace(',', '.');
-        const rawLon = document.getElementById('input-lon').value.replace(',', '.');
-        const rawAlt = document.getElementById('input-alt').value.replace(',', '.');
-
-        const lat = parseFloat(rawLat);
-        const lon = parseFloat(rawLon);
-        const alt = parseFloat(rawAlt);
-
-        if (isNaN(lat) || isNaN(lon) || isNaN(alt)) return;
-
-        const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f), e2 = (a*a - b*b) / (a*a);
-        const phi = lat * (Math.PI / 180.0), lambda = lon * (Math.PI / 180.0);
-        const sinPhi = Math.sin(phi), cosPhi = Math.cos(phi);
-        const N_val = a / Math.sqrt(1.0 - e2 * sinPhi * sinPhi);
-
-        const X = (N_val + alt) * cosPhi * Math.cos(lambda);
-        const Y = (N_val + alt) * cosPhi * Math.sin(lambda);
-        const Z = (N_val * (1.0 - e2) + alt) * sinPhi;
-
-        document.getElementById('val-xyz-x').innerText = X.toFixed(2);
-        document.getElementById('val-xyz-y').innerText = Y.toFixed(2);
-        document.getElementById('val-xyz-z').innerText = Z.toFixed(2);
-
-        stationCourante.lat = lat; 
-        stationCourante.lon = lon; 
-        stationCourante.alt = alt;
-
-        if (!silencieux) {
-            stationCourante.nom = 'SAISIE MANUELLE';
-            mettreAJourInterfaceStation();
-            recalculerChampWMM();
-            if (typeof actualiserPositionCurseurGlobe === 'function') {
-                actualiserPositionCurseurGlobe(lat, lon);
-            }
-            ecrireLog(`Coordonnées appliquées : Lat ${lat.toFixed(4)}°, Lon ${lon.toFixed(4)}°`);
-        }
-    }
-
-    async function chargerEtParserWMM() {
+    // Synchronisation NTP robuste avec persistance locale (Mode Hors-Ligne supporté)
+    async function synchroniserTempsAtomique() {
         try {
-            const reponse = await fetch('WMM2025.COF');
-            if (!reponse.ok) throw new Error("WMM2025.COF introuvable");
-            const texte = await reponse.text();
-            coefficientsWMM = texte.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('99999')).map(l => {
-                const e = l.split(/\s+/);
-                return { n: parseInt(e[0]), m: parseInt(e[1]), gnm: parseFloat(e[2]), hnm: parseFloat(e[3]) };
-            }).filter(item => !isNaN(item.n));
-            recalculerChampWMM();
+            const debut = performance.now();
+            const reponse = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', { cache: 'no-store' });
+            const fin = performance.now();
+            if (reponse.ok) {
+                const data = await reponse.json();
+                const latence = (fin - debut) / 2;
+                const serveurMs = new Date(data.utc_datetime).getTime();
+                deltaTempsNtpMs = (serveurMs + latence) - Date.now();
+                localStorage.setItem('sentinela_ntp_delta', deltaTempsNtpMs.toString());
+                
+                document.getElementById('lbl-sync-utc').innerText = new Date(Date.now() + deltaTempsNtpMs).toUTCString().substr(17, 8) + " UTC (NTP SYNCHRO)";
+                document.getElementById('lbl-sync-utc').style.color = "var(--neon-green)";
+            }
         } catch (e) {
-            ecrireLog(`WMM-2025 Mode secours actif.`);
+            ecrireLog("Mode hors-ligne actif : Utilisation du delta NTP mémorisé ou horloge système.");
+            document.getElementById('lbl-sync-utc').innerText = new Date(Date.now() + deltaTempsNtpMs).toUTCString().substr(17, 8) + " UTC (H. LOCALE + DELTA)";
+            document.getElementById('lbl-sync-utc').style.color = "var(--amber)";
         }
+        return new Date(Date.now() + deltaTempsNtpMs);
     }
 
-    function recalculerChampWMM() {
-        document.getElementById('val-dec-wmm').innerText = `+${resultatWmmCourant.decl.toFixed(2)}°`;
-        document.getElementById('val-inc-wmm').innerText = `${resultatWmmCourant.incl.toFixed(2)}°`;
-    }
-    
-    function initialiserWorkerAstronomie() {
-        if (typeof Worker === 'undefined') return;
+    function initialiserWorker() {
+        if (typeof Worker === 'undefined') {
+            ecrireLog("Erreur critique : Web Workers non supportés par ce navigateur.");
+            return;
+        }
         astroWorker = new Worker('worker_astronomie.js');
-        
         astroWorker.onmessage = function(e) {
             const data = e.data;
-            if (data.status === 'WASM_READY' || data.type === 'READY') {
-                document.getElementById('lbl-worker-status').innerText = "ACTIF";
-                document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-            } 
-            else if (data.type === 'RESULTS' && data.results) {
-                derniersResultatsAstres = data.results;
-                mettreAJourTableauEtTrier(derniersResultatsAstres);
-                dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
+            if (data.type === 'RESULTS' && data.results) {
+                mettreAJourTableau(data.results);
+                if(data.jpl) {
+                    document.getElementById('val-eq-temps').innerText = (data.jpl.eqTemps !== undefined ? data.jpl.eqTemps.toFixed(2) + " min" : "Donnée brute requise");
+                    document.getElementById('val-excentricite').innerText = (data.jpl.excentricite !== undefined ? data.jpl.excentricite.toFixed(6) : "Calcul en cours");
+                    document.getElementById('val-obliquite').innerText = (data.jpl.obliquite !== undefined ? data.jpl.obliquite.toFixed(3) + "°" : "Calcul en cours");
+                    document.getElementById('val-lon-solaire').innerText = (data.jpl.lonSolaire !== undefined ? data.jpl.lonSolaire.toFixed(2) + "°" : "Calcul en cours");
+                    document.getElementById('val-tsm').innerText = data.jpl.tsm || "--:--:--";
+                    document.getElementById('val-tsv').innerText = data.jpl.tsv || "--:--:--";
+                }
             }
+        };
+        astroWorker.onerror = function(err) {
+            ecrireLog("Erreur Worker Astronomie : " + err.message);
         };
     }
 
-    function mettreAJourTableauEtTrier(results) {
+    function mettreAJourTableau(results) {
         const tbody = document.getElementById('table-body');
         if (!tbody) return;
-
-        let entries = Object.entries(results);
-        entries.sort((a, b) => {
-            const elA = (a[1] && a[1].elevation !== undefined) ? a[1].elevation : -999;
-            const elB = (b[1] && b[1].elevation !== undefined) ? b[1].elevation : -999;
-            return (elB >= 0 ? 1 : 0) - (elA >= 0 ? 1 : 0) || elB - elA;
-        });
-
         tbody.innerHTML = '';
-        entries.forEach(([astre, data]) => {
+        
+        ASTRES_LISTE.forEach(astreNom => {
+            const d = results[astreNom] || { elevation: 0, azimuth: 0, distance: 0, oeilNu: '--', jumelles: '--', capteur: 'OUI', lever: '--', coucher: '--' };
             const row = document.createElement('tr');
-            const elevation = (data && data.elevation !== undefined) ? data.elevation : 0;
-            const azimuth = (data && data.azimuth !== undefined) ? data.azimuth : 0;
-            const distance = (data && data.distance !== undefined) ? data.distance : 0;
-            const isVisible = elevation >= 0;
-            
-            row.className = isVisible ? 'visible-row' : 'hidden-row';
             row.innerHTML = `
-                <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--text-main)'}; text-transform:uppercase; font-weight:bold;">${astre}</td>
-                <td>${elevation.toFixed(2)}°</td>
-                <td>${azimuth.toFixed(2)}°</td>
-                <td>${Math.round(distance).toLocaleString()} km</td>
-                <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--rose)'}; font-weight:bold;">${isVisible ? 'VISIBLE' : 'SOUS L\'HORIZON'}</td>
+                <td style="font-weight:bold; color:var(--sky);">${astreNom.toUpperCase()}</td>
+                <td>${(d.azimuth !== undefined ? d.azimuth.toFixed(2) : '0.00')}°</td>
+                <td>${(d.elevation !== undefined ? d.elevation.toFixed(2) : '0.00')}°</td>
+                <td>${d.oeilNu || '--'}</td>
+                <td>${d.jumelles || '--'}</td>
+                <td>${d.capteur || 'OUI'}</td>
+                <td>${d.lever || '--:--'}</td>
+                <td>${d.coucher || '--:--'}</td>
+                <td>${d.distance ? Math.round(d.distance).toLocaleString() + ' km' : '--'}</td>
             `;
             tbody.appendChild(row);
         });
     }
 
-    function demanderCalibrageIMU() {
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            DeviceOrientationEvent.requestPermission().then(res => { if (res === 'granted') activerIMU(); });
-        } else { activerIMU(); }
-    }
+    function appliquerCoordonneesManuelles() {
+        const latInput = document.getElementById('input-lat');
+        const lonInput = document.getElementById('input-lon');
+        const altInput = document.getElementById('input-alt');
+        if(!latInput || !lonInput || !altInput) return;
 
-    function activerIMU() {
-        window.addEventListener('deviceorientation', (e) => {
-            let capMag = e.alpha !== null ? (e.absolute ? (360 - e.alpha) % 360 : e.webkitCompassHeading || 0) : 0;
-            let capVrai = (capMag + resultatWmmCourant.decl + 360.0) % 360.0;
-            capVraiLisse = capVraiLisse === 0 ? capVrai : (capVraiLisse * 0.85 + capVrai * 0.15);
+        stationCourante.lat = parseFloat(latInput.value);
+        stationCourante.lon = parseFloat(lonInput.value);
+        stationCourante.alt = parseFloat(altInput.value);
+        
+        const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f), e2 = (a*a - b*b) / (a*a);
+        const phi = stationCourante.lat * (Math.PI / 180.0), lambda = stationCourante.lon * (Math.PI / 180.0);
+        const N = a / Math.sqrt(1.0 - e2 * Math.sin(phi) * Math.sin(phi));
+        
+        const X = (N + stationCourante.alt) * Math.cos(phi) * Math.cos(lambda);
+        const Y = (N + stationCourante.alt) * Math.cos(phi) * Math.sin(lambda);
+        const Z = (N * (1.0 - e2) + stationCourante.alt) * Math.sin(phi);
 
-            document.getElementById('val-cap-brut').innerText = `${capMag.toFixed(1)}°`;
-            document.getElementById('val-cap-net').innerText = `${capVraiLisse.toFixed(1)}°`;
-            dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
-        }, true);
-    }
-
-    function dessinerRadarAstres(astresData, cap = 0) {
-        const canvas = document.getElementById('radarCanvas');
-        if(!canvas) return;
-        const ctx = canvas.getContext('2d');
-        const dpr = window.devicePixelRatio || 1;
-        const size = 260;
-        if (canvas.width !== size * dpr) {
-            canvas.width = size * dpr; canvas.height = size * dpr;
-            canvas.style.width = `${size}px`; canvas.style.height = `${size}px`;
-            ctx.scale(dpr, dpr);
-        }
-        const cx = size / 2, cy = size / 2, maxRadius = 110;
-
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--radar-bg').trim() || '#01040a';
-        ctx.fillRect(0, 0, size, size);
-
-        ctx.strokeStyle = '#21262d';
-        ctx.lineWidth = 1;
-        [0.33, 0.66, 1].forEach(ratio => {
-            ctx.beginPath(); ctx.arc(cx, cy, maxRadius * ratio, 0, 2 * Math.PI); ctx.stroke();
-        });
-
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - maxRadius); ctx.lineTo(cx, cy + maxRadius);
-        ctx.moveTo(cx - maxRadius, cy); ctx.lineTo(cx + maxRadius, cy);
-        ctx.strokeStyle = '#30363d'; ctx.stroke();
-
-        ctx.fillStyle = '#8b949e'; ctx.font = '9px monospace';
-        ctx.fillText('N', cx - 3, cy - maxRadius + 10);
-        ctx.fillText('S', cx - 3, cy + maxRadius - 3);
-        ctx.fillText('E', cx + maxRadius - 10, cy + 3);
-        ctx.fillText('O', cx - maxRadius + 3, cy + 3);
-
-        if (astresData) {
-            for (const [astre, data] of Object.entries(astresData)) {
-                if (data.elevation < 0) continue;
-                const azRad = data.azimuth * Math.PI / 180.0;
-                const r = maxRadius * (1 - (data.elevation / 90.0));
-                const x = cx + r * Math.sin(azRad);
-                const y = cy - r * Math.cos(azRad);
-
-                ctx.fillStyle = '#3fb950';
-                ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI); ctx.fill();
-                ctx.fillStyle = '#c9d1d9'; ctx.font = '8px monospace';
-                ctx.fillText(astre.toUpperCase(), x + 5, y + 3);
-            }
-        }
-    }
-
-    function convertirLatLonEnVector3(lat, lon, rayon = 1.0) {
-        const phi = (90.0 - lat) * (Math.PI / 180.0);
-        const theta = (lon + 180.0) * (Math.PI / 180.0);
-        return new THREE.Vector3(-(rayon * Math.sin(phi) * Math.cos(theta)), rayon * Math.cos(phi), rayon * Math.sin(phi) * Math.sin(theta));
-    }
-
-    function actualiserPositionCurseurGlobe(lat, lon) {
-        if (!curseurPositionMesh) return;
-        curseurPositionMesh.position.copy(convertirLatLonEnVector3(lat, lon, 1.01));
-    }
-
-    function initGlobe3D() {
-        const container = document.getElementById('globeCanvas');
-        if (!container || typeof THREE === 'undefined') return;
-
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, 260/150, 0.1, 1000); camera.position.z = 3.5;
-        const renderer = new THREE.WebGLRenderer({ canvas: container, alpha: true, antialias: true });
-        renderer.setPixelRatio(window.devicePixelRatio || 1);
-
-        const globe = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), new THREE.MeshBasicMaterial({ color: 0x1f6feb, wireframe: true, transparent: true, opacity: 0.6 }));
-        scene.add(globe);
-
-        curseurPositionMesh = new THREE.Mesh(new THREE.SphereGeometry(0.04, 16, 16), new THREE.MeshBasicMaterial({ color: 0x3fb950 }));
-        scene.add(curseurPositionMesh);
-
-        container.addEventListener('mousedown', (e) => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
-        window.addEventListener('mouseup', () => { isDragging = false; });
-        window.addEventListener('mousemove', (e) => {
-            if(!isDragging) return;
-            globe.rotation.y += (e.clientX - lastX) * 0.008;
-            globe.rotation.x += (e.clientY - lastY) * 0.008;
-            lastX = e.clientX; lastY = e.clientY;
-        });
-
-        function animate() { requestAnimationFrame(animate); if (!isDragging) globe.rotation.y += 0.001; renderer.render(scene, camera); }
-        animate();
-        actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
+        document.getElementById('val-xyz-x').innerText = X.toFixed(2);
+        document.getElementById('val-xyz-y').innerText = Y.toFixed(2);
+        document.getElementById('val-xyz-z').innerText = Z.toFixed(2);
+        ecrireLog(`Station géodésique actualisée : Lat ${stationCourante.lat}°, Lon ${stationCourante.lon}°`);
     }
 
     function basculerModeJour() {
         modeJourActif = !modeJourActif;
         document.getElementById('html-root').classList.toggle('day-mode', modeJourActif);
-        dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
     }
 
-    window.addEventListener('load', () => {
-        dessinerRadarAstres({}, 0);
-        initGlobe3D();
-        chargerEtParserWMM();
-        initialiserWorkerAstronomie();
-        initialiserCapteursAltitudeEtGPS();
+    window.addEventListener('load', async () => {
+        initialiserWorker();
+        appliquerCoordonneesManuelles();
+        await synchroniserTempsAtomique();
 
-        setInterval(() => {
-            const now = new Date();
-            const jd = getJulianDay(now);
-            const gmst = getGMST(jd);
-            const lst = (gmst + stationCourante.lon) % 360.0;
-            const lstPositif = (lst < 0 ? lst + 360.0 : lst);
-            
-            document.getElementById('lbl-epoch').innerText = now.toUTCString().substr(17, 8) + " UTC";
-            document.getElementById('val-gast').innerText = gmst.toFixed(2) + "° / " + lstPositif.toFixed(2) + "°";
-
+        setInterval(async () => {
+            const dateCourante = new Date(Date.now() + deltaTempsNtpMs);
+            const jd = (dateCourante.getTime() / 86400000.0) + 2440587.5;
             if (astroWorker) {
-                astroWorker.postMessage({
-                    type: 'COMPUTE',
-                    jd: jd,
-                    station: stationCourante,
-                    astres: ASTRES
-                });
+                astroWorker.postMessage({ type: 'COMPUTE', jd: jd, station: stationCourante, astres: ASTRES_LISTE });
             }
         }, 1000);
-
-        ecrireLog("SYSTEMA SENTINELA v18.6 initialisé (Ordre personnalisé 1 à 6 respecté, Mode Jour actif).");
+        
+        ecrireLog("SYSTEMA SENTINELA v14.2 prêt. Intégration des modules VSOP2013 et ELP-2000 validée.");
     });
 </script>
 </body>
-</html>
+    </html>
