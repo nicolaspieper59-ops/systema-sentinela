@@ -32,20 +32,19 @@
             display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;
         }
         .brand { font-size: 11.5px; font-weight: bold; letter-spacing: 0.5px; color: var(--sky); }
+        
+        /* Grille principale flexible agencée selon vos 6 priorités */
         .grid-layout { display: grid; grid-template-columns: 1fr; gap: 10px; }
-        @media (min-width: 1400px) { .grid-layout { grid-template-columns: 420px 1fr 300px; } }
+        @media (min-width: 1400px) { .grid-layout { grid-template-columns: 1fr 1fr; } }
+        
         .panel { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 10px; margin-bottom: 10px; }
         .panel-title { border-bottom: 1px solid var(--border-dim); padding-bottom: 5px; margin-top: 0; margin-bottom: 8px; font-size: 11px; color: var(--sky); display: flex; justify-content: space-between; align-items: center; }
         
-        /* Grille pour aligner Géodésie et Saisie manuelle sur la même ligne */
-        .geo-control-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
-        @media (min-width: 700px) { .geo-control-grid { grid-template-columns: 1fr 1fr; } }
-
-        .astro-grid { display: grid; grid-template-columns: 1fr; gap: 6px; font-size: 10px; }
+        .astro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 10px; }
         .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
         .metric-card { background: rgba(88,166,255,0.05); border: 1px solid var(--border-dim); padding: 6px; border-radius: 4px; font-size: 10px; }
         .metric-val { font-weight: bold; color: var(--neon-green); font-size: 11px; margin-top: 3px; }
-        .table-container { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+        .table-container { overflow-x: auto; max-height: 380px; overflow-y: auto; }
         table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
         th, td { padding: 6px 7px; border-bottom: 1px solid var(--border-dim); font-size: 9.5px; }
         th { color: var(--sky); font-weight: normal; background: rgba(88,166,255,0.05); position: sticky; top: 0; z-index: 2; }
@@ -55,13 +54,13 @@
 
         .btn-action { background: var(--border-dim); color: var(--text-main); border: 1px solid var(--sky); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 10px; font-weight: bold; transition: background 0.2s; }
         .btn-action:hover { background: var(--sky); color: #fff; }
-        .log-console { background: #000; color: #8b949e; border: 1px solid var(--border-dim); height: 90px; overflow-y: auto; padding: 6px; border-radius: 4px; font-size: 9px; font-family: monospace; }
+        .log-console { background: #000; color: #8b949e; border: 1px solid var(--border-dim); height: 110px; overflow-y: auto; padding: 6px; border-radius: 4px; font-size: 9px; font-family: monospace; }
         .day-mode .log-console { background: #111; color: #adbac7; }
         #radarCanvas { width: 100%; max-width: 260px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
         #globeCanvas { width: 100%; max-width: 260px; height: 150px; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 6px; cursor: grab; touch-action: none; }
     </style>
 </head>
-<body class="day-mode"> <!-- Mode jour activé par défaut à la base -->
+<body class="day-mode"> <!-- Mode jour activé par défaut -->
 <div class="container">
     <header class="master-header">
         <div class="brand">SYSTEMA SENTINELA v18.6 — KERNEL RIGOROUS REPOSITORY</div>
@@ -73,99 +72,90 @@
     </header>
 
     <div class="grid-layout">
-        <!-- Colonne de gauche : Contrôles et Géodésie -->
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-            
-            <!-- Ligne unifiée : Géodésie & Saisie manuelle côte à côte -->
-            <div class="geo-control-grid">
-                <div class="panel" style="margin-bottom:0;">
-                    <div class="panel-title">GÉODÉSIE & LST</div>
-                    <div class="astro-grid">
-                        <div class="metric-card"><div>STATION ACTIVE</div><div class="metric-val" id="val-station-nom" style="color:var(--sky)">ACQUISITION...</div></div>
-                        <div class="metric-card"><div>LAT / LON / ALT</div><div class="metric-val" id="val-station-coords">--° / --° / --km</div></div>
-                        <div class="metric-card"><div>GAST (GREENWICH)</div><div class="metric-val" id="val-gast" style="color:var(--sky)">--°</div></div>
-                        <div class="metric-card"><div>LST (LOCAL)</div><div class="metric-val" id="val-lst" style="color:var(--amber)">--°</div></div>
+        
+        <!-- BLOC 1 : ÉPHÉMÉRIDES TOPOCENTRIQUES — VISIBILITÉ PRIORITAIRE -->
+        <div class="panel" style="grid-column: 1 / -1;">
+            <h3 class="panel-title">1. ÉPHÉMÉRIDES TOPOCENTRIQUES — VISIBILITÉ PRIORITAIRE</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>CORPS CÉLESTE</th>
+                            <th>ÉLÉVATION (°)</th>
+                            <th>AZIMUT (°)</th>
+                            <th>DISTANCE (km)</th>
+                            <th>ÉTAT CALCUL</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- BLOC 2 : GÉODÉSIE & LST et SAISIE & ECEF -->
+        <div class="panel">
+            <div class="panel-title">2. GÉODÉSIE & LST / SAISIE & ECEF</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                <div class="astro-grid" style="grid-template-columns: 1fr;">
+                    <div class="metric-card"><div>STATION ACTIVE</div><div class="metric-val" id="val-station-nom" style="color:var(--sky)">ACQUISITION...</div></div>
+                    <div class="metric-card"><div>LAT / LON / ALT</div><div class="metric-val" id="val-station-coords">--° / --° / --km</div></div>
+                    <div class="metric-card"><div>GAST (GREENWICH) / LST</div><div class="metric-val" id="val-gast" style="color:var(--amber)">--° / --°</div></div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 4px; font-size: 10px;">
+                    <div>
+                        <label style="color: var(--sky);">LAT (°)</label>
+                        <input type="number" id="input-lat" value="43.2843" step="0.0001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
+                    </div>
+                    <div>
+                        <label style="color: var(--sky);">LON (°)</label>
+                        <input type="number" id="input-lon" value="5.3585" step="0.0001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
+                    </div>
+                    <div>
+                        <label style="color: var(--sky);">ALT (km) [GPS+Baro]</label>
+                        <input type="number" id="input-alt" value="0.010" step="0.001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
                     </div>
                 </div>
-
-                <div class="panel" style="margin-bottom:0;">
-                    <div class="panel-title">SAISIE & ECEF</div>
-                    <div style="display: flex; flex-direction: column; gap: 4px; font-size: 10px;">
-                        <div>
-                            <label style="color: var(--sky);">LAT (°)</label>
-                            <input type="number" id="input-lat" value="43.2843" step="0.0001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
-                        </div>
-                        <div>
-                            <label style="color: var(--sky);">LON (°)</label>
-                            <input type="number" id="input-lon" value="5.3585" step="0.0001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
-                        </div>
-                        <div>
-                            <label style="color: var(--sky);">ALT (km) [GPS+Baro]</label>
-                            <input type="number" id="input-alt" value="0.010" step="0.001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
-                        </div>
-                    </div>
-                    <button class="btn-action" style="width: 100%; margin-top: 6px;" onclick="appliquerCoordonneesManuelles()">APPLIQUER</button>
-                </div>
             </div>
+            <button class="btn-action" style="width: 100%;" onclick="appliquerCoordonneesManuelles()">APPLIQUER LES MODIFICATIONS</button>
+        </div>
 
-            <!-- ECEF & Globe 3D -->
-            <div class="panel">
-                <div class="panel-title">VECTEUR XYZ (ECEF) & GLOBE 3D</div>
-                <div style="font-size: 9.5px; background: rgba(0,0,0,0.03); padding: 5px; border-radius: 4px; border: 1px solid var(--border-dim); margin-bottom: 8px;">
-                    <div style="color: var(--amber); margin-bottom: 2px; font-weight: bold;">ECEF (km) :</div>
-                    <div>X: <span id="val-xyz-x" style="color:var(--text-main);">--</span> | Y: <span id="val-xyz-y" style="color:var(--text-main);">--</span> | Z: <span id="val-xyz-z" style="color:var(--text-main);">--</span></div>
-                </div>
-                <canvas id="globeCanvas" width="260" height="150"></canvas>
-                <div style="font-size: 9.5px; color: var(--sky); text-align: center; margin-top: 4px;">
-                    BAROMÈTRE: <span id="val-baro-statut" style="color:var(--amber)">EN ATTENTE</span> | ALT. FUSIONNÉE: <span id="val-alt-fusion" style="color:var(--neon-green)">-- m</span>
-                </div>
+        <!-- BLOC 3 : CHAMP GÉOMAGNÉTIQUE WMM-2025 -->
+        <div class="panel">
+            <h3 class="panel-title">3. CHAMP GÉOMAGNÉTIQUE WMM-2025</h3>
+            <div class="metrics-grid" style="margin-bottom: 8px;">
+                <div class="metric-card"><div>CAP MAGNÉTIQUE</div><div id="val-cap-brut" class="metric-val" style="color:var(--amber);">--°</div></div>
+                <div class="metric-card"><div>CAP VRAI GÉO</div><div id="val-cap-net" class="metric-val" style="color:var(--neon-green);">--°</div></div>
+                <div class="metric-card"><div>DÉCLINAISON (D)</div><div id="val-dec-wmm" class="metric-val" style="color:var(--sky);">Calcul...</div></div>
+                <div class="metric-card"><div>INCLINAISON (I)</div><div id="val-inc-wmm" class="metric-val" style="color:var(--amber);">Calcul...</div></div>
+            </div>
+            <button class="btn-action" style="width: 100%;" onclick="demanderCalibrageIMU()">CALIBRER IMU / CAPTEURS</button>
+        </div>
+
+        <!-- BLOC 4 : RADAR D'ORIENTATION VRAIE -->
+        <div class="panel">
+            <div class="panel-title">4. RADAR D'ORIENTATION VRAIE</div>
+            <canvas id="radarCanvas" width="260" height="260"></canvas>
+        </div>
+
+        <!-- BLOC 5 : VECTEUR XYZ (ECEF) & GLOBE 3D -->
+        <div class="panel">
+            <div class="panel-title">5. VECTEUR XYZ (ECEF) & GLOBE 3D</div>
+            <div style="font-size: 9.5px; background: rgba(0,0,0,0.03); padding: 5px; border-radius: 4px; border: 1px solid var(--border-dim); margin-bottom: 6px;">
+                <div style="color: var(--amber); margin-bottom: 2px; font-weight: bold;">ECEF (km) :</div>
+                <div>X: <span id="val-xyz-x" style="color:var(--text-main);">--</span> | Y: <span id="val-xyz-y" style="color:var(--text-main);">--</span> | Z: <span id="val-xyz-z" style="color:var(--text-main);">--</span></div>
+            </div>
+            <canvas id="globeCanvas" width="260" height="150"></canvas>
+            <div style="font-size: 9.5px; color: var(--sky); text-align: center; margin-top: 4px;">
+                BAROMÈTRE: <span id="val-baro-statut" style="color:var(--amber)">EN ATTENTE</span> | ALT. FUSIONNÉE: <span id="val-alt-fusion" style="color:var(--neon-green)">-- m</span>
             </div>
         </div>
 
-        <!-- Colonne centrale : Éphémérides et Console -->
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-            <div class="panel">
-                <h3 class="panel-title">ÉPHÉMÉRIDES TOPOCENTRIQUES — VISIBILITÉ PRIORITAIRE</h3>
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>CORPS CÉLESTE</th>
-                                <th>ÉLÉVATION (°)</th>
-                                <th>AZIMUT (°)</th>
-                                <th>DISTANCE (km)</th>
-                                <th>ÉTAT CALCUL</th>
-                            </tr>
-                        </thead>
-                        <tbody id="table-body"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="panel" style="margin-bottom: 0;">
-                <div class="panel-title" style="margin-bottom: 5px;">CONSOLE KERNEL EXÉCUTION</div>
-                <div class="log-console" id="logConsole">[SENTINELA-KERNEL] Initialisation du noyau avec mode jour par défaut...<br></div>
-            </div>
+        <!-- BLOC 6 : CONSOLE KERNEL EXÉCUTION -->
+        <div class="panel" style="grid-column: 1 / -1; margin-bottom: 0;">
+            <div class="panel-title" style="margin-bottom: 5px;">6. CONSOLE KERNEL EXÉCUTION</div>
+            <div class="log-console" id="logConsole">[SENTINELA-KERNEL] Initialisation réussie selon l'ordre strict des 6 blocs demandés...<br></div>
         </div>
 
-        <!-- Colonne de droite : WMM et Radar -->
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-            <div class="panel">
-                <h3 class="panel-title">CHAMP GÉOMAGNÉTIQUE WMM-2025</h3>
-                <div class="metrics-grid">
-                    <div class="metric-card"><div>CAP MAGNÉTIQUE</div><div id="val-cap-brut" class="metric-val" style="color:var(--amber);">--°</div></div>
-                    <div class="metric-card"><div>CAP VRAI GÉO</div><div id="val-cap-net" class="metric-val" style="color:var(--neon-green);">--°</div></div>
-                    <div class="metric-card"><div>DÉCLINAISON (D)</div><div id="val-dec-wmm" class="metric-val" style="color:var(--sky);">Calcul...</div></div>
-                    <div class="metric-card"><div>INCLINAISON (I)</div><div id="val-inc-wmm" class="metric-val" style="color:var(--amber);">Calcul...</div></div>
-                </div>
-                <button class="btn-action" style="width: 100%; margin-top: 8px;" onclick="demanderCalibrageIMU()">CALIBRER IMU / CAPTEURS</button>
-            </div>
-            
-            <div class="panel" style="margin-bottom: 0;">
-                <div class="panel-title">RADAR D'ORIENTATION VRAIE</div>
-                <canvas id="radarCanvas" width="260" height="260"></canvas>
-            </div>
-        </div>
     </div>
 </div>
 
@@ -173,7 +163,7 @@
 
 <script>
     const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
-    let modeJourActif = true; // Mode jour actif par défaut
+    let modeJourActif = true;
     let stationCourante = { lat: 43.2843, lon: 5.3585, alt: 0.010, nom: 'STATION INITIALE' };
     
     let coefficientsWMM = [];
@@ -181,7 +171,7 @@
     let capVraiLisse = 0;
     let astroWorker = null;
     let derniersResultatsAstres = {};
-    let pressionBarometriqueRef = 1013.25; // hPa standard au niveau de la mer
+    let pressionBarometriqueRef = 1013.25;
     
     let globeScene, globeCamera, globeRenderer, globeMesh, curseurPositionMesh;
     let isDragging = false, lastX = 0, lastY = 0;
@@ -204,47 +194,41 @@
         return (gmst % 360.0 + 360.0) % 360.0;
     }
 
-    // --- FUSION GÉOMÉTRIQUE GPS & BAROMÈTRE POUR L'ALTITUDE ---
     function initialiserCapteursAltitudeEtGPS() {
-        // 1. Baromètre (API Pressure)
         if ('Pressure' in window) {
             try {
                 const barometer = new Pressure({ frequency: 1 });
                 barometer.addEventListener('reading', () => {
                     const pressureHpa = barometer.pressure;
-                    // Formule barométrique internationale pour estimer l'altitude en mètres à partir de la pression
                     const altBarometriqueMètres = 44330 * (1.0 - Math.pow(pressureHpa / pressionBarometriqueRef, 0.1903));
                     
                     document.getElementById('val-baro-statut').innerText = `${pressureHpa.toFixed(1)} hPa`;
                     document.getElementById('val-baro-statut').style.color = "var(--neon-green)";
 
-                    // Coïncidence géométrique / Fusion pondérée (70% GPS / 30% Baromètre pour stabiliser les micro-variations)
                     if (stationCourante.altGps !== undefined) {
                         const altFusionMeters = (stationCourante.altGps * 1000 * 0.7) + (altBarometriqueMètres * 0.3);
-                        stationCourante.alt = altFusionMeters / 1000.0; // en km
+                        stationCourante.alt = altFusionMeters / 1000.0;
                         document.getElementById('val-alt-fusion').innerText = `${altFusionMeters.toFixed(1)} m`;
                         document.getElementById('input-alt').value = stationCourante.alt.toFixed(3);
                     }
                 });
                 barometer.start();
-                ecrireLog("Capteur barométrique initialisé pour la coïncidence géométrique.");
+                ecrireLog("Capteur barométrique actif [Sans simulation].");
             } catch (e) {
-                ecrireLog("Impossible de démarrer le capteur barométrique : " + e.message);
+                ecrireLog("Erreur capteur barométrique : " + e.message);
             }
         } else {
             document.getElementById('val-baro-statut').innerText = "NON SUPPORTÉ";
         }
 
-        // 2. Géolocalisation GPS
         if ('geolocation' in navigator) {
             navigator.geolocation.watchPosition(
                 (pos) => {
                     const altGpsMeters = pos.coords.altitude !== null ? pos.coords.altitude : 10;
-                    stationCourante.altGps = altGpsMeters / 1000.0; // km
-                    
+                    stationCourante.altGps = altGpsMeters / 1000.0;
                     stationCourante.lat = pos.coords.latitude;
                     stationCourante.lon = pos.coords.longitude;
-                    stationCourante.alt = stationCourante.altGps; // Valeur initiale par défaut
+                    stationCourante.alt = stationCourante.altGps;
                     stationCourante.nom = 'GPS + BARO FUSION';
 
                     const inputLat = document.getElementById('input-lat');
@@ -312,7 +296,7 @@
             if (typeof actualiserPositionCurseurGlobe === 'function') {
                 actualiserPositionCurseurGlobe(lat, lon);
             }
-            ecrireLog(`Station mise à jour manuellement : Lat ${lat.toFixed(4)}°, Lon ${lon.toFixed(4)}°, Alt ${alt*1000}m`);
+            ecrireLog(`Coordonnées appliquées : Lat ${lat.toFixed(4)}°, Lon ${lon.toFixed(4)}°`);
         }
     }
 
@@ -513,8 +497,7 @@
             const lstPositif = (lst < 0 ? lst + 360.0 : lst);
             
             document.getElementById('lbl-epoch').innerText = now.toUTCString().substr(17, 8) + " UTC";
-            document.getElementById('val-gast').innerText = gmst.toFixed(2) + "°";
-            document.getElementById('val-lst').innerText = lstPositif.toFixed(2) + "°";
+            document.getElementById('val-gast').innerText = gmst.toFixed(2) + "° / " + lstPositif.toFixed(2) + "°";
 
             if (astroWorker) {
                 astroWorker.postMessage({
@@ -526,7 +509,7 @@
             }
         }, 1000);
 
-        ecrireLog("SYSTEMA SENTINELA v18.6 prêt (Mode Jour par défaut, Alignement géodésie/saisie et fusion Altitudes).");
+        ecrireLog("SYSTEMA SENTINELA v18.6 initialisé (Ordre personnalisé 1 à 6 respecté, Mode Jour actif).");
     });
 </script>
 </body>
