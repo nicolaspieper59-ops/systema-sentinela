@@ -301,71 +301,76 @@
     
     // --- WORKER & TRI DYNAMIQUE PAR VISIBILITÉ DU TABLEAU ---
     function initialiserWorkerAstronomie() {
-        if (typeof Worker === 'undefined') {
-            ecrireLog("Erreur critique : Web Workers non supportés.");
-            return;
+    if (typeof Worker === 'undefined') {
+        ecrireLog("Erreur critique : Web Workers non supportés.");
+        return;
+    }
+    
+    astroWorker = new Worker('worker_astronomie.js');
+    
+    astroWorker.onmessage = function(e) {
+        const data = e.data;
+        
+        if (data.status === 'WASM_READY' || data.type === 'READY') {
+            document.getElementById('lbl-worker-status').innerText = "ACTIF (DÉPÔT STRICT)";
+            document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+            ecrireLog("Worker Astronomie lié aux modules VSOP2013 / ELP-2000.");
+        } 
+        else if (data.type === 'RESULTS' && data.results) {
+            derniersResultatsAstres = data.results;
+            mettreAJourTableauEtTrier(derniersResultatsAstres);
+            dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
         }
-        
-        astroWorker = new Worker('worker_astronomie.js');
-        
-        astroWorker.onmessage = function(e) {
-            const data = e.data;
-            
-            if (data.status === 'WASM_READY' || data.type === 'READY') {
-                document.getElementById('lbl-worker-status').innerText = "ACTIF (DÉPÔT STRICT)";
-                document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-                ecrireLog("Worker Astronomie lié aux modules VSOP2013 / ELP-2000.");
-            } 
-            else if (data.type === 'RESULTS' && data.results) {
-                derniersResultatsAstres = data.results;
-                mettreAJourTableauEtTrier(derniersResultatsAstres);
-                dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
-            }
-            else if (data.type === 'ERROR') {
-                ecrireLog(`Erreur Worker : ${data.message}`);
-            }
-        };
+        else if (data.type === 'ERROR') {
+            ecrireLog(`Erreur Worker : ${data.message}`);
+        }
+    };
 
-        astroWorker.onerror = function(err) {
-            ecrireLog(`Erreur critique thread Worker : ${err.message}`);
-        };
+    astroWorker.onerror = function(err) {
+        ecrireLog(`Erreur critique thread Worker : ${err.message}`);
+    };
     }
 
     // Fonction de tri dynamique : les astres visibles (>= 0°) remontent en haut
     function mettreAJourTableauEtTrier(results) {
-        const tbody = document.getElementById('table-body');
-        if (!tbody) return;
+    const tbody = document.getElementById('table-body');
+    if (!tbody) return;
 
-        let entries = Object.entries(results);
+    let entries = Object.entries(results);
 
-        entries.sort((a, b) => {
-            const elA = a[1].elevation;
-            const elB = b[1].elevation;
-            const visA = elA >= 0 ? 1 : 0;
-            const visB = elB >= 0 ? 1 : 0;
+    entries.sort((a, b) => {
+        const elA = (a[1] && a[1].elevation !== undefined) ? a[1].elevation : -999;
+        const elB = (b[1] && b[1].elevation !== undefined) ? b[1].elevation : -999;
+        const visA = elA >= 0 ? 1 : 0;
+        const visB = elB >= 0 ? 1 : 0;
 
-            if (visA !== visB) return visB - visA;
-            return elB - elA;
-        });
+        if (visA !== visB) return visB - visA;
+        return elB - elA;
+    });
 
-        tbody.innerHTML = '';
+    tbody.innerHTML = '';
 
-        entries.forEach(([astre, data]) => {
-            const row = document.createElement('tr');
-            const isVisible = data.elevation >= 0;
-            row.className = isVisible ? 'visible-row' : 'hidden-row';
+    entries.forEach(([astre, data]) => {
+        const row = document.createElement('tr');
+        const elevation = (data && data.elevation !== undefined) ? data.elevation : 0;
+        const azimuth = (data && data.azimuth !== undefined) ? data.azimuth : 0;
+        const distance = (data && data.distance !== undefined) ? data.distance : 0;
+        
+        const isVisible = elevation >= 0;
+        row.className = isVisible ? 'visible-row' : 'hidden-row';
+        row.id = `row-${astre}`;
 
-            row.innerHTML = `
-                <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--text-main)'}; text-transform:uppercase; font-weight:bold;">${astre}</td>
-                <td>${data.elevation.toFixed(2)}°</td>
-                <td>${data.azimuth.toFixed(2)}°</td>
-                <td>${Math.round(data.distance).toLocaleString()} km</td>
-                <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--rose)'}; font-weight:bold;">
-                    ${isVisible ? 'VISIBLE' : 'SOUS L\'HORIZON'}
-                </td>
-            `;
-            tbody.appendChild(row);
-        });
+        row.innerHTML = `
+            <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--text-main)'}; text-transform:uppercase; font-weight:bold;">${astre}</td>
+            <td>${elevation.toFixed(2)}°</td>
+            <td>${azimuth.toFixed(2)}°</td>
+            <td>${Math.round(distance).toLocaleString()} km</td>
+            <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--rose)'}; font-weight:bold;">
+                ${isVisible ? 'VISIBLE' : 'SOUS L\'HORIZON'}
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
     }
 
     const CORPS_CELESTES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
