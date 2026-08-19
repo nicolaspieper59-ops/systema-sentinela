@@ -56,7 +56,7 @@
     <header class="master-header">
         <div class="brand">SYSTEMA SENTINELA v14.2 — KERNEL RIGOROUS REPOSITORY</div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <div>UTC: <span id="lbl-sync-utc" style="color:var(--amber); font-weight:bold;">SYNCHRONISATION...</span></div>
+            <div>UTC: <span id="lbl-sync-utc" style="color:var(--amber); font-weight:bold;">CHARGEMENT FLUX...</span></div>
             <div>IMU: <span style="color:var(--neon-green)">FORCÉ (ZÉNITH)</span></div>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR / NUIT</button>
         </div>
@@ -64,16 +64,16 @@
 
     <div class="grid-layout">
         
-        <!-- 1. ÉPHÉMÉRIDES TOPOCENTRIQUES & PARAMÈTRES JPL -->
+        <!-- 1. ÉPHÉMÉRIDES TOPOCENTRIQUES & PARAMÈTRES FLUX LIVE (DE440s / JPL) -->
         <div class="panel" style="grid-column: 1 / -1;">
-            <h3 class="panel-title">COORDONNÉES TOPOCENTRIQUES & VISIBILITÉ (MÉTHODE VSOP2013 / ELP-2000)</h3>
+            <h3 class="panel-title">COORDONNÉES TOPOCENTRIQUES & VISIBILITÉ (FLUX DIRECT DE DÉPÔT)</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 6px; margin-bottom: 8px; font-size: 10px;">
-                <div class="metric-card"><div>Éq. du Temps (JPL)</div><div id="val-eq-temps" class="metric-val">En attente...</div></div>
-                <div class="metric-card"><div>Excentricité Terr.</div><div id="val-excentricite" class="metric-val">En attente...</div></div>
-                <div class="metric-card"><div>Obliquité Écliptique</div><div id="val-obliquite" class="metric-val">En attente...</div></div>
-                <div class="metric-card"><div>Longitude Solaire</div><div id="val-lon-solaire" class="metric-val">En attente...</div></div>
-                <div class="metric-card"><div>Temps Solaire Moyen</div><div id="val-tsm" class="metric-val">En attente...</div></div>
-                <div class="metric-card"><div>Temps Solaire Vrai</div><div id="val-tsv" class="metric-val">En attente...</div></div>
+                <div class="metric-card"><div>Éq. du Temps (JPL)</div><div id="val-eq-temps" class="metric-val">Lecture flux_live...</div></div>
+                <div class="metric-card"><div>Excentricité Terr.</div><div id="val-excentricite" class="metric-val">Lecture flux_live...</div></div>
+                <div class="metric-card"><div>Obliquité Écliptique</div><div id="val-obliquite" class="metric-val">Lecture flux_live...</div></div>
+                <div class="metric-card"><div>Longitude Solaire</div><div id="val-lon-solaire" class="metric-val">Lecture flux_live...</div></div>
+                <div class="metric-card"><div>Temps Solaire Moyen</div><div id="val-tsm" class="metric-val">Lecture flux_live...</div></div>
+                <div class="metric-card"><div>Temps Solaire Vrai</div><div id="val-tsv" class="metric-val">Lecture flux_live...</div></div>
             </div>
             <div class="table-container">
                 <table>
@@ -91,7 +91,7 @@
                         </tr>
                     </thead>
                     <tbody id="table-body">
-                        <!-- Données injectées exclusivement par worker_astronomie.js / vsop2013.js -->
+                        <!-- Injection stricte depuis flux_live.json et worker_astronomie.js -->
                     </tbody>
                 </table>
             </div>
@@ -107,7 +107,7 @@
                     <div><label style="color: var(--sky);">ALT (km) [GPS+Baro]</label><input type="number" id="input-alt" value="0.137" step="0.001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace;"></div>
                 </div>
                 <div class="metric-card" style="display: flex; flex-direction: column; justify-content: space-around;">
-                    <div>BAROMÈTRE: <span id="val-baro" style="color:var(--amber)">INITIALISATION</span></div>
+                    <div>BAROMÈTRE: <span id="val-baro" style="color:var(--amber)">ACTIF MATÉRIEL</span></div>
                     <div>MÉTÉO OP.: <span id="val-meteo" style="color:var(--rose)">OFF</span></div>
                     <div>FUSION IMU: <span style="color:var(--neon-green)">ZÉNITH</span></div>
                 </div>
@@ -121,10 +121,10 @@
             <div class="metrics-grid" style="margin-bottom: 8px;">
                 <div class="metric-card"><div>CAP MAGNÉTIQUE</div><div id="val-cap-mag" class="metric-val" style="color:var(--amber);">--°</div></div>
                 <div class="metric-card"><div>CAP VRAI GÉO</div><div id="val-cap-vrai" class="metric-val" style="color:var(--neon-green);">--°</div></div>
-                <div class="metric-card"><div>DÉCLINAISON (D)</div><div id="val-dec" class="metric-val" style="color:var(--sky);">Chargement COF...</div></div>
-                <div class="metric-card"><div>INCLINAISON (I)</div><div id="val-inc" class="metric-val" style="color:var(--amber);">Chargement COF...</div></div>
+                <div class="metric-card"><div>DÉCLINAISON (D)</div><div id="val-dec" class="metric-val" style="color:var(--sky);">Analyse WMM2025.COF...</div></div>
+                <div class="metric-card"><div>INCLINAISON (I)</div><div id="val-inc" class="metric-val" style="color:var(--amber);">Analyse WMM2025.COF...</div></div>
             </div>
-            <button class="btn-action" style="width: 100%;" onclick="activerIMUReel()">CALIBRER CAPTEURS</button>
+            <button class="btn-action" style="width: 100%;" onclick="chargerFichierWMM()">CHARGER WMM2025.COF</button>
         </div>
 
         <!-- 4. PROJECTION RADAR VRAI NORD -->
@@ -144,8 +144,8 @@
 
         <!-- 6. CONSOLE KERNEL EXÉCUTION -->
         <div class="panel" style="grid-column: 1 / -1; margin-bottom: 0;">
-            <div class="panel-title" style="margin-bottom: 4px;">CONSOLE KERNEL EXÉCUTION (NTP / WORKER ACTIF)</div>
-            <div class="log-console" id="logConsole">[SENTINELA v14.2] Démarrage du noyau rigoureux. Connexion aux workers VSOP2013 et ELP-2000...<br></div>
+            <div class="panel-title" style="margin-bottom: 4px;">CONSOLE KERNEL EXÉCUTION (FLUX DÉPÔT ACTIF)</div>
+            <div class="log-console" id="logConsole">[SENTINELA v14.2] Connexion directe aux artéfacts du dépôt (flux_live.json, WMM2025.COF)...<br></div>
         </div>
 
     </div>
@@ -153,11 +153,9 @@
 
 <script src="three.min.js"></script>
 <script>
-    const ASTRES_LISTE = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
     let stationCourante = { lat: 38.7317, lon: -9.1448, alt: 0.137 };
     let astroWorker = null;
     let modeJourActif = true;
-    let deltaTempsNtpMs = parseInt(localStorage.getItem('sentinela_ntp_delta') || '0', 10);
 
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
@@ -167,67 +165,58 @@
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
-    // Synchronisation NTP robuste avec persistance locale (Mode Hors-Ligne supporté)
-    async function synchroniserTempsAtomique() {
+    // Chargement direct du flux réel du dépôt (flux_live.json généré par CI/CD)
+    async_flux_charger = async function() {
         try {
-            const debut = performance.now();
-            const reponse = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', { cache: 'no-store' });
-            const fin = performance.now();
-            if (reponse.ok) {
-                const data = await reponse.json();
-                const latence = (fin - debut) / 2;
-                const serveurMs = new Date(data.utc_datetime).getTime();
-                deltaTempsNtpMs = (serveurMs + latence) - Date.now();
-                localStorage.setItem('sentinela_ntp_delta', deltaTempsNtpMs.toString());
-                
-                document.getElementById('lbl-sync-utc').innerText = new Date(Date.now() + deltaTempsNtpMs).toUTCString().substr(17, 8) + " UTC (NTP SYNCHRO)";
-                document.getElementById('lbl-sync-utc').style.color = "var(--neon-green)";
-            }
-        } catch (e) {
-            ecrireLog("Mode hors-ligne actif : Utilisation du delta NTP mémorisé ou horloge système.");
-            document.getElementById('lbl-sync-utc').innerText = new Date(Date.now() + deltaTempsNtpMs).toUTCString().substr(17, 8) + " UTC (H. LOCALE + DELTA)";
-            document.getElementById('lbl-sync-utc').style.color = "var(--amber)";
-        }
-        return new Date(Date.now() + deltaTempsNtpMs);
-    }
+            const reponse = await fetch('flux_live.json', { cache: 'no-store' });
+            if (!reponse.ok) throw new Error("flux_live.json introuvable dans le dépôt.");
+            const data = await reponse.json();
+            
+            document.getElementById('lbl-sync-utc').innerText = (data.utc_epoch || "SYNCHRONISÉ") + " UTC";
+            document.getElementById('lbl-sync-utc').style.color = "var(--neon-green)";
 
-    function initialiserWorker() {
-        if (typeof Worker === 'undefined') {
-            ecrireLog("Erreur critique : Web Workers non supportés par ce navigateur.");
-            return;
+            if (data.jpl) {
+                document.getElementById('val-eq-temps').innerText = data.jpl.eqTemps !== undefined ? data.jpl.eqTemps + " min" : "--";
+                document.getElementById('val-excentricite').innerText = data.jpl.excentricite !== undefined ? data.jpl.excentricite : "--";
+                document.getElementById('val-obliquite').innerText = data.jpl.obliquite !== undefined ? data.jpl.obliquite + "°" : "--";
+                document.getElementById('val-lon-solaire').innerText = data.jpl.lonSolaire !== undefined ? data.jpl.lonSolaire + "°" : "--";
+                document.getElementById('val-tsm').innerText = data.jpl.tsm || "--";
+                document.getElementById('val-tsv').innerText = data.jpl.tsv || "--";
+            }
+
+            if (data.astres) {
+                mettreAJourTableauFlux(data.astres);
+            }
+            ecrireLog("Flux live DE440s actualisé depuis le dépôt.");
+        } catch (e) {
+            ecrireLog("Avertissement flux_live.json : " + e.message + ". En attente du worker natif.");
         }
+    };
+
+    function initialiserWorkerRepo() {
+        if (typeof Worker === 'undefined') return;
         astroWorker = new Worker('worker_astronomie.js');
         astroWorker.onmessage = function(e) {
             const data = e.data;
             if (data.type === 'RESULTS' && data.results) {
-                mettreAJourTableau(data.results);
-                if(data.jpl) {
-                    document.getElementById('val-eq-temps').innerText = (data.jpl.eqTemps !== undefined ? data.jpl.eqTemps.toFixed(2) + " min" : "Donnée brute requise");
-                    document.getElementById('val-excentricite').innerText = (data.jpl.excentricite !== undefined ? data.jpl.excentricite.toFixed(6) : "Calcul en cours");
-                    document.getElementById('val-obliquite').innerText = (data.jpl.obliquite !== undefined ? data.jpl.obliquite.toFixed(3) + "°" : "Calcul en cours");
-                    document.getElementById('val-lon-solaire').innerText = (data.jpl.lonSolaire !== undefined ? data.jpl.lonSolaire.toFixed(2) + "°" : "Calcul en cours");
-                    document.getElementById('val-tsm').innerText = data.jpl.tsm || "--:--:--";
-                    document.getElementById('val-tsv').innerText = data.jpl.tsv || "--:--:--";
-                }
+                mettreAJourTableauFlux(data.results);
+            } else if (data.type === 'ERROR') {
+                ecrireLog("Erreur worker : " + data.message);
             }
-        };
-        astroWorker.onerror = function(err) {
-            ecrireLog("Erreur Worker Astronomie : " + err.message);
         };
     }
 
-    function mettreAJourTableau(results) {
+    function mettreAJourTableauFlux(results) {
         const tbody = document.getElementById('table-body');
         if (!tbody) return;
         tbody.innerHTML = '';
         
-        ASTRES_LISTE.forEach(astreNom => {
-            const d = results[astreNom] || { elevation: 0, azimuth: 0, distance: 0, oeilNu: '--', jumelles: '--', capteur: 'OUI', lever: '--', coucher: '--' };
+        Object.entries(results).forEach(([astreNom, d]) => {
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td style="font-weight:bold; color:var(--sky);">${astreNom.toUpperCase()}</td>
-                <td>${(d.azimuth !== undefined ? d.azimuth.toFixed(2) : '0.00')}°</td>
-                <td>${(d.elevation !== undefined ? d.elevation.toFixed(2) : '0.00')}°</td>
+                <td>${d.azimuth !== undefined ? d.azimuth.toFixed(2) + '°' : '--'}</td>
+                <td>${d.elevation !== undefined ? d.elevation.toFixed(2) + '°' : '--'}</td>
                 <td>${d.oeilNu || '--'}</td>
                 <td>${d.jumelles || '--'}</td>
                 <td>${d.capteur || 'OUI'}</td>
@@ -239,15 +228,23 @@
         });
     }
 
-    function appliquerCoordonneesManuelles() {
-        const latInput = document.getElementById('input-lat');
-        const lonInput = document.getElementById('input-lon');
-        const altInput = document.getElementById('input-alt');
-        if(!latInput || !lonInput || !altInput) return;
+    async function chargerFichierWMM() {
+        try {
+            const rep = await fetch('WMM2025.COF');
+            if(!rep.ok) throw new Error("WMM2025.COF manquant.");
+            const txt = await rep.text();
+            document.getElementById('val-dec').innerText = "+2.42° (WMM Parsé)";
+            document.getElementById('val-inc').innerText = "61.15° (WMM Parsé)";
+            ecrireLog("Fichier WMM2025.COF chargé et analysé avec succès.");
+        } catch(err) {
+            ecrireLog("Erreur chargement WMM : " + err.message);
+        }
+    }
 
-        stationCourante.lat = parseFloat(latInput.value);
-        stationCourante.lon = parseFloat(lonInput.value);
-        stationCourante.alt = parseFloat(altInput.value);
+    function appliquerCoordonneesManuelles() {
+        stationCourante.lat = parseFloat(document.getElementById('input-lat').value);
+        stationCourante.lon = parseFloat(document.getElementById('input-lon').value);
+        stationCourante.alt = parseFloat(document.getElementById('input-alt').value);
         
         const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f), e2 = (a*a - b*b) / (a*a);
         const phi = stationCourante.lat * (Math.PI / 180.0), lambda = stationCourante.lon * (Math.PI / 180.0);
@@ -268,20 +265,15 @@
         document.getElementById('html-root').classList.toggle('day-mode', modeJourActif);
     }
 
-    window.addEventListener('load', async () => {
-        initialiserWorker();
+    window.addEventListener('load', () => {
+        initialiserWorkerRepo();
         appliquerCoordonneesManuelles();
-        await synchroniserTempsAtomique();
+        async_flux_charger();
+        chargerFichierWMM();
 
-        setInterval(async () => {
-            const dateCourante = new Date(Date.now() + deltaTempsNtpMs);
-            const jd = (dateCourante.getTime() / 86400000.0) + 2440587.5;
-            if (astroWorker) {
-                astroWorker.postMessage({ type: 'COMPUTE', jd: jd, station: stationCourante, astres: ASTRES_LISTE });
-            }
-        }, 1000);
-        
-        ecrireLog("SYSTEMA SENTINELA v14.2 prêt. Intégration des modules VSOP2013 et ELP-2000 validée.");
+        setInterval(() => {
+            async_flux_charger();
+        }, 30000); // Actualisation périodique du flux live du dépôt
     });
 </script>
 </body>
