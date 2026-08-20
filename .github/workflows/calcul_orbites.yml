@@ -1,49 +1,28 @@
-name: Noyau Déterministe DE440s Corrigé
-
-on:
-  schedule:
-    - cron: '0 0 * * *'
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-jobs:
-  run-engine:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Récupération du code source
-      uses: actions/checkout@v4
-
-    - name: Configuration de Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        cache: 'pip'
-
-    - name: Installation des dépendances
-      run: |
-        python -m pip install --upgrade pip
-        pip install numpy skyfield
-
-    - name: Cache de l'éphéméride de440s.bsp
+- name: Téléchargement ou Cache de l'éphéméride de440s.bsp
       uses: actions/cache@v4
       with:
         path: de440s.bsp
-        key: bsp-de440s-v2
+        key: bsp-de440s-v3
+
+    - name: Vérification et Téléchargement de secours DE440s
+      run: |
+        if [ ! -f "de440s.bsp" ]; then
+          echo "Téléchargement de l'éphéméride DE440s..."
+          curl -L -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || true
+        fi
 
     - name: Exécution du Moteur Topocentrique
       run: |
-        python dynamic_multiphysics_engine.py 43.284356 5.358507 99.3100 15.0
+        python dynamic_multiphysics_engine.py 38.7317 -9.1448 0.137 15.0
 
-    - name: Commit et Push
+    - name: Commit et Push Sécurisé
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add flux_live.json
         if ! git diff-index --quiet HEAD --; then
-          git commit -m "Actualisation flux_live.json [Topocentrique DE440s Corrigé]"
-          git push
+          git commit -m "Actualisation automatique de flux_live.json [CI]"
+          git push origin main || git push
         else
           echo "Aucune variation détectée."
         fi
