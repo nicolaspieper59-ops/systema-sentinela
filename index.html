@@ -166,32 +166,36 @@
     }
 
     // Chargement direct du flux réel du dépôt (flux_live.json généré par CI/CD)
-    async_flux_charger = async function() {
-        try {
-            const reponse = await fetch('flux_live.json', { cache: 'no-store' });
-            if (!reponse.ok) throw new Error("flux_live.json introuvable dans le dépôt.");
-            const data = await reponse.json();
-            
-            document.getElementById('lbl-sync-utc').innerText = (data.utc_epoch || "SYNCHRONISÉ") + " UTC";
-            document.getElementById('lbl-sync-utc').style.color = "var(--neon-green)";
+async function async_flux_charger() {
+    try {
+        const reponse = await fetch('flux_live.json', { cache: 'no-store' });
+        if (!reponse.ok) throw new Error("flux_live.json introuvable.");
+        const data = await reponse.json();
+        
+        // Affichage de l'horodatage UTC du dépôt
+        document.getElementById('lbl-sync-utc').innerText = (data.utc_epoch || data.utc || "SYNCHRONISÉ") + " UTC";
+        document.getElementById('lbl-sync-utc').style.color = "var(--neon-green)";
 
-            if (data.jpl) {
-                document.getElementById('val-eq-temps').innerText = data.jpl.eqTemps !== undefined ? data.jpl.eqTemps + " min" : "--";
-                document.getElementById('val-excentricite').innerText = data.jpl.excentricite !== undefined ? data.jpl.excentricite : "--";
-                document.getElementById('val-obliquite').innerText = data.jpl.obliquite !== undefined ? data.jpl.obliquite + "°" : "--";
-                document.getElementById('val-lon-solaire').innerText = data.jpl.lonSolaire !== undefined ? data.jpl.lonSolaire + "°" : "--";
-                document.getElementById('val-tsm').innerText = data.jpl.tsm || "--";
-                document.getElementById('val-tsv').innerText = data.jpl.tsv || "--";
-            }
+        // Récupération des paramètres JPL (gestion des variantes de nommage des clés)
+        const jpl = data.jpl || data.parametres_jpl || data;
+        document.getElementById('val-eq-temps').innerText = (jpl.eqTemps !== undefined ? jpl.eqTemps : (jpl.equation_temps ?? "--")) + " min";
+        document.getElementById('val-excentricite').innerText = jpl.excentricite !== undefined ? jpl.excentricite : (jpl.excentricity ?? "--");
+        document.getElementById('val-obliquite').innerText = (jpl.obliquite !== undefined ? jpl.obliquite : (jpl.obliquity ?? "--")) + "°";
+        document.getElementById('val-lon-solaire').innerText = (jpl.lonSolaire !== undefined ? jpl.lonSolaire : (jpl.solar_longitude ?? "--")) + "°";
+        document.getElementById('val-tsm').innerText = jpl.tsm || jpl.mean_solar_time || "--";
+        document.getElementById('val-tsv').innerText = jpl.tsv || jpl.true_solar_time || "--";
 
-            if (data.astres) {
-                mettreAJourTableauFlux(data.astres);
-            }
-            ecrireLog("Flux live DE440s actualisé depuis le dépôt.");
-        } catch (e) {
-            ecrireLog("Avertissement flux_live.json : " + e.message + ". En attente du worker natif.");
+        // Récupération et affichage des astres (qu'il s'agisse d'un objet ou d'un tableau)
+        const astresSource = data.astres || data.bodies || data.ephemerides;
+        if (astresSource) {
+            mettreAJourTableauFlux(astresSource);
         }
-    };
+        
+        ecrireLog("Flux live DE440s synchronisé et injecté avec succès.");
+    } catch (e) {
+        ecrireLog("Erreur critique parsing flux_live.json : " + e.message);
+    }
+    }
 
     function initialiserWorkerRepo() {
         if (typeof Worker === 'undefined') return;
