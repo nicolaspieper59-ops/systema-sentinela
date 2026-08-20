@@ -172,31 +172,15 @@ async function async_flux_charger() {
         if (!reponse.ok) throw new Error("flux_live.json introuvable.");
         const data = await reponse.json();
         
-        // Affichage de l'horodatage UTC du dépôt
-        document.getElementById('lbl-sync-utc').innerText = (data.utc_epoch || data.utc || "SYNCHRONISÉ") + " UTC";
-        document.getElementById('lbl-sync-utc').style.color = "var(--neon-green)";
-
-        // Récupération des paramètres JPL (gestion des variantes de nommage des clés)
-        const jpl = data.jpl || data.parametres_jpl || data;
-        document.getElementById('val-eq-temps').innerText = (jpl.eqTemps !== undefined ? jpl.eqTemps : (jpl.equation_temps ?? "--")) + " min";
-        document.getElementById('val-excentricite').innerText = jpl.excentricite !== undefined ? jpl.excentricite : (jpl.excentricity ?? "--");
-        document.getElementById('val-obliquite').innerText = (jpl.obliquite !== undefined ? jpl.obliquite : (jpl.obliquity ?? "--")) + "°";
-        document.getElementById('val-lon-solaire').innerText = (jpl.lonSolaire !== undefined ? jpl.lonSolaire : (jpl.solar_longitude ?? "--")) + "°";
-        document.getElementById('val-tsm').innerText = jpl.tsm || jpl.mean_solar_time || "--";
-        document.getElementById('val-tsv').innerText = jpl.tsv || jpl.true_solar_time || "--";
-
-        // Récupération et affichage des astres (qu'il s'agisse d'un objet ou d'un tableau)
-        const astresSource = data.astres || data.bodies || data.ephemerides;
-        if (astresSource) {
-            mettreAJourTableauFlux(astresSource);
+        // Transmission de l'étalonnage au Worker au lieu d'afficher du brut
+        if (astroWorker) {
+            astroWorker.postMessage({ type: 'INIT_CALIBRATION', payload: data });
         }
-        
-        ecrireLog("Flux live DE440s synchronisé et injecté avec succès.");
+        ecrireLog("Étalonnage DE440s injecté dans le noyau de calcul.");
     } catch (e) {
-        ecrireLog("Erreur critique parsing flux_live.json : " + e.message);
+        ecrireLog("Mode autonome activé (sans étalonnage externe).");
     }
     }
-
     function initialiserWorkerRepo() {
         if (typeof Worker === 'undefined') return;
         astroWorker = new Worker('worker_astronomie.js');
