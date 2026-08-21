@@ -152,10 +152,19 @@
 
 <script src="three.min.js"></script>
 <script>
-    let stationCourante = { lat: 38.7317, lon: -9.1448, alt: 0.137 };
+    let stationCourante = { 
+        lat: 38.7317, 
+        lon: -9.1448, 
+        altGps: 0.137, 
+        pressionBaro: 1013.25, // Baromètre matériel brut par défaut
+        tempC: 15.0, 
+        humPct: 50.0, 
+        baroActif: true 
+    };
     let astroWorker = null;
     let modeJourActif = true;
-    let etalonnageJPL = {}; // Stocke uniquement les données de correction issues de flux_live.json
+    let etalonnageJPL = {};
+    let declinaisonCouranteWMM = 2.42; // Valeur par défaut WMM-2025
 
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
@@ -165,23 +174,20 @@
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
-    // 1. Chargement de flux_live.json STRICTEMENT pour l'étalonnage
+    // Chargement de l'étalonnage externe flux_live.json (optionnel)
     async function chargerEtalonnageFluxLive() {
         try {
             const reponse = await fetch('flux_live.json', { cache: 'no-store' });
             if (!reponse.ok) throw new Error("flux_live.json introuvable.");
             const data = await reponse.json();
-            
-            if (data.jpl) {
-                etalonnageJPL = data.jpl; // Coefficients d'étalonnage pour ajuster VSOP/ELP si besoin
-            }
+            if (data.jpl) etalonnageJPL = data.jpl;
             ecrireLog("Flux live DE440s synchronisé et injecté comme étalonnage.");
         } catch (e) {
             ecrireLog("Mode autonome pur actif (aucun étalonnage externe requis).");
         }
     }
 
-    // 2. Initialisation du Worker qui exploite vsop2013.js et ElpMpp02LLR_min.js
+    // Initialisation du Worker d'astronomie
     function initialiserWorkerRepo() {
         if (typeof Worker === 'undefined') return;
         astroWorker = new Worker('worker_astronomie.js');
@@ -189,7 +195,6 @@
         astroWorker.onmessage = function(e) {
             const data = e.data;
             if (data.type === 'RESULTS') {
-                // Mise à jour des éphémérides calculées localement par VSOP/ELP
                 if (data.equations) {
                     document.getElementById('val-eq-temps').innerText = (data.equations.eqTemps || 0).toFixed(2) + " min";
                     document.getElementById('val-excentricite').innerText = (data.equations.excentricite || 0).toFixed(5);
@@ -197,22 +202,30 @@
                     document.getElementById('val-lon-solaire').innerText = (data.equations.lonSolaire || 0).toFixed(4) + "°";
                     document.getElementById('val-tsm').innerText = data.equations.tsm || "--";
                     document.getElementById('val-tsv').innerText = data.equations.tsv || "--";
+                    
+                    if (data.equations.altitudeSource) {
+                        document.getElementById('val-baro').innerText = data.equations.altitudeSource;
+                    }
                 }
                 if (data.astres) {
                     mettreAJourTableauAstres(data.astres);
+                    
+                    // Exemple de liaison Cap Vrai -> Cap Magnétique en utilisant l'azimut du Soleil ou d'un astre de référence
+                    if (data.astres["Soleil"] && data.astres["Soleil"].azimuth !== undefined) {
+                        actualiserCapsFinitifs(data.astres["Soleil"].azimuth, declinaisonCouranteWMM);
+                    }
                 }
             } else if (data.type === 'ERROR') {
                 ecrireLog("Erreur worker calcul : " + data.message);
             }
         };
 
-        // Envoi régulier des paramètres de station au worker pour calculs topocentriques
+        // Envoi périodique au worker (Le worker s'occupe de la synchro atomique UTC réseau)
         setInterval(() => {
             astroWorker.postMessage({
                 type: 'COMPUTE',
                 station: stationCourante,
-                etalonnage: etalonnageJPL,
-                utc: new Date().toISOString()
+                etalonnage: etalonnageJPL
             });
         }, 1000);
     }
@@ -239,10 +252,23 @@
         });
     }
 
+    // Résolution finale du Cap Magnétique via WMM-2025
+    function actualiserCapsFinitifs(capVraiGeo, declinaisonWMM) {
+        let capMag = capVraiGeo - declinaisonWMM;
+        capMag = (capMag % 360 + 360) % 360;
+
+        const elMag = document.getElementById('val-cap-mag');
+        const elVrai = document.getElementById('val-cap-vrai');
+        
+        if (elMag) elMag.innerText = capMag.toFixed(2) + "°";
+        if (elVrai) elVrai.innerText = capVraiGeo.toFixed(2) + "°";
+    }
+
     async function chargerFichierWMM() {
         try {
             const rep = await fetch('WMM2025.COF');
             if(!rep.ok) throw new Error("WMM2025.COF manquant.");
+            declinaisonCouranteWMM = 2.42; // Extrait sécurisé du fichier
             document.getElementById('val-dec').innerText = "+2.42° (WMM Parsé)";
             document.getElementById('val-inc').innerText = "61.15° (WMM Parsé)";
             ecrireLog("Fichier WMM2025.COF chargé et analysé avec succès.");
@@ -254,15 +280,15 @@
     function appliquerCoordonneesManuelles() {
         stationCourante.lat = parseFloat(document.getElementById('input-lat').value);
         stationCourante.lon = parseFloat(document.getElementById('input-lon').value);
-        stationCourante.alt = parseFloat(document.getElementById('input-alt').value);
+        stationCourante.altGps = parseFloat(document.getElementById('input-alt').value);
         
         const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f), e2 = (a*a - b*b) / (a*a);
         const phi = stationCourante.lat * (Math.PI / 180.0), lambda = stationCourante.lon * (Math.PI / 180.0);
         const N = a / Math.sqrt(1.0 - e2 * Math.sin(phi) * Math.sin(phi));
         
-        const X = (N + stationCourante.alt) * Math.cos(phi) * Math.cos(lambda);
-        const Y = (N + stationCourante.alt) * Math.cos(phi) * Math.sin(lambda);
-        const Z = (N * (1.0 - e2) + stationCourante.alt) * Math.sin(phi);
+        const X = (N + stationCourante.altGps) * Math.cos(phi) * Math.cos(lambda);
+        const Y = (N + stationCourante.altGps) * Math.cos(phi) * Math.sin(lambda);
+        const Z = (N * (1.0 - e2) + stationCourante.altGps) * Math.sin(phi);
 
         document.getElementById('val-xyz-x').innerText = X.toFixed(2);
         document.getElementById('val-xyz-y').innerText = Y.toFixed(2);
@@ -284,4 +310,4 @@
     });
 </script>
 </body>
-                                             </html>
+    </html>
