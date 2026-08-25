@@ -1,0 +1,38 @@
+let baseChebyshevData = null;
+
+// Chargement initial du fichier binaire des coefficients
+async function chargerMatriceChebyshev() {
+    try {
+        const response = await fetch('chebyshev_data.bin');
+        const buffer = await response.arrayBuffer();
+        
+        // Exemple de parsing selon la structure binaire définie (JSON ou TypedArrays)
+        baseChebyshevData = deserialiserChebyshevBinaire(buffer);
+        console.log("[SENTINELA] Matrice Chebyshev chargée en mémoire.");
+    } catch (err) {
+        console.error("[SENTINELA] Erreur chargement binaire Chebyshev :", err);
+    }
+}
+
+/**
+ * Recherche dichotomique du tronçon temporel valide.
+ */
+function trouverTronconValide(astreNom, tJulian) {
+    const troncons = baseChebyshevData[astreNom];
+    let low = 0;
+    let high = troncons.length - 1;
+
+    while (low <= high) {
+        const mid = (low + high) >> 1;
+        const t = troncons[mid];
+
+        if (tJulian >= t.tStart && tJulian <= t.tEnd) {
+            return t;
+        } else if (tJulian < t.tStart) {
+            high = mid - 1;
+        } else {
+            low = mid + 1;
+        }
+    }
+    return null; // Hors de la plage d'éphémérides
+}
