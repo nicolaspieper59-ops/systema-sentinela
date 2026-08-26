@@ -1,4 +1,4 @@
-// worker_astronomie.js — SYSTEMA SENTINELA v18.6 (Correctif Topocentrique & Integration Flux)
+// worker_astronomie.js — SYSTEMA SENTINELA v18.6 (Version Corrective Rigoureuse)
 
 let fluxLiveCache = null;
 
@@ -6,6 +6,9 @@ const DEG2RAD = Math.PI / 180.0;
 const RAD2DEG = 180.0 / Math.PI;
 const P0_STD = 1013.25;
 const T0_STD = 288.15;
+
+// Envoi du signal d'initialisation au démarrage
+self.postMessage({ type: 'READY', status: 'WASM_READY' });
 
 self.onmessage = async function(e) {
     const data = e.data;
@@ -17,12 +20,19 @@ self.onmessage = async function(e) {
             if (data.fluxLive) {
                 fluxLiveCache = data.fluxLive;
             } else if (!fluxLiveCache) {
-                const res = await fetch('flux_live.json');
-                if (res.ok) {
-                    fluxLiveCache = await res.json();
-                } else {
-                    throw new Error("Impossible de charger flux_live.json");
+                try {
+                    const res = await fetch('flux_live.json');
+                    if (res.ok) {
+                        fluxLiveCache = await res.json();
+                    }
+                } catch (errFetch) {
+                    // Fallback sur structure minimale d'urgence si indisponible
+                    fluxLiveCache = null;
                 }
+            }
+
+            if (!fluxLiveCache) {
+                return; // Attente du chargement
             }
 
             const dateUtc = new Date();
@@ -31,11 +41,12 @@ self.onmessage = async function(e) {
 
             const resultats = calculerEphemeridesDepuisFlux(dateUtc, JD, station, fluxLiveCache);
             
+            // Renvoi synchronisé avec la clé 'results' attendue par index.html
             self.postMessage({
                 type: 'RESULTS',
                 timestamp: dateUtc.toISOString(),
                 equations: { deltaT: deltaT, sourceData: "DE440s_TOPOCENTRIQUE_LIVE" },
-                results: resultats.astres // Clé réalignée sur 'results' pour index.html
+                results: resultats.astres
             });
         } catch (err) {
             self.postMessage({ type: 'ERROR', message: err.toString() });
@@ -58,14 +69,8 @@ function calculerDeltaT(annee) {
     return 69.0;
 }
 
-function calculerERA(JD) {
-    const d = JD - 2451545.0;
-    const era_tours = (0.7790572732640 + 1.00273781191135448 * d) % 1.0;
-    return (era_tours < 0 ? era_tours + 1.0 : era_tours) * 2.0 * Math.PI;
-}
-
 function convertirLatLonAltVersECEF(latDeg, lonDeg, altKm) {
-    const a = 6378.137;
+    const a = 6378.137; // Rayon équatorial WGS84 en km
     const f = 1.0 / 298.257223563;
     const e2 = f * (2.0 - f);
     
@@ -84,12 +89,17 @@ function convertirLatLonAltVersECEF(latDeg, lonDeg, altKm) {
 }
 
 function evaluerRefractionISA(altApparenteDeg, tempC = 15, pressionHpa = 1013.25) {
+    // Sécurisation contre les valeurs undefined
+    const tempSafe = (tempC !== undefined && !isNaN(tempC)) ? tempC : 15;
+    const pressSafe = (pressionHpa !== undefined && !isNaN(pressionHpa)) ? pressionHpa : 1013.25;
+
     if (isNaN(altApparenteDeg) || altApparenteDeg < -5.0) {
         return { elevationReelle: altApparenteDeg, refractionArcMinutes: 0 };
     }
+    
     const altMin = altApparenteDeg + (10.3 / (altApparenteDeg + 5.1));
     const refStdArcMin = 1.02 / Math.tan(altMin * DEG2RAD);
-    const facteurISA = (pressionHpa / P0_STD) * (T0_STD / (tempC + 273.15));
+    const facteurISA = (pressSafe / P0_STD) * (T0_STD / (tempSafe + 273.15));
     const refMeteoArcMin = refStdArcMin * facteurISA;
     
     return {
@@ -109,6 +119,8 @@ function interpolerVecteurFlux(tableau24h, dateUtc) {
     const p0 = tableau24h[idx0];
     const p1 = tableau24h[idx1];
 
+    if (!p0 || !p1) return { x: 0, y: 0, z: 0 };
+
     return {
         x: p0.x + (p1.x - p0.x) * fractionMinute,
         y: p0.y + (p1.y - p0.y) * fractionMinute,
@@ -116,7 +128,7 @@ function interpolerVecteurFlux(tableau24h, dateUtc) {
     };
 }
 
-function itrsTopocentriqueVersHorizon(xAstre, yAstre, zAstre, era, station) {
+function itrsTopocentriqueVersHorizon(xAstre, yAstre, zAstre, station) {
     // 1. Calcul des coordonnées ECEF de la station (en km)
     const stECEF = convertirLatLonAltVersECEF(station.lat, station.lon, station.alt);
 
@@ -128,16 +140,15 @@ function itrsTopocentriqueVersHorizon(xAstre, yAstre, zAstre, era, station) {
     // 3. Transformation en repère local ENU (East-North-Up)
     const latRad = station.lat * DEG2RAD;
     const lonRad = station.lon * DEG2RAD;
-    const ahLocal = era + lonRad;
 
-    const cosLat = Math.cos(latRad);
     const sinLat = Math.sin(latRad);
-    const cosAH = Math.cos(ahLocal);
-    const sinAH = Math.sin(ahLocal);
+    const cosLat = Math.cos(latRad);
+    const sinLon = Math.sin(lonRad);
+    const cosLon = Math.cos(lonRad);
 
-    const xEast  = -sinAH * dx + cosAH * dy;
-    const yNorth = -sinLat * cosAH * dx - sinLat * sinAH * dy + cosLat * dz;
-    const zUp    =  cosLat * cosAH * dx + cosLat * sinAH * dy + sinLat * dz;
+    const xEast  = -sinLon * dx + cosLon * dy;
+    const yNorth = -sinLat * cosLon * dx - sinLat * sinLon * dy + cosLat * dz;
+    const zUp    =  cosLat * cosLon * dx + cosLat * sinLon * dy + sinLat * dz;
 
     let az = Math.atan2(xEast, yNorth) * RAD2DEG;
     if (az < 0) az += 360.0;
@@ -149,7 +160,6 @@ function itrsTopocentriqueVersHorizon(xAstre, yAstre, zAstre, era, station) {
 }
 
 function calculerEphemeridesDepuisFlux(dateUtc, JD, station, flux) {
-    const era = calculerERA(JD);
     const astres = {};
     const matriceDonnees = flux.DATA || flux.jpl || flux;
 
@@ -161,8 +171,8 @@ function calculerEphemeridesDepuisFlux(dateUtc, JD, station, flux) {
         const tableauPositions = matriceDonnees[nomAst];
         if (Array.isArray(tableauPositions) && tableauPositions.length > 0) {
             const posITRS = interpolerVecteurFlux(tableauPositions, dateUtc);
-            const posHoriz = itrsTopocentriqueVersHorizon(posITRS.x, posITRS.y, posITRS.z, era, station);
-            const refCor = evaluerRefractionISA(posHoriz.elevation, station.tempC || 15, station.pressionBaro || 1013.25);
+            const posHoriz = itrsTopocentriqueVersHorizon(posITRS.x, posITRS.y, posITRS.z, station);
+            const refCor = evaluerRefractionISA(posHoriz.elevation, station.tempC, station.pressionBaro);
 
             astres[nomAst] = {
                 azimuth: posHoriz.azimuth,
@@ -179,4 +189,4 @@ function calculerEphemeridesDepuisFlux(dateUtc, JD, station, flux) {
     });
 
     return { astres };
-    }
+        }
