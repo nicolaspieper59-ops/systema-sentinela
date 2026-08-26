@@ -33,39 +33,36 @@ jobs:
           python -m pip install --upgrade pip
           pip install skyfield numpy
 
-      - name: Compile C++ to WebAssembly
+      - name: Build WebAssembly Module
         run: |
-          echo "Vérification du fichier src/astro_engine.cpp..."
-          if [ -f "src/astro_engine.cpp" ]; then
-            emcc src/astro_engine.cpp -O3 -std=c++17 \
-              -s WASM=1 \
-              -s FORCE_FILESYSTEM=1 \
-              -s ALLOW_MEMORY_GROWTH=1 \
-              -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
-              -o wasm_astronomie.js
-            echo "Compilation Wasm réussie."
-          else
-            echo "ERREUR: src/astro_engine.cpp introuvable."
-            exit 1
-          fi
+          echo "=== Lancement Emscripten ==="
+          emcc src/astro_engine.cpp -O2 -std=c++17 \
+            -s WASM=1 \
+            -s FORCE_FILESYSTEM=1 \
+            -s ALLOW_MEMORY_GROWTH=1 \
+            -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
+            -o wasm_astronomie.js
 
-      - name: Téléchargement sécurisé du Kernel DE440s (Alternative Mirror)
+      - name: Download JPL Kernel
         run: |
-          if [ ! -f "de440s.bsp" ]; then
-            echo "Téléchargement du fichier de440s.bsp depuis le miroir NASA..."
-            curl -sSL -A "Mozilla/5.0" -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || true
-          fi
+          python -c "from skyfield.api import load; load('de440s.bsp')" || true
 
-      - name: Execute Ephemeris Extraction
+      - name: Generate Ephemeris
         run: |
           python dynamic_multiphysics_engine.py 38.7317 -9.1448 137.0
 
-      - name: Commit and Push Updated Artifacts
+      - name: Commit and Push
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
           git add flux_live.json wasm_astronomie.js wasm_astronomie.wasm 2>/devnull || true
           
+          if git diff --staged --quiet; then
+            echo "Aucun fichier modifié."
+          else
+            git commit -m "Build Wasm & Update DE440s flux_live.json [skip ci]"
+            git push origin main
+          fi          
           if git diff --staged --quiet; then
             echo "Aucun fichier modifié à pousser."
           else
