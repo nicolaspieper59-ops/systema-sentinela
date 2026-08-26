@@ -34,11 +34,10 @@ jobs:
       - name: Step 1 - Build Wasm
         run: |
           emcc src/astro_engine.cpp -O3 -std=c++17 \
-            --no-entry \
             -s WASM=1 \
             -s FORCE_FILESYSTEM=1 \
             -s ALLOW_MEMORY_GROWTH=1 \
-            -s EXPORTED_FUNCTIONS='["_calculerDepuisECEF","_calculerPositionTopocentrique","_main"]' \
+            -s EXPORTED_FUNCTIONS='["_calculerDepuisECEF","_calculerPositionTopocentrique"]' \
             -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
             -o wasm_astronomie.js
 
@@ -52,7 +51,7 @@ jobs:
         run: |
           python dynamic_multiphysics_engine.py 38.7317 -9.1448 137.0
 
-      - name: Step 4 - Commit & Push
+      - name: Step 4 - Commit and Push
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
