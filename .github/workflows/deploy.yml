@@ -2,57 +2,44 @@ name: Compilation C++ Wasm et Déploiement PWA
 
 on:
   push:
-    branches: ["main"]
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Récupération du dépôt Git
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Installation du SDK Emscripten
+      - name: Setup Emscripten SDK
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: 'latest'
+          version: 3.1.64
 
-      - name: Compilation C++ vers Wasm
-        run: |
-          mkdir -p build
-          emcc src/astro_engine.cpp -O3 \
-            -s WASM=1 \
-            -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","getValue","_malloc","_free"]' \
-            -s ALLOW_MEMORY_GROWTH=1 \
-            -o build/astro_engine.js
-
-      - name: Copie Intégrale des Ressources du Dépôt
-        run: |
-          mkdir -p build
-          cp index.html build/ || true
-          cp manifest.json build/ || true
-          cp sw.js build/ || true
-          cp *.js build/ 2>/dev/null || true
-          cp *.json build/ 2>/dev/null || true
-          cp *.COF build/ 2>/dev/null || true
-          cp *.csv build/ 2>/dev/null || true
-
-      - name: Configuration de GitHub Pages
-        uses: actions/configure-pages@v4
-
-      - name: Publication de l'Artefact Web
-        uses: actions/upload-pages-artifact@v3
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          path: 'build/'
+          python-version: '3.11'
 
-      - name: Déploiement sur GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install skyfield
+
+      - name: Build WebAssembly Module
+        run: |
+          emcc source_astronomie.cpp -O3 -s WASM=1 -s FORCE_FILESYSTEM=1 -o wasm_astronomie.js
+
+      - name: Generate Live Ephemeris
+        run: |
+          python dynamic_multiphysics_engine.py 38.7317 -9.1448 137.0
+
+      - name: Commit and Deploy Artifacts
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Bot"
+          git add flux_live.json wasm_astronomie.js wasm_astronomie.wasm
+          git commit -m "Build Wasm & Update DE440s flux_live.json [skip ci]" || exit 0
+          git push
