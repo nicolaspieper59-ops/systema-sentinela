@@ -5,6 +5,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+# Permission obligatoire pour autoriser le Bot à pousser flux_live.json et les fichiers WASM
+permissions:
+  contents: write
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -12,6 +16,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Emscripten SDK
         uses: mymindstorm/setup-emsdk@v14
@@ -31,22 +37,19 @@ jobs:
       - name: Build WebAssembly Module
         run: |
           if [ -f "src/astro_engine.cpp" ]; then
-            echo "Début de la compilation Emscripten..."
             emcc src/astro_engine.cpp -O3 -std=c++17 \
               -s WASM=1 \
               -s FORCE_FILESYSTEM=1 \
               -s ALLOW_MEMORY_GROWTH=1 \
               -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
               -o wasm_astronomie.js
-            echo "Compilation Wasm réussie."
           else
-            echo "Erreur : src/astro_engine.cpp est introuvable."
+            echo "Erreur : src/astro_engine.cpp introuvable."
             exit 1
           fi
 
       - name: Generate Live Ephemeris (DE440s)
         run: |
-          echo "Exécution du moteur éphémérides..."
           python dynamic_multiphysics_engine.py 38.7317 -9.1448 137.0
 
       - name: Commit and Push Updated Artifacts
@@ -54,5 +57,10 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
           git add flux_live.json wasm_astronomie.js wasm_astronomie.wasm 2>/dev/null || true
-          git commit -m "Build Wasm & Update DE440s flux_live.json [skip ci]" || exit 0
-          git push
+          
+          if git diff --staged --quiet; then
+            echo "Aucune modification à commiter."
+          else
+            git commit -m "Build Wasm & Update DE440s flux_live.json [skip ci]"
+            git push origin main
+          fi
