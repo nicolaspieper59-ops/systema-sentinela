@@ -174,60 +174,57 @@
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
-    // Chargement de l'étalonnage externe flux_live.json (optionnel)
-    async function chargerEtalonnageFluxLive() {
-        try {
-            const reponse = await fetch('flux_live.json', { cache: 'no-store' });
-            if (!reponse.ok) throw new Error("flux_live.json introuvable.");
-            const data = await reponse.json();
-            if (data.jpl) etalonnageJPL = data.jpl;
-            ecrireLog("Flux live DE440s synchronisé et injecté comme étalonnage.");
-        } catch (e) {
-            ecrireLog("Mode autonome pur actif (aucun étalonnage externe requis).");
-        }
-    }
-
-    // Initialisation du Worker d'astronomie
-    function initialiserWorkerRepo() {
-        if (typeof Worker === 'undefined') return;
-        astroWorker = new Worker('worker_astronomie.js');
+// Synchronisation complète des flux et correction de l'envoi au worker
+async function chargerEtalonnageFluxLive() {
+    try {
+        const reponse = await fetch('flux_live.json', { cache: 'no-store' });
+        if (!reponse.ok) throw new Error("flux_live.json introuvable.");
+        const data = await reponse.json();
         
-        astroWorker.onmessage = function(e) {
-            const data = e.data;
-            if (data.type === 'RESULTS') {
-                if (data.equations) {
-                    document.getElementById('val-eq-temps').innerText = (data.equations.eqTemps || 0).toFixed(2) + " min";
-                    document.getElementById('val-excentricite').innerText = (data.equations.excentricite || 0).toFixed(5);
-                    document.getElementById('val-obliquite').innerText = (data.equations.obliquite || 0).toFixed(4) + "°";
-                    document.getElementById('val-lon-solaire').innerText = (data.equations.lonSolaire || 0).toFixed(4) + "°";
-                    document.getElementById('val-tsm').innerText = data.equations.tsm || "--";
-                    document.getElementById('val-tsv').innerText = data.equations.tsv || "--";
-                    
-                    if (data.equations.altitudeSource) {
-                        document.getElementById('val-baro').innerText = data.equations.altitudeSource;
-                    }
-                }
-                if (data.astres) {
-                    mettreAJourTableauAstres(data.astres);
-                    
-                    // Exemple de liaison Cap Vrai -> Cap Magnétique en utilisant l'azimut du Soleil ou d'un astre de référence
-                    if (data.astres["Soleil"] && data.astres["Soleil"].azimuth !== undefined) {
-                        actualiserCapsFinitifs(data.astres["Soleil"].azimuth, declinaisonCouranteWMM);
-                    }
-                }
-            } else if (data.type === 'ERROR') {
-                ecrireLog("Erreur worker calcul : " + data.message);
-            }
-        };
+        // Accepte la structure sous data.jpl ou sous data.DATA ou la racine
+        etalonnageJPL = data.jpl || data.DATA || data;
+        ecrireLog("Flux live DE440s synchronisé et injecté comme étalonnage.");
+    } catch (e) {
+        ecrireLog("Mode autonome pur actif (aucun étalonnage externe requis).");
+    }
+}
 
-        // Envoi périodique au worker (Le worker s'occupe de la synchro atomique UTC réseau)
-        setInterval(() => {
+function initialiserWorkerRepo() {
+    if (typeof Worker === 'undefined') return;
+    astroWorker = new Worker('worker_astronomie.js');
+    
+    astroWorker.onmessage = function(e) {
+        const data = e.data;
+        if (data.type === 'RESULTS') {
+            if (data.equations) {
+                document.getElementById('val-eq-temps').innerText = (data.equations.eqTemps || 0).toFixed(2) + " min";
+                document.getElementById('val-excentricite').innerText = (data.equations.excentricite || 0).toFixed(5);
+                document.getElementById('val-obliquite').innerText = (data.equations.obliquite || 0).toFixed(4) + "°";
+                document.getElementById('val-lon-solaire').innerText = (data.equations.lonSolaire || 0).toFixed(4) + "°";
+                document.getElementById('val-tsm').innerText = data.equations.tsm || "--";
+                document.getElementById('val-tsv').innerText = data.equations.tsv || "--";
+            }
+            if (data.astres) {
+                mettreAJourTableauAstres(data.astres);
+                if (data.astres["Soleil"] && data.astres["Soleil"].azimuth !== undefined) {
+                    actualiserCapsFinitifs(data.astres["Soleil"].azimuth, declinaisonCouranteWMM);
+                }
+            }
+        } else if (data.type === 'ERROR') {
+            ecrireLog("Erreur worker calcul : " + data.message);
+        }
+    };
+
+    // Transmission régulière avec alignement de la clé "fluxLive"
+    setInterval(() => {
+        if (etalonnageJPL && Object.keys(etalonnageJPL).length > 0) {
             astroWorker.postMessage({
                 type: 'COMPUTE',
                 station: stationCourante,
-                etalonnage: etalonnageJPL
+                fluxLive: etalonnageJPL // <--- Harmonisé avec le Worker
             });
-        }, 1000);
+        }
+    }, 1000);
     }
 
     function mettreAJourTableauAstres(astres) {
@@ -277,19 +274,20 @@
         }
     }
 
-// Correction de la gestion des unités et synchronisation ECEF/Topocentrique
-// index.html — Calcul WGS84 sécurisé avec altitude unifiée (mètres)
+// Correction de la conversion km -> mètres pour l'altitude
 function appliquerCoordonneesManuelles() {
     const lat = parseFloat(document.getElementById('input-lat').value) || 0;
     const lon = parseFloat(document.getElementById('input-lon').value) || 0;
-    const altMetres = parseFloat(document.getElementById('input-alt').value) || 0;
+    const altInput = parseFloat(document.getElementById('input-alt').value) || 0;
+    
+    // Si l'entrée est en kilomètres (ex: 0.137), convertir en mètres
+    const altMetres = altInput < 10 ? altInput * 1000.0 : altInput;
 
     stationCourante.lat = lat;
     stationCourante.lon = lon;
     stationCourante.altM = altMetres;
 
-    // Constantes WGS84
-    const a = 6378137.0; // Rayon équatorial en mètres
+    const a = 6378137.0;
     const f = 1.0 / 298.257223563;
     const e2 = 2 * f - f * f;
 
@@ -297,18 +295,22 @@ function appliquerCoordonneesManuelles() {
     const lambda = lon * (Math.PI / 180.0);
     const N = a / Math.sqrt(1.0 - e2 * Math.sin(phi) * Math.sin(phi));
 
-    // Calcul ECEF en mètres
     const X = (N + altMetres) * Math.cos(phi) * Math.cos(lambda);
     const Y = (N + altMetres) * Math.cos(phi) * Math.sin(lambda);
     const Z = (N * (1.0 - e2) + altMetres) * Math.sin(phi);
 
-    // Affichage formaté en km ou mètres selon besoin
     document.getElementById('val-xyz-x').innerText = (X / 1000.0).toFixed(3);
     document.getElementById('val-xyz-y').innerText = (Y / 1000.0).toFixed(3);
     document.getElementById('val-xyz-z').innerText = (Z / 1000.0).toFixed(3);
+}
 
-    console.log(`[STATION] Lat: ${lat}°, Lon: ${lon}°, Alt: ${altMetres}m | ECEF (km): [${(X/1000).toFixed(2)}, ${(Y/1000).toFixed(2)}, ${(Z/1000).toFixed(2)}]`);
-    }
+// Ordre d'exécution sécurisé au chargement
+window.addEventListener('load', async () => {
+    await chargerEtalonnageFluxLive();
+    initialiserWorkerRepo();
+    appliquerCoordonneesManuelles();
+    chargerFichierWMM();
+});
 
     function basculerModeJour() {
         modeJourActif = !modeJourActif;
