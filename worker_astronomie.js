@@ -155,6 +155,8 @@ function itrsVersHorizon(x, y, z, era, latDeg, lonDeg) {
 /**
  * Traitement global du flux JSON transmis par le processus principal
  */
+// ... [début du code inchangé] ...
+
 function calculerEphemeridesDepuisFlux(dateUtc, JD, station, flux) {
     const era = calculerERA(JD);
     const astres = {};
@@ -166,13 +168,8 @@ function calculerEphemeridesDepuisFlux(dateUtc, JD, station, flux) {
     Object.keys(flux.DATA).forEach(nomAst => {
         const tableauPositions = flux.DATA[nomAst];
         if (tableauPositions && tableauPositions.length > 0) {
-            // 1. Interpolation des coordonnées ITRS
             const posITRS = interpolerVecteurFlux(tableauPositions, dateUtc);
-
-            // 2. Conversion ITRS -> Azimut / Élévation
             const posHoriz = itrsVersHorizon(posITRS.x, posITRS.y, posITRS.z, era, station.lat, station.lon);
-
-            // 3. Correction de la réfraction
             const refCor = evaluerRefractionISA(posHoriz.elevation, station.tempC, station.pressionBaro);
 
             astres[nomAst] = {
@@ -187,4 +184,4 @@ function calculerEphemeridesDepuisFlux(dateUtc, JD, station, flux) {
     });
 
     return { astres };
-        }
+} // Accolade unique de fermeture de la fonction
