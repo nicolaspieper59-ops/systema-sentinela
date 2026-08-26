@@ -1,28 +1,36 @@
-- name: Téléchargement ou Cache de l'éphéméride de440s.bsp
-      uses: actions/cache@v4
-      with:
-        path: de440s.bsp
-        key: bsp-de440s-v3
+name: Dynamic Ephemeris Generation
 
-    - name: Vérification et Téléchargement de secours DE440s
-      run: |
-        if [ ! -f "de440s.bsp" ]; then
-          echo "Téléchargement de l'éphéméride DE440s..."
-          curl -L -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || true
-        fi
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Exécution quotidienne à minuit UTC
+  workflow_dispatch:      # Permet de lancer le workflow manuellement depuis GitHub
 
-    - name: Exécution du Moteur Topocentrique
-      run: |
-        python dynamic_multiphysics_engine.py 38.7317 -9.1448 0.137 15.0
+jobs:
+  generate-ephemeris:
+    runs-on: ubuntu-latest
 
-    - name: Commit et Push Sécurisé
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add flux_live.json
-        if ! git diff-index --quiet HEAD --; then
-          git commit -m "Actualisation automatique de flux_live.json [CI]"
-          git push origin main || git push
-        else
-          echo "Aucune variation détectée."
-        fi
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install skyfield
+
+      - name: Run DE440s Topocentric Extractor
+        run: |
+          python dynamic_multiphysics_engine.py 38.7317 -9.1448 137.0
+
+      - name: Commit and Push flux_live.json
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Bot"
+          git add flux_live.json
+          git commit -m "Update DE440s topocentric flux_live.json [skip ci]" || exit 0
+          git push
