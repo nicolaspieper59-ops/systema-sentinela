@@ -26,13 +26,19 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install skyfield
+          pip install skyfield numpy
 
       - name: Build WebAssembly Module
         run: |
-          # Compilation du fichier C++ situé dans le dossier src/
           if [ -f "src/astro_engine.cpp" ]; then
-            emcc src/astro_engine.cpp -O3 -s WASM=1 -s FORCE_FILESYSTEM=1 -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' -o wasm_astronomie.js
+            echo "Début de la compilation Emscripten..."
+            emcc src/astro_engine.cpp -O3 -std=c++17 \
+              -s WASM=1 \
+              -s FORCE_FILESYSTEM=1 \
+              -s ALLOW_MEMORY_GROWTH=1 \
+              -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
+              -o wasm_astronomie.js
+            echo "Compilation Wasm réussie."
           else
             echo "Erreur : src/astro_engine.cpp est introuvable."
             exit 1
@@ -40,6 +46,7 @@ jobs:
 
       - name: Generate Live Ephemeris (DE440s)
         run: |
+          echo "Exécution du moteur éphémérides..."
           python dynamic_multiphysics_engine.py 38.7317 -9.1448 137.0
 
       - name: Commit and Push Updated Artifacts
@@ -47,5 +54,5 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
           git add flux_live.json wasm_astronomie.js wasm_astronomie.wasm 2>/dev/null || true
-          git commit -m "Build Wasm (astro_engine.cpp) & Update DE440s flux_live.json [skip ci]" || exit 0
+          git commit -m "Build Wasm & Update DE440s flux_live.json [skip ci]" || exit 0
           git push
