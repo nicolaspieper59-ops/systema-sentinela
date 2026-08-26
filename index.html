@@ -159,7 +159,7 @@
 <script>
     const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
     let modeJourActif = true;
-    let stationCourante = { lat: 43.2843, lon: 5.3585, alt: 0.010, nom: 'STATION INITIALE' };
+    let stationCourante = { lat: 43.2843, lon: 5.3585, alt: 0.010, tempC: 15, pressionBaro: 1013.25, nom: 'STATION INITIALE' };
     
     let coefficientsWMM = [];
     let resultatWmmCourant = { decl: 2.42, incl: 61.15, H: 22150, F: 46200 };
@@ -190,12 +190,12 @@
     }
 
     function initialiserCapteursAltitudeEtGPS() {
-        // Implémentation conforme au standard Generic Sensor API pour Barometer
         if ('Barometer' in window) {
             try {
                 const barometer = new Barometer({ frequency: 1 });
                 barometer.addEventListener('reading', () => {
                     const pressureHpa = barometer.pressure;
+                    stationCourante.pressionBaro = pressureHpa;
                     const altBarometriqueMetres = 44330 * (1.0 - Math.pow(pressureHpa / pressionBarometriqueRef, 0.1903));
                     
                     document.getElementById('val-baro-statut').innerText = `${pressureHpa.toFixed(1)} hPa`;
@@ -254,7 +254,6 @@
 
         if (isNaN(lat) || isNaN(lon) || isNaN(alt)) return;
 
-        // Transformation ellipsoïdale WGS84 -> ECEF XYZ
         const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f), e2 = (a*a - b*b) / (a*a);
         const phi = lat * (Math.PI / 180.0), lambda = lon * (Math.PI / 180.0);
         const sinPhi = Math.sin(phi), cosPhi = Math.cos(phi);
@@ -293,31 +292,35 @@
             recalculerChampWMM();
         } catch (e) {
             ecrireLog(`Mode secours WMM actif : ${e.message}`);
+            recalculerChampWMM();
         }
     }
 
     function recalculerChampWMM() {
-        if (coefficientsWMM.length > 0) {
-            // Évaluation harmonique simplifiée pour calculer D et I à la position
-            const rad = Math.PI / 180.0;
-            const phi = stationCourante.lat * rad;
-            const lambda = stationCourante.lon * rad;
-            let X = 0, Y = 0, Z = 0;
+        const rad = Math.PI / 180.0;
+        const phi = stationCourante.lat * rad;
+        const lambda = stationCourante.lon * rad;
 
+        if (coefficientsWMM.length > 0) {
+            // Évaluation Gaussienne complète 1er degré avec repère NED
             const g10 = coefficientsWMM.find(c => c.n === 1 && c.m === 0)?.gnm || -29400;
             const g11 = coefficientsWMM.find(c => c.n === 1 && c.m === 1)?.gnm || -1400;
             const h11 = coefficientsWMM.find(c => c.n === 1 && c.m === 1)?.hnm || 4800;
 
-            X = -g10 * Math.sin(phi) + (g11 * Math.cos(lambda) + h11 * Math.sin(lambda)) * Math.cos(phi);
-            Y = g11 * Math.sin(lambda) - h11 * Math.cos(lambda);
-            Z = g10 * Math.cos(phi) + (g11 * Math.cos(lambda) + h11 * Math.sin(lambda)) * Math.sin(phi);
+            const X = -g10 * Math.sin(phi) + (g11 * Math.cos(lambda) + h11 * Math.sin(lambda)) * Math.cos(phi);
+            const Y = g11 * Math.sin(lambda) - h11 * Math.cos(lambda);
+            const Z = g10 * Math.cos(phi) + (g11 * Math.cos(lambda) + h11 * Math.sin(lambda)) * Math.sin(phi);
 
             resultatWmmCourant.decl = Math.atan2(Y, X) / rad;
             resultatWmmCourant.incl = Math.atan2(Z, Math.hypot(X, Y)) / rad;
+        } else {
+            // Estimation WMM-2025 approximative pour l'Europe du Sud / Marseille si fichier COF non chargé
+            resultatWmmCourant.decl = 2.45 + (stationCourante.lon - 5.35) * 0.1;
+            resultatWmmCourant.incl = 61.15 + (stationCourante.lat - 43.28) * 0.9;
         }
 
         document.getElementById('val-dec-wmm').innerText = `${resultatWmmCourant.decl >= 0 ? '+' : ''}${resultatWmmCourant.decl.toFixed(2)}°`;
-        document.getElementById('val-inc-wmm').innerText = `${resultatWmmCourant.incl.toFixed(2)}°`;
+        document.getElementById('val-inc-wmm').innerText = `${resultatWmmCourant.incl >= 0 ? '+' : ''}${resultatWmmCourant.incl.toFixed(2)}°`;
     }
     
     function initialiserWorkerAstronomie() {
@@ -393,11 +396,17 @@
         const ctx = canvas.getContext('2d');
         const dpr = window.devicePixelRatio || 1;
         const size = 260;
-        if (canvas.width !== size * dpr) {
-            canvas.width = size * dpr; canvas.height = size * dpr;
-            canvas.style.width = `${size}px`; canvas.style.height = `${size}px`;
-            ctx.scale(dpr, dpr);
+        
+        if (canvas.width !== size * dpr || canvas.height !== size * dpr) {
+            canvas.width = size * dpr; 
+            canvas.height = size * dpr;
+            canvas.style.width = `${size}px`; 
+            canvas.style.height = `${size}px`;
         }
+
+        ctx.save();
+        ctx.scale(dpr, dpr);
+
         const cx = size / 2, cy = size / 2, maxRadius = 110;
 
         ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--radar-bg').trim() || '#01040a';
@@ -421,7 +430,7 @@
         ctx.fillText('E', cx + maxRadius - 10, cy + 3);
         ctx.fillText('O', cx - maxRadius + 3, cy + 3);
 
-        // Aiguille d'orientation du cap utilisateur
+        // Aiguille de cap IMU
         const capRad = cap * Math.PI / 180.0;
         ctx.strokeStyle = '#f85149'; ctx.lineWidth = 1.5;
         ctx.beginPath();
@@ -429,7 +438,7 @@
         ctx.lineTo(cx + maxRadius * Math.sin(capRad), cy - maxRadius * Math.cos(capRad));
         ctx.stroke();
 
-        // Représentation des corps célestes
+        // Affichage des objets célestes
         if (astresData) {
             for (const [astre, data] of Object.entries(astresData)) {
                 if (data.elevation < 0) continue;
@@ -444,6 +453,7 @@
                 ctx.fillText(astre.toUpperCase(), x + 5, y + 3);
             }
         }
+        ctx.restore();
     }
 
     function convertirLatLonEnVector3(lat, lon, rayon = 1.0) {
@@ -482,7 +492,6 @@
         );
         scene.add(curseurPositionMesh);
 
-        // Support complet Événements Souris + Tactiles
         const pointerDown = (x, y) => { isDragging = true; lastX = x; lastY = y; };
         const pointerMove = (x, y) => {
             if (!isDragging) return;
@@ -498,10 +507,10 @@
 
         container.addEventListener('touchstart', (e) => {
             if (e.touches.length === 1) pointerDown(e.touches[0].clientX, e.touches[0].clientY);
-        });
+        }, { passive: true });
         window.addEventListener('touchmove', (e) => {
             if (e.touches.length === 1) pointerMove(e.touches[0].clientX, e.touches[0].clientY);
-        });
+        }, { passive: true });
         window.addEventListener('touchend', pointerUp);
 
         function animate() { 
@@ -546,7 +555,7 @@
             }
         }, 1000);
 
-        ecrireLog("SYSTEMA SENTINELA v18.6 initialisé (Mode Jour actif, correctifs appliqués).");
+        ecrireLog("SYSTEMA SENTINELA v18.6 initialisé et corrigé.");
     });
 </script>
 </body>
