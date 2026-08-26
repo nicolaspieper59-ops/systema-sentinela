@@ -33,38 +33,30 @@ jobs:
           python -m pip install --upgrade pip
           pip install skyfield numpy
 
-      - name: Build WebAssembly Module
+      - name: Test C++ Compilation
         run: |
-          echo "=== Lancement Emscripten ==="
+          echo "=== Test Emscripten ==="
           emcc src/astro_engine.cpp -O2 -std=c++17 \
             -s WASM=1 \
-            -s FORCE_FILESYSTEM=1 \
             -s ALLOW_MEMORY_GROWTH=1 \
             -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
             -o wasm_astronomie.js
 
-      - name: Download JPL Kernel
+      - name: Test Ephemeris Script
         run: |
-          python -c "from skyfield.api import load; load('de440s.bsp')" || true
-
-      - name: Generate Ephemeris
-        run: |
+          echo "=== Test Script Python ==="
+          # Injection d'un contexte SSL non vérifié si la NASA bloque le certificat
+          python -c "import ssl; ssl._create_default_https_context = ssl._create_unverified_context; from skyfield.api import load; load('de440s.bsp')" || true
           python dynamic_multiphysics_engine.py 38.7317 -9.1448 137.0
 
-      - name: Commit and Push
+      - name: Commit & Push
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
           git add flux_live.json wasm_astronomie.js wasm_astronomie.wasm 2>/devnull || true
           
           if git diff --staged --quiet; then
-            echo "Aucun fichier modifié."
-          else
-            git commit -m "Build Wasm & Update DE440s flux_live.json [skip ci]"
-            git push origin main
-          fi          
-          if git diff --staged --quiet; then
-            echo "Aucun fichier modifié à pousser."
+            echo "Aucune modification détectée."
           else
             git commit -m "Build Wasm & Update DE440s flux_live.json [skip ci]"
             git push origin main
