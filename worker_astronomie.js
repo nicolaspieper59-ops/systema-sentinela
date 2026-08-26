@@ -183,5 +183,73 @@ function calculerEphemeridesDepuisFlux(dateUtc, JD, station, flux) {
         }
     });
 
+    self.onmessage = async function(e) {
+    const data = e.data;
+    if (data.type === 'COMPUTE') {
+        const station = data.station;
+        
+        try {
+            // Prise en charge des deux variantes de transmission
+            const fluxReçu = data.fluxLive || data.etalonnage;
+            if (fluxReçu) {
+                fluxLiveCache = fluxReçu;
+            }
+
+            if (!fluxLiveCache) {
+                // Attente silencieuse tant que le premier chargement n'est pas fini
+                return;
+            }
+
+            const dateUtc = new Date();
+            const { JD, T, annee } = calculerJourJulienPrecis(dateUtc);
+            const deltaT = calculerDeltaT(annee);
+
+            const resultats = calculerEphemeridesDepuisFlux(dateUtc, JD, station, fluxLiveCache);
+            
+            self.postMessage({
+                type: 'RESULTS',
+                timestamp: dateUtc.toISOString(),
+                equations: {
+                    deltaT: deltaT,
+                    sourceData: "DE440s_TOPOCENTRIQUE_LIVE"
+                },
+                astres: resultats.astres
+            });
+        } catch (err) {
+            self.postMessage({ type: 'ERROR', message: err.toString() });
+        }
+    }
+};
+
+function calculerEphemeridesDepuisFlux(dateUtc, JD, station, flux) {
+    const era = calculerERA(JD);
+    const astres = {};
+
+    // Détection flexible de la matrice de données
+    const matriceDonnees = flux.DATA || flux.jpl || flux;
+
+    if (!matriceDonnees || typeof matriceDonnees !== 'object') {
+        throw new Error("Structure du flux d'éphémérides non valide.");
+    }
+
+    Object.keys(matriceDonnees).forEach(nomAst => {
+        const tableauPositions = matriceDonnees[nomAst];
+        if (Array.isArray(tableauPositions) && tableauPositions.length > 0) {
+            const posITRS = interpolerVecteurFlux(tableauPositions, dateUtc);
+            const posHoriz = itrsVersHorizon(posITRS.x, posITRS.y, posITRS.z, era, station.lat, station.lon);
+            const refCor = evaluerRefractionISA(posHoriz.elevation, station.tempC, station.pressionBaro);
+
+            astres[nomAst] = {
+                azimuth: posHoriz.azimuth,
+                elevation: refCor.elevationReelle,
+                distanceKm: posHoriz.distance / 1000.0,
+                x_itrs: posITRS.x,
+                y_itrs: posITRS.y,
+                z_itrs: posITRS.z
+            };
+        }
+    });
+
     return { astres };
-} // Accolade unique de fermeture de la fonction
+                    }
+
