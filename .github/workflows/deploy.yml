@@ -26,12 +26,12 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Python Dependencies
+      - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install skyfield numpy
 
-      - name: Step 1 - Compile C++ Wasm
+      - name: Step 1 - Build Wasm
         run: |
           emcc src/astro_engine.cpp -O2 -std=c++17 \
             -s WASM=1 \
@@ -40,9 +40,11 @@ jobs:
             -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
             -o wasm_astronomie.js
 
-      - name: Step 2 - Download Ephemeris Kernel
+      - name: Step 2 - Download Kernel via Curl
         run: |
-          python -c "import ssl; ssl._create_default_https_context = ssl._create_unverified_context; from skyfield.api import load; load('de440s.bsp')"
+          if [ ! -f "de440s.bsp" ]; then
+            curl -k -SL -A "Mozilla/5.0" -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || true
+          fi
 
       - name: Step 3 - Run Ephemeris Engine
         run: |
@@ -54,7 +56,7 @@ jobs:
           git config --local user.name "GitHub Action Bot"
           git add flux_live.json wasm_astronomie.js wasm_astronomie.wasm 2>/devnull || true
           if git diff --staged --quiet; then
-            echo "No changes to commit"
+            echo "Aucune modification à commiter"
           else
             git commit -m "Build Wasm & Update DE440s flux_live.json [skip ci]"
             git push origin main
