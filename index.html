@@ -278,31 +278,37 @@
     }
 
 // Correction de la gestion des unités et synchronisation ECEF/Topocentrique
+// index.html — Calcul WGS84 sécurisé avec altitude unifiée (mètres)
 function appliquerCoordonneesManuelles() {
-    // Conversion stricte pour éviter les erreurs d'échelle
-    stationCourante.lat = parseFloat(document.getElementById('input-lat').value) || 0;
-    stationCourante.lon = parseFloat(document.getElementById('input-lon').value) || 0;
-    
-    // Saisie en km garantie
-    const altInput = parseFloat(document.getElementById('input-alt').value) || 0;
-    stationCourante.altGps = altInput; 
+    const lat = parseFloat(document.getElementById('input-lat').value) || 0;
+    const lon = parseFloat(document.getElementById('input-lon').value) || 0;
+    const altMetres = parseFloat(document.getElementById('input-alt').value) || 0;
 
-    const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f);
-    const e2 = (a * a - b * b) / (a * a);
-    const phi = stationCourante.lat * DEG2RAD;
-    const lambda = stationCourante.lon * DEG2RAD;
+    stationCourante.lat = lat;
+    stationCourante.lon = lon;
+    stationCourante.altM = altMetres;
+
+    // Constantes WGS84
+    const a = 6378137.0; // Rayon équatorial en mètres
+    const f = 1.0 / 298.257223563;
+    const e2 = 2 * f - f * f;
+
+    const phi = lat * (Math.PI / 180.0);
+    const lambda = lon * (Math.PI / 180.0);
     const N = a / Math.sqrt(1.0 - e2 * Math.sin(phi) * Math.sin(phi));
-    
-    const X = (N + stationCourante.altGps) * Math.cos(phi) * Math.cos(lambda);
-    const Y = (N + stationCourante.altGps) * Math.cos(phi) * Math.sin(lambda);
-    const Z = (N * (1.0 - e2) + stationCourante.altGps) * Math.sin(phi);
 
-    document.getElementById('val-xyz-x').innerText = X.toFixed(2);
-    document.getElementById('val-xyz-y').innerText = Y.toFixed(2);
-    document.getElementById('val-xyz-z').innerText = Z.toFixed(2);
-    
-    ecrireLog(`[GÉODÉSIE] Station mise à jour : Lat ${stationCourante.lat}°, Lon ${stationCourante.lon}°, Alt ${stationCourante.altGps} km`);
-        }
+    // Calcul ECEF en mètres
+    const X = (N + altMetres) * Math.cos(phi) * Math.cos(lambda);
+    const Y = (N + altMetres) * Math.cos(phi) * Math.sin(lambda);
+    const Z = (N * (1.0 - e2) + altMetres) * Math.sin(phi);
+
+    // Affichage formaté en km ou mètres selon besoin
+    document.getElementById('val-xyz-x').innerText = (X / 1000.0).toFixed(3);
+    document.getElementById('val-xyz-y').innerText = (Y / 1000.0).toFixed(3);
+    document.getElementById('val-xyz-z').innerText = (Z / 1000.0).toFixed(3);
+
+    console.log(`[STATION] Lat: ${lat}°, Lon: ${lon}°, Alt: ${altMetres}m | ECEF (km): [${(X/1000).toFixed(2)}, ${(Y/1000).toFixed(2)}, ${(Z/1000).toFixed(2)}]`);
+    }
 
     function basculerModeJour() {
         modeJourActif = !modeJourActif;
