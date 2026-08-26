@@ -62,8 +62,6 @@
     </header>
 
     <div class="grid-layout">
-        
-        <!-- 1. ÉPHÉMÉRIDES TOPOCENTRIQUES & MOTEURS VSOP2013 / ELP-MPP02 -->
         <div class="panel" style="grid-column: 1 / -1;">
             <h3 class="panel-title">COORDONNÉES TOPOCENTRIQUES & VISIBILITÉ (MOTEUR VSOP2013 + ELP/MPP02)</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 6px; margin-bottom: 8px; font-size: 10px;">
@@ -89,14 +87,11 @@
                             <th>DISTANCE</th>
                         </tr>
                     </thead>
-                    <tbody id="table-body">
-                        <!-- Alimenté dynamiquement par vsop2013.js et ElpMpp02LLR_min.js -->
-                    </tbody>
+                    <tbody id="table-body"></tbody>
                 </table>
             </div>
         </div>
 
-        <!-- 2. GÉODÉSIE & ECEF -->
         <div class="panel">
             <div class="panel-title">GÉODÉSIE, BAROMÈTRE & ECEF</div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px;">
@@ -114,7 +109,6 @@
             <button class="btn-action" style="width: 100%;" onclick="appliquerCoordonneesManuelles()">APPLIQUER STATION</button>
         </div>
 
-        <!-- 3. CHAMP GÉOMAGNÉTIQUE WMM-2025 -->
         <div class="panel">
             <h3 class="panel-title">CHAMP GÉOMAGNÉTIQUE WMM-2025</h3>
             <div class="metrics-grid" style="margin-bottom: 8px;">
@@ -126,13 +120,11 @@
             <button class="btn-action" style="width: 100%;" onclick="chargerFichierWMM()">CHARGER WMM2025.COF</button>
         </div>
 
-        <!-- 4. PROJECTION RADAR VRAI NORD -->
         <div class="panel">
             <div class="panel-title">PROJECTION RADAR VRAI NORD</div>
             <canvas id="radarCanvas" width="240" height="240"></canvas>
         </div>
 
-        <!-- 5. VECTEUR XYZ (ECEF) & GLOBE 3D -->
         <div class="panel">
             <div class="panel-title">VECTEUR XYZ (ECEF) & GLOBE 3D</div>
             <div style="font-size: 9px; background: rgba(0,0,0,0.03); padding: 4px; border-radius: 4px; border: 1px solid var(--border-dim); margin-bottom: 4px;">
@@ -141,12 +133,10 @@
             <canvas id="globeCanvas" width="240" height="140"></canvas>
         </div>
 
-        <!-- 6. CONSOLE KERNEL EXÉCUTION -->
         <div class="panel" style="grid-column: 1 / -1; margin-bottom: 0;">
             <div class="panel-title" style="margin-bottom: 4px;">CONSOLE KERNEL EXÉCUTION (FLUX DÉPÔT ACTIF)</div>
             <div class="log-console" id="logConsole">[SENTINELA v14.2] Initialisation des moteurs locaux (vsop2013.js, ElpMpp02LLR_min.js)...<br></div>
         </div>
-
     </div>
 </div>
 
@@ -155,8 +145,8 @@
     let stationCourante = { 
         lat: 38.7317, 
         lon: -9.1448, 
-        altGps: 0.137, 
-        pressionBaro: 1013.25, // Baromètre matériel brut par défaut
+        altM: 137.0, 
+        pressionBaro: 1013.25, 
         tempC: 15.0, 
         humPct: 50.0, 
         baroActif: true 
@@ -164,67 +154,63 @@
     let astroWorker = null;
     let modeJourActif = true;
     let etalonnageJPL = {};
-    let declinaisonCouranteWMM = 2.42; // Valeur par défaut WMM-2025
+    let declinaisonCouranteWMM = 2.42;
 
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
         if (!consoleEl) return;
-        const timeStr = new Date().toISOString().substr(11, 8);
+        const timeStr = new Date().toISOString().substring(11, 19);
         consoleEl.innerHTML += `[${timeStr}] ${msg}<br>`;
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
-// Synchronisation complète des flux et correction de l'envoi au worker
-async function chargerEtalonnageFluxLive() {
-    try {
-        const reponse = await fetch('flux_live.json', { cache: 'no-store' });
-        if (!reponse.ok) throw new Error("flux_live.json introuvable.");
-        const data = await reponse.json();
-        
-        // Accepte la structure sous data.jpl ou sous data.DATA ou la racine
-        etalonnageJPL = data.jpl || data.DATA || data;
-        ecrireLog("Flux live DE440s synchronisé et injecté comme étalonnage.");
-    } catch (e) {
-        ecrireLog("Mode autonome pur actif (aucun étalonnage externe requis).");
+    async function chargerEtalonnageFluxLive() {
+        try {
+            const reponse = await fetch('flux_live.json', { cache: 'no-store' });
+            if (!reponse.ok) throw new Error("flux_live.json introuvable.");
+            const data = await reponse.json();
+            etalonnageJPL = data.jpl || data.DATA || data;
+            ecrireLog("Flux live DE440s synchronisé et injecté comme étalonnage.");
+        } catch (e) {
+            ecrireLog("Mode autonome pur actif (aucun étalonnage externe requis).");
+        }
     }
-}
 
-function initialiserWorkerRepo() {
-    if (typeof Worker === 'undefined') return;
-    astroWorker = new Worker('worker_astronomie.js');
-    
-    astroWorker.onmessage = function(e) {
-        const data = e.data;
-        if (data.type === 'RESULTS') {
-            if (data.equations) {
-                document.getElementById('val-eq-temps').innerText = (data.equations.eqTemps || 0).toFixed(2) + " min";
-                document.getElementById('val-excentricite').innerText = (data.equations.excentricite || 0).toFixed(5);
-                document.getElementById('val-obliquite').innerText = (data.equations.obliquite || 0).toFixed(4) + "°";
-                document.getElementById('val-lon-solaire').innerText = (data.equations.lonSolaire || 0).toFixed(4) + "°";
-                document.getElementById('val-tsm').innerText = data.equations.tsm || "--";
-                document.getElementById('val-tsv').innerText = data.equations.tsv || "--";
-            }
-            if (data.astres) {
-                mettreAJourTableauAstres(data.astres);
-                if (data.astres["Soleil"] && data.astres["Soleil"].azimuth !== undefined) {
-                    actualiserCapsFinitifs(data.astres["Soleil"].azimuth, declinaisonCouranteWMM);
+    function initialiserWorkerRepo() {
+        if (typeof Worker === 'undefined') return;
+        astroWorker = new Worker('worker_astronomie.js');
+        
+        astroWorker.onmessage = function(e) {
+            const data = e.data;
+            if (data.type === 'RESULTS') {
+                if (data.equations) {
+                    document.getElementById('val-eq-temps').innerText = (data.equations.eqTemps || 0).toFixed(2) + " min";
+                    document.getElementById('val-excentricite').innerText = (data.equations.excentricite || 0).toFixed(5);
+                    document.getElementById('val-obliquite').innerText = (data.equations.obliquite || 0).toFixed(4) + "°";
+                    document.getElementById('val-lon-solaire').innerText = (data.equations.lonSolaire || 0).toFixed(4) + "°";
+                    document.getElementById('val-tsm').innerText = data.equations.tsm || "--";
+                    document.getElementById('val-tsv').innerText = data.equations.tsv || "--";
                 }
+                if (data.astres) {
+                    mettreAJourTableauAstres(data.astres);
+                    if (data.astres["Soleil"] && data.astres["Soleil"].azimuth !== undefined) {
+                        actualiserCapsFinitifs(data.astres["Soleil"].azimuth, declinaisonCouranteWMM);
+                    }
+                }
+            } else if (data.type === 'ERROR') {
+                ecrireLog("Erreur worker calcul : " + data.message);
             }
-        } else if (data.type === 'ERROR') {
-            ecrireLog("Erreur worker calcul : " + data.message);
-        }
-    };
+        };
 
-    // Transmission régulière avec alignement de la clé "fluxLive"
-    setInterval(() => {
-        if (etalonnageJPL && Object.keys(etalonnageJPL).length > 0) {
-            astroWorker.postMessage({
-                type: 'COMPUTE',
-                station: stationCourante,
-                fluxLive: etalonnageJPL // <--- Harmonisé avec le Worker
-            });
-        }
-    }, 1000);
+        setInterval(() => {
+            if (etalonnageJPL && Object.keys(etalonnageJPL).length > 0) {
+                astroWorker.postMessage({
+                    type: 'COMPUTE',
+                    station: stationCourante,
+                    fluxLive: etalonnageJPL
+                });
+            }
+        }, 1000);
     }
 
     function mettreAJourTableauAstres(astres) {
@@ -249,7 +235,6 @@ function initialiserWorkerRepo() {
         });
     }
 
-    // Résolution finale du Cap Magnétique via WMM-2025
     function actualiserCapsFinitifs(capVraiGeo, declinaisonWMM) {
         let capMag = capVraiGeo - declinaisonWMM;
         capMag = (capMag % 360 + 360) % 360;
@@ -265,7 +250,7 @@ function initialiserWorkerRepo() {
         try {
             const rep = await fetch('WMM2025.COF');
             if(!rep.ok) throw new Error("WMM2025.COF manquant.");
-            declinaisonCouranteWMM = 2.42; // Extrait sécurisé du fichier
+            declinaisonCouranteWMM = 2.42;
             document.getElementById('val-dec').innerText = "+2.42° (WMM Parsé)";
             document.getElementById('val-inc').innerText = "61.15° (WMM Parsé)";
             ecrireLog("Fichier WMM2025.COF chargé et analysé avec succès.");
@@ -274,43 +259,33 @@ function initialiserWorkerRepo() {
         }
     }
 
-// Correction de la conversion km -> mètres pour l'altitude
-function appliquerCoordonneesManuelles() {
-    const lat = parseFloat(document.getElementById('input-lat').value) || 0;
-    const lon = parseFloat(document.getElementById('input-lon').value) || 0;
-    const altInput = parseFloat(document.getElementById('input-alt').value) || 0;
-    
-    // Si l'entrée est en kilomètres (ex: 0.137), convertir en mètres
-    const altMetres = altInput < 10 ? altInput * 1000.0 : altInput;
+    function appliquerCoordonneesManuelles() {
+        const lat = parseFloat(document.getElementById('input-lat').value) || 0;
+        const lon = parseFloat(document.getElementById('input-lon').value) || 0;
+        const altInput = parseFloat(document.getElementById('input-alt').value) || 0;
+        
+        const altMetres = altInput < 10 ? altInput * 1000.0 : altInput;
 
-    stationCourante.lat = lat;
-    stationCourante.lon = lon;
-    stationCourante.altM = altMetres;
+        stationCourante.lat = lat;
+        stationCourante.lon = lon;
+        stationCourante.altM = altMetres;
 
-    const a = 6378137.0;
-    const f = 1.0 / 298.257223563;
-    const e2 = 2 * f - f * f;
+        const a = 6378137.0;
+        const f = 1.0 / 298.257223563;
+        const e2 = 2 * f - f * f;
 
-    const phi = lat * (Math.PI / 180.0);
-    const lambda = lon * (Math.PI / 180.0);
-    const N = a / Math.sqrt(1.0 - e2 * Math.sin(phi) * Math.sin(phi));
+        const phi = lat * (Math.PI / 180.0);
+        const lambda = lon * (Math.PI / 180.0);
+        const N = a / Math.sqrt(1.0 - e2 * Math.sin(phi) * Math.sin(phi));
 
-    const X = (N + altMetres) * Math.cos(phi) * Math.cos(lambda);
-    const Y = (N + altMetres) * Math.cos(phi) * Math.sin(lambda);
-    const Z = (N * (1.0 - e2) + altMetres) * Math.sin(phi);
+        const X = (N + altMetres) * Math.cos(phi) * Math.cos(lambda);
+        const Y = (N + altMetres) * Math.cos(phi) * Math.sin(lambda);
+        const Z = (N * (1.0 - e2) + altMetres) * Math.sin(phi);
 
-    document.getElementById('val-xyz-x').innerText = (X / 1000.0).toFixed(3);
-    document.getElementById('val-xyz-y').innerText = (Y / 1000.0).toFixed(3);
-    document.getElementById('val-xyz-z').innerText = (Z / 1000.0).toFixed(3);
-}
-
-// Ordre d'exécution sécurisé au chargement
-window.addEventListener('load', async () => {
-    await chargerEtalonnageFluxLive();
-    initialiserWorkerRepo();
-    appliquerCoordonneesManuelles();
-    chargerFichierWMM();
-});
+        document.getElementById('val-xyz-x').innerText = (X / 1000.0).toFixed(3);
+        document.getElementById('val-xyz-y').innerText = (Y / 1000.0).toFixed(3);
+        document.getElementById('val-xyz-z').innerText = (Z / 1000.0).toFixed(3);
+    }
 
     function basculerModeJour() {
         modeJourActif = !modeJourActif;
@@ -318,8 +293,8 @@ window.addEventListener('load', async () => {
         ecrireLog(`Mode affichage basculé : ${modeJourActif ? 'JOUR' : 'NUIT'}`);
     }
 
-    window.addEventListener('load', () => {
-        chargerEtalonnageFluxLive();
+    window.addEventListener('load', async () => {
+        await chargerEtalonnageFluxLive();
         initialiserWorkerRepo();
         appliquerCoordonneesManuelles();
         chargerFichierWMM();
