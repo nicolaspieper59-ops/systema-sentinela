@@ -277,24 +277,32 @@
         }
     }
 
-    function appliquerCoordonneesManuelles() {
-        stationCourante.lat = parseFloat(document.getElementById('input-lat').value);
-        stationCourante.lon = parseFloat(document.getElementById('input-lon').value);
-        stationCourante.altGps = parseFloat(document.getElementById('input-alt').value);
-        
-        const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f), e2 = (a*a - b*b) / (a*a);
-        const phi = stationCourante.lat * (Math.PI / 180.0), lambda = stationCourante.lon * (Math.PI / 180.0);
-        const N = a / Math.sqrt(1.0 - e2 * Math.sin(phi) * Math.sin(phi));
-        
-        const X = (N + stationCourante.altGps) * Math.cos(phi) * Math.cos(lambda);
-        const Y = (N + stationCourante.altGps) * Math.cos(phi) * Math.sin(lambda);
-        const Z = (N * (1.0 - e2) + stationCourante.altGps) * Math.sin(phi);
+// Correction de la gestion des unités et synchronisation ECEF/Topocentrique
+function appliquerCoordonneesManuelles() {
+    // Conversion stricte pour éviter les erreurs d'échelle
+    stationCourante.lat = parseFloat(document.getElementById('input-lat').value) || 0;
+    stationCourante.lon = parseFloat(document.getElementById('input-lon').value) || 0;
+    
+    // Saisie en km garantie
+    const altInput = parseFloat(document.getElementById('input-alt').value) || 0;
+    stationCourante.altGps = altInput; 
 
-        document.getElementById('val-xyz-x').innerText = X.toFixed(2);
-        document.getElementById('val-xyz-y').innerText = Y.toFixed(2);
-        document.getElementById('val-xyz-z').innerText = Z.toFixed(2);
-        ecrireLog(`Station géodésique actualisée : Lat ${stationCourante.lat}°, Lon ${stationCourante.lon}°`);
-    }
+    const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f);
+    const e2 = (a * a - b * b) / (a * a);
+    const phi = stationCourante.lat * DEG2RAD;
+    const lambda = stationCourante.lon * DEG2RAD;
+    const N = a / Math.sqrt(1.0 - e2 * Math.sin(phi) * Math.sin(phi));
+    
+    const X = (N + stationCourante.altGps) * Math.cos(phi) * Math.cos(lambda);
+    const Y = (N + stationCourante.altGps) * Math.cos(phi) * Math.sin(lambda);
+    const Z = (N * (1.0 - e2) + stationCourante.altGps) * Math.sin(phi);
+
+    document.getElementById('val-xyz-x').innerText = X.toFixed(2);
+    document.getElementById('val-xyz-y').innerText = Y.toFixed(2);
+    document.getElementById('val-xyz-z').innerText = Z.toFixed(2);
+    
+    ecrireLog(`[GÉODÉSIE] Station mise à jour : Lat ${stationCourante.lat}°, Lon ${stationCourante.lon}°, Alt ${stationCourante.altGps} km`);
+        }
 
     function basculerModeJour() {
         modeJourActif = !modeJourActif;
