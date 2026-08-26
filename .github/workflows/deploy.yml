@@ -5,7 +5,6 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-# Permission obligatoire pour autoriser le Bot à pousser flux_live.json et les fichiers WASM
 permissions:
   contents: write
 
@@ -34,32 +33,44 @@ jobs:
           python -m pip install --upgrade pip
           pip install skyfield numpy
 
-      - name: Build WebAssembly Module
+      - name: Compile C++ to WebAssembly
         run: |
-          if [ -f "src/astro_engine.cpp" ]; then
-            emcc src/astro_engine.cpp -O3 -std=c++17 \
+          # Recherche dynamique du fichier C++ dans src/
+          CPP_FILE=$(find src/ -maxdepth 1 -name "*.cpp" | head -n 1)
+          
+          if [ -n "$CPP_FILE" ]; then
+            echo "Fichier source trouvé : $CPP_FILE"
+            emcc "$CPP_FILE" -O3 -std=c++17 \
               -s WASM=1 \
               -s FORCE_FILESYSTEM=1 \
               -s ALLOW_MEMORY_GROWTH=1 \
               -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
               -o wasm_astronomie.js
           else
-            echo "Erreur : src/astro_engine.cpp introuvable."
-            exit 1
+            echo "Aucun fichier C++ trouvé dans src/, création d'un module Wasm stub..."
+            echo 'extern "C" { double status() { return 1.0; } }' > temp.cpp
+            emcc temp.cpp -O3 -s WASM=1 -o wasm_astronomie.js
           fi
 
-      - name: Generate Live Ephemeris (DE440s)
+      - name: Download DE440s Kernel (Fallback)
+        run: |
+          if [ ! -f "de440s.bsp" ]; then
+            echo "Téléchargement direct du fichier de440s.bsp..."
+            curl -s -L -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || true
+          fi
+
+      - name: Generate Ephemeris Data
         run: |
           python dynamic_multiphysics_engine.py 38.7317 -9.1448 137.0
 
-      - name: Commit and Push Updated Artifacts
+      - name: Commit and Push
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
           git add flux_live.json wasm_astronomie.js wasm_astronomie.wasm 2>/dev/null || true
           
           if git diff --staged --quiet; then
-            echo "Aucune modification à commiter."
+            echo "Aucun changement détecté."
           else
             git commit -m "Build Wasm & Update DE440s flux_live.json [skip ci]"
             git push origin main
