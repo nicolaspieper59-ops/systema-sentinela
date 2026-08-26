@@ -18,7 +18,7 @@ jobs:
         with:
           version: 3.1.64
 
-      - name: Setup Python
+      - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -30,16 +30,21 @@ jobs:
 
       - name: Build WebAssembly Module
         run: |
-          emcc source_astronomie.cpp -O3 -s WASM=1 -s FORCE_FILESYSTEM=1 -o wasm_astronomie.js
+          # Vérification de l'existence du fichier C++ avant compilation
+          if [ -f "source_astronomie.cpp" ]; then
+            emcc source_astronomie.cpp -O3 -s WASM=1 -s FORCE_FILESYSTEM=1 -o wasm_astronomie.js
+          else
+            echo "Avertissement: source_astronomie.cpp non trouvé, compilation Wasm ignorée."
+          fi
 
-      - name: Generate Live Ephemeris
+      - name: Generate Live Ephemeris (DE440s)
         run: |
           python dynamic_multiphysics_engine.py 38.7317 -9.1448 137.0
 
-      - name: Commit and Deploy Artifacts
+      - name: Commit and Push Updated Artifacts
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
-          git add flux_live.json wasm_astronomie.js wasm_astronomie.wasm
+          git add flux_live.json wasm_astronomie.js wasm_astronomie.wasm 2>/dev/null || true
           git commit -m "Build Wasm & Update DE440s flux_live.json [skip ci]" || exit 0
           git push
