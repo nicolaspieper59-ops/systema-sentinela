@@ -118,3 +118,7 @@ void calculerPositionTopocentrique(
 }
 
 }
+// À rajouter à la toute fin de src/astro_engine.cpp
+int main() {
+    return 0;
+}
