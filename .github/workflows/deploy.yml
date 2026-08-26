@@ -30,11 +30,12 @@ jobs:
 
       - name: Build WebAssembly Module
         run: |
-          # Vérification de l'existence du fichier C++ avant compilation
-          if [ -f "source_astronomie.cpp" ]; then
-            emcc source_astronomie.cpp -O3 -s WASM=1 -s FORCE_FILESYSTEM=1 -o wasm_astronomie.js
+          # Compilation du fichier C++ situé dans le dossier src/
+          if [ -f "src/astro_engine.cpp" ]; then
+            emcc src/astro_engine.cpp -O3 -s WASM=1 -s FORCE_FILESYSTEM=1 -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' -o wasm_astronomie.js
           else
-            echo "Avertissement: source_astronomie.cpp non trouvé, compilation Wasm ignorée."
+            echo "Erreur : src/astro_engine.cpp est introuvable."
+            exit 1
           fi
 
       - name: Generate Live Ephemeris (DE440s)
@@ -46,5 +47,5 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
           git add flux_live.json wasm_astronomie.js wasm_astronomie.wasm 2>/dev/null || true
-          git commit -m "Build Wasm & Update DE440s flux_live.json [skip ci]" || exit 0
+          git commit -m "Build Wasm (astro_engine.cpp) & Update DE440s flux_live.json [skip ci]" || exit 0
           git push
