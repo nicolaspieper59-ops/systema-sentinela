@@ -505,37 +505,52 @@
         initGlobe3D();
         
         initialiserWorkerAstronomie();
+
+        // 1. Écouteur du Worker (défini UNE SEULE fois à l'initialisation)
+        if (astroWorker) {
+            astroWorker.onmessage = function (e) {
+                const data = e.data;
+                if (data.type === 'READY' || data.type === 'WMM_READY') {
+                    document.getElementById('lbl-worker-status').innerText = "ACTIF";
+                    document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+                } 
+                else if (data.type === 'RESULTS' || data.type === 'UPDATE') {
+                    const results = data.results || data.bodies;
+                    if (results) {
+                        derniersResultatsAstres = results;
+                        mettreAJourTableauEtTrier(derniersResultatsAstres);
+                        dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
+                    }
+                    if (data.solarMetrics) {
+                        mettreAJourMetricsSolaires(data.solarMetrics);
+                    }
+                    if (data.tempsJpl) {
+                        document.getElementById('val-gast').innerText = `${data.tempsJpl.gastDeg.toFixed(2)}° / ${data.tempsJpl.lstDeg.toFixed(2)}°`;
+                    }
+                }
+            };
+        }
+
         await chargerFluxLiveJPL();
         await chargerEtParserWMM();
         appliquerCoordonneesManuelles(true);
 
+        // 2. Boucle d'exécution périodique (1 seconde)
         setInterval(() => {
             const now = new Date();
+            const timestampUtc = now.getTime();
             document.getElementById('lbl-epoch').innerText = now.toUTCString().substring(17, 25) + " UTC";
 
             // Envoi de la requête de calcul au Worker (JPL + VSOP2013 + ELP02)
             if (astroWorker) {
-                astroWorker.onmessage = function(e) {
-    const data = e.data;
-    if (data.type === 'READY') {
-        document.getElementById('lbl-worker-status').innerText = "ACTIF";
-        document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-    } 
-    else if (data.type === 'RESULTS' || data.type === 'UPDATE') {
-        const results = data.results || data.bodies;
-        if (results) {
-            derniersResultatsAstres = results;
-            mettreAJourTableauEtTrier(derniersResultatsAstres);
-            dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
-        }
-        if (data.solarMetrics) {
-            mettreAJourMetricsSolaires(data.solarMetrics);
-        }
-        if (data.tempsJpl) {
-            document.getElementById('val-gast').innerText = `${data.tempsJpl.gastDeg.toFixed(2)}° / ${data.tempsJpl.lstDeg.toFixed(2)}°`;
-        }
-    }
-};
+                astroWorker.postMessage({
+                    type: 'COMPUTE',
+                    timestampUtc: timestampUtc,
+                    station: stationActive,
+                    meteo: meteoActive
+                });
+            }
+        }, 1000);
 
         ecrireLog("SYSTEMA SENTINELA v18.6 prêt.");
     });
