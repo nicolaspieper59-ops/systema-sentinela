@@ -205,8 +205,6 @@ function refracter(altDeg, tempC = 15.0, humidityPct = 50.0, pressureHpa = 1013.
     const factor = (P_effective / 1013.25) * (288.15 / (273.15 + tempC));
     return altDeg + ((refStdArcMin * factor) / 60.0);
 }
-
-// --- 4. MÉTRIQUES SOLAIRES ANALYTIQUES ET REPLI ---
 function calculerMetricsSolaires(dateUtc, stationLon, eqTempsMinCalcule) {
     const d = (dateUtc.getTime() / 86400000.0) - 10957.5;
     const g = 357.529 + 0.98560028 * d;
@@ -223,7 +221,9 @@ function calculerMetricsSolaires(dateUtc, stationLon, eqTempsMinCalcule) {
     let eqTemps = (q - ra) / 15.0;
     while (eqTemps > 12) eqTemps -= 24;
     while (eqTemps < -12) eqTemps += 24;
-    const eqTempsMin = eqTempsCalcule !== undefined ? eqTempsCalcule : (eqTemps * 60);
+    
+    // Correction de la variable testée
+    const eqTempsMin = (eqTempsMinCalcule !== undefined) ? eqTempsMinCalcule : (eqTemps * 60);
 
     const utcH = dateUtc.getUTCHours() + dateUtc.getUTCMinutes() / 60.0 + dateUtc.getUTCSeconds() / 3600.0;
     const tsmH = (utcH + stationLon / 15.0 + 24.0) % 24.0;
@@ -244,7 +244,8 @@ function calculerMetricsSolaires(dateUtc, stationLon, eqTempsMinCalcule) {
         tsm: fmtHHMMSS(tsmH),
         tsv: fmtHHMMSS(tsvH)
     };
-}
+        }
+
 
 function genererVecteursHeliocentriques(timestampUtc) {
     if (jplMatrixData && jplMatrixData.bodies) {
