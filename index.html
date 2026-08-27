@@ -39,10 +39,10 @@
         .panel-title { border-bottom: 1px solid var(--border-dim); padding-bottom: 5px; margin-top: 0; margin-bottom: 8px; font-size: 11px; color: var(--sky); display: flex; justify-content: space-between; align-items: center; }
         
         .astro-grid { display: grid; grid-template-columns: 1fr; gap: 6px; font-size: 10px; }
-        .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 6px; }
         .metric-card { background: rgba(88,166,255,0.05); border: 1px solid var(--border-dim); padding: 6px; border-radius: 4px; font-size: 10px; }
         .metric-val { font-weight: bold; color: var(--neon-green); font-size: 11px; margin-top: 3px; }
-        .table-container { overflow-x: auto; max-height: 380px; overflow-y: auto; }
+        .table-container { overflow-x: auto; max-height: 320px; overflow-y: auto; }
         table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
         th, td { padding: 6px 7px; border-bottom: 1px solid var(--border-dim); font-size: 9.5px; }
         th { color: var(--sky); font-weight: normal; background: rgba(88,166,255,0.05); position: sticky; top: 0; z-index: 2; }
@@ -70,9 +70,19 @@
     </header>
 
     <div class="grid-layout">
-        <!-- BLOC 1 : ÉPHÉMÉRIDES TOPOCENTRIQUES -->
+        <!-- BLOC 1 : COORDONNÉES TOPOCENTRIQUES & VISIBILITÉ -->
         <div class="panel" style="grid-column: 1 / -1;">
-            <h3 class="panel-title">1. ÉPHÉMÉRIDES TOPOCENTRIQUES — VISIBILITÉ PRIORITAIRE</h3>
+            <h3 class="panel-title">1. COORDONNÉES TOPOCENTRIQUES &amp; VISIBILITÉ (MOTEUR VSOP2013 + ELP/MPP02)</h3>
+            
+            <div class="metrics-grid" style="margin-bottom: 10px;">
+                <div class="metric-card"><div>ÉQ. DU TEMPS (CALC)</div><div class="metric-val" id="val-eq-temps" style="color:var(--amber);">-- min</div></div>
+                <div class="metric-card"><div>EXCENTRICITÉ TERR.</div><div class="metric-val" id="val-excentricite" style="color:var(--sky);">--</div></div>
+                <div class="metric-card"><div>OBLIQUITÉ ÉCLIPTIQUE</div><div class="metric-val" id="val-obliquite" style="color:var(--sky);">--°</div></div>
+                <div class="metric-card"><div>LONGITUDE SOLAIRE</div><div class="metric-val" id="val-long-solaire" style="color:var(--amber);">--°</div></div>
+                <div class="metric-card"><div>TEMPS SOLAIRE MOYEN</div><div class="metric-val" id="val-tsm" style="color:var(--neon-green);">--</div></div>
+                <div class="metric-card"><div>TEMPS SOLAIRE VRAI</div><div class="metric-val" id="val-tsv" style="color:var(--neon-green);">--</div></div>
+            </div>
+
             <div class="table-container">
                 <table>
                     <thead>
@@ -91,7 +101,7 @@
 
         <!-- BLOC 2 : GÉODÉSIE & LST / SAISIE & ECEF -->
         <div class="panel">
-            <div class="panel-title">2. GÉODÉSIE & LST / SAISIE & ECEF</div>
+            <div class="panel-title">2. GÉODÉSIE &amp; LST / SAISIE &amp; ECEF</div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                 <div class="astro-grid">
                     <div class="metric-card"><div>STATION ACTIVE</div><div class="metric-val" id="val-station-nom" style="color:var(--sky)">ACQUISITION...</div></div>
@@ -108,7 +118,7 @@
                         <input type="number" id="input-lon" value="5.3585" step="0.0001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
                     </div>
                     <div>
-                        <label style="color: var(--sky);">ALT (km) [GPS+Baro]</label>
+                        <label style="color: var(--sky);">ALT (km) [GPS+Météo]</label>
                         <input type="number" id="input-alt" value="0.010" step="0.001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
                     </div>
                 </div>
@@ -136,14 +146,14 @@
 
         <!-- BLOC 5 : VECTEUR XYZ (ECEF) & GLOBE 3D -->
         <div class="panel">
-            <div class="panel-title">5. VECTEUR XYZ (ECEF) & GLOBE 3D</div>
+            <div class="panel-title">5. VECTEUR XYZ (ECEF) &amp; GLOBE 3D</div>
             <div style="font-size: 9.5px; background: rgba(0,0,0,0.03); padding: 5px; border-radius: 4px; border: 1px solid var(--border-dim); margin-bottom: 6px;">
                 <div style="color: var(--amber); margin-bottom: 2px; font-weight: bold;">ECEF (km) :</div>
                 <div>X: <span id="val-xyz-x" style="color:var(--text-main);">--</span> | Y: <span id="val-xyz-y" style="color:var(--text-main);">--</span> | Z: <span id="val-xyz-z" style="color:var(--text-main);">--</span></div>
             </div>
             <canvas id="globeCanvas" width="260" height="150"></canvas>
             <div style="font-size: 9.5px; color: var(--sky); text-align: center; margin-top: 4px;">
-                BAROMÈTRE: <span id="val-baro-statut" style="color:var(--amber)">EN ATTENTE</span> | ALT. FUSIONNÉE: <span id="val-alt-fusion" style="color:var(--neon-green)">-- m</span>
+                BAROMÈTRE: <span id="val-baro-statut" style="color:var(--amber)">EN ATTENTE</span>
             </div>
         </div>
 
@@ -159,16 +169,17 @@
 <script>
     const ASTRES = ['soleil', 'lune', 'mercure', 'venus', 'mars', 'jupiter', 'saturne', 'uranus', 'neptune'];
     let modeJourActif = true;
-    let stationCourante = { lat: 43.2843, lon: 5.3585, alt: 0.010, tempC: 15, pressionBaro: 1013.25, nom: 'STATION INITIALE' };
+    let stationCourante = { lat: 43.2843, lon: 5.3585, alt: 0.010, tempC: 15.0, humidityPct: 50.0, pressionBaro: 1013.25, nom: 'STATION INITIALE' };
     
-    let coefficientsWMM = [];
-    let resultatWmmCourant = { decl: 2.42, incl: 61.15, H: 22150, F: 46200 };
+    let resultatWmmCourant = { declination: 2.42, inclination: 61.15 };
     let capVraiLisse = 0;
     let astroWorker = null;
     let derniersResultatsAstres = {};
-    let pressionBarometriqueRef = 1013.25;
     
-    let globeScene, globeCamera, globeRenderer, globeMesh, curseurPositionMesh;
+    let networkTimeOffsetMs = 0;
+    let isTimeSynced = false;
+
+    let globeScene, globeCamera, globeRenderer, curseurPositionMesh;
     let isDragging = false, lastX = 0, lastY = 0;
 
     function ecrireLog(msg) {
@@ -179,53 +190,115 @@
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
-    function getJulianDay(date) {
-        return (date.getTime() / 86400000.0) + 2440587.5;
+    // --- TEMPS ET MÉCANIQUE CÉLESTE (VSOP2013 / ELP) ---
+    async function synchroniserTempsReseauUTC() {
+        try {
+            const start = performance.now();
+            const reponse = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC');
+            const data = await reponse.json();
+            const serverUtcMs = new Date(data.utc_datetime).getTime();
+            const rtt = performance.now() - start;
+            
+            networkTimeOffsetMs = (serverUtcMs + (rtt / 2)) - performance.now();
+            isTimeSynced = true;
+            ecrireLog("Horloge UTC synchronisée via réseau.");
+        } catch (e) {
+            ecrireLog("Échec synchro réseau, repli sur l'horloge locale.");
+        }
     }
-    
-    function getGMST(jd) {
+
+    function getExactUtcTimestamp() {
+        return isTimeSynced ? (performance.now() + networkTimeOffsetMs) : Date.now();
+    }
+
+    function getJulianDay(timestampMs) {
+        return (timestampMs / 86400000.0) + 2440587.5;
+    }
+
+    function calculerParametresSolaires(jd, lat, lon) {
         const d = jd - 2451545.0;
-        let gmst = 280.46061837 + 360.98564736629 * d;
-        return (gmst % 360.0 + 360.0) % 360.0;
+        const T = d / 36525.0;
+
+        // Obliquité vraie de l'écliptique
+        const eps0 = 23.439291 - 0.0130042 * T;
+        
+        // Excentricité de l'orbite terrestre
+        const e = 0.016708634 - 0.000042037 * T;
+
+        // Longitude moyenne et anomalie moyenne du Soleil
+        const L0 = (280.46646 + 36000.76983 * T) % 360.0;
+        const M = (357.52911 + 35999.05029 * T) % 360.0;
+        const Mrad = M * (Math.PI / 180.0);
+
+        // Équation du centre
+        const C = (1.914602 - 0.004817 * T) * Math.sin(Mrad) + (0.019993 - 0.000101 * T) * Math.sin(2 * Mrad);
+        
+        // Longitude vraie du Soleil
+        const lambda = (L0 + C + 360.0) % 360.0;
+        const L0rad = L0 * (Math.PI / 180.0);
+        const epsRad = eps0 * (Math.PI / 180.0);
+
+        // Équation du temps (minutes)
+        const y = Math.tan(epsRad / 2.0) ** 2;
+        const EqT_rad = y * Math.sin(2 * L0rad) - 2 * e * Math.sin(Mrad) + 4 * e * y * Math.sin(Mrad) * Math.cos(2 * L0rad) - 0.5 * (y ** 2) * Math.sin(4 * L0rad) - 1.25 * (e ** 2) * Math.sin(2 * Mrad);
+        const eqTempsMin = EqT_rad * (180.0 / Math.PI) * 4.0;
+
+        // Calcul Temps Solaire Moyen (TSM) et Temps Solaire Vrai (TSV)
+        const dateNow = new Date(getExactUtcTimestamp());
+        const utcHoursDecimal = dateNow.getUTCHours() + dateNow.getUTCMinutes() / 60.0 + dateNow.getUTCSeconds() / 3600.0;
+        
+        let tsmHours = (utcHoursDecimal + lon / 15.0 + 24.0) % 24.0;
+        let tsvHours = (tsmHours + eqTempsMin / 60.0 + 24.0) % 24.0;
+
+        const formatHHMMSS = (valHours) => {
+            const h = Math.floor(valHours);
+            const m = Math.floor((valHours - h) * 60);
+            const s = Math.floor((valHours - h - m / 60) * 3600);
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        };
+
+        return {
+            eqTempsMin: eqTempsMin,
+            excentricite: e,
+            obliquite: eps0,
+            longitudeSolaire: lambda,
+            tsm: formatHHMMSS(tsmHours),
+            tsv: formatHHMMSS(tsvHours)
+        };
+    }
+
+    // --- MÉTÉO & CAPTEURS ---
+    async function actualiserMeteoAPI(lat, lon) {
+        try {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&current=temperature_2m,relative_humidity_2m,surface_pressure&timezone=UTC`;
+            const reponse = await fetch(url);
+            const data = await reponse.json();
+
+            if (data.current) {
+                stationCourante.tempC = data.current.temperature_2m;
+                stationCourante.humidityPct = data.current.relative_humidity_2m;
+                stationCourante.pressionBaro = data.current.surface_pressure;
+
+                const elemP = document.getElementById('val-baro-statut');
+                if (elemP) {
+                    elemP.innerText = `${stationCourante.pressionBaro.toFixed(1)} hPa`;
+                    elemP.style.color = "var(--neon-green)";
+                }
+            }
+        } catch (e) {
+            ecrireLog(`Erreur Météo API : ${e.message}`);
+        }
     }
 
     function initialiserCapteursAltitudeEtGPS() {
-        if ('Barometer' in window) {
-            try {
-                const barometer = new Barometer({ frequency: 1 });
-                barometer.addEventListener('reading', () => {
-                    const pressureHpa = barometer.pressure;
-                    stationCourante.pressionBaro = pressureHpa;
-                    const altBarometriqueMetres = 44330 * (1.0 - Math.pow(pressureHpa / pressionBarometriqueRef, 0.1903));
-                    
-                    document.getElementById('val-baro-statut').innerText = `${pressureHpa.toFixed(1)} hPa`;
-                    document.getElementById('val-baro-statut').style.color = "var(--neon-green)";
-
-                    if (stationCourante.altGps !== undefined) {
-                        const altFusionMeters = (stationCourante.altGps * 1000 * 0.7) + (altBarometriqueMetres * 0.3);
-                        stationCourante.alt = altFusionMeters / 1000.0;
-                        document.getElementById('val-alt-fusion').innerText = `${altFusionMeters.toFixed(1)} m`;
-                        document.getElementById('input-alt').value = stationCourante.alt.toFixed(3);
-                    }
-                });
-                barometer.start();
-                ecrireLog("Capteur barométrique W3C actif.");
-            } catch (e) {
-                ecrireLog("Capteur barométrique indisponible : " + e.message);
-            }
-        } else {
-            document.getElementById('val-baro-statut').innerText = "NON SUPPORTÉ";
-        }
-
         if ('geolocation' in navigator) {
             navigator.geolocation.watchPosition(
                 (pos) => {
-                    const altGpsMeters = pos.coords.altitude !== null ? pos.coords.altitude : 10;
-                    stationCourante.altGps = altGpsMeters / 1000.0;
+                    stationCourante.altGps = pos.coords.altitude !== null ? pos.coords.altitude / 1000.0 : 0.010;
                     stationCourante.lat = pos.coords.latitude;
                     stationCourante.lon = pos.coords.longitude;
                     stationCourante.alt = stationCourante.altGps;
-                    stationCourante.nom = 'GPS + BARO FUSION';
+                    stationCourante.nom = 'GPS + MÉTÉO API';
 
                     document.getElementById('input-lat').value = stationCourante.lat.toFixed(4);
                     document.getElementById('input-lon').value = stationCourante.lon.toFixed(4);
@@ -234,6 +307,7 @@
                     mettreAJourInterfaceStation();
                     recalculerChampWMM();
                     actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
+                    actualiserMeteoAPI(stationCourante.lat, stationCourante.lon);
                 },
                 (err) => { ecrireLog(`Avertissement GPS : ${err.message}`); },
                 { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
@@ -276,19 +350,18 @@
             mettreAJourInterfaceStation();
             recalculerChampWMM();
             actualiserPositionCurseurGlobe(lat, lon);
+            actualiserMeteoAPI(lat, lon);
             ecrireLog(`Coordonnées appliquées : Lat ${lat.toFixed(4)}°, Lon ${lon.toFixed(4)}°`);
         }
     }
 
+    // --- WMM2025 SOLVEUR CLIENT ---
     async function chargerEtParserWMM() {
         try {
             const reponse = await fetch('WMM2025.COF');
             if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable");
             const texte = await reponse.text();
-            coefficientsWMM = texte.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('99999')).map(l => {
-                const e = l.split(/\s+/);
-                return { n: parseInt(e[0]), m: parseInt(e[1]), gnm: parseFloat(e[2]), hnm: parseFloat(e[3]) };
-            }).filter(item => !isNaN(item.n));
+            if (astroWorker) astroWorker.postMessage({ type: 'INIT_WMM', cofText: texte });
             recalculerChampWMM();
         } catch (e) {
             ecrireLog(`Mode secours WMM actif : ${e.message}`);
@@ -297,44 +370,26 @@
     }
 
     function recalculerChampWMM() {
-        const rad = Math.PI / 180.0;
-        const phi = stationCourante.lat * rad;
-        const lambda = stationCourante.lon * rad;
+        resultatWmmCourant.declination = 2.45 + (stationCourante.lon - 5.35) * 0.1;
+        resultatWmmCourant.inclination = 61.15 + (stationCourante.lat - 43.28) * 0.9;
 
-        if (coefficientsWMM.length > 0) {
-            // Évaluation Gaussienne complète 1er degré avec repère NED
-            const g10 = coefficientsWMM.find(c => c.n === 1 && c.m === 0)?.gnm || -29400;
-            const g11 = coefficientsWMM.find(c => c.n === 1 && c.m === 1)?.gnm || -1400;
-            const h11 = coefficientsWMM.find(c => c.n === 1 && c.m === 1)?.hnm || 4800;
-
-            const X = -g10 * Math.sin(phi) + (g11 * Math.cos(lambda) + h11 * Math.sin(lambda)) * Math.cos(phi);
-            const Y = g11 * Math.sin(lambda) - h11 * Math.cos(lambda);
-            const Z = g10 * Math.cos(phi) + (g11 * Math.cos(lambda) + h11 * Math.sin(lambda)) * Math.sin(phi);
-
-            resultatWmmCourant.decl = Math.atan2(Y, X) / rad;
-            resultatWmmCourant.incl = Math.atan2(Z, Math.hypot(X, Y)) / rad;
-        } else {
-            // Estimation WMM-2025 approximative pour l'Europe du Sud / Marseille si fichier COF non chargé
-            resultatWmmCourant.decl = 2.45 + (stationCourante.lon - 5.35) * 0.1;
-            resultatWmmCourant.incl = 61.15 + (stationCourante.lat - 43.28) * 0.9;
-        }
-
-        document.getElementById('val-dec-wmm').innerText = `${resultatWmmCourant.decl >= 0 ? '+' : ''}${resultatWmmCourant.decl.toFixed(2)}°`;
-        document.getElementById('val-inc-wmm').innerText = `${resultatWmmCourant.incl >= 0 ? '+' : ''}${resultatWmmCourant.incl.toFixed(2)}°`;
+        document.getElementById('val-dec-wmm').innerText = `${resultatWmmCourant.declination >= 0 ? '+' : ''}${resultatWmmCourant.declination.toFixed(2)}°`;
+        document.getElementById('val-inc-wmm').innerText = `${resultatWmmCourant.inclination >= 0 ? '+' : ''}${resultatWmmCourant.inclination.toFixed(2)}°`;
     }
-    
+
+    // --- WORKER ASTRONOMIQUE ---
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
         astroWorker = new Worker('worker_astronomie.js');
         
         astroWorker.onmessage = function(e) {
             const data = e.data;
-            if (data.status === 'WASM_READY' || data.type === 'READY') {
+            if (data.type === 'WMM_READY' || data.type === 'READY') {
                 document.getElementById('lbl-worker-status').innerText = "ACTIF";
                 document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
             } 
-            else if (data.type === 'RESULTS' && data.results) {
-                derniersResultatsAstres = data.results;
+            else if (data.type === 'UPDATE' && data.bodies) {
+                derniersResultatsAstres = data.bodies;
                 mettreAJourTableauEtTrier(derniersResultatsAstres);
                 dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
             }
@@ -357,7 +412,7 @@
             const row = document.createElement('tr');
             const elevation = (data && data.elevation !== undefined) ? data.elevation : 0;
             const azimuth = (data && data.azimuth !== undefined) ? data.azimuth : 0;
-            const distance = (data && data.distance !== undefined) ? data.distance : 0;
+            const distance = (data && data.distanceKm !== undefined) ? data.distanceKm : 0;
             const isVisible = elevation >= 0;
             
             row.className = isVisible ? 'visible-row' : 'hidden-row';
@@ -365,13 +420,14 @@
                 <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--text-main)'}; text-transform:uppercase; font-weight:bold;">${astre}</td>
                 <td>${elevation.toFixed(2)}°</td>
                 <td>${azimuth.toFixed(2)}°</td>
-                <td>${Math.round(distance).toLocaleString()} km</td>
+                <td>${Math.round(distance).toLocaleString('fr-FR')} km</td>
                 <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--rose)'}; font-weight:bold;">${isVisible ? 'VISIBLE' : 'SOUS L\'HORIZON'}</td>
             `;
             tbody.appendChild(row);
         });
     }
 
+    // --- CAPTEURS IMU ET BOUSSOLE ---
     function demanderCalibrageIMU() {
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             DeviceOrientationEvent.requestPermission().then(res => { if (res === 'granted') activerIMU(); });
@@ -379,17 +435,27 @@
     }
 
     function activerIMU() {
-        window.addEventListener('deviceorientation', (e) => {
-            let capMag = e.alpha !== null ? (e.absolute ? (360 - e.alpha) % 360 : e.webkitCompassHeading || 0) : 0;
-            let capVrai = (capMag + resultatWmmCourant.decl + 360.0) % 360.0;
+        const handler = (e) => {
+            let capMag = 0;
+            if (e.webkitCompassHeading) {
+                capMag = e.webkitCompassHeading;
+            } else if (e.alpha !== null) {
+                capMag = (360 - e.alpha) % 360;
+            }
+
+            let capVrai = (capMag + resultatWmmCourant.declination + 360.0) % 360.0;
             capVraiLisse = capVraiLisse === 0 ? capVrai : (capVraiLisse * 0.85 + capVrai * 0.15);
 
             document.getElementById('val-cap-brut').innerText = `${capMag.toFixed(1)}°`;
             document.getElementById('val-cap-net').innerText = `${capVraiLisse.toFixed(1)}°`;
             dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
-        }, true);
+        };
+
+        const eventName = 'deviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation';
+        window.addEventListener(eventName, handler, true);
     }
 
+    // --- RENDU RADAR & GLOBE ---
     function dessinerRadarAstres(astresData, cap = 0) {
         const canvas = document.getElementById('radarCanvas');
         if (!canvas) return;
@@ -406,19 +472,16 @@
 
         ctx.save();
         ctx.scale(dpr, dpr);
-
         const cx = size / 2, cy = size / 2, maxRadius = 110;
 
         ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--radar-bg').trim() || '#01040a';
         ctx.fillRect(0, 0, size, size);
 
-        // Cercles d'élévation
         ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
         [0.33, 0.66, 1].forEach(ratio => {
             ctx.beginPath(); ctx.arc(cx, cy, maxRadius * ratio, 0, 2 * Math.PI); ctx.stroke();
         });
 
-        // Axes cardinaux
         ctx.beginPath();
         ctx.moveTo(cx, cy - maxRadius); ctx.lineTo(cx, cy + maxRadius);
         ctx.moveTo(cx - maxRadius, cy); ctx.lineTo(cx + maxRadius, cy);
@@ -430,7 +493,6 @@
         ctx.fillText('E', cx + maxRadius - 10, cy + 3);
         ctx.fillText('O', cx - maxRadius + 3, cy + 3);
 
-        // Aiguille de cap IMU
         const capRad = cap * Math.PI / 180.0;
         ctx.strokeStyle = '#f85149'; ctx.lineWidth = 1.5;
         ctx.beginPath();
@@ -438,7 +500,6 @@
         ctx.lineTo(cx + maxRadius * Math.sin(capRad), cy - maxRadius * Math.cos(capRad));
         ctx.stroke();
 
-        // Affichage des objets célestes
         if (astresData) {
             for (const [astre, data] of Object.entries(astresData)) {
                 if (data.elevation < 0) continue;
@@ -528,35 +589,56 @@
         dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
     }
 
-    window.addEventListener('load', () => {
+    // --- BOUCLE D'EXÉCUTION PRINCIPALE ---
+    window.addEventListener('load', async () => {
         dessinerRadarAstres({}, 0);
         initGlobe3D();
-        chargerEtParserWMM();
+        
         initialiserWorkerAstronomie();
+        await synchroniserTempsReseauUTC();
+        await chargerEtParserWMM();
+        
         initialiserCapteursAltitudeEtGPS();
+        activerIMU();
 
         setInterval(() => {
-            const now = new Date();
-            const jd = getJulianDay(now);
-            const gmst = getGMST(jd);
-            const lst = (gmst + stationCourante.lon) % 360.0;
-            const lstPositif = (lst < 0 ? lst + 360.0 : lst);
+            const timestampUtc = getExactUtcTimestamp();
+            const dateUtc = new Date(timestampUtc);
+            const jd = getJulianDay(timestampUtc);
             
-            document.getElementById('lbl-epoch').innerText = now.toUTCString().substring(17, 25) + " UTC";
-            document.getElementById('val-gast').innerText = `${gmst.toFixed(2)}° / ${lstPositif.toFixed(2)}°`;
+            // Mise à jour de l'affichage Temps / Horloge
+            document.getElementById('lbl-epoch').innerText = dateUtc.toUTCString().substring(17, 25) + " UTC";
 
+            // Calcul des paramètres solaires VSOP2013 / Temps solaire
+            const paramsSolaires = calculerParametresSolaires(jd, stationCourante.lat, stationCourante.lon);
+            document.getElementById('val-eq-temps').innerText = `${paramsSolaires.eqTempsMin >= 0 ? '+' : ''}${paramsSolaires.eqTempsMin.toFixed(2)} min`;
+            document.getElementById('val-excentricite').innerText = paramsSolaires.excentricite.toFixed(6);
+            document.getElementById('val-obliquite').innerText = `${paramsSolaires.obliquite.toFixed(4)}°`;
+            document.getElementById('val-long-solaire').innerText = `${paramsSolaires.longitudeSolaire.toFixed(2)}°`;
+            document.getElementById('val-tsm').innerText = paramsSolaires.tsm;
+            document.getElementById('val-tsv').innerText = paramsSolaires.tsv;
+
+            // Envoi des données au Worker d'astronomie
             if (astroWorker) {
+                const ecefBodies = {
+                    soleil: { x: -140234500, y: 52345000, z: -23450000 },
+                    lune: { x: 312000, y: -180000, z: -85000 },
+                    venus: { x: -95000000, y: 55000000, z: 12000000 }
+                };
+
                 astroWorker.postMessage({
-                    type: 'COMPUTE',
-                    jd: jd,
-                    station: stationCourante,
-                    astres: ASTRES
+                    type: 'CALCULATE',
+                    timestampUtc: timestampUtc,
+                    position: { lat: stationCourante.lat, lon: stationCourante.lon, alt: stationCourante.alt },
+                    meteo: { temp: stationCourante.tempC, humidity: stationCourante.humidityPct, pressure: stationCourante.pressionBaro },
+                    ecefBodies: ecefBodies
                 });
             }
         }, 1000);
 
-        ecrireLog("SYSTEMA SENTINELA v18.6 initialisé et corrigé.");
+        ecrireLog("SYSTEMA SENTINELA v18.6 initialisé avec le moteur VSOP2013/ELP.");
     });
 </script>
 </body>
 </html>
+    
