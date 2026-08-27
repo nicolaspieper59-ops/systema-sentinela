@@ -166,16 +166,19 @@
     </div>
 </div>
 
-<script src="three.min.js"></script>
+        <script src="three.min.js"></script>
 <script src="vsop2013.js"></script>
 <script src="ElpMpp02LLR_min.js"></script>
 
 <script>
     let modeJourActif = true;
-    let stationCourante = { lat: 43.2843, lon: 5.3585, alt: 0.010, tempC: 15.0, humidityPct: 50.0, pressionBaro: 1013.25, nom: 'STATION INITIALE' };
+    
+    // Alignement des objets globaux transmis au Worker
+    let stationActive = { lat: 43.2843, lon: 5.3585, alt: 0.010, nom: 'STATION INITIALE' };
+    let meteoActive = { tempC: 15.0, humidityPct: 50.0, pressionBaro: 1013.25 };
     
     let matriceJplLive = null;
-    let resultatWmmCourant = { declination: 2.42, inclination: 61.15 };
+    let resultatWmmCourant = { declination: 2.45, inclination: 61.15 };
     let capVraiLisse = 0;
     let astroWorker = null;
     let derniersResultatsAstres = {};
@@ -221,30 +224,41 @@
         }
     }
 
+    // --- RECEPTION UNIQUE ET MISE A JOUR DU DOM ---
+    function traiterMessageWorker(e) {
+        const data = e.data;
+        if (data.type === 'READY' || data.type === 'WMM_READY' || data.status === 'WASM_READY') {
+            document.getElementById('lbl-worker-status').innerText = "ACTIF";
+            document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+        } 
+        else if (data.type === 'RESULTS' || data.type === 'UPDATE') {
+            const results = data.results || data.bodies;
+            if (results) {
+                derniersResultatsAstres = results;
+                mettreAJourTableauEtTrier(derniersResultatsAstres);
+                dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
+            }
+            if (data.solarMetrics) {
+                mettreAJourMetricsSolaires(data.solarMetrics);
+            }
+            if (data.tempsJpl) {
+                document.getElementById('val-gast').innerText = `${data.tempsJpl.gastDeg.toFixed(2)}° / ${data.tempsJpl.lstDeg.toFixed(2)}°`;
+            }
+            if (data.wmm) {
+                resultatWmmCourant = data.wmm;
+                document.getElementById('val-dec-wmm').innerText = `${data.wmm.declination >= 0 ? '+' : ''}${data.wmm.declination.toFixed(2)}°`;
+                document.getElementById('val-inc-wmm').innerText = `${data.wmm.inclination >= 0 ? '+' : ''}${data.wmm.inclination.toFixed(2)}°`;
+            }
+        }
+    }
+
     // --- WORKER ASTRONOMIQUE ---
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
         astroWorker = new Worker('worker_astronomie.js');
         
-        astroWorker.onmessage = function(e) {
-            const data = e.data;
-            if (data.type === 'READY' || data.status === 'WASM_READY') {
-                document.getElementById('lbl-worker-status').innerText = "ACTIF";
-                document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-                ecrireLog("Worker d'astronomie opérationnel.");
-            } 
-            else if (data.type === 'RESULTS' || data.type === 'UPDATE') {
-                const results = data.results || data.bodies;
-                if (results) {
-                    derniersResultatsAstres = results;
-                    mettreAJourTableauEtTrier(derniersResultatsAstres);
-                    dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
-                }
-                if (data.solarMetrics) {
-                    mettreAJourMetricsSolaires(data.solarMetrics);
-                }
-            }
-        };
+        // Attribue l'écouteur unique
+        astroWorker.onmessage = traiterMessageWorker;
 
         if (matriceJplLive) {
             astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
@@ -312,16 +326,16 @@
         document.getElementById('val-xyz-y').innerText = Y.toFixed(2);
         document.getElementById('val-xyz-z').innerText = Z.toFixed(2);
 
-        stationCourante.lat = lat; 
-        stationCourante.lon = lon; 
-        stationCourante.alt = alt;
+        // Mise à jour synchrone de l'objet global envoyé au Worker
+        stationActive = { lat, lon, alt, nom: silencieux ? stationActive.nom : 'SAISIE MANUELLE' };
+
+        document.getElementById('val-station-nom').innerText = stationActive.nom;
+        document.getElementById('val-station-coords').innerText = `${lat.toFixed(4)}° / ${lon.toFixed(4)}° / ${(alt*1000).toFixed(0)}m`;
+
+        recalculerChampWMM();
+        actualiserPositionCurseurGlobe(lat, lon);
 
         if (!silencieux) {
-            stationCourante.nom = 'SAISIE MANUELLE';
-            document.getElementById('val-station-nom').innerText = stationCourante.nom;
-            document.getElementById('val-station-coords').innerText = `${lat.toFixed(4)}° / ${lon.toFixed(4)}° / ${(alt*1000).toFixed(0)}m`;
-            recalculerChampWMM();
-            actualiserPositionCurseurGlobe(lat, lon);
             ecrireLog(`Coordonnées mises à jour : Lat ${lat.toFixed(4)}°, Lon ${lon.toFixed(4)}°`);
         }
     }
@@ -340,8 +354,8 @@
     }
 
     function recalculerChampWMM() {
-        resultatWmmCourant.declination = 2.45 + (stationCourante.lon - 5.35) * 0.1;
-        resultatWmmCourant.inclination = 61.15 + (stationCourante.lat - 43.28) * 0.9;
+        resultatWmmCourant.declination = 2.45 + (stationActive.lon - 5.35) * 0.1;
+        resultatWmmCourant.inclination = 61.15 + (stationActive.lat - 43.28) * 0.9;
 
         document.getElementById('val-dec-wmm').innerText = `${resultatWmmCourant.declination >= 0 ? '+' : ''}${resultatWmmCourant.declination.toFixed(2)}°`;
         document.getElementById('val-inc-wmm').innerText = `${resultatWmmCourant.inclination >= 0 ? '+' : ''}${resultatWmmCourant.inclination.toFixed(2)}°`;
@@ -489,7 +503,7 @@
             renderer.render(scene, camera); 
         }
         animate();
-        actualiserPositionCurseurGlobe(stationCourante.lat, stationCourante.lon);
+        actualiserPositionCurseurGlobe(stationActive.lat, stationActive.lon);
     }
 
     function basculerModeJour() {
@@ -506,42 +520,16 @@
         
         initialiserWorkerAstronomie();
 
-        // 1. Écouteur du Worker (défini UNE SEULE fois à l'initialisation)
-        if (astroWorker) {
-            astroWorker.onmessage = function (e) {
-                const data = e.data;
-                if (data.type === 'READY' || data.type === 'WMM_READY') {
-                    document.getElementById('lbl-worker-status').innerText = "ACTIF";
-                    document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-                } 
-                else if (data.type === 'RESULTS' || data.type === 'UPDATE') {
-                    const results = data.results || data.bodies;
-                    if (results) {
-                        derniersResultatsAstres = results;
-                        mettreAJourTableauEtTrier(derniersResultatsAstres);
-                        dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
-                    }
-                    if (data.solarMetrics) {
-                        mettreAJourMetricsSolaires(data.solarMetrics);
-                    }
-                    if (data.tempsJpl) {
-                        document.getElementById('val-gast').innerText = `${data.tempsJpl.gastDeg.toFixed(2)}° / ${data.tempsJpl.lstDeg.toFixed(2)}°`;
-                    }
-                }
-            };
-        }
-
         await chargerFluxLiveJPL();
         await chargerEtParserWMM();
         appliquerCoordonneesManuelles(true);
 
-        // 2. Boucle d'exécution périodique (1 seconde)
+        // Boucle cadencée à 1 seconde
         setInterval(() => {
             const now = new Date();
             const timestampUtc = now.getTime();
             document.getElementById('lbl-epoch').innerText = now.toUTCString().substring(17, 25) + " UTC";
 
-            // Envoi de la requête de calcul au Worker (JPL + VSOP2013 + ELP02)
             if (astroWorker) {
                 astroWorker.postMessage({
                     type: 'COMPUTE',
