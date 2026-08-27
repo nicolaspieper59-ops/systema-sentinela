@@ -332,12 +332,7 @@
         document.getElementById('val-station-coords').innerText = `${lat.toFixed(4)}° / ${lon.toFixed(4)}° / ${(alt*1000).toFixed(0)}m`;
 
         recalculerChampWMM();
-        actualiserPositionCurseurGlobe(lat, lon);
-
-        if (!silencieux) {
-            ecrireLog(`Coordonnées mises à jour : Lat ${lat.toFixed(4)}°, Lon ${lon.toFixed(4)}°`);
-        }
-    }
+        
 
     async function chargerEtParserWMM() {
         try {
