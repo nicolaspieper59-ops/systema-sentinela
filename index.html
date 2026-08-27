@@ -515,14 +515,27 @@
 
             // Envoi de la requête de calcul au Worker (JPL + VSOP2013 + ELP02)
             if (astroWorker) {
-                astroWorker.postMessage({
-                    type: 'COMPUTE',
-                    timestampUtc: now.getTime(),
-                    station: stationCourante,
-                    useJplMatrix: !!matriceJplLive
-                });
-            }
-        }, 1000);
+                astroWorker.onmessage = function(e) {
+    const data = e.data;
+    if (data.type === 'READY') {
+        document.getElementById('lbl-worker-status').innerText = "ACTIF";
+        document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+    } 
+    else if (data.type === 'RESULTS' || data.type === 'UPDATE') {
+        const results = data.results || data.bodies;
+        if (results) {
+            derniersResultatsAstres = results;
+            mettreAJourTableauEtTrier(derniersResultatsAstres);
+            dessinerRadarAstres(derniersResultatsAstres, capVraiLisse);
+        }
+        if (data.solarMetrics) {
+            mettreAJourMetricsSolaires(data.solarMetrics);
+        }
+        if (data.tempsJpl) {
+            document.getElementById('val-gast').innerText = `${data.tempsJpl.gastDeg.toFixed(2)}° / ${data.tempsJpl.lstDeg.toFixed(2)}°`;
+        }
+    }
+};
 
         ecrireLog("SYSTEMA SENTINELA v18.6 prêt.");
     });
