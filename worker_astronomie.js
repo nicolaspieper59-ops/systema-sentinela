@@ -1,19 +1,19 @@
 /**
- * SYSTEMA SENTINELA v18.6.2 - Worker Astronomique & Géomagnétique
- * Intègre la matrice JPL DE440s, les métriques solaires et le solveur WMM-2025.
+ * SYSTEMA SENTINELA v18.6.3 - Worker Astronomique & Géomagnétique
+ * Calculs basés sur le temps JPL (JD/TT/GAST) et passage Écliptique -> ECEF.
  */
 
 try {
     importScripts('vsop2013.js', 'ElpMpp02LLR_min.js');
 } catch (e) {
-    // Repli analytique si les scripts ne sont pas disponibles
+    // Mode analytique de secours si les fichiers sont absents
 }
 
 let wmmCoeffs = [];
 let isWmmLoaded = false;
 let jplMatrixData = null;
 
-// 1. Parsing & Solveur Géomagnétique WMM-2025
+// --- 1. SOLVEUR WMM-2025 ---
 function parseWMM2025(cofText) {
     wmmCoeffs = [];
     const lines = cofText.split('\n');
@@ -62,7 +62,6 @@ function computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
     const phi = lonRad;
 
     let Br = 0, Btheta = 0, Bphi = 0;
-
     let P = Array.from({ length: 13 }, () => new Array(13).fill(0));
     let dP = Array.from({ length: 13 }, () => new Array(13).fill(0));
 
@@ -116,17 +115,66 @@ function computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
     return { declination: D, inclination: I, horizontal: H, total: F };
 }
 
-// 2. Coordonnées Topocentriques & Réfraction
+// --- 2. CALCULS TEMPORELS JPL (JD, TT, GAST, LST) ---
+function calculerTempsJPL(timestampUtc, stationLon) {
+    // Si flux_live.json fournit l'époque JD d'origine, on propage le delta
+    let jdUtc = 2440587.5 + (timestampUtc / 86400000.0);
+    if (jplMatrixData && jplMatrixData.epoch_jd) {
+        const deltaMs = timestampUtc - (jplMatrixData.timestamp_ref || timestampUtc);
+        jdUtc = jplMatrixData.epoch_jd + (deltaMs / 86400000.0);
+    }
+
+    // TT = UTC + 69.184s (Leap seconds + 32.184s)
+    const deltaT_sec = (jplMatrixData && jplMatrixData.delta_t) ? jplMatrixData.delta_t : 69.184;
+    const jdTT = jdUtc + (deltaT_sec / 86400.0);
+
+    // Calcul du GAST (Greenwich Apparent Sidereal Time)
+    const D = jdUtc - 2451545.0;
+    let gmstDeg = (280.46061837 + 360.98564736629 * D) % 360.0;
+    if (gmstDeg < 0) gmstDeg += 360.0;
+
+    let gastDeg = gmstDeg;
+    if (jplMatrixData && jplMatrixData.gast_deg !== undefined) {
+        // Propagation temporelle du GAST depuis le point fixe JPL
+        const deltaJours = (timestampUtc - (jplMatrixData.timestamp_ref || timestampUtc)) / 86400000.0;
+        gastDeg = (jplMatrixData.gast_deg + deltaJours * 360.98564736629) % 360.0;
+        if (gastDeg < 0) gastDeg += 360.0;
+    }
+
+    let lstDeg = (gastDeg + stationLon) % 360.0;
+    if (lstDeg < 0) lstDeg += 360.0;
+
+    return { jdUtc, jdTT, gastDeg, lstDeg };
+}
+
+// --- 3. CONVERSION ECLIPTIQUE -> ECEF & TOPOCENTRIQUE ---
+function ecliptiqueVersECEF(posEcl, obliquiteDeg, gastDeg) {
+    const eps = obliquiteDeg * Math.PI / 180.0;
+    const gastRad = gastDeg * Math.PI / 180.0;
+
+    // 1. Inclinaison selon l'obliquité de l'écliptique (Repère Équatorial ICRF)
+    const xEq = posEcl.x;
+    const yEq = posEcl.y * Math.cos(eps) - posEcl.z * Math.sin(eps);
+    const zEq = posEcl.y * Math.sin(eps) + posEcl.z * Math.cos(eps);
+
+    // 2. Rotation du Temps Sidéral Apparent (ICRF -> ECEF Terrestre)
+    const xEcef = xEq * Math.cos(gastRad) + yEq * Math.sin(gastRad);
+    const yEcef = -xEq * Math.sin(gastRad) + yEq * Math.cos(gastRad);
+    const zEcef = zEq;
+
+    return { x: xEcef, y: yEcef, z: zEcef };
+}
+
 function topocentrique(latDeg, lonDeg, altKm, posCorpsECEF) {
-    const phi = latDeg * Math.PI / 180;
-    const lambda = lonDeg * Math.PI / 180;
-    
+    const phi = latDeg * Math.PI / 180.0;
+    const lambda = lonDeg * Math.PI / 180.0;
+
     const a = 6378.137;
     const e2 = 0.00669437999014;
-    const N = a / Math.sqrt(1 - e2 * Math.sin(phi) * Math.sin(phi));
+    const N = a / Math.sqrt(1.0 - e2 * Math.sin(phi) * Math.sin(phi));
     const obsX = (N + altKm) * Math.cos(phi) * Math.cos(lambda);
     const obsY = (N + altKm) * Math.cos(phi) * Math.sin(lambda);
-    const obsZ = (N * (1 - e2) + altKm) * Math.sin(phi);
+    const obsZ = (N * (1.0 - e2) + altKm) * Math.sin(phi);
 
     const dx = posCorpsECEF.x - obsX;
     const dy = posCorpsECEF.y - obsY;
@@ -136,8 +184,8 @@ function topocentrique(latDeg, lonDeg, altKm, posCorpsECEF) {
     const n = -Math.sin(phi) * Math.cos(lambda) * dx - Math.sin(phi) * Math.sin(lambda) * dy + Math.cos(phi) * dz;
     const u =  Math.cos(phi) * Math.cos(lambda) * dx + Math.cos(phi) * Math.sin(lambda) * dy + Math.sin(phi) * dz;
 
-    const az = (Math.atan2(e, n) * 180 / Math.PI + 360) % 360;
-    const elGeom = Math.asin(u / Math.sqrt(e*e + n*n + u*u)) * 180 / Math.PI;
+    const az = (Math.atan2(e, n) * 180.0 / Math.PI + 360.0) % 360.0;
+    const elGeom = Math.asin(u / Math.sqrt(e*e + n*n + u*u)) * 180.0 / Math.PI;
     const distKm = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
     return { azimuth: az, elevationGeometrique: elGeom, distanceKm: distKm };
@@ -145,7 +193,7 @@ function topocentrique(latDeg, lonDeg, altKm, posCorpsECEF) {
 
 function refracter(altDeg, tempC = 15.0, humidityPct = 50.0, pressureHpa = 1013.25) {
     if (altDeg < -1.0) return altDeg;
-    const deg2rad = Math.PI / 180;
+    const deg2rad = Math.PI / 180.0;
 
     const altCorrRad = (10.3 / (altDeg + 5.1)) * deg2rad;
     const refStdArcMin = 1.02 / Math.tan(altDeg * deg2rad + altCorrRad);
@@ -158,28 +206,28 @@ function refracter(altDeg, tempC = 15.0, humidityPct = 50.0, pressureHpa = 1013.
     return altDeg + ((refStdArcMin * factor) / 60.0);
 }
 
-// 3. Métriques Solaires
-function calculerMetricsSolaires(date, stationLon = 0) {
-    const d = (date.getTime() / 86400000) - 10957.5;
+// --- 4. MÉTRIQUES SOLAIRES ANALYTIQUES ET REPLI ---
+function calculerMetricsSolaires(dateUtc, stationLon, eqTempsMinCalcule) {
+    const d = (dateUtc.getTime() / 86400000.0) - 10957.5;
     const g = 357.529 + 0.98560028 * d;
-    const gRad = g * Math.PI / 180;
+    const gRad = g * Math.PI / 180.0;
     const q = 280.459 + 0.98564736 * d;
     const L = q + 1.915 * Math.sin(gRad) + 0.020 * Math.sin(2 * gRad);
-    const LRad = L * Math.PI / 180;
+    const LRad = L * Math.PI / 180.0;
 
     const e = 0.016709 - 0.00000000115 * d;
     const eps = 23.439 - 0.00000036 * d;
-    const epsRad = eps * Math.PI / 180;
+    const epsRad = eps * Math.PI / 180.0;
 
-    const ra = Math.atan2(Math.cos(epsRad) * Math.sin(LRad), Math.cos(LRad)) * 180 / Math.PI;
+    const ra = Math.atan2(Math.cos(epsRad) * Math.sin(LRad), Math.cos(LRad)) * 180.0 / Math.PI;
     let eqTemps = (q - ra) / 15.0;
     while (eqTemps > 12) eqTemps -= 24;
     while (eqTemps < -12) eqTemps += 24;
-    const eqTempsMin = eqTemps * 60;
+    const eqTempsMin = eqTempsCalcule !== undefined ? eqTempsCalcule : (eqTemps * 60);
 
-    const utcH = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
-    const tsmH = (utcH + stationLon / 15.0 + 24) % 24;
-    const tsvH = (tsmH + eqTempsMin / 60 + 24) % 24;
+    const utcH = dateUtc.getUTCHours() + dateUtc.getUTCMinutes() / 60.0 + dateUtc.getUTCSeconds() / 3600.0;
+    const tsmH = (utcH + stationLon / 15.0 + 24.0) % 24.0;
+    const tsvH = (tsmH + eqTempsMin / 60.0 + 24.0) % 24.0;
 
     const fmtHHMMSS = (valH) => {
         const h = Math.floor(valH);
@@ -198,18 +246,13 @@ function calculerMetricsSolaires(date, stationLon = 0) {
     };
 }
 
-// 4. Génération / Extraction des Vecteurs ECEF des Corps Célestes
-function genererVecteursEcefCorps(timestampUtc, ecefInput) {
-    if (ecefInput && Object.keys(ecefInput).length > 0) {
-        return ecefInput;
-    }
-
+function genererVecteursHeliocentriques(timestampUtc) {
     if (jplMatrixData && jplMatrixData.bodies) {
         return jplMatrixData.bodies;
     }
 
-    const d = (timestampUtc / 86400000) - 10957.5;
-    const rad = Math.PI / 180;
+    const d = (timestampUtc / 86400000.0) - 10957.5;
+    const rad = Math.PI / 180.0;
 
     const L_sol = (280.459 + 0.98564736 * d) * rad;
     const r_sol = 149597870.7;
@@ -231,17 +274,10 @@ function genererVecteursEcefCorps(timestampUtc, ecefInput) {
     const L_jupiter = (34.40 + 0.083085 * d) * rad;
     const posJupiter = { x: 778570000 * Math.cos(L_jupiter), y: 778570000 * Math.sin(L_jupiter), z: 0 };
 
-    return {
-        soleil: posSoleil,
-        lune: posLune,
-        mercure: posMercure,
-        venus: posVenus,
-        mars: posMars,
-        jupiter: posJupiter
-    };
+    return { soleil: posSoleil, lune: posLune, mercure: posMercure, venus: posVenus, mars: posMars, jupiter: posJupiter };
 }
 
-// 5. Enregistrement des Handlers IPC
+// --- 5. GESTION DES MESSAGES INTERFACE (IPC) ---
 self.onmessage = function (e) {
     const data = e.data;
 
@@ -253,7 +289,6 @@ self.onmessage = function (e) {
 
     if (data.type === 'UPDATE_JPL_MATRIX') {
         jplMatrixData = data.matrix;
-        self.postMessage({ type: 'READY' });
         return;
     }
 
@@ -263,17 +298,31 @@ self.onmessage = function (e) {
         const meteo = data.meteo || { temp: 15.0, humidity: 50.0, pressure: 1013.25 };
         const dateUtc = new Date(timestampUtc);
 
+        // 1. Dérivation temporelle JPL (Julian Date, TT, GAST, LST)
+        const tempsJpl = calculerTempsJPL(timestampUtc, station.lon);
+
+        // 2. Champ Géomagnétique WMM-2025
         const startOfYear = Date.UTC(dateUtc.getUTCFullYear(), 0, 1);
         const endOfYear = Date.UTC(dateUtc.getUTCFullYear() + 1, 0, 1);
         const decimalYear = dateUtc.getUTCFullYear() + (timestampUtc - startOfYear) / (endOfYear - startOfYear);
-
         const wmmResult = computeWMM2025(station.lat, station.lon, station.alt, decimalYear);
-        const solarMetrics = calculerMetricsSolaires(dateUtc, station.lon);
-        const ecefBodies = genererVecteursEcefCorps(timestampUtc, data.ecefBodies);
 
+        // 3. Calculs Solaires
+        const solarMetrics = calculerMetricsSolaires(dateUtc, station.lon);
+
+        // 4. Conversion Écliptique -> ECEF -> Topocentrique
+        const corpsEcliptiques = genererVecteursHeliocentriques(timestampUtc);
         const resultsBodies = {};
-        for (let name in ecefBodies) {
-            const topo = topocentrique(station.lat, station.lon, station.alt, ecefBodies[name]);
+
+        for (let name in corpsEcliptiques) {
+            let posEcef = corpsEcliptiques[name];
+            
+            // Si les vecteurs sont en coordonnées écliptiques, transformation en ECEF via GAST
+            if (!jplMatrixData || !jplMatrixData.is_ecef_direct) {
+                posEcef = ecliptiqueVersECEF(corpsEcliptiques[name], solarMetrics.obliquite, tempsJpl.gastDeg);
+            }
+
+            const topo = topocentrique(station.lat, station.lon, station.alt, posEcef);
             const elevationApparente = refracter(topo.elevationGeometrique, meteo.temp, meteo.humidity, meteo.pressure);
 
             resultsBodies[name] = {
@@ -289,6 +338,7 @@ self.onmessage = function (e) {
             timestampUtc: timestampUtc,
             wmm: wmmResult,
             solarMetrics: solarMetrics,
+            tempsJpl: tempsJpl,
             bodies: resultsBodies
         });
     }
