@@ -57,7 +57,6 @@
         .table-container { overflow-x: auto; max-height: 320px; overflow-y: auto; }
         table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
         
-        /* Correction : Fond opaque var(--bg-surface) pour empêcher la transparence au défilement */
         th, td { padding: 6px 7px; border-bottom: 1px solid var(--border-dim); font-size: 9.5px; }
         th { color: var(--sky); font-weight: bold; background: var(--bg-surface); position: sticky; top: 0; z-index: 2; border-bottom: 2px solid var(--border-dim); }
         
@@ -72,7 +71,7 @@
         #globeCanvas { width: 100%; max-width: 260px; height: 150px; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 6px; cursor: grab; touch-action: none; }
     </style>
 </head>
-<body class=""> <!-- Démarrage natif en Mode Nuit -->
+<body class="">
 <div class="container">
     <header class="master-header">
         <div class="brand">SYSTEMA SENTINELA v18.6 — KERNEL RIGOROUS REPOSITORY</div>
@@ -138,7 +137,7 @@
             </div>
             <div style="display: flex; gap: 6px;">
                 <button class="btn-action" style="flex: 1;" onclick="appliquerCoordonneesManuelles()">APPLIQUER</button>
-                <button class="btn-action" style="flex: 1;" onclick="acquerirPositionGPS()">GPS AUTO</button>
+                <button class="btn-action" style="flex: 1;" onclick="basculerTousLesCapteurs()">GPS AUTO</button>
             </div>
         </div>
 
@@ -150,7 +149,7 @@
                 <div class="metric-card"><div>DÉCLINAISON (D)</div><div id="val-dec-wmm" class="metric-val" style="color:var(--sky);">Calcul...</div></div>
                 <div class="metric-card"><div>INCLINAISON (I)</div><div id="val-inc-wmm" class="metric-val" style="color:var(--amber);">Calcul...</div></div>
             </div>
-            <button class="btn-action" style="width: 100%;" onclick="demanderCalibrageIMU()">CALIBRER IMU / CAPTEURS</button>
+            <button id="btn-toggle-capteurs" class="btn-action" style="width: 100%;" onclick="basculerTousLesCapteurs()">ACTIVER GPS &amp; CAPTEURS</button>
         </div>
 
         <div class="panel">
@@ -183,15 +182,23 @@
 
 <script>
     let modeJourActif = false;
-    let decalageTempsAtomiqueMs = 0;
-    const SEUIL_DERIVE_MAX_MS = 1.0; // Seuil minimum mesurable en JS
+    // Récupération de l'offset sauvegardé pour éviter la retombée sur l'horloge Android
+    let decalageTempsAtomiqueMs = parseFloat(localStorage.getItem('sentinela_offset') || '0');
+    const SEUIL_DERIVE_MAX_MS = 1.0;
 
     let stationActive = { lat: 43.2843, lon: 5.3585, alt: 0.010, nom: 'STATION INITIALE' };
     let meteoActive = { temperatureC: 15.0, humiditePct: 50.0, pressionBaro: 1013.25 };
     
     let horodatageDernierFetchMeteo = 0;
     let derniereLatMeteo = null, derniereLonMeteo = null;
+    
+    // Variables de contrôle global d'état et d'instances des capteurs
+    let capteursActifs = false;
     let watchPositionId = null;
+    let sensorIMU = null;
+    let listenerIMU = null;
+    let eventNameIMU = null;
+    let instanceBarometre = null;
 
     let matriceJplLive = null;
     let resultatWmmCourant = { declination: 2.45, inclination: 61.15 };
@@ -210,53 +217,68 @@
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
-async function synchroniserHeureAtomique() {
-    // Liste des serveurs de temps UTC de secours
-    const serveursTemps = [
-        {
-            url: 'https://worldtimeapi.org/api/timezone/Etc/UTC',
-            parse: d => new Date(d.utc_datetime).getTime()
-        },
-        {
-            url: 'https://timeapi.io/api/v1/time/current/zone?timeZone=UTC',
-            parse: d => new Date(d.dateTime).getTime()
-        },
-        {
-            url: 'https://worldtimeapi.org/api/ip',
-            parse: d => new Date(d.utc_datetime).getTime()
-        }
-    ];
-
-    for (const serveur of serveursTemps) {
-        try {
-            const t0 = performance.now();
-            const reponse = await fetch(serveur.url, { cache: 'no-store' });
-            const t1 = performance.now();
-
-            if (!reponse.ok) continue;
-
-            const data = await reponse.json();
-            const tempsServeurMs = serveur.parse(data);
-            const rtt = (t1 - t0) / 2;
-
-            decalageTempsAtomiqueMs = (tempsServeurMs + rtt) - Date.now();
-
-            document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
-            ecrireLog(`Synchro atomique réussie via ${new URL(serveur.url).hostname} (Offset : ${decalageTempsAtomiqueMs > 0 ? '+' : ''}${Math.round(decalageTempsAtomiqueMs)} ms).`);
-            return; // Succès, on sort de la boucle
-        } catch (e) {
-            // Échec silencieux, tentative sur le serveur suivant
-        }
-    }
-
-    // Si tous les serveurs échouent
-    decalageTempsAtomiqueMs = 0;
-    document.getElementById('lbl-epoch').style.color = "var(--rose)";
-    ecrireLog(`Toutes les sources de temps atomique ont échoué : repli sur l'horloge système.`);
-    }
-
     function obtenirTimestampUTCExact() {
         return Date.now() + decalageTempsAtomiqueMs;
+    }
+
+    async function synchroniserHeureAtomique() {
+        const serveursTemps = [
+            { url: 'https://worldtimeapi.org/api/timezone/Etc/UTC', parse: d => new Date(d.utc_datetime).getTime() },
+            { url: 'https://timeapi.io/api/v1/time/current/zone?timeZone=UTC', parse: d => new Date(d.dateTime || d.currentLocalTime).getTime() },
+            { url: 'https://worldtimeapi.org/api/ip', parse: d => new Date(d.utc_datetime).getTime() }
+        ];
+
+        let synchroReussie = false;
+
+        for (const serveur of serveursTemps) {
+            try {
+                const t0 = performance.now();
+                const reponse = await fetch(serveur.url, { cache: 'no-store' });
+                const t1 = performance.now();
+
+                if (!reponse.ok) continue;
+
+                const data = await reponse.json();
+                const tempsServeurMs = serveur.parse(data);
+                if (isNaN(tempsServeurMs)) continue;
+
+                const rtt = (t1 - t0) / 2;
+                decalageTempsAtomiqueMs = (tempsServeurMs + rtt) - Date.now();
+                localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
+                synchroReussie = true;
+
+                document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
+                ecrireLog(`Synchro atomique réussie via ${new URL(serveur.url).hostname} (Offset : ${decalageTempsAtomiqueMs > 0 ? '+' : ''}${Math.round(decalageTempsAtomiqueMs)} ms).`);
+                break;
+            } catch (e) {}
+        }
+
+        // Fallback HTTP HEAD si toutes les API JSON échouent (ex: blocage CORS)
+        if (!synchroReussie) {
+            try {
+                const t0 = performance.now();
+                const reponse = await fetch(window.location.href, { method: 'HEAD', cache: 'no-store' });
+                const t1 = performance.now();
+                const headerDate = reponse.headers.get('date');
+
+                if (headerDate) {
+                    const tempsServeurMs = new Date(headerDate).getTime();
+                    const rtt = (t1 - t0) / 2;
+                    decalageTempsAtomiqueMs = (tempsServeurMs + rtt) - Date.now();
+                    localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
+                    synchroReussie = true;
+
+                    document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
+                    ecrireLog(`Synchro atomique via en-tête HTTP Date (Offset : ${Math.round(decalageTempsAtomiqueMs)} ms).`);
+                }
+            } catch (e) {}
+        }
+
+        // Conservation du dernier offset valide en cas d'absence totale de réseau
+        if (!synchroReussie) {
+            document.getElementById('lbl-epoch').style.color = decalageTempsAtomiqueMs !== 0 ? "var(--amber)" : "var(--rose)";
+            ecrireLog(`Échec synchro réseau. Conservation du dernier offset mémorisé (${Math.round(decalageTempsAtomiqueMs)} ms).`);
+        }
     }
 
     async function verifierEtRecalibrerHeure() {
@@ -268,13 +290,78 @@ async function synchroniserHeureAtomique() {
         }
     }
 
-    // --- MÉTÉO DYNAMIQUE ADAPTATIVE SELON LA VITESSE ---
+    // --- BASCULE CENTRALISÉE POUR TOUS LES CAPTEURS ---
+    async function basculerTousLesCapteurs() {
+        const btn = document.getElementById('btn-toggle-capteurs');
+        
+        if (capteursActifs) {
+            // COUPURE TOTALE DES DÉTECTEURS ET LISTENERS
+            if (watchPositionId !== null) {
+                navigator.geolocation.clearWatch(watchPositionId);
+                watchPositionId = null;
+            }
+
+            if (sensorIMU) {
+                try { sensorIMU.stop(); } catch(e) {}
+                sensorIMU = null;
+            }
+
+            if (listenerIMU && eventNameIMU) {
+                window.removeEventListener(eventNameIMU, listenerIMU, true);
+                listenerIMU = null;
+                eventNameIMU = null;
+            }
+
+            if (instanceBarometre) {
+                try { instanceBarometre.disconnect(); } catch(e) {}
+                instanceBarometre = null;
+            }
+
+            capteursActifs = false;
+            if (btn) {
+                btn.innerText = "ACTIVER GPS & CAPTEURS";
+                btn.style.borderColor = "var(--sky)";
+                btn.style.color = "var(--text-main)";
+            }
+
+            document.getElementById('val-cap-brut').innerText = "--°";
+            document.getElementById('val-cap-net').innerText = "--°";
+            document.getElementById('val-baro-statut').innerText = "DÉSACTIVÉ";
+            document.getElementById('val-baro-statut').style.color = "var(--amber)";
+            ecrireLog("GPS, IMU et Baromètre complètement désactivés.");
+        } else {
+            // DÉMARRAGE SIMULTANÉ
+            capteursActifs = true;
+            if (btn) {
+                btn.innerText = "DÉSACTIVER GPS & CAPTEURS";
+                btn.style.borderColor = "var(--rose)";
+                btn.style.color = "var(--rose)";
+            }
+            ecrireLog("Activation simultanée du GPS, de l'IMU et du Baromètre...");
+
+            acquerirPositionGPS();
+            
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const res = await DeviceOrientationEvent.requestPermission();
+                    if (res === 'granted') activerIMU();
+                } catch (err) {
+                    ecrireLog(`Permission IMU : ${err.message}`);
+                }
+            } else {
+                activerIMU();
+            }
+
+            activerBarometre();
+        }
+    }
+
     function determinerIntervalleActualisation(vitesseMs) {
         const vitesseKmh = (vitesseMs || 0) * 3.6;
-        if (vitesseKmh < 2.0) return 30 * 60 * 1000;       // Statique : 30 min
-        else if (vitesseKmh < 20.0) return 10 * 60 * 1000; // Piéton : 10 min
-        else if (vitesseKmh < 80.0) return 3 * 60 * 1000;  // Urbain : 3 min
-        else return 1 * 60 * 1000;                         // Grande vitesse : 1 min
+        if (vitesseKmh < 2.0) return 30 * 60 * 1000;
+        else if (vitesseKmh < 20.0) return 10 * 60 * 1000;
+        else if (vitesseKmh < 80.0) return 3 * 60 * 1000;
+        else return 1 * 60 * 1000;
     }
 
     function calculerDistanceKm(lat1, lon1, lat2, lon2) {
@@ -301,12 +388,12 @@ async function synchroniserHeureAtomique() {
             meteoActive.humiditePct = current.relative_humidity_2m;
 
             const elBaro = document.getElementById('val-baro-statut');
-            if (elBaro) {
+            if (elBaro && capteursActifs) {
                 elBaro.innerText = `${current.surface_pressure.toFixed(1)} hPa (${current.temperature_2m.toFixed(1)}°C)`;
                 elBaro.style.color = "var(--neon-green)";
             }
 
-            horodatageDernierFetchMeteo = Date.now();
+            horodatageDernierFetchMeteo = obtenirTimestampUTCExact();
             derniereLatMeteo = lat;
             derniereLonMeteo = lon;
 
@@ -320,6 +407,8 @@ async function synchroniserHeureAtomique() {
         if (!('geolocation' in navigator)) return;
 
         watchPositionId = navigator.geolocation.watchPosition((pos) => {
+            if (!capteursActifs) return;
+
             const lat = pos.coords.latitude;
             const lon = pos.coords.longitude;
             const alt = pos.coords.altitude;
@@ -331,7 +420,7 @@ async function synchroniserHeureAtomique() {
             appliquerCoordonneesManuelles(true);
 
             const intervalleRequis = determinerIntervalleActualisation(pos.coords.speed);
-            const tempsEcoule = Date.now() - horodatageDernierFetchMeteo;
+            const tempsEcoule = obtenirTimestampUTCExact() - horodatageDernierFetchMeteo;
 
             let deplacementDepasse = false;
             if (derniereLatMeteo !== null && derniereLonMeteo !== null) {
@@ -344,25 +433,32 @@ async function synchroniserHeureAtomique() {
         }, (err) => ecrireLog(`GPS : ${err.message}`), { enableHighAccuracy: true, timeout: 10000 });
     }
 
-    // --- IMU PAR QUATERNIONS SANS FILTRE (BRUT INSTANTANÉ) ---
+    function acquerirPositionGPS() {
+        if (watchPositionId !== null) navigator.geolocation.clearWatch(watchPositionId);
+        demarrerSuiviMeteoDynamique();
+    }
+
     function activerIMU() {
         if ('AbsoluteOrientationSensor' in window) {
             try {
-                const sensor = new AbsoluteOrientationSensor({ frequency: 60 });
-                sensor.addEventListener('reading', () => {
-                    const [qx, qy, qz, qw] = sensor.quaternion;
+                sensorIMU = new AbsoluteOrientationSensor({ frequency: 60 });
+                sensorIMU.addEventListener('reading', () => {
+                    if (!capteursActifs) return;
+                    const [qx, qy, qz, qw] = sensorIMU.quaternion;
                     calculerCapViaQuaternion(qx, qy, qz, qw);
                 });
-                sensor.start();
-                ecrireLog("IMU : Sensor API actif (Quaternions 60 Hz bruts).");
+                sensorIMU.start();
+                ecrireLog("IMU : Sensor API actif (Quaternions 60 Hz).");
                 return;
             } catch (err) {
                 ecrireLog("Sensor API indisponible : bascule sur Fallback Quaternion.");
             }
         }
 
-        const evt = 'deviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation';
-        window.addEventListener(evt, (e) => {
+        eventNameIMU = 'deviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation';
+        listenerIMU = (e) => {
+            if (!capteursActifs) return;
+
             if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
                 mettreAJourCapBrut(e.webkitCompassHeading);
                 return;
@@ -375,7 +471,9 @@ async function synchroniserHeureAtomique() {
             const euler = new THREE.Euler(beta, gamma, -alpha, 'ZXY');
             const q = new THREE.Quaternion().setFromEuler(euler);
             calculerCapViaQuaternion(q.x, q.y, q.z, q.w);
-        }, true);
+        };
+
+        window.addEventListener(eventNameIMU, listenerIMU, true);
     }
 
     function calculerCapViaQuaternion(qx, qy, qz, qw) {
@@ -392,41 +490,20 @@ async function synchroniserHeureAtomique() {
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
-    async function demanderCalibrageIMU() {
-        ecrireLog("Séquence de calibrage multi-capteurs lancée...");
-        acquerirPositionGPS();
-        activerBarometre();
-
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            try {
-                const res = await DeviceOrientationEvent.requestPermission();
-                if (res === 'granted') activerIMU();
-            } catch (err) {
-                ecrireLog(`Permission IMU : ${err.message}`);
-            }
-        } else {
-            activerIMU();
-        }
-    }
-
-    function acquerirPositionGPS() {
-        if (watchPositionId !== null) navigator.geolocation.clearWatch(watchPositionId);
-        demarrerSuiviMeteoDynamique();
-    }
-
     function activerBarometre() {
         const elBaro = document.getElementById('val-baro-statut');
         if (!elBaro) return;
 
         if ('PressureObserver' in window) {
             try {
-                const observer = new PressureObserver((entries) => {
+                instanceBarometre = new PressureObserver((entries) => {
+                    if (!capteursActifs) return;
                     const pression = entries[entries.length - 1].pressure;
                     elBaro.innerText = `${pression.toFixed(1)} hPa`;
                     elBaro.style.color = "var(--neon-green)";
                     meteoActive.pressionBaro = pression;
                 });
-                observer.observe({ sampleInterval: 1000 });
+                instanceBarometre.observe({ sampleInterval: 1000 });
                 ecrireLog("Capteur barométrique actif.");
             } catch (e) {
                 elBaro.innerText = "1013.25 hPa (STD)";
@@ -708,7 +785,7 @@ async function synchroniserHeureAtomique() {
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
-    // --- INITIALISATION PRINCIPALE DU SYSTEME ---
+    // --- INITIALISATION PRINCIPALE ---
     window.addEventListener('load', async () => {
         initialiserServiceWorker();
         dessinerRadarAstres({}, 0);
@@ -727,7 +804,7 @@ async function synchroniserHeureAtomique() {
         await chargerEtParserWMM();
         appliquerCoordonneesManuelles(true);
 
-        // 4. Boucle temporelle basée sur l'timestamp UTC atomique
+        // 4. Boucle temporelle basée sur l'horodatage UTC exact
         setInterval(() => {
             const timestampExact = obtenirTimestampUTCExact();
             const dateUtc = new Date(timestampExact);
