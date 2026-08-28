@@ -1,14 +1,28 @@
 /**
- * SYSTEMA SENTINELA v18.6.3 - Worker Astronomique & Géomagnétique Corrigé
+ * SYSTEMA SENTINELA v18.6.4 - Worker Astronomique & Géomagnétique Rigoureux
  */
+
+importScripts('https://cdnjs.cloudflare.com/ajax/libs/bignumber.js/9.1.2/bignumber.min.js');
 
 try {
     importScripts('vsop2013.js', 'ElpMpp02LLR_min.js');
 } catch (e) {}
 
+BigNumber.config({ DECIMAL_PLACES: 30, ROUNDING_MODE: BigNumber.ROUND_HALF_UP });
+
 let wmmCoeffs = [];
 let isWmmLoaded = false;
 let jplMatrixData = null;
+
+// Facteurs de semi-normalisation de Schmidt pour WMM
+function obtenirFacteurSchmidt(n, m) {
+    if (m === 0) return 1.0;
+    let num = 1.0;
+    let den = 1.0;
+    for (let i = n - m + 1; i <= n + m; i++) den *= i;
+    for (let i = 1; i <= n - m; i++) num *= i;
+    return Math.sqrt(2.0 * (num / den));
+}
 
 function parseWMM2025(cofText) {
     wmmCoeffs = [];
@@ -21,12 +35,13 @@ function parseWMM2025(cofText) {
             const n = parseInt(p[0], 10);
             const m = parseInt(p[1], 10);
             if (!isNaN(n) && n <= 12) {
+                const schmidt = obtenirFacteurSchmidt(n, m);
                 wmmCoeffs.push({
                     n, m,
-                    g: parseFloat(p[2]),
-                    h: parseFloat(p[3]),
-                    dg: parseFloat(p[4]),
-                    dh: parseFloat(p[5])
+                    g: parseFloat(p[2]) * schmidt,
+                    h: parseFloat(p[3]) * schmidt,
+                    dg: parseFloat(p[4]) * schmidt,
+                    dh: parseFloat(p[5]) * schmidt
                 });
             }
         }
@@ -38,7 +53,7 @@ function computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
     if (!isWmmLoaded) return { declination: 2.45, inclination: 61.15, horizontal: 0, total: 0 };
 
     const dt = decimalYear - 2025.0;
-    const rad = Math.PI / 180;
+    const rad = Math.PI / 180.0;
     const latRad = latDeg * rad;
     const lonRad = lonDeg * rad;
 
@@ -62,6 +77,7 @@ function computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
     let dP = Array.from({ length: 13 }, () => new Array(13).fill(0));
 
     P[0][0] = 1;
+    dP[0][0] = 0;
     const cosT = Math.cos(theta);
     const sinT = Math.sin(theta);
 
@@ -99,25 +115,27 @@ function computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
         Bphi -= ratio * (m / (sinT || 1e-6)) * (-gt * sinM + ht * cosM) * P[n][m];
     }
 
-    // Repère WMM : X (Nord), Y (Est), Z (Vers le bas)
     const Bx = -Btheta * cd - Br * sd;
     const By = Bphi;
-    const Bz = -(Btheta * sd - Br * cd); // Signe corrigé : Bz > 0 dans l'hémisphère Nord
+    const Bz = -(Btheta * sd - Br * cd);
 
     const H = Math.sqrt(Bx * Bx + By * By);
-    const D = Math.atan2(By, Bx) * (180 / Math.PI);
-    const I = Math.atan2(Bz, H) * (180 / Math.PI);
+    const D = Math.atan2(By, Bx) * (180.0 / Math.PI);
+    const I = Math.atan2(Bz, H) * (180.0 / Math.PI);
     const F = Math.sqrt(H * H + Bz * Bz);
 
     return { declination: D, inclination: I, horizontal: H, total: F };
 }
 
 function calculerTempsJPL(timestampUtc, stationLon) {
-    let jdUtc = 2440587.5 + (timestampUtc / 86400000.0);
-    if (jplMatrixData && jplMatrixData.epoch_jd) {
-        const deltaMs = timestampUtc - (jplMatrixData.timestamp_ref || timestampUtc);
-        jdUtc = jplMatrixData.epoch_jd + (deltaMs / 86400000.0);
-    }
+    const tMs = new BigNumber(timestampUtc);
+    const msParJour = new BigNumber("86400000");
+    const epochJ2000Ms = new BigNumber("946728000000");
+    const jdJ2000 = new BigNumber("2451545.0");
+
+    const deltaJours = tMs.minus(epochJ2000Ms).dividedBy(msParJour);
+    const jdUtcBN = jdJ2000.plus(deltaJours);
+    const jdUtc = jdUtcBN.toNumber();
 
     const deltaT_sec = (jplMatrixData && jplMatrixData.delta_t) ? jplMatrixData.delta_t : 69.184;
     const jdTT = jdUtc + (deltaT_sec / 86400.0);
@@ -128,15 +146,15 @@ function calculerTempsJPL(timestampUtc, stationLon) {
 
     let gastDeg = gmstDeg;
     if (jplMatrixData && jplMatrixData.gast_deg !== undefined) {
-        const deltaJours = (timestampUtc - (jplMatrixData.timestamp_ref || timestampUtc)) / 86400000.0;
-        gastDeg = (jplMatrixData.gast_deg + deltaJours * 360.98564736629) % 360.0;
+        const dJ = (timestampUtc - (jplMatrixData.timestamp_ref || timestampUtc)) / 86400000.0;
+        gastDeg = (jplMatrixData.gast_deg + dJ * 360.98564736629) % 360.0;
         if (gastDeg < 0) gastDeg += 360.0;
     }
 
     let lstDeg = (gastDeg + stationLon) % 360.0;
     if (lstDeg < 0) lstDeg += 360.0;
 
-    return { jdUtc, jdTT, gastDeg, lstDeg };
+    return { jdUtcBN, jdUtc, jdTT, gastDeg, lstDeg };
 }
 
 function ecliptiqueVersECEF(posEcl, obliquiteDeg, gastDeg) {
@@ -199,7 +217,7 @@ function calculerMetricsSolaires(dateUtc, stationLon, eqTempsMinCalcule) {
     const d = (dateUtc.getTime() / 86400000.0) - 10957.5;
     const g = 357.529 + 0.98560028 * d;
     const gRad = g * Math.PI / 180.0;
-    const q = 280.459 + 0.98564736 * d;
+    const q = (280.459 + 0.98564736 * d) % 360.0;
     const L = q + 1.915 * Math.sin(gRad) + 0.020 * Math.sin(2 * gRad);
     const LRad = L * Math.PI / 180.0;
 
@@ -208,11 +226,13 @@ function calculerMetricsSolaires(dateUtc, stationLon, eqTempsMinCalcule) {
     const epsRad = eps * Math.PI / 180.0;
 
     const ra = Math.atan2(Math.cos(epsRad) * Math.sin(LRad), Math.cos(LRad)) * 180.0 / Math.PI;
-    let eqTemps = (q - ra) / 15.0;
-    while (eqTemps > 12) eqTemps -= 24;
-    while (eqTemps < -12) eqTemps += 24;
     
-    const eqTempsMin = (eqTempsMinCalcule !== undefined) ? eqTempsMinCalcule : (eqTemps * 60);
+    // Normalisation continue du delta d'angle [-180, 180]
+    let deltaDeg = (q - ra) % 360.0;
+    if (deltaDeg > 180.0) deltaDeg -= 360.0;
+    if (deltaDeg < -180.0) deltaDeg += 360.0;
+
+    const eqTempsMin = (eqTempsMinCalcule !== undefined) ? eqTempsMinCalcule : (deltaDeg / 15.0 * 60.0);
 
     const utcH = dateUtc.getUTCHours() + dateUtc.getUTCMinutes() / 60.0 + dateUtc.getUTCSeconds() / 3600.0;
     const tsmH = (utcH + stationLon / 15.0 + 24.0) % 24.0;
@@ -243,17 +263,14 @@ function genererVecteursHeliocentriques(timestampUtc) {
     const d = (timestampUtc / 86400000.0) - 10957.5;
     const rad = Math.PI / 180.0;
 
-    // Vecteur Géocentrique du Soleil (Terre -> Soleil)
     const L_sol = (280.459 + 0.98564736 * d) * rad;
     const r_sol = 149597870.7;
     const posSoleil = { x: r_sol * Math.cos(L_sol), y: r_sol * Math.sin(L_sol), z: 0 };
 
-    // Lune (déjà centrée Terre)
     const L_lune = (218.316 + 13.176396 * d) * rad;
     const r_lune = 384400;
     const posLune = { x: r_lune * Math.cos(L_lune), y: r_lune * Math.sin(L_lune), z: r_lune * 0.089 * Math.sin(L_lune) };
 
-    // Coordonnées héliocentriques pures des planètes (Soleil -> Planète)
     const L_mercure = (252.25 + 4.092334 * d) * rad;
     const posMercure = { x: 57909050 * Math.cos(L_mercure), y: 57909050 * Math.sin(L_mercure), z: 0 };
 
@@ -305,7 +322,6 @@ self.onmessage = function (e) {
         for (let name in corpsEcliptiques) {
             let posEclGeo = { x: corpsEcliptiques[name].x, y: corpsEcliptiques[name].y, z: corpsEcliptiques[name].z };
 
-            // RÉDUCTION GÉOCENTRIQUE : R_(Planète/Terre) = R_(Planète/Soleil) + R_(Soleil/Terre)
             if (name !== 'soleil' && name !== 'lune' && (!jplMatrixData || !jplMatrixData.is_ecef_direct)) {
                 posEclGeo.x += posSoleilGeo.x;
                 posEclGeo.y += posSoleilGeo.y;
@@ -331,6 +347,7 @@ self.onmessage = function (e) {
         self.postMessage({
             type: 'RESULTS',
             timestampUtc: timestampUtc,
+            julianDay: tempsJpl.jdUtcBN.toFixed(23),
             wmm: wmmResult,
             solarMetrics: solarMetrics,
             tempsJpl: tempsJpl,
