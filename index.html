@@ -1,14 +1,13 @@
 <!DOCTYPE html>
-<html lang="fr" id="html-root">
+<html lang="fr" id="html-root" class="day-mode">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SYSTEMA SENTINELA v18.6 — KERNEL RIGOROUS REPOSITORY</title>
     
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#02040a">
+    <meta name="theme-color" content="#f0f2f5">
 
-    <!-- Enregistrement unifié du Service Worker -->
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('coop-coep-sw.js').then(() => {
@@ -24,11 +23,13 @@
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
             --sky: #58a6ff; --neon-green: #3fb950; --amber: #d29922; --rose: #f85149; --text-main: #c9d1d9;
+            --tsm-color: #d2a8ff;
             --radar-bg: #01040a;
         }
         .day-mode {
             --bg-base: #f0f2f5; --bg-surface: #ffffff; --border-dim: #d1d5db;
             --sky: #0969da; --neon-green: #1a7f37; --amber: #9a6700; --rose: #cf222e; --text-main: #24292e;
+            --tsm-color: #8250df;
             --radar-bg: #e6edf3;
         }
         * { box-sizing: border-box; }
@@ -69,6 +70,10 @@
         .day-mode .log-console { background: #111; color: #adbac7; }
         #radarCanvas { width: 100%; max-width: 260px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
         #globeCanvas { width: 100%; max-width: 260px; height: 150px; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 6px; cursor: grab; touch-action: none; }
+        
+        /* Stylisation spécifique des formats de temps */
+        .time-utc { color: var(--sky); font-weight: bold; }
+        .time-tsm { color: var(--tsm-color); font-weight: bold; }
     </style>
 </head>
 <body class="">
@@ -78,7 +83,7 @@
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <div>JPL FLUX : <span id="lbl-jpl-status" style="color:var(--amber); font-weight:bold;">CHARGEMENT...</span></div>
             <div>WORKER : <span id="lbl-worker-status" style="color:var(--amber); font-weight:bold;">INIT...</span></div>
-            <div>EPOCH UTC : <span id="lbl-epoch" style="color:var(--sky); font-weight: bold;">--</span></div>
+            <div>EPOCH UTC : <span id="lbl-epoch" class="time-utc">--</span></div>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR / NUIT</button>
         </div>
     </header>
@@ -92,7 +97,7 @@
                 <div class="metric-card"><div>EXCENTRICITÉ TERR.</div><div class="metric-val" id="val-excentricite" style="color:var(--sky);">--</div></div>
                 <div class="metric-card"><div>OBLIQUITÉ ÉCLIPTIQUE</div><div class="metric-val" id="val-obliquite" style="color:var(--sky);">--°</div></div>
                 <div class="metric-card"><div>LONGITUDE SOLAIRE</div><div class="metric-val" id="val-long-solaire" style="color:var(--amber);">--°</div></div>
-                <div class="metric-card"><div>TEMPS SOLAIRE MOYEN</div><div class="metric-val" id="val-tsm" style="color:var(--neon-green);">--</div></div>
+                <div class="metric-card"><div>TEMPS SOLAIRE MOYEN</div><div class="metric-val time-tsm" id="val-tsm">--</div></div>
                 <div class="metric-card"><div>TEMPS SOLAIRE VRAI</div><div class="metric-val" id="val-tsv" style="color:var(--neon-green);">--</div></div>
             </div>
 
@@ -101,9 +106,12 @@
                     <thead>
                         <tr>
                             <th>CORPS CÉLESTE</th>
-                            <th>ÉLÉVATION (°)</th>
+                            <th>ÉLÉVATION APP. (°)</th>
                             <th>AZIMUT (°)</th>
                             <th>DISTANCE (km)</th>
+                            <th>LEVER (TSM)</th>
+                            <th>CULMINATION (TSM)</th>
+                            <th>COUCHER (TSM)</th>
                             <th>ÉTAT CALCUL</th>
                         </tr>
                     </thead>
@@ -181,7 +189,8 @@
 <script src="ElpMpp02LLR_min.js"></script>
 
 <script>
-    let modeJourActif = false;
+    // Mode jour activé par défaut
+    let modeJourActif = true;
     let decalageTempsAtomiqueMs = parseFloat(localStorage.getItem('sentinela_offset') || '0');
     const SEUIL_DERIVE_MAX_MS = 1.0;
 
@@ -207,6 +216,25 @@
     let globeScene, globeCamera, globeRenderer, curseurPositionMesh;
     let isDragging = false, lastX = 0, lastY = 0;
 
+    // --- ALGORITHME DE RÉFRACTION ATMOSPHÉRIQUE (Bennett / Tetens) ---
+    function calculerRefractionMeteoDeg(altDeg, T_C, H_pct, P_hPa) {
+        if (altDeg < -1.0) return 0.0;
+        const altCalculee = Math.max(altDeg, -0.5);
+        const deg2rad = Math.PI / 180.0;
+
+        const altCorrectionRad = (10.3 / (altCalculee + 5.1)) * deg2rad;
+        const refStdArcMinutes = 1.02 / Math.tan(altCalculee * deg2rad + altCorrectionRad);
+
+        const e_sat = 6.1121 * Math.exp((17.502 * T_C) / (240.97 + T_C));
+        const e_vapeur = (H_pct / 100.0) * e_sat;
+        const P_effective = P_hPa - 0.1507 * e_vapeur;
+
+        const correctionFactor = (P_effective / 1013.25) * (288.15 / (273.15 + T_C));
+        const refMeteoArcMinutes = refStdArcMinutes * correctionFactor;
+
+        return refMeteoArcMinutes / 60.0;
+    }
+
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
         if (!consoleEl) return;
@@ -217,6 +245,21 @@
 
     function obtenirTimestampUTCExact() {
         return Date.now() + decalageTempsAtomiqueMs;
+    }
+
+    // Convertit un timestamp UTC en chaîne Temps Solaire Moyen (TSM) "HH:MM:SS" pour la station
+    function formaterHeureTSM(timestampUtc, lonDeg) {
+        if (!timestampUtc || isNaN(timestampUtc)) return "--:--:--";
+        const date = new Date(timestampUtc);
+        const secUtc = date.getUTCHours() * 3600 + date.getUTCMinutes() * 60 + date.getUTCSeconds();
+        const offsetLongitudeSec = (lonDeg / 15.0) * 3600.0;
+        let secTsm = (secUtc + offsetLongitudeSec) % 86400.0;
+        if (secTsm < 0) secTsm += 86400.0;
+
+        const h = Math.floor(secTsm / 3600);
+        const m = Math.floor((secTsm % 3600) / 60);
+        const s = Math.floor(secTsm % 60);
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     }
 
     async function synchroniserHeureAtomique() {
@@ -581,17 +624,29 @@
         tbody.innerHTML = '';
         entries.forEach(([astre, data]) => {
             const row = document.createElement('tr');
-            const elevation = (data && data.elevation !== undefined) ? data.elevation : 0;
+            
+            // Calcul de la réfraction météo Bennett/Tetens sur l'élévation géométrique
+            const elGeo = (data && data.elevation !== undefined) ? data.elevation : 0;
+            const refractionDeg = calculerRefractionMeteoDeg(elGeo, meteoActive.temperatureC, meteoActive.humiditePct, meteoActive.pressionBaro);
+            const elApparente = elGeo + refractionDeg;
+
             const azimuth = (data && data.azimuth !== undefined) ? data.azimuth : 0;
             const distance = (data && (data.distanceKm || data.distance)) ? (data.distanceKm || data.distance) : 0;
-            const isVisible = elevation >= 0;
+            const isVisible = elApparente >= 0;
             
+            const leverTSM = data.riseUtcMs ? formaterHeureTSM(data.riseUtcMs, stationActive.lon) : "--:--:--";
+            const culmTSM = data.transitUtcMs ? formaterHeureTSM(data.transitUtcMs, stationActive.lon) : "--:--:--";
+            const coucherTSM = data.setUtcMs ? formaterHeureTSM(data.setUtcMs, stationActive.lon) : "--:--:--";
+
             row.className = isVisible ? 'visible-row' : 'hidden-row';
             row.innerHTML = `
                 <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--text-main)'}; text-transform:uppercase; font-weight:bold;">${astre}</td>
-                <td>${elevation.toFixed(2)}°</td>
+                <td>${elApparente.toFixed(2)}°</td>
                 <td>${azimuth.toFixed(2)}°</td>
                 <td>${Math.round(distance).toLocaleString('fr-FR')} km</td>
+                <td class="time-tsm">${leverTSM}</td>
+                <td class="time-tsm">${culmTSM}</td>
+                <td class="time-tsm">${coucherTSM}</td>
                 <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--rose)'}; font-weight:bold;">${isVisible ? 'VISIBLE' : 'SOUS L\'HORIZON'}</td>
             `;
             tbody.appendChild(row);
@@ -655,7 +710,7 @@
         ctx.scale(dpr, dpr);
         const cx = size / 2, cy = size / 2, maxRadius = 110;
 
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--radar-bg').trim() || '#01040a';
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--radar-bg').trim() || '#e6edf3';
         ctx.fillRect(0, 0, size, size);
 
         ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
@@ -785,6 +840,9 @@
     }
 
     window.addEventListener('load', async () => {
+        // Application stricte du mode jour par défaut au premier lancement
+        document.getElementById('html-root').classList.add('day-mode');
+        
         dessinerRadarAstres({}, 0);
         initGlobe3D();
         
