@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#02040a">
 
-    <!-- Enregistrement immédiat du Service Worker COOP/COEP pour SharedArrayBuffer / WASM -->
+    <!-- Enregistrement unifié du Service Worker -->
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('coop-coep-sw.js').then(() => {
@@ -16,7 +16,7 @@
                     sessionStorage.setItem('coop_reloaded', 'true');
                     window.location.reload();
                 }
-            });
+            }).catch(() => {});
         }
     </script>
 
@@ -182,7 +182,6 @@
 
 <script>
     let modeJourActif = false;
-    // Récupération de l'offset sauvegardé pour éviter la retombée sur l'horloge Android
     let decalageTempsAtomiqueMs = parseFloat(localStorage.getItem('sentinela_offset') || '0');
     const SEUIL_DERIVE_MAX_MS = 1.0;
 
@@ -192,7 +191,6 @@
     let horodatageDernierFetchMeteo = 0;
     let derniereLatMeteo = null, derniereLonMeteo = null;
     
-    // Variables de contrôle global d'état et d'instances des capteurs
     let capteursActifs = false;
     let watchPositionId = null;
     let sensorIMU = null;
@@ -253,7 +251,6 @@
             } catch (e) {}
         }
 
-        // Fallback HTTP HEAD si toutes les API JSON échouent (ex: blocage CORS)
         if (!synchroReussie) {
             try {
                 const t0 = performance.now();
@@ -263,18 +260,19 @@
 
                 if (headerDate) {
                     const tempsServeurMs = new Date(headerDate).getTime();
-                    const rtt = (t1 - t0) / 2;
-                    decalageTempsAtomiqueMs = (tempsServeurMs + rtt) - Date.now();
-                    localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
-                    synchroReussie = true;
+                    if (!isNaN(tempsServeurMs)) {
+                        const rtt = (t1 - t0) / 2;
+                        decalageTempsAtomiqueMs = (tempsServeurMs + rtt) - Date.now();
+                        localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
+                        synchroReussie = true;
 
-                    document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
-                    ecrireLog(`Synchro atomique via en-tête HTTP Date (Offset : ${Math.round(decalageTempsAtomiqueMs)} ms).`);
+                        document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
+                        ecrireLog(`Synchro atomique via en-tête HTTP Date (Offset : ${Math.round(decalageTempsAtomiqueMs)} ms).`);
+                    }
                 }
             } catch (e) {}
         }
 
-        // Conservation du dernier offset valide en cas d'absence totale de réseau
         if (!synchroReussie) {
             document.getElementById('lbl-epoch').style.color = decalageTempsAtomiqueMs !== 0 ? "var(--amber)" : "var(--rose)";
             ecrireLog(`Échec synchro réseau. Conservation du dernier offset mémorisé (${Math.round(decalageTempsAtomiqueMs)} ms).`);
@@ -290,12 +288,10 @@
         }
     }
 
-    // --- BASCULE CENTRALISÉE POUR TOUS LES CAPTEURS ---
     async function basculerTousLesCapteurs() {
         const btn = document.getElementById('btn-toggle-capteurs');
         
         if (capteursActifs) {
-            // COUPURE TOTALE DES DÉTECTEURS ET LISTENERS
             if (watchPositionId !== null) {
                 navigator.geolocation.clearWatch(watchPositionId);
                 watchPositionId = null;
@@ -330,7 +326,6 @@
             document.getElementById('val-baro-statut').style.color = "var(--amber)";
             ecrireLog("GPS, IMU et Baromètre complètement désactivés.");
         } else {
-            // DÉMARRAGE SIMULTANÉ
             capteursActifs = true;
             if (btn) {
                 btn.innerText = "DÉSACTIVER GPS & CAPTEURS";
@@ -444,8 +439,8 @@
                 sensorIMU = new AbsoluteOrientationSensor({ frequency: 60 });
                 sensorIMU.addEventListener('reading', () => {
                     if (!capteursActifs) return;
-                    const [qx, qy, qz, qw] = sensorIMU.quaternion;
-                    calculerCapViaQuaternion(qx, qy, qz, qw);
+                    const q = sensorIMU.quaternion;
+                    calculerCapViaQuaternion(q[0], q[1], q[2], q[3]);
                 });
                 sensorIMU.start();
                 ecrireLog("IMU : Sensor API actif (Quaternions 60 Hz).");
@@ -510,14 +505,6 @@
             }
         } else {
             elBaro.innerText = "1013.25 hPa (STD)";
-        }
-    }
-
-    function initialiserServiceWorker() {
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js')
-                .then(reg => ecrireLog(`ServiceWorker actif (scope : ${reg.scope})`))
-                .catch(err => ecrireLog(`Échec SW : ${err.message}`));
         }
     }
 
@@ -657,9 +644,11 @@
         const dpr = window.devicePixelRatio || 1;
         const size = 260;
         
-        if (canvas.width !== size * dpr) {
-            canvas.width = size * dpr; canvas.height = size * dpr;
-            canvas.style.width = `${size}px`; canvas.style.height = `${size}px`;
+        if (canvas.width !== Math.round(size * dpr)) {
+            canvas.width = Math.round(size * dpr);
+            canvas.height = Math.round(size * dpr);
+            canvas.style.width = `${size}px`;
+            canvas.style.height = `${size}px`;
         }
 
         ctx.save();
@@ -746,26 +735,36 @@
         );
         globe.add(curseurPositionMesh);
 
-        const pointerDown = (x, y) => { isDragging = true; lastX = x; lastY = y; };
-        const pointerMove = (x, y) => {
+        const onPointerMove = (e) => {
             if (!isDragging) return;
-            globe.rotation.y += (x - lastX) * 0.008;
-            globe.rotation.x += (y - lastY) * 0.008;
-            lastX = x; lastY = y;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            globe.rotation.y += (clientX - lastX) * 0.008;
+            globe.rotation.x += (clientY - lastY) * 0.008;
+            lastX = clientX; lastY = clientY;
         };
-        const pointerUp = () => { isDragging = false; };
 
-        container.addEventListener('mousedown', (e) => pointerDown(e.clientX, e.clientY));
-        window.addEventListener('mousemove', (e) => pointerMove(e.clientX, e.clientY));
-        window.addEventListener('mouseup', pointerUp);
+        const onPointerUp = () => {
+            isDragging = false;
+            window.removeEventListener('mousemove', onPointerMove);
+            window.removeEventListener('mouseup', onPointerUp);
+            window.removeEventListener('touchmove', onPointerMove);
+            window.removeEventListener('touchend', onPointerUp);
+        };
 
-        container.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 1) pointerDown(e.touches[0].clientX, e.touches[0].clientY);
-        }, { passive: true });
-        window.addEventListener('touchmove', (e) => {
-            if (e.touches.length === 1) pointerMove(e.touches[0].clientX, e.touches[0].clientY);
-        }, { passive: true });
-        window.addEventListener('touchend', pointerUp);
+        const onPointerDown = (e) => {
+            isDragging = true;
+            lastX = e.touches ? e.touches[0].clientX : e.clientX;
+            lastY = e.touches ? e.touches[0].clientY : e.clientY;
+
+            window.addEventListener('mousemove', onPointerMove);
+            window.addEventListener('mouseup', onPointerUp);
+            window.addEventListener('touchmove', onPointerMove, { passive: true });
+            window.addEventListener('touchend', onPointerUp);
+        };
+
+        container.addEventListener('mousedown', onPointerDown);
+        container.addEventListener('touchstart', onPointerDown, { passive: true });
 
         function animate() {
             requestAnimationFrame(animate);
@@ -785,26 +784,19 @@
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
-    // --- INITIALISATION PRINCIPALE ---
     window.addEventListener('load', async () => {
-        initialiserServiceWorker();
         dessinerRadarAstres({}, 0);
         initGlobe3D();
         
         initialiserWorkerAstronomie();
-
-        // 1. Synchronisation horloge atomique
         await synchroniserHeureAtomique();
         
-        // 2. Contrôle de dérive automatique (toutes les 5 minutes)
         setInterval(verifierEtRecalibrerHeure, 5 * 60 * 1000);
 
-        // 3. Charger matrices et WMM
         await chargerFluxLiveJPL();
         await chargerEtParserWMM();
         appliquerCoordonneesManuelles(true);
 
-        // 4. Boucle temporelle basée sur l'horodatage UTC exact
         setInterval(() => {
             const timestampExact = obtenirTimestampUTCExact();
             const dateUtc = new Date(timestampExact);
