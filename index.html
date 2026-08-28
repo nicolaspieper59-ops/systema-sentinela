@@ -210,28 +210,49 @@
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
-    // --- SYNCHRONISATION DU TEMPS ATOMIQUE UTC ---
-    async function synchroniserHeureAtomique() {
+async function synchroniserHeureAtomique() {
+    // Liste des serveurs de temps UTC de secours
+    const serveursTemps = [
+        {
+            url: 'https://worldtimeapi.org/api/timezone/Etc/UTC',
+            parse: d => new Date(d.utc_datetime).getTime()
+        },
+        {
+            url: 'https://timeapi.io/api/v1/time/current/zone?timeZone=UTC',
+            parse: d => new Date(d.dateTime).getTime()
+        },
+        {
+            url: 'https://worldtimeapi.org/api/ip',
+            parse: d => new Date(d.utc_datetime).getTime()
+        }
+    ];
+
+    for (const serveur of serveursTemps) {
         try {
             const t0 = performance.now();
-            const reponse = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', { cache: 'no-store' });
+            const reponse = await fetch(serveur.url, { cache: 'no-store' });
             const t1 = performance.now();
-            
-            if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
-            
+
+            if (!reponse.ok) continue;
+
             const data = await reponse.json();
-            const tempsServeurMs = new Date(data.utc_datetime).getTime();
+            const tempsServeurMs = serveur.parse(data);
             const rtt = (t1 - t0) / 2;
-            
+
             decalageTempsAtomiqueMs = (tempsServeurMs + rtt) - Date.now();
-            
+
             document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
-            ecrireLog(`Horloge atomique synchro (Offset : ${decalageTempsAtomiqueMs > 0 ? '+' : ''}${Math.round(decalageTempsAtomiqueMs)} ms).`);
+            ecrireLog(`Synchro atomique réussie via ${new URL(serveur.url).hostname} (Offset : ${decalageTempsAtomiqueMs > 0 ? '+' : ''}${Math.round(decalageTempsAtomiqueMs)} ms).`);
+            return; // Succès, on sort de la boucle
         } catch (e) {
-            decalageTempsAtomiqueMs = 0;
-            document.getElementById('lbl-epoch').style.color = "var(--amber)";
-            ecrireLog(`Synchro atomique échouée : repli sur l'horloge système.`);
+            // Échec silencieux, tentative sur le serveur suivant
         }
+    }
+
+    // Si tous les serveurs échouent
+    decalageTempsAtomiqueMs = 0;
+    document.getElementById('lbl-epoch').style.color = "var(--rose)";
+    ecrireLog(`Toutes les sources de temps atomique ont échoué : repli sur l'horloge système.`);
     }
 
     function obtenirTimestampUTCExact() {
