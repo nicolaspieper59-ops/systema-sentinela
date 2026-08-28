@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA v18.6.4 - Worker Astronomique & Géomagnétique Rigoureux
+ * SYSTEMA SENTINELA v18.6.5 - Worker Astronomique & Géomagnétique Rigoureux
  */
 
 importScripts('https://cdnjs.cloudflare.com/ajax/libs/bignumber.js/9.1.2/bignumber.min.js');
@@ -10,11 +10,12 @@ try {
 
 BigNumber.config({ DECIMAL_PLACES: 30, ROUNDING_MODE: BigNumber.ROUND_HALF_UP });
 
+const VITESSE_LUMIERE_KM_S = 299792.458;
 let wmmCoeffs = [];
 let isWmmLoaded = false;
 let jplMatrixData = null;
 
-// Facteurs de semi-normalisation de Schmidt pour WMM
+// Facteur de semi-normalisation de Schmidt
 function obtenirFacteurSchmidt(n, m) {
     if (m === 0) return 1.0;
     let num = 1.0;
@@ -81,6 +82,7 @@ function computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
     const cosT = Math.cos(theta);
     const sinT = Math.sin(theta);
 
+    // Récurrence rigoureuse des polynômes de Legendre associés
     for (let n = 1; n <= 12; n++) {
         for (let m = 0; m <= n; m++) {
             if (n === m) {
@@ -89,14 +91,14 @@ function computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
             } else if (n === 1 && m === 0) {
                 P[1][0] = cosT;
                 dP[1][0] = -sinT;
-            } else if (m === 0) {
-                const K = ((n - 1) * (n - 1)) / ((2 * n - 1) * (2 * n - 3));
-                P[n][0] = cosT * P[n - 1][0] - K * P[n - 2][0];
-                dP[n][0] = -sinT * P[n - 1][0] + cosT * dP[n - 1][0] - K * dP[n - 2][0];
             } else {
-                const K = ((n - 1) * (n - 1) - m * m) / ((2 * n - 1) * (2 * n - 3));
-                P[n][m] = cosT * P[n - 1][m] - K * P[n - 2][m];
-                dP[n][m] = -sinT * P[n - 1][m] + cosT * dP[n - 1][m] - K * dP[n - 2][m];
+                const p1 = P[n - 1][m];
+                const p2 = (n - 2 >= m) ? P[n - 2][m] : 0;
+                const dp1 = dP[n - 1][m];
+                const dp2 = (n - 2 >= m) ? dP[n - 2][m] : 0;
+
+                P[n][m] = ((2 * n - 1) * cosT * p1 - (n - 1 + m) * p2) / (n - m);
+                dP[n][m] = ((2 * n - 1) * (-sinT * p1 + cosT * dp1) - (n - 1 + m) * dp2) / (n - m);
             }
         }
     }
@@ -117,7 +119,7 @@ function computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
 
     const Bx = -Btheta * cd - Br * sd;
     const By = Bphi;
-    const Bz = -(Btheta * sd - Br * cd);
+    const Bz = Btheta * sd - Br * cd; // Signe rétabli : orienté vers le bas dans l'hémisphère Nord
 
     const H = Math.sqrt(Bx * Bx + By * By);
     const D = Math.atan2(By, Bx) * (180.0 / Math.PI);
@@ -137,6 +139,7 @@ function calculerTempsJPL(timestampUtc, stationLon) {
     const jdUtcBN = jdJ2000.plus(deltaJours);
     const jdUtc = jdUtcBN.toNumber();
 
+    // Temps Terrestre (TT) pour les orbites vs UT1/UTC pour la rotation terrestre
     const deltaT_sec = (jplMatrixData && jplMatrixData.delta_t) ? jplMatrixData.delta_t : 69.184;
     const jdTT = jdUtc + (deltaT_sec / 86400.0);
 
@@ -200,10 +203,10 @@ function topocentrique(latDeg, lonDeg, altKm, posCorpsECEF) {
 
 function refracter(altDeg, tempC = 15.0, humidityPct = 50.0, pressureHpa = 1013.25) {
     if (altDeg < -1.0) return altDeg;
-    const deg2rad = Math.PI / 180.0;
-
-    const altCorrRad = (10.3 / (altDeg + 5.1)) * deg2rad;
-    const refStdArcMin = 1.02 / Math.tan(altDeg * deg2rad + altCorrRad);
+    
+    // Formule de Saemundsson stabilisee au voisinage de l'horizon
+    const h = Math.max(altDeg, -0.9);
+    const refStdArcMin = 1.02 / Math.tan((h + 10.3 / (h + 5.11)) * (Math.PI / 180.0));
 
     const e_sat = 6.1121 * Math.exp((17.502 * tempC) / (240.97 + tempC));
     const e_vapeur = (humidityPct / 100.0) * e_sat;
@@ -227,7 +230,6 @@ function calculerMetricsSolaires(dateUtc, stationLon, eqTempsMinCalcule) {
 
     const ra = Math.atan2(Math.cos(epsRad) * Math.sin(LRad), Math.cos(LRad)) * 180.0 / Math.PI;
     
-    // Normalisation continue du delta d'angle [-180, 180]
     let deltaDeg = (q - ra) % 360.0;
     if (deltaDeg > 180.0) deltaDeg -= 360.0;
     if (deltaDeg < -180.0) deltaDeg += 360.0;
@@ -314,34 +316,58 @@ self.onmessage = function (e) {
         const wmmResult = computeWMM2025(station.lat, station.lon, station.alt, decimalYear);
 
         const solarMetrics = calculerMetricsSolaires(dateUtc, station.lon);
-
-        const corpsEcliptiques = genererVecteursHeliocentriques(timestampUtc);
-        const posSoleilGeo = corpsEcliptiques.soleil; 
         const resultsBodies = {};
 
-        for (let name in corpsEcliptiques) {
-            let posEclGeo = { x: corpsEcliptiques[name].x, y: corpsEcliptiques[name].y, z: corpsEcliptiques[name].z };
-
-            if (name !== 'soleil' && name !== 'lune' && (!jplMatrixData || !jplMatrixData.is_ecef_direct)) {
-                posEclGeo.x += posSoleilGeo.x;
-                posEclGeo.y += posSoleilGeo.y;
-                posEclGeo.z += posSoleilGeo.z;
+        // 1. Évaluation analytique prioritaire (VSOP2013 / ELP) si scripts chargés
+        if (typeof evaluerVSOP2013 === 'function') {
+            const T_TT = (tempsJpl.jdTT - 2451545.0) / 36525.0;
+            resultsBodies.soleil = evaluerVSOP2013('soleil', T_TT, station, tempsJpl.gastDeg, meteo);
+            if (typeof evaluerELP2000 === 'function') {
+                resultsBodies.lune = evaluerELP2000(T_TT, station, tempsJpl.gastDeg, meteo);
             }
+        } else {
+            // 2. Modèle fallback avec correction du temps de propagation de la lumière (tau)
+            const corpsEcliptiques = genererVecteursHeliocentriques(timestampUtc);
+            const posSoleilGeo = corpsEcliptiques.soleil;
 
-            let posEcef = posEclGeo;
-            if (!jplMatrixData || !jplMatrixData.is_ecef_direct) {
-                posEcef = ecliptiqueVersECEF(posEclGeo, solarMetrics.obliquite, tempsJpl.gastDeg);
+            for (let name in corpsEcliptiques) {
+                let posEclGeo = { x: corpsEcliptiques[name].x, y: corpsEcliptiques[name].y, z: corpsEcliptiques[name].z };
+
+                if (name !== 'soleil' && name !== 'lune' && (!jplMatrixData || !jplMatrixData.is_ecef_direct)) {
+                    posEclGeo.x += posSoleilGeo.x;
+                    posEclGeo.y += posSoleilGeo.y;
+                    posEclGeo.z += posSoleilGeo.z;
+                }
+
+                // Distance géocentrique brute pour le calcul de tau
+                const distBruteKm = Math.sqrt(posEclGeo.x ** 2 + posEclGeo.y ** 2 + posEclGeo.z ** 2);
+                const tauSec = distBruteKm / VITESSE_LUMIERE_KM_S;
+
+                // Réévaluation au temps d'émission t - tau pour les planètes distantes
+                let posEcef = posEclGeo;
+                if (name !== 'soleil' && name !== 'lune' && tauSec > 1.0) {
+                    const corpsRetardes = genererVecteursHeliocentriques(timestampUtc - (tauSec * 1000));
+                    posEclGeo = {
+                        x: corpsRetardes[name].x + posSoleilGeo.x,
+                        y: corpsRetardes[name].y + posSoleilGeo.y,
+                        z: corpsRetardes[name].z + posSoleilGeo.z
+                    };
+                }
+
+                if (!jplMatrixData || !jplMatrixData.is_ecef_direct) {
+                    posEcef = ecliptiqueVersECEF(posEclGeo, solarMetrics.obliquite, tempsJpl.gastDeg);
+                }
+
+                const topo = topocentrique(station.lat, station.lon, station.alt, posEcef);
+                const elevationApparente = refracter(topo.elevationGeometrique, meteo.temp, meteo.humidity, meteo.pressure);
+
+                resultsBodies[name] = {
+                    azimuth: topo.azimuth,
+                    elevation: elevationApparente,
+                    elevationGeometrique: topo.elevationGeometrique,
+                    distanceKm: topo.distanceKm
+                };
             }
-
-            const topo = topocentrique(station.lat, station.lon, station.alt, posEcef);
-            const elevationApparente = refracter(topo.elevationGeometrique, meteo.temp, meteo.humidity, meteo.pressure);
-
-            resultsBodies[name] = {
-                azimuth: topo.azimuth,
-                elevation: elevationApparente,
-                elevationGeometrique: topo.elevationGeometrique,
-                distanceKm: topo.distanceKm
-            };
         }
 
         self.postMessage({
