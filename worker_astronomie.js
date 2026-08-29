@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA - Worker Astronomique & Géomagnétique Rigoureux
+ * SYSTEMA SENTINELA - Worker Astronomique & Géomagnétique Rigoureux (Corrigé)
  */
 
 importScripts('https://cdnjs.cloudflare.com/ajax/libs/bignumber.js/9.1.2/bignumber.min.js');
@@ -50,60 +50,64 @@ function parseWMM2025(cofText) {
 
 function computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
     if (!isWmmLoaded) return { declination: 2.45, inclination: 61.15, horizontal: 0, total: 0 };
-    const dt = decimalYear - 2025.0;
-    const rad = Math.PI / 180.0;
-    const latRad = latDeg * rad;
-    const lonRad = lonDeg * rad;
-    const a = 6378.137, b = 6356.7523142, re = 6371.2;
-    const sinLat = Math.sin(latRad), cosLat = Math.cos(latRad);
-    const rho = Math.sqrt(a * a * cosLat * cosLat + b * b * sinLat * sinLat);
-    const r = Math.sqrt(altKm * altKm + 2 * altKm * rho + (Math.pow(a, 4) * cosLat * cosLat + Math.pow(b, 4) * sinLat * sinLat) / (rho * rho));
-    const cd = (altKm + rho) / r;
-    const sd = (a * a - b * b) / (r * rho) * sinLat * cosLat;
-    const theta = Math.acos(cosLat * cd - sinLat * sd);
-    const phi = lonRad;
+    try {
+        const dt = decimalYear - 2025.0;
+        const rad = Math.PI / 180.0;
+        const latRad = latDeg * rad;
+        const lonRad = lonDeg * rad;
+        const a = 6378.137, b = 6356.7523142, re = 6371.2;
+        const sinLat = Math.sin(latRad), cosLat = Math.cos(latRad);
+        const rho = Math.sqrt(a * a * cosLat * cosLat + b * b * sinLat * sinLat);
+        const r = Math.sqrt(altKm * altKm + 2 * altKm * rho + (Math.pow(a, 4) * cosLat * cosLat + Math.pow(b, 4) * sinLat * sinLat) / (rho * rho));
+        const cd = (altKm + rho) / r;
+        const sd = (a * a - b * b) / (r * rho) * sinLat * cosLat;
+        const theta = Math.acos(cosLat * cd - sinLat * sd);
+        const phi = lonRad;
 
-    let Br = 0, Btheta = 0, Bphi = 0;
-    let P = Array.from({ length: 13 }, () => new Array(13).fill(0));
-    let dP = Array.from({ length: 13 }, () => new Array(13).fill(0));
-    P[0][0] = 1; dP[0][0] = 0;
-    const cosT = Math.cos(theta), sinT = Math.sin(theta);
+        let Br = 0, Btheta = 0, Bphi = 0;
+        let P = Array.from({ length: 13 }, () => new Array(13).fill(0));
+        let dP = Array.from({ length: 13 }, () => new Array(13).fill(0));
+        P[0][0] = 1; dP[0][0] = 0;
+        const cosT = Math.cos(theta), sinT = Math.sin(theta);
 
-    for (let n = 1; n <= 12; n++) {
-        for (let m = 0; m <= n; m++) {
-            if (n === m) {
-                P[n][n] = sinT * P[n - 1][n - 1];
-                dP[n][n] = sinT * dP[n - 1][n - 1] + cosT * P[n - 1][n - 1];
-            } else if (n === 1 && m === 0) {
-                P[1][0] = cosT; dP[1][0] = -sinT;
-            } else {
-                const p1 = P[n - 1][m], p2 = (n - 2 >= m) ? P[n - 2][m] : 0;
-                const dp1 = dP[n - 1][m], dp2 = (n - 2 >= m) ? Dp[n - 2][m] : 0; // correction syntaxique
-                P[n][m] = ((2 * n - 1) * cosT * p1 - (n - 1 + m) * p2) / (n - m);
-                dP[n][m] = ((2 * n - 1) * (-sinT * p1 + cosT * dp1) - (n - 1 + m) * dp2) / (n - m);
+        for (let n = 1; n <= 12; n++) {
+            for (let m = 0; m <= n; m++) {
+                if (n === m) {
+                    P[n][n] = sinT * P[n - 1][n - 1];
+                    dP[n][n] = sinT * dP[n - 1][n - 1] + cosT * P[n - 1][n - 1];
+                } else if (n === 1 && m === 0) {
+                    P[1][0] = cosT; dP[1][0] = -sinT;
+                } else {
+                    const p1 = P[n - 1][m], p2 = (n - 2 >= m) ? P[n - 2][m] : 0;
+                    const dp1 = dP[n - 1][m], dp2 = (n - 2 >= m) ? dP[n - 2][m] : 0; // CORRIGÉ : Dp -> dP
+                    P[n][m] = ((2 * n - 1) * cosT * p1 - (n - 1 + m) * p2) / (n - m);
+                    dP[n][m] = ((2 * n - 1) * (-sinT * p1 + cosT * dp1) - (n - 1 + m) * dp2) / (n - m);
+                }
             }
         }
+
+        for (let coeff of wmmCoeffs) {
+            const { n, m, g, h, dg, dh } = coeff;
+            const gt = g + dg * dt, ht = h + dh * dt;
+            const ratio = Math.pow(re / r, n + 2);
+            const cosM = Math.cos(m * phi), sinM = Math.sin(m * phi);
+            Br -= (n + 1) * ratio * (gt * cosM + ht * sinM) * P[n][m];
+            Btheta -= ratio * (gt * cosM + ht * sinM) * dP[n][m];
+            Bphi -= ratio * (m / (sinT || 1e-6)) * (-gt * sinM + ht * cosM) * P[n][m];
+        }
+
+        const Bx = -Btheta * cd - Br * sd;
+        const By = Bphi;
+        const Bz = Btheta * sd - Br * cd;
+        const H = Math.sqrt(Bx * Bx + By * By);
+        const D = Math.atan2(By, Bx) * (180.0 / Math.PI);
+        const I = Math.atan2(Bz, H) * (180.0 / Math.PI);
+        const F = Math.sqrt(H * H + Bz * Bz);
+
+        return { declination: D, inclination: I, horizontal: H, total: F };
+    } catch (err) {
+        return { declination: 0, inclination: 0, horizontal: 0, total: 0 };
     }
-
-    for (let coeff of wmmCoeffs) {
-        const { n, m, g, h, dg, dh } = coeff;
-        const gt = g + dg * dt, ht = h + dh * dt;
-        const ratio = Math.pow(re / r, n + 2);
-        const cosM = Math.cos(m * phi), sinM = Math.sin(m * phi);
-        Br -= (n + 1) * ratio * (gt * cosM + ht * sinM) * P[n][m];
-        Btheta -= ratio * (gt * cosM + ht * sinM) * dP[n][m];
-        Bphi -= ratio * (m / (sinT || 1e-6)) * (-gt * sinM + ht * cosM) * P[n][m];
-    }
-
-    const Bx = -Btheta * cd - Br * sd;
-    const By = Bphi;
-    const Bz = Btheta * sd - Br * cd;
-    const H = Math.sqrt(Bx * Bx + By * By);
-    const D = Math.atan2(By, Bx) * (180.0 / Math.PI);
-    const I = Math.atan2(Bz, H) * (180.0 / Math.PI);
-    const F = Math.sqrt(H * H + Bz * Bz);
-
-    return { declination: D, inclination: I, horizontal: H, total: F };
 }
 
 // --- 2. CALCUL DU TEMPS ET DES COORDONNÉES ---
@@ -219,7 +223,7 @@ function calculerMetricsSolaires(dateUtc, stationLon, epsVraie) {
     };
 }
 
-// --- 3. AUDIT JEL / JPL NON BLOQUANT ---
+// --- 3. AUDIT JPL NON BLOQUANT ---
 function auditerPrecisionJpl(corpsNom, positionCalculee) {
     if (!jplMatrixData || !jplMatrixData.bodies || !jplMatrixData.bodies[corpsNom]) {
         return { deltaKm: null, statut: "PAS DE REFERENCE JPL" };
@@ -260,6 +264,7 @@ self.onmessage = function (e) {
         const startOfYear = Date.UTC(dateUtc.getUTCFullYear(), 0, 1);
         const endOfYear = Date.UTC(dateUtc.getUTCFullYear() + 1, 0, 1);
         const decimalYear = dateUtc.getUTCFullYear() + (timestampUtc - startOfYear) / (endOfYear - startOfYear);
+        
         const wmmResult = computeWMM2025(station.lat, station.lon, station.alt, decimalYear);
         const solarMetrics = calculerMetricsSolaires(dateUtc, station.lon, tempsJpl.epsVraie);
 
@@ -269,32 +274,40 @@ self.onmessage = function (e) {
         if (typeof evaluerVSOP2013 === 'function') {
             const corpsPlanetes = ['soleil', 'mercure', 'venus', 'mars', 'jupiter'];
             for (let corps of corpsPlanetes) {
-                const posEcef = evaluerVSOP2013(corps, T_TT, station, tempsJpl.gastDeg, meteo);
-                const topo = topocentrique(station.lat, station.lon, station.alt, posEcef);
-                const elevationApparente = refracter(topo.elevationGeometrique, meteo.temp, meteo.humidity, meteo.pressure);
+                try {
+                    const posEcef = evaluerVSOP2013(corps, T_TT, station, tempsJpl.gastDeg, meteo);
+                    if (posEcef) {
+                        const topo = topocentrique(station.lat, station.lon, station.alt, posEcef);
+                        const elevationApparente = refracter(topo.elevationGeometrique, meteo.temp, meteo.humidity, meteo.pressure);
 
-                resultsBodies[corps] = {
-                    azimuth: topo.azimuth,
-                    elevation: elevationApparente,
-                    elevationGeometrique: topo.elevationGeometrique,
-                    distanceKm: topo.distanceKm
-                };
-                auditRapports[corps] = auditerPrecisionJpl(corps, posEcef);
+                        resultsBodies[corps] = {
+                            azimuth: topo.azimuth,
+                            elevation: elevationApparente,
+                            elevationGeometrique: topo.elevationGeometrique,
+                            distanceKm: topo.distanceKm
+                        };
+                        auditRapports[corps] = auditerPrecisionJpl(corps, posEcef);
+                    }
+                } catch (err) {}
             }
         }
 
         if (typeof evaluerELP2000 === 'function') {
-            const posEcefLune = evaluerELP2000(T_TT, station, tempsJpl.gastDeg, meteo);
-            const topoLune = topocentrique(station.lat, station.lon, station.alt, posEcefLune);
-            const elAppLune = refracter(topoLune.elevationGeometrique, meteo.temp, meteo.humidity, meteo.pressure);
+            try {
+                const posEcefLune = evaluerELP2000(T_TT, station, tempsJpl.gastDeg, meteo);
+                if (posEcefLune) {
+                    const topoLune = topocentrique(station.lat, station.lon, station.alt, posEcefLune);
+                    const elAppLune = refracter(topoLune.elevationGeometrique, meteo.temp, meteo.humidity, meteo.pressure);
 
-            resultsBodies.lune = {
-                azimuth: topoLune.azimuth,
-                elevation: elAppLune,
-                elevationGeometrique: topoLune.elevationGeometrique,
-                distanceKm: topoLune.distanceKm
-            };
-            auditRapports.lune = auditerPrecisionJpl('lune', posEcefLune);
+                    resultsBodies.lune = {
+                        azimuth: topoLune.azimuth,
+                        elevation: elAppLune,
+                        elevationGeometrique: topoLune.elevationGeometrique,
+                        distanceKm: topoLune.distanceKm
+                    };
+                    auditRapports.lune = auditerPrecisionJpl('lune', posEcefLune);
+                }
+            } catch (err) {}
         }
 
         self.postMessage({
