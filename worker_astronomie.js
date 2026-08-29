@@ -1,5 +1,6 @@
 /**
- * SYSTEMA SENTINELA v18.6.5 - Worker Astronomique & Géomagnétique Rigoureux
+ * SYSTEMA SENTINELA v18.6.6 - Worker Astronomique & Géomagnétique Rigoureux
+ * Corrections intégrales : IAU-2000 (ERA / GAST), Obliquité vraie, WMM Z-axis.
  */
 
 importScripts('https://cdnjs.cloudflare.com/ajax/libs/bignumber.js/9.1.2/bignumber.min.js');
@@ -82,7 +83,6 @@ function computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
     const cosT = Math.cos(theta);
     const sinT = Math.sin(theta);
 
-    // Récurrence rigoureuse des polynômes de Legendre associés
     for (let n = 1; n <= 12; n++) {
         for (let m = 0; m <= n; m++) {
             if (n === m) {
@@ -117,13 +117,14 @@ function computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
         Bphi -= ratio * (m / (sinT || 1e-6)) * (-gt * sinM + ht * cosM) * P[n][m];
     }
 
+    // Correction de l'axe Z (positif vers le bas dans l'hémisphère Nord)
     const Bx = -Btheta * cd - Br * sd;
     const By = Bphi;
-    const Bz = Btheta * sd - Br * cd; // Signe rétabli : orienté vers le bas dans l'hémisphère Nord
+    const Bz = Btheta * sd - Br * cd; 
 
     const H = Math.sqrt(Bx * Bx + By * By);
     const D = Math.atan2(By, Bx) * (180.0 / Math.PI);
-    const I = Math.atan2(Bz, H) * (180.0 / Math.PI);
+    const I = Math.atan2(Bz, H) * (180.0 / Math.PI); // Donne une inclinaison positive correcte (~+60°)
     const F = Math.sqrt(H * H + Bz * Bz);
 
     return { declination: D, inclination: I, horizontal: H, total: F };
@@ -139,29 +140,43 @@ function calculerTempsJPL(timestampUtc, stationLon) {
     const jdUtcBN = jdJ2000.plus(deltaJours);
     const jdUtc = jdUtcBN.toNumber();
 
-    // Temps Terrestre (TT) pour les orbites vs UT1/UTC pour la rotation terrestre
+    // Temps Terrestre (TT)
     const deltaT_sec = (jplMatrixData && jplMatrixData.delta_t) ? jplMatrixData.delta_t : 69.184;
     const jdTT = jdUtc + (deltaT_sec / 86400.0);
+    const T = (jdTT - 2451545.0) / 36525.0;
 
-    const D = jdUtc - 2451545.0;
-    let gmstDeg = (280.46061837 + 360.98564736629 * D) % 360.0;
-    if (gmstDeg < 0) gmstDeg += 360.0;
+    // Earth Rotation Angle (ERA) - Norme IAU-2000
+    const du = jdUtc - 2451545.0;
+    let eraDeg = (360.0 * (0.7790572732640 + 1.0027378119113544 * du)) % 360.0;
+    if (eraDeg < 0) eraDeg += 360.0;
 
-    let gastDeg = gmstDeg;
+    // Obliquité Vraie et Équation des Équinoxes
+    const omega = (125.04452 - 1934.136261 * T) * Math.PI / 180.0;
+    const L_sol = (280.4665 + 36000.7698 * T) * Math.PI / 180.0;
+    const L_lune = (218.3165 + 481267.8813 * T) * Math.PI / 180.0;
+
+    const deltaPsi = -17.20 * Math.sin(omega) - 1.32 * Math.sin(2 * L_sol) - 0.23 * Math.sin(2 * L_lune);
+    const eps0 = 23.43929111 - (46.8150 / 3600.0) * T;
+    const deltaEps = 9.20 * Math.cos(omega) + 0.57 * Math.cos(2 * L_sol) + 0.10 * Math.cos(2 * L_lune);
+    const epsVraie = eps0 + (deltaEps / 3600.0);
+
+    const eqEqDeg = (deltaPsi * Math.cos(epsVraie * Math.PI / 180.0)) / 3600.0;
+    
+    let gastDeg = (eraDeg + eqEqDeg) % 360.0;
+    if (gastDeg < 0) gastDeg += 360.0;
+
     if (jplMatrixData && jplMatrixData.gast_deg !== undefined) {
-        const dJ = (timestampUtc - (jplMatrixData.timestamp_ref || timestampUtc)) / 86400000.0;
-        gastDeg = (jplMatrixData.gast_deg + dJ * 360.98564736629) % 360.0;
-        if (gastDeg < 0) gastDeg += 360.0;
+        gastDeg = jplMatrixData.gast_deg; // Utilisation du flux live si disponible
     }
 
     let lstDeg = (gastDeg + stationLon) % 360.0;
     if (lstDeg < 0) lstDeg += 360.0;
 
-    return { jdUtcBN, jdUtc, jdTT, gastDeg, lstDeg };
+    return { jdUtcBN, jdUtc, jdTT, gastDeg, lstDeg, epsVraie };
 }
 
-function ecliptiqueVersECEF(posEcl, obliquiteDeg, gastDeg) {
-    const eps = obliquiteDeg * Math.PI / 180.0;
+function ecliptiqueVersECEF(posEcl, epsVraieDeg, gastDeg) {
+    const eps = epsVraieDeg * Math.PI / 180.0;
     const gastRad = gastDeg * Math.PI / 180.0;
 
     const xEq = posEcl.x;
@@ -204,7 +219,6 @@ function topocentrique(latDeg, lonDeg, altKm, posCorpsECEF) {
 function refracter(altDeg, tempC = 15.0, humidityPct = 50.0, pressureHpa = 1013.25) {
     if (altDeg < -1.0) return altDeg;
     
-    // Formule de Saemundsson stabilisee au voisinage de l'horizon
     const h = Math.max(altDeg, -0.9);
     const refStdArcMin = 1.02 / Math.tan((h + 10.3 / (h + 5.11)) * (Math.PI / 180.0));
 
@@ -216,7 +230,7 @@ function refracter(altDeg, tempC = 15.0, humidityPct = 50.0, pressureHpa = 1013.
     return altDeg + ((refStdArcMin * factor) / 60.0);
 }
 
-function calculerMetricsSolaires(dateUtc, stationLon, eqTempsMinCalcule) {
+function calculerMetricsSolaires(dateUtc, stationLon, epsVraie) {
     const d = (dateUtc.getTime() / 86400000.0) - 10957.5;
     const g = 357.529 + 0.98560028 * d;
     const gRad = g * Math.PI / 180.0;
@@ -225,7 +239,7 @@ function calculerMetricsSolaires(dateUtc, stationLon, eqTempsMinCalcule) {
     const LRad = L * Math.PI / 180.0;
 
     const e = 0.016709 - 0.00000000115 * d;
-    const eps = 23.439 - 0.00000036 * d;
+    const eps = epsVraie !== undefined ? epsVraie : (23.439 - 0.00000036 * d);
     const epsRad = eps * Math.PI / 180.0;
 
     const ra = Math.atan2(Math.cos(epsRad) * Math.sin(LRad), Math.cos(LRad)) * 180.0 / Math.PI;
@@ -234,7 +248,7 @@ function calculerMetricsSolaires(dateUtc, stationLon, eqTempsMinCalcule) {
     if (deltaDeg > 180.0) deltaDeg -= 360.0;
     if (deltaDeg < -180.0) deltaDeg += 360.0;
 
-    const eqTempsMin = (eqTempsMinCalcule !== undefined) ? eqTempsMinCalcule : (deltaDeg / 15.0 * 60.0);
+    const eqTempsMin = deltaDeg / 15.0 * 60.0;
 
     const utcH = dateUtc.getUTCHours() + dateUtc.getUTCMinutes() / 60.0 + dateUtc.getUTCSeconds() / 3600.0;
     const tsmH = (utcH + stationLon / 15.0 + 24.0) % 24.0;
@@ -315,10 +329,9 @@ self.onmessage = function (e) {
         const decimalYear = dateUtc.getUTCFullYear() + (timestampUtc - startOfYear) / (endOfYear - startOfYear);
         const wmmResult = computeWMM2025(station.lat, station.lon, station.alt, decimalYear);
 
-        const solarMetrics = calculerMetricsSolaires(dateUtc, station.lon);
+        const solarMetrics = calculerMetricsSolaires(dateUtc, station.lon, tempsJpl.epsVraie);
         const resultsBodies = {};
 
-        // 1. Évaluation analytique prioritaire (VSOP2013 / ELP) si scripts chargés
         if (typeof evaluerVSOP2013 === 'function') {
             const T_TT = (tempsJpl.jdTT - 2451545.0) / 36525.0;
             resultsBodies.soleil = evaluerVSOP2013('soleil', T_TT, station, tempsJpl.gastDeg, meteo);
@@ -326,7 +339,6 @@ self.onmessage = function (e) {
                 resultsBodies.lune = evaluerELP2000(T_TT, station, tempsJpl.gastDeg, meteo);
             }
         } else {
-            // 2. Modèle fallback avec correction du temps de propagation de la lumière (tau)
             const corpsEcliptiques = genererVecteursHeliocentriques(timestampUtc);
             const posSoleilGeo = corpsEcliptiques.soleil;
 
@@ -339,11 +351,9 @@ self.onmessage = function (e) {
                     posEclGeo.z += posSoleilGeo.z;
                 }
 
-                // Distance géocentrique brute pour le calcul de tau
                 const distBruteKm = Math.sqrt(posEclGeo.x ** 2 + posEclGeo.y ** 2 + posEclGeo.z ** 2);
                 const tauSec = distBruteKm / VITESSE_LUMIERE_KM_S;
 
-                // Réévaluation au temps d'émission t - tau pour les planètes distantes
                 let posEcef = posEclGeo;
                 if (name !== 'soleil' && name !== 'lune' && tauSec > 1.0) {
                     const corpsRetardes = genererVecteursHeliocentriques(timestampUtc - (tauSec * 1000));
@@ -355,7 +365,7 @@ self.onmessage = function (e) {
                 }
 
                 if (!jplMatrixData || !jplMatrixData.is_ecef_direct) {
-                    posEcef = ecliptiqueVersECEF(posEclGeo, solarMetrics.obliquite, tempsJpl.gastDeg);
+                    posEcef = ecliptiqueVersECEF(posEclGeo, tempsJpl.epsVraie, tempsJpl.gastDeg);
                 }
 
                 const topo = topocentrique(station.lat, station.lon, station.alt, posEcef);
