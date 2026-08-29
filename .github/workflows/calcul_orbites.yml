@@ -5,6 +5,9 @@ on:
     - cron: '0 0 * * *'  # Exécution quotidienne à minuit UTC
   workflow_dispatch:      # Permet de lancer le workflow manuellement depuis GitHub
 
+permissions:
+  contents: write         # INDISPENSABLE pour autoriser le git push
+
 jobs:
   generate-ephemeris:
     runs-on: ubuntu-latest
