@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA - Worker Astronomique & Géomagnétique Rigoureux (Corrigé)
+ * SYSTEMA SENTINELA - Worker Astronomique, Géomagnétique & WebAssembly (C++)
  */
 
 importScripts('https://cdnjs.cloudflare.com/ajax/libs/bignumber.js/9.1.2/bignumber.min.js');
@@ -8,11 +8,28 @@ try {
     importScripts('vsop2013.js', 'ElpMpp02LLR_min.js');
 } catch (e) {}
 
+// Importation du module Emscripten (Wasm) compilé par la CI
+try {
+    importScripts('wasm_astronomie.js');
+} catch (e) {
+    console.warn("Module WASM non disponible dans ce contexte, repli JS pur.");
+}
+
 BigNumber.config({ DECIMAL_PLACES: 30, ROUNDING_MODE: BigNumber.ROUND_HALF_UP });
 
 let wmmCoeffs = [];
 let isWmmLoaded = false;
 let jplMatrixData = null;
+let isWasmReady = false;
+
+// Initialisation du runtime Emscripten
+self.Module = {
+    onRuntimeInitialized: function() {
+        isWasmReady = true;
+        self.postMessage({ type: 'WASM_READY', status: 'WASM_READY' });
+        self.postMessage({ type: 'READY' });
+    }
+};
 
 // --- 1. FONCTIONS GÉOMAGNÉTIQUES WMM-2025 ---
 function obtenirFacteurSchmidt(n, m) {
@@ -79,7 +96,7 @@ function computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
                     P[1][0] = cosT; dP[1][0] = -sinT;
                 } else {
                     const p1 = P[n - 1][m], p2 = (n - 2 >= m) ? P[n - 2][m] : 0;
-                    const dp1 = dP[n - 1][m], dp2 = (n - 2 >= m) ? dP[n - 2][m] : 0; // CORRIGÉ : Dp -> dP
+                    const dp1 = dP[n - 1][m], dp2 = (n - 2 >= m) ? dP[n - 2][m] : 0;
                     P[n][m] = ((2 * n - 1) * cosT * p1 - (n - 1 + m) * p2) / (n - m);
                     dP[n][m] = ((2 * n - 1) * (-sinT * p1 + cosT * dp1) - (n - 1 + m) * dp2) / (n - m);
                 }
@@ -153,6 +170,12 @@ function calculerTempsJPL(timestampUtc, stationLon) {
 }
 
 function topocentrique(latDeg, lonDeg, altKm, posCorpsECEF) {
+    // Si le module Wasm est prêt, on peut déléguer le calcul topocentrique au C++
+    if (isWasmReady && typeof Module._calculerPositionTopocentrique === 'function') {
+        // Exemple d'appel via ccall si configuré dans le binaire C++
+        // Note: Assurez-vous d'adapter selon la signature exacte de votre fonction C++
+    }
+
     const phi = latDeg * Math.PI / 180.0;
     const lambda = lonDeg * Math.PI / 180.0;
     const a = 6378.137, e2 = 0.00669437999014;
@@ -323,4 +346,7 @@ self.onmessage = function (e) {
     }
 };
 
-self.postMessage({ type: 'READY' });
+// Si le runtime n'a pas encore signalé son état, on tente une annonce initiale
+if (!isWasmReady) {
+    self.postMessage({ type: 'READY' });
+            }
