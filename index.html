@@ -577,9 +577,16 @@
     }
 
     function traiterMessageWorker(e) {
+    
     const data = e.data;
     console.log("[SENTINELA DEBUG] Message reçu du Worker :", data); // <--- AJOUTER CETTE LIGNE
-    
+        
+    if (data.type === 'WORKER_ERROR') {
+    ecrireLog("CRASH WORKER : " + data.message);
+    console.error("Stack trace Worker :", data.stack);
+    return;
+    }
+        
     if (!data) return;
     // ... suite de la fonction
 
