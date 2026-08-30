@@ -572,34 +572,90 @@
     }
 
     function traiterMessageWorker(e) {
-        const data = e.data;
-        if (!data) return;
+    const data = e.data;
+    if (!data) return;
 
-        if (data.type === 'READY' || data.type === 'WMM_READY' || data.status === 'WASM_READY') {
-            document.getElementById('lbl-worker-status').innerText = "ACTIF";
-            document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-            return;
-        } 
+    if (data.type === 'READY' || data.type === 'WMM_READY' || data.status === 'WASM_READY') {
+        document.getElementById('lbl-worker-status').innerText = "ACTIF";
+        document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+        return;
+    } 
 
-        // Extraction tolérante du dictionnaire d'astres
-        const results = data.results || data.bodies || data.data || data.payload || data.astres || (data.sun || data.soleil ? data : null);
+    // Extraction tolérante du dictionnaire d'astres
+    const rawAstres = data.results || data.bodies || data.astres || data.payload || (data.soleil || data.sun ? data : null);
 
-        if (results && typeof results === 'object') {
-            derniersResultatsAstres = results;
-            mettreAJourTableauEtTrier(derniersResultatsAstres);
-            dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
-        }
-
-        if (data.solarMetrics) mettreAJourMetricsSolaires(data.solarMetrics);
-        if (data.tempsJpl) {
-            document.getElementById('val-gast').innerText = `${data.tempsJpl.gastDeg.toFixed(2)}° / ${data.tempsJpl.lstDeg.toFixed(2)}°`;
-        }
-        if (data.wmm) {
-            resultatWmmCourant = data.wmm;
-            document.getElementById('val-dec-wmm').innerText = `${data.wmm.declination >= 0 ? '+' : ''}${data.wmm.declination.toFixed(2)}°`;
-            document.getElementById('val-inc-wmm').innerText = `${data.wmm.inclination >= 0 ? '+' : ''}${data.wmm.inclination.toFixed(2)}°`;
-        }
+    if (rawAstres && typeof rawAstres === 'object') {
+        derniersResultatsAstres = rawAstres;
+        mettreAJourTableauEtTrier(derniersResultatsAstres);
+        dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
+
+    if (data.solarMetrics) mettreAJourMetricsSolaires(data.solarMetrics);
+    if (data.tempsJpl || data.lst) {
+        const gast = data.tempsJpl?.gastDeg ?? data.gast ?? 0;
+        const lst = data.tempsJpl?.lstDeg ?? data.lst ?? 0;
+        document.getElementById('val-gast').innerText = `${gast.toFixed(2)}° / ${lst.toFixed(2)}°`;
+    }
+    if (data.wmm) {
+        resultatWmmCourant = data.wmm;
+        document.getElementById('val-dec-wmm').innerText = `${data.wmm.declination >= 0 ? '+' : ''}${data.wmm.declination.toFixed(2)}°`;
+        document.getElementById('val-inc-wmm').innerText = `${data.wmm.inclination >= 0 ? '+' : ''}${data.wmm.inclination.toFixed(2)}°`;
+    }
+}
+
+function mettreAJourTableauEtTrier(results) {
+    const tbody = document.getElementById('table-body');
+    if (!tbody || !results) return;
+
+    // Normalisation multi-propriétés
+    let entries = Object.entries(results).filter(([k, v]) => {
+        if (typeof v !== 'object' || v === null) return false;
+        return (v.elevation !== undefined || v.elevationGeometrique !== undefined || v.alt !== undefined || v.altitude !== undefined || v.el !== undefined);
+    });
+    
+    if (entries.length === 0) return;
+
+    entries.sort((a, b) => {
+        const getEl = obj => obj.elevation ?? obj.elevationGeometrique ?? obj.alt ?? obj.altitude ?? -999;
+        const elA = getEl(a[1]);
+        const elB = getEl(b[1]);
+        return (elB >= 0 ? 1 : 0) - (elA >= 0 ? 1 : 0) || elB - elA;
+    });
+
+    tbody.innerHTML = '';
+    entries.forEach(([astre, data]) => {
+        const row = document.createElement('tr');
+        
+        const elGeo = data.elevationGeometrique ?? data.elevation ?? data.alt ?? data.altitude ?? 0;
+        const refractionDeg = calculerRefractionMeteoDeg(elGeo, meteoActive.temperatureC, meteoActive.humiditePct, meteoActive.pressionBaro);
+        const elApparente = elGeo + refractionDeg;
+
+        const azimuth = data.azimuth ?? data.azimut ?? data.az ?? 0;
+        const distance = data.distanceKm ?? data.distance ?? data.dist ?? 0;
+        const isVisible = elApparente >= 0;
+        
+        const riseTime = data.riseUtcMs ?? data.rise ?? data.lever;
+        const transitTime = data.transitUtcMs ?? data.transit ?? data.culmination;
+        const setTime = data.setUtcMs ?? data.set ?? data.coucher;
+
+        const leverTSM = riseTime ? formaterHeureTSM(riseTime, stationActive.lon) : "--:--:--";
+        const culmTSM = transitTime ? formaterHeureTSM(transitTime, stationActive.lon) : "--:--:--";
+        const coucherTSM = setTime ? formaterHeureTSM(setTime, stationActive.lon) : "--:--:--";
+
+        row.className = isVisible ? 'visible-row' : 'hidden-row';
+        row.innerHTML = `
+            <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--text-main)'}; text-transform:uppercase; font-weight:bold;">${astre}</td>
+            <td>${elApparente.toFixed(2)}°</td>
+            <td>${azimuth.toFixed(2)}°</td>
+            <td>${Math.round(distance).toLocaleString('fr-FR')} km</td>
+            <td class="time-tsm">${leverTSM}</td>
+            <td class="time-tsm">${culmTSM}</td>
+            <td class="time-tsm">${coucherTSM}</td>
+            <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--rose)'}; font-weight:bold;">${isVisible ? 'VISIBLE' : 'SOUS L\'HORIZON'}</td>
+        `;
+        tbody.appendChild(row);
+    });
+        }
 
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
