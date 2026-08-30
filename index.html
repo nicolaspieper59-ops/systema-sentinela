@@ -15,7 +15,9 @@
                     sessionStorage.setItem('coop_reloaded', 'true');
                     window.location.reload();
                 }
-            }).catch(() => {});
+            }).catch(() => {
+                sessionStorage.removeItem('coop_reloaded');
+            });
         }
     </script>
 
@@ -71,7 +73,6 @@
         #radarCanvas { width: 100%; max-width: 260px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
         #globeCanvas { width: 100%; max-width: 260px; height: 150px; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 6px; cursor: grab; touch-action: none; }
         
-        /* Stylisation spécifique des formats de temps */
         .time-utc { color: var(--sky); font-weight: bold; }
         .time-tsm { color: var(--tsm-color); font-weight: bold; }
     </style>
@@ -189,7 +190,6 @@
 <script src="ElpMpp02LLR_min.js"></script>
 
 <script>
-    // Mode jour activé par défaut
     let modeJourActif = true;
     let decalageTempsAtomiqueMs = parseFloat(localStorage.getItem('sentinela_offset') || '0');
     const SEUIL_DERIVE_MAX_MS = 1.0;
@@ -216,7 +216,6 @@
     let globeScene, globeCamera, globeRenderer, curseurPositionMesh;
     let isDragging = false, lastX = 0, lastY = 0;
 
-    // --- ALGORITHME DE RÉFRACTION ATMOSPHÉRIQUE (Bennett / Tetens) ---
     function calculerRefractionMeteoDeg(altDeg, T_C, H_pct, P_hPa) {
         if (altDeg < -1.0) return 0.0;
         const altCalculee = Math.max(altDeg, -0.5);
@@ -230,9 +229,7 @@
         const P_effective = P_hPa - 0.1507 * e_vapeur;
 
         const correctionFactor = (P_effective / 1013.25) * (288.15 / (273.15 + T_C));
-        const refMeteoArcMinutes = refStdArcMinutes * correctionFactor;
-
-        return refMeteoArcMinutes / 60.0;
+        return (refStdArcMinutes * correctionFactor) / 60.0;
     }
 
     function ecrireLog(msg) {
@@ -247,7 +244,6 @@
         return Date.now() + decalageTempsAtomiqueMs;
     }
 
-    // Convertit un timestamp UTC en chaîne Temps Solaire Moyen (TSM) "HH:MM:SS" pour la station
     function formaterHeureTSM(timestampUtc, lonDeg) {
         if (!timestampUtc || isNaN(timestampUtc)) return "--:--:--";
         const date = new Date(timestampUtc);
@@ -477,8 +473,15 @@
     }
 
     function activerIMU() {
+        if (listenerIMU && eventNameIMU) {
+            window.removeEventListener(eventNameIMU, listenerIMU, true);
+            listenerIMU = null;
+            eventNameIMU = null;
+        }
+
         if ('AbsoluteOrientationSensor' in window) {
             try {
+                if (sensorIMU) { try { sensorIMU.stop(); } catch(e) {} }
                 sensorIMU = new AbsoluteOrientationSensor({ frequency: 60 });
                 sensorIMU.addEventListener('reading', () => {
                     if (!capteursActifs) return;
@@ -625,8 +628,7 @@
         entries.forEach(([astre, data]) => {
             const row = document.createElement('tr');
             
-            // Calcul de la réfraction météo Bennett/Tetens sur l'élévation géométrique
-            const elGeo = (data && data.elevation !== undefined) ? data.elevation : 0;
+            const elGeo = (data && data.elevationGeometrique !== undefined) ? data.elevationGeometrique : ((data && data.elevation !== undefined) ? data.elevation : 0);
             const refractionDeg = calculerRefractionMeteoDeg(elGeo, meteoActive.temperatureC, meteoActive.humiditePct, meteoActive.pressionBaro);
             const elApparente = elGeo + refractionDeg;
 
@@ -840,7 +842,6 @@
     }
 
     window.addEventListener('load', async () => {
-        // Application stricte du mode jour par défaut au premier lancement
         document.getElementById('html-root').classList.add('day-mode');
         
         dessinerRadarAstres({}, 0);
