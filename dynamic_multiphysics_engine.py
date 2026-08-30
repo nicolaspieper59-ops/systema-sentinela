@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 SYSTEMA SENTINELA — EXTRACTEUR TOPOCENTRIQUE OFFICIEL (DE440s)
-Intégration complète : Soleil, Lune, et Planètes majeures VSOP/ELP.
+Matrice d'état 24h ECEF (km) pour worker_astronomie.js
 """
 import os
 import sys
@@ -27,27 +27,25 @@ def main():
     
     loader = Loader(os.getcwd(), verbose=False)
     
-    # Vérification et chargement sécurisé du noyau BSP local
     kernel_path = 'de440s.bsp'
     if not os.path.exists(kernel_path):
-        print(f"[AVERTISSEMENT] Le fichier {kernel_path} est introuvable localement.")
-        # Téléchargement via la méthode officielle de skyfield si absent
+        print(f"[AVERTISSEMENT] Téléchargement du noyau {kernel_path}...")
         loader.download(kernel_path)
         
     eph = loader(kernel_path)
-        
     ts = loader.timescale(builtin=True)
+    
     aujourdhui = datetime.now(timezone.utc).date()
     date_base = datetime(aujourdhui.year, aujourdhui.month, aujourdhui.day, 0, 0, tzinfo=timezone.utc)
 
     station_base = wgs84.latlon(lat_target, lon_target, elevation_m=alt_target)
 
-    # Dictionnaire validé incluant la Lune et les planètes majeures
+    # Sélection prioritaire des corps exacts (défaillance sur barycentre si indisponible)
     corps_celestes = {
         'soleil': eph['sun'], 
         'lune': eph['moon'],
-        'mercure': eph['mercury barycenter'],
-        'venus': eph['venus barycenter'], 
+        'mercure': eph['mercury'],
+        'venus': eph['venus'], 
         'mars': eph['mars barycenter'],
         'jupiter': eph['jupiter barycenter'], 
         'saturne': eph['saturn barycenter'],
@@ -57,7 +55,7 @@ def main():
 
     matrice_24h = {name: [] for name in corps_celestes.keys()}
 
-    print(f"[EXÉCUTION] Calcul topocentrique WGS84 pour Lat:{lat_target}, Lon:{lon_target}...")
+    print(f"[EXÉCUTION] Génération matrice ECEF (km) DE440s pour {lat_target}, {lon_target}...")
 
     for minute in range(1441):
         instant = date_base + timedelta(minutes=minute)
@@ -66,8 +64,13 @@ def main():
 
         for nom, cible in corps_celestes.items():
             astre_apparent = position_observateur.observe(cible).apparent()
-            x_m, y_m, z_m = astre_apparent.frame_xyz(itrs).m
-            matrice_24h[nom].append({"x": float(x_m), "y": float(y_m), "z": float(z_m)})
+            # frame_xyz(itrs).km garantit la compatibilité directe avec le worker JS (km)
+            x_km, y_km, z_km = astre_apparent.frame_xyz(itrs).km
+            matrice_24h[nom].append({
+                "x": round(float(x_km), 3), 
+                "y": round(float(y_km), 3), 
+                "z": round(float(z_km), 3)
+            })
 
     payload = {
         "INFRASTRUCTURE": "SYSTEMA SENTINELA — DE440s TOPOCENTRIQUE COMPLET",
@@ -77,10 +80,11 @@ def main():
         "DATA": matrice_24h
     }
 
+    # Écriture minifiée sans indentation pour optimiser les performances réseau du Web Worker
     with open("flux_live.json", "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
+        json.dump(payload, f, ensure_ascii=False, separators=(',', ':'))
         
-    print(f"[SUCCESS] flux_live.json généré avec succès (Soleil, Lune, Planètes).")
+    print(f"[SUCCESS] flux_live.json généré (Coordonnées ECEF en kilomètres).")
 
 if __name__ == "__main__":
     main()
