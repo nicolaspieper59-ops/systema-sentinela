@@ -44,7 +44,6 @@ function parseWMM2025(cofText) {
             const n = parseInt(p[0], 10);
             const m = parseInt(p[1], 10);
             if (!isNaN(n) && n <= 12) {
-                // Suppression de la double normalisation de Schmidt : coefficients COF déjà semi-normalisés
                 wmmCoeffs.push({
                     n, m,
                     g: parseFloat(p[2]),
@@ -106,10 +105,9 @@ function computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
             Bphi -= ratio * (m / (sinT || 1e-6)) * (-gt * sinM + ht * cosM) * P[n][m];
         }
 
-        // Conversion géodétique NED
         const Bx = -Btheta * cd - Br * sd;
         const By = Bphi;
-        const Bz = Btheta * sd + Br * cd; // Inversion du signe de Z corrigée
+        const Bz = Btheta * sd + Br * cd;
         const H = Math.sqrt(Bx * Bx + By * By);
         const D = Math.atan2(By, Bx) * (180.0 / Math.PI);
         const I = Math.atan2(Bz, H) * (180.0 / Math.PI);
@@ -133,7 +131,6 @@ function evaluerVSOP2013(corpsNom, T_TT, gastDeg, epsRad) {
         let xEc = 0, yEc = 0, zEc = 0;
 
         if (corpsNom === 'soleil') {
-            // Vecteur Terre -> Soleil = - (Soleil -> Terre)
             xEc = -posTerreEc.x;
             yEc = -posTerreEc.y;
             zEc = -posTerreEc.z;
@@ -150,18 +147,15 @@ function evaluerVSOP2013(corpsNom, T_TT, gastDeg, epsRad) {
             const posCorpsEc = corpsObj.position(T_TT);
             if (!posCorpsEc) return null;
 
-            // Passage Héliocentrique -> Géocentrique
             xEc = posCorpsEc.x - posTerreEc.x;
             yEc = posCorpsEc.y - posTerreEc.y;
             zEc = posCorpsEc.z - posTerreEc.z;
         }
 
-        // Conversion Écliptique -> Équatorial
         const xEq = xEc;
         const yEq = yEc * Math.cos(epsRad) - zEc * Math.sin(epsRad);
         const zEq = yEc * Math.sin(epsRad) + zEc * Math.cos(epsRad);
 
-        // Rotation Sidérale -> ECEF
         const gastRad = gastDeg * (Math.PI / 180.0);
         const xEcef = xEq * Math.cos(gastRad) + yEq * Math.sin(gastRad);
         const yEcef = -xEq * Math.sin(gastRad) + yEq * Math.cos(gastRad);
@@ -186,12 +180,10 @@ function evaluerELP2000(T_TT, gastDeg, epsRad) {
         const posLuneEc = moteurLune.position(T_TT);
         if (!posLuneEc) return null;
 
-        // Conversion Écliptique Géocentrique -> Équatorial Géocentrique
         const xEq = posLuneEc.x;
         const yEq = posLuneEc.y * Math.cos(epsRad) - posLuneEc.z * Math.sin(epsRad);
         const zEq = posLuneEc.y * Math.sin(epsRad) + posLuneEc.z * Math.cos(epsRad);
 
-        // Rotation Sidérale -> ECEF
         const gastRad = gastDeg * (Math.PI / 180.0);
         const xEcef = xEq * Math.cos(gastRad) + yEq * Math.sin(gastRad);
         const yEcef = -xEq * Math.sin(gastRad) + yEq * Math.cos(gastRad);
@@ -370,121 +362,125 @@ function auditerPrecisionJpl(corpsNom, positionCalculee) {
 }
 
 self.onmessage = function (e) {
-    const data = e.data;
+    try {
+        const data = e.data;
 
-    if (data.type === 'INIT_WMM') {
-        parseWMM2025(data.cofText);
-        cacheDernierCalcul = { timestampSec: null, stationKey: null, donnees: null };
-        self.postMessage({ type: 'WMM_READY' });
-        return;
-    }
-
-    if (data.type === 'UPDATE_JPL_MATRIX') {
-        jplMatrixData = data.matrix;
-        cacheDernierCalcul = { timestampSec: null, stationKey: null, donnees: null };
-        return;
-    }
-
-    if (data.type === 'UPDATE_FLUX_LIVE') {
-        fluxLiveData = data.flux;
-        cacheDernierCalcul = { timestampSec: null, stationKey: null, donnees: null };
-        return;
-    }
-
-    if (data.type === 'COMPUTE' || data.type === 'CALCULATE') {
-        const timestampUtc = data.timestampUtc || Date.now();
-        const timestampSec = Math.floor(timestampUtc / 1000);
-        const station = data.station || { lat: 43.2843, lon: 5.3585, alt: 0.010 };
-        const stationKey = `${station.lat.toFixed(4)}_${station.lon.toFixed(4)}_${station.alt.toFixed(2)}`;
-
-        if (cacheDernierCalcul.timestampSec === timestampSec && cacheDernierCalcul.stationKey === stationKey) {
-            self.postMessage({
-                type: 'RESULTS',
-                ...cacheDernierCalcul.donnees,
-                fromCache: true
-            });
+        if (data.type === 'INIT_WMM') {
+            parseWMM2025(data.cofText);
+            cacheDernierCalcul = { timestampSec: null, stationKey: null, donnees: null };
+            self.postMessage({ type: 'WMM_READY' });
             return;
         }
 
-        const meteo = data.meteo || { temp: 15.0, humidity: 50.0, pressure: 1013.25 };
-        const dateUtc = new Date(timestampUtc);
-
-        const tempsJpl = calculerTempsJPL(timestampUtc, station.lon);
-        const T_TT = (tempsJpl.jdTT - 2451545.0) / 36525.0;
-        const epsRad = tempsJpl.epsVraie * (Math.PI / 180.0);
-
-        const startOfYear = Date.UTC(dateUtc.getUTCFullYear(), 0, 1);
-        const endOfYear = Date.UTC(dateUtc.getUTCFullYear() + 1, 0, 1);
-        const decimalYear = dateUtc.getUTCFullYear() + (timestampUtc - startOfYear) / (endOfYear - startOfYear);
-        
-        const wmmResult = computeWMM2025(station.lat, station.lon, station.alt, decimalYear);
-
-        const posSoleilEcef = evaluerVSOP2013('soleil', T_TT, tempsJpl.gastDeg, epsRad);
-        const solarMetrics = posSoleilEcef ? calculerMetricsSolaires(dateUtc, station.lon, tempsJpl.epsVraie, posSoleilEcef, tempsJpl.gastDeg) : null;
-
-        const resultsBodies = {};
-        const auditRapports = {};
-
-        const corpsPlanetes = ['soleil', 'mercure', 'venus', 'mars', 'jupiter'];
-        for (let corps of corpsPlanetes) {
-            const posEcef = (corps === 'soleil') ? posSoleilEcef : evaluerVSOP2013(corps, T_TT, tempsJpl.gastDeg, epsRad);
-            if (posEcef) {
-                const topo = topocentrique(station.lat, station.lon, station.alt, posEcef);
-                const elevationApparente = refracter(topo.elevationGeometrique, meteo.temp, meteo.humidity, meteo.pressure);
-                const evenements = calculerEvenementsJournee(corps, timestampUtc, station, epsRad);
-
-                resultsBodies[corps] = {
-                    azimuth: topo.azimuth,
-                    elevation: elevationApparente,
-                    elevationGeometrique: topo.elevationGeometrique,
-                    distanceKm: topo.distanceKm,
-                    ...evenements
-                };
-                auditRapports[corps] = auditerPrecisionJpl(corps, posEcef);
-            }
+        if (data.type === 'UPDATE_JPL_MATRIX') {
+            jplMatrixData = data.matrix;
+            cacheDernierCalcul = { timestampSec: null, stationKey: null, donnees: null };
+            return;
         }
 
-        const posEcefLune = evaluerELP2000(T_TT, tempsJpl.gastDeg, epsRad);
-        if (posEcefLune) {
-            const topoLune = topocentrique(station.lat, station.lon, station.alt, posEcefLune);
-            const elAppLune = refracter(topoLune.elevationGeometrique, meteo.temp, meteo.humidity, meteo.pressure);
-            const evenementsLune = calculerEvenementsJournee('lune', timestampUtc, station, epsRad);
+        if (data.type === 'UPDATE_FLUX_LIVE') {
+            fluxLiveData = data.flux;
+            cacheDernierCalcul = { timestampSec: null, stationKey: null, donnees: null };
+            return;
+        }
 
-            resultsBodies.lune = {
-                azimuth: topoLune.azimuth,
-                elevation: elAppLune,
-                elevationGeometrique: topoLune.elevationGeometrique,
-                distanceKm: topoLune.distanceKm,
-                ...evenementsLune
+        if (data.type === 'COMPUTE' || data.type === 'CALCULATE' || data.action === 'COMPUTE') {
+            const timestampUtc = data.timestampUtc || data.timestamp || Date.now();
+            const timestampSec = Math.floor(timestampUtc / 1000);
+            
+            const station = data.station || { 
+                lat: data.lat !== undefined ? data.lat : 43.2843, 
+                lon: data.lon !== undefined ? data.lon : 5.3585, 
+                alt: data.alt !== undefined ? data.alt : 0.010 
             };
-            auditRapports.lune = auditerPrecisionJpl('lune', posEcefLune);
-        }
+            const stationKey = `${station.lat.toFixed(4)}_${station.lon.toFixed(4)}_${station.alt.toFixed(2)}`;
 
-        const resultatFinal = {
-            timestampUtc: timestampUtc,
-            julianDay: tempsJpl.jdUtcBN.toFixed(23),
-            wmm: wmmResult,
-            solarMetrics: solarMetrics,
-            tempsJpl: tempsJpl,
-            bodies: resultsBodies,
-            auditJpl: auditRapports
-        };
+            if (cacheDernierCalcul.timestampSec === timestampSec && cacheDernierCalcul.stationKey === stationKey) {
+                self.postMessage({
+                    type: 'RESULTS',
+                    ...cacheDernierCalcul.donnees,
+                    fromCache: true
+                });
+                return;
+            }
 
-        cacheDernierCalcul = {
-            timestampSec: timestampSec,
-            stationKey: stationKey,
-            donnees: resultatFinal
-        };
+            const meteo = data.meteo || { temp: 15.0, humidity: 50.0, pressure: 1013.25 };
+            const dateUtc = new Date(timestampUtc);
 
-        // Dans worker_astronomie.js
-self.onmessage = function(e) {
-    try {
-        // --- Ton code de traitement habituel ---
-        if (e.data.type === 'COMPUTE' || e.data.action === 'COMPUTE') {
-            // ... exécution des calculs ...
+            const tempsJpl = calculerTempsJPL(timestampUtc, station.lon);
+            const T_TT = (tempsJpl.jdTT - 2451545.0) / 36525.0;
+            const epsRad = tempsJpl.epsVraie * (Math.PI / 180.0);
+
+            const startOfYear = Date.UTC(dateUtc.getUTCFullYear(), 0, 1);
+            const endOfYear = Date.UTC(dateUtc.getUTCFullYear() + 1, 0, 1);
+            const decimalYear = dateUtc.getUTCFullYear() + (timestampUtc - startOfYear) / (endOfYear - startOfYear);
+            
+            const wmmResult = computeWMM2025(station.lat, station.lon, station.alt, decimalYear);
+
+            const posSoleilEcef = evaluerVSOP2013('soleil', T_TT, tempsJpl.gastDeg, epsRad);
+            const solarMetrics = posSoleilEcef ? calculerMetricsSolaires(dateUtc, station.lon, tempsJpl.epsVraie, posSoleilEcef, tempsJpl.gastDeg) : null;
+
+            const resultsBodies = {};
+            const auditRapports = {};
+
+            const corpsPlanetes = ['soleil', 'mercure', 'venus', 'mars', 'jupiter'];
+            for (let corps of corpsPlanetes) {
+                const posEcef = (corps === 'soleil') ? posSoleilEcef : evaluerVSOP2013(corps, T_TT, tempsJpl.gastDeg, epsRad);
+                if (posEcef) {
+                    const topo = topocentrique(station.lat, station.lon, station.alt, posEcef);
+                    const elevationApparente = refracter(topo.elevationGeometrique, meteo.temp, meteo.humidity, meteo.pressure);
+                    const evenements = calculerEvenementsJournee(corps, timestampUtc, station, epsRad);
+
+                    resultsBodies[corps] = {
+                        azimuth: topo.azimuth,
+                        elevation: elevationApparente,
+                        elevationGeometrique: topo.elevationGeometrique,
+                        distanceKm: topo.distanceKm,
+                        ...evenements
+                    };
+                    auditRapports[corps] = auditerPrecisionJpl(corps, posEcef);
+                }
+            }
+
+            const posEcefLune = evaluerELP2000(T_TT, tempsJpl.gastDeg, epsRad);
+            if (posEcefLune) {
+                const topoLune = topocentrique(station.lat, station.lon, station.alt, posEcefLune);
+                const elAppLune = refracter(topoLune.elevationGeometrique, meteo.temp, meteo.humidity, meteo.pressure);
+                const evenementsLune = calculerEvenementsJournee('lune', timestampUtc, station, epsRad);
+
+                resultsBodies.lune = {
+                    azimuth: topoLune.azimuth,
+                    elevation: elAppLune,
+                    elevationGeometrique: topoLune.elevationGeometrique,
+                    distanceKm: topoLune.distanceKm,
+                    ...evenementsLune
+                };
+                auditRapports.lune = auditerPrecisionJpl('lune', posEcefLune);
+            }
+
+            const resultatFinal = {
+                timestampUtc: timestampUtc,
+                julianDay: tempsJpl.jdUtcBN.toFixed(23),
+                wmm: wmmResult,
+                solarMetrics: solarMetrics,
+                tempsJpl: tempsJpl,
+                bodies: resultsBodies,
+                auditJpl: auditRapports
+            };
+
+            cacheDernierCalcul = {
+                timestampSec: timestampSec,
+                stationKey: stationKey,
+                donnees: resultatFinal
+            };
+
+            self.postMessage({
+                type: 'RESULTS',
+                ...resultatFinal,
+                fromCache: false
+            });
         }
     } catch (err) {
-        // Envoie l'erreur au thread principal au lieu de planter en silence
         self.postMessage({
             type: 'WORKER_ERROR',
             message: err.message,
@@ -495,4 +491,4 @@ self.onmessage = function(e) {
 
 if (!isWasmReady) {
     self.postMessage({ type: 'READY' });
-                    }
+                }
