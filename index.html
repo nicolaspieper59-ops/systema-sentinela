@@ -577,8 +577,11 @@
     }
 
     function traiterMessageWorker(e) {
-        const data = e.data;
-        if (!data) return;
+    const data = e.data;
+    console.log("[SENTINELA DEBUG] Message reçu du Worker :", data); // <--- AJOUTER CETTE LIGNE
+    
+    if (!data) return;
+    // ... suite de la fonction
 
         if (data.type === 'READY' || data.type === 'WMM_READY' || data.status === 'WASM_READY') {
             document.getElementById('lbl-worker-status').innerText = "ACTIF";
@@ -905,24 +908,43 @@
         appliquerCoordonneesManuelles(true);
 
         // Boucle d'envoi unifiée avec alias universels
-        setInterval(() => {
-            const timestampExact = obtenirTimestampUTCExact();
-            const dateUtc = new Date(timestampExact);
+        // Boucle d'envoi robuste à insérer dans window.addEventListener('load')
+setInterval(() => {
+    const timestampExact = obtenirTimestampUTCExact();
+    const dateUtc = new Date(timestampExact);
 
-            document.getElementById('lbl-epoch').innerText = dateUtc.toISOString().substring(11, 19) + " UTC";
+    document.getElementById('lbl-epoch').innerText = dateUtc.toISOString().substring(11, 19) + " UTC";
 
-            if (astroWorker) {
-                astroWorker.postMessage({
-                    type: 'COMPUTE',
-                    timestampUtc: timestampExact,
-                    timestamp: timestampExact,
-                    station: stationActive,
-                    coords: stationActive,
-                    location: stationActive,
-                    meteo: meteoActive
-                });
-            }
-        }, 1000);
+    if (astroWorker) {
+        // Calculation du Jour Julien (JD) de secours
+        const jdCalcule = (timestampExact / 86400000.0) + 2440587.5;
+
+        astroWorker.postMessage({
+            type: 'COMPUTE',
+            action: 'COMPUTE',
+            // Horodatages
+            timestampUtc: timestampExact,
+            timestamp: timestampExact,
+            time: timestampExact,
+            jd: jdCalcule,
+            julianDate: jdCalcule,
+            // Coordonnées imbriquées ET aplaties
+            station: stationActive,
+            coords: stationActive,
+            location: stationActive,
+            lat: stationActive.lat,
+            latitude: stationActive.lat,
+            lon: stationActive.lon,
+            longitude: stationActive.lon,
+            alt: stationActive.alt,
+            altitude: stationActive.alt,
+            // Météo
+            meteo: meteoActive,
+            temp: meteoActive.temperatureC,
+            press: meteoActive.pressionBaro
+        });
+    }
+}, 1000);
 
         ecrireLog("SYSTEMA SENTINELA v18.6 prêt.");
     });
