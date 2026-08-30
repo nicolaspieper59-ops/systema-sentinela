@@ -261,8 +261,7 @@
     async function synchroniserHeureAtomique() {
         const serveursTemps = [
             { url: 'https://worldtimeapi.org/api/timezone/Etc/UTC', parse: d => new Date(d.utc_datetime).getTime() },
-            { url: 'https://timeapi.io/api/v1/time/current/zone?timeZone=UTC', parse: d => new Date(d.dateTime || d.currentLocalTime).getTime() },
-            { url: 'https://worldtimeapi.org/api/ip', parse: d => new Date(d.utc_datetime).getTime() }
+            { url: 'https://timeapi.io/api/v1/time/current/zone?timeZone=UTC', parse: d => new Date(d.dateTime || d.currentLocalTime).getTime() }
         ];
 
         let synchroReussie = false;
@@ -301,12 +300,18 @@
                     const tempsServeurMs = new Date(headerDate).getTime();
                     if (!isNaN(tempsServeurMs)) {
                         const rtt = (t1 - t0) / 2;
-                        decalageTempsAtomiqueMs = (tempsServeurMs + rtt) - Date.now();
-                        localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
-                        synchroReussie = true;
-
-                        document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
-                        ecrireLog(`Synchro atomique via en-tête HTTP Date (Offset : ${Math.round(decalageTempsAtomiqueMs)} ms).`);
+                        const offsetCalcule = (tempsServeurMs + rtt) - Date.now();
+                        
+                        // Garde-fou : rejeter les offsets HTTP supérieurs à 60 secondes (évite les corruptions de temps serveur)
+                        if (Math.abs(offsetCalcule) < 60000) {
+                            decalageTempsAtomiqueMs = offsetCalcule;
+                            localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
+                            synchroReussie = true;
+                            document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
+                            ecrireLog(`Synchro HTTP Date appliquée (Offset : ${Math.round(decalageTempsAtomiqueMs)} ms).`);
+                        } else {
+                            ecrireLog(`Offset HTTP ignoré (décalage anormal de ${Math.round(offsetCalcule / 1000)} s).`);
+                        }
                     }
                 }
             } catch (e) {}
@@ -314,7 +319,7 @@
 
         if (!synchroReussie) {
             document.getElementById('lbl-epoch').style.color = decalageTempsAtomiqueMs !== 0 ? "var(--amber)" : "var(--rose)";
-            ecrireLog(`Échec synchro réseau. Conservation du dernier offset mémorisé (${Math.round(decalageTempsAtomiqueMs)} ms).`);
+            ecrireLog(`Conservation du dernier offset mémorisé (${Math.round(decalageTempsAtomiqueMs)} ms).`);
         }
     }
 
@@ -574,53 +579,71 @@
 
     function traiterMessageWorker(e) {
         const data = e.data;
+        if (!data) return;
+
         if (data.type === 'READY' || data.type === 'WMM_READY' || data.status === 'WASM_READY') {
             document.getElementById('lbl-worker-status').innerText = "ACTIF";
             document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+            return;
         } 
-        else if (data.type === 'RESULTS' || data.type === 'UPDATE') {
-            const results = data.results || data.bodies;
-            if (results) {
-                derniersResultatsAstres = results;
-                mettreAJourTableauEtTrier(derniersResultatsAstres);
-                dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
-            }
-            if (data.solarMetrics) mettreAJourMetricsSolaires(data.solarMetrics);
-            if (data.tempsJpl) {
-                document.getElementById('val-gast').innerText = `${data.tempsJpl.gastDeg.toFixed(2)}° / ${data.tempsJpl.lstDeg.toFixed(2)}°`;
-            }
-            if (data.wmm) {
-                resultatWmmCourant = data.wmm;
-                document.getElementById('val-dec-wmm').innerText = `${data.wmm.declination >= 0 ? '+' : ''}${data.wmm.declination.toFixed(2)}°`;
-                document.getElementById('val-inc-wmm').innerText = `${data.wmm.inclination >= 0 ? '+' : ''}${data.wmm.inclination.toFixed(2)}°`;
-            }
+
+        // Extraction tolérante du dictionnaire d'astres
+        const results = data.results || data.bodies || data.data || data.payload || data.astres || (data.sun || data.soleil ? data : null);
+
+        if (results && typeof results === 'object') {
+            derniersResultatsAstres = results;
+            mettreAJourTableauEtTrier(derniersResultatsAstres);
+            dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
+        }
+
+        if (data.solarMetrics) mettreAJourMetricsSolaires(data.solarMetrics);
+        if (data.tempsJpl) {
+            document.getElementById('val-gast').innerText = `${data.tempsJpl.gastDeg.toFixed(2)}° / ${data.tempsJpl.lstDeg.toFixed(2)}°`;
+        }
+        if (data.wmm) {
+            resultatWmmCourant = data.wmm;
+            document.getElementById('val-dec-wmm').innerText = `${data.wmm.declination >= 0 ? '+' : ''}${data.wmm.declination.toFixed(2)}°`;
+            document.getElementById('val-inc-wmm').innerText = `${data.wmm.inclination >= 0 ? '+' : ''}${data.wmm.inclination.toFixed(2)}°`;
         }
     }
 
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
         astroWorker = new Worker('worker_astronomie.js');
+        
         astroWorker.onmessage = traiterMessageWorker;
+        
+        // Interception explicite des erreurs internes du Worker
+        astroWorker.onerror = (err) => {
+            document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
+            document.getElementById('lbl-worker-status').style.color = "var(--rose)";
+            ecrireLog(`ERREUR CRITIQUE WORKER : ${err.message} (ligne ${err.lineno} dans ${err.filename})`);
+        };
+
         if (matriceJplLive) astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
     }
 
     function mettreAJourMetricsSolaires(m) {
+        if (!m) return;
         document.getElementById('val-eq-temps').innerText = `${m.eqTempsMin >= 0 ? '+' : ''}${m.eqTempsMin.toFixed(2)} min`;
         document.getElementById('val-excentricite').innerText = m.excentricite.toFixed(6);
         document.getElementById('val-obliquite').innerText = `${m.obliquite.toFixed(4)}°`;
         document.getElementById('val-long-solaire').innerText = `${m.longitudeSolaire.toFixed(2)}°`;
-        document.getElementById('val-tsm').innerText = m.tsm;
-        document.getElementById('val-tsv').innerText = m.tsv;
+        if (m.tsm) document.getElementById('val-tsm').innerText = m.tsm;
+        if (m.tsv) document.getElementById('val-tsv').innerText = m.tsv;
     }
 
     function mettreAJourTableauEtTrier(results) {
         const tbody = document.getElementById('table-body');
-        if (!tbody) return;
+        if (!tbody || !results) return;
 
-        let entries = Object.entries(results);
+        let entries = Object.entries(results).filter(([k, v]) => typeof v === 'object' && v !== null && (v.elevation !== undefined || v.elevationGeometrique !== undefined));
+        
+        if (entries.length === 0) return;
+
         entries.sort((a, b) => {
-            const elA = (a[1] && a[1].elevation !== undefined) ? a[1].elevation : -999;
-            const elB = (b[1] && b[1].elevation !== undefined) ? b[1].elevation : -999;
+            const elA = (a[1].elevation !== undefined) ? a[1].elevation : -999;
+            const elB = (b[1].elevation !== undefined) ? b[1].elevation : -999;
             return (elB >= 0 ? 1 : 0) - (elA >= 0 ? 1 : 0) || elB - elA;
         });
 
@@ -628,12 +651,12 @@
         entries.forEach(([astre, data]) => {
             const row = document.createElement('tr');
             
-            const elGeo = (data && data.elevationGeometrique !== undefined) ? data.elevationGeometrique : ((data && data.elevation !== undefined) ? data.elevation : 0);
+            const elGeo = (data.elevationGeometrique !== undefined) ? data.elevationGeometrique : ((data.elevation !== undefined) ? data.elevation : 0);
             const refractionDeg = calculerRefractionMeteoDeg(elGeo, meteoActive.temperatureC, meteoActive.humiditePct, meteoActive.pressionBaro);
             const elApparente = elGeo + refractionDeg;
 
-            const azimuth = (data && data.azimuth !== undefined) ? data.azimuth : 0;
-            const distance = (data && (data.distanceKm || data.distance)) ? (data.distanceKm || data.distance) : 0;
+            const azimuth = (data.azimuth !== undefined) ? data.azimuth : (data.azimut || 0);
+            const distance = (data.distanceKm !== undefined) ? data.distanceKm : (data.distance || 0);
             const isVisible = elApparente >= 0;
             
             const leverTSM = data.riseUtcMs ? formaterHeureTSM(data.riseUtcMs, stationActive.lon) : "--:--:--";
@@ -739,8 +762,8 @@
 
         if (astresData) {
             for (const [astre, data] of Object.entries(astresData)) {
-                if (data.elevation < 0) continue;
-                const azRad = data.azimuth * Math.PI / 180.0;
+                if (typeof data !== 'object' || data === null || data.elevation < 0) continue;
+                const azRad = (data.azimuth || data.azimut || 0) * Math.PI / 180.0;
                 const r = maxRadius * (1 - (data.elevation / 90.0));
                 const x = cx + r * Math.sin(azRad);
                 const y = cy - r * Math.cos(azRad);
