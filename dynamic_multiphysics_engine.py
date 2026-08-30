@@ -26,10 +26,15 @@ def main():
     alt_target = conversion_securisee_float(sys.argv[3] if len(sys.argv) > 3 else None, 99.31)
     
     loader = Loader(os.getcwd(), verbose=False)
-    try:
-        eph = loader('de440s.bsp')
-    except Exception:
-        eph = loader('https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp')
+    
+    # Vérification et chargement sécurisé du noyau BSP local
+    kernel_path = 'de440s.bsp'
+    if not os.path.exists(kernel_path):
+        print(f"[AVERTISSEMENT] Le fichier {kernel_path} est introuvable localement.")
+        # Téléchargement via la méthode officielle de skyfield si absent
+        loader.download(kernel_path)
+        
+    eph = loader(kernel_path)
         
     ts = loader.timescale(builtin=True)
     aujourdhui = datetime.now(timezone.utc).date()
