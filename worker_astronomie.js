@@ -8,11 +8,10 @@ importScripts('https://cdnjs.cloudflare.com/ajax/libs/bignumber.js/9.1.2/bignumb
 try {
     importScripts('vsop2013.js', 'ElpMpp02LLR_min.js');
 } catch (e) {}
-
 try {
-    importScripts('wasm_astronomie.js');
+    importScripts('vsop2013.js', 'ElpMpp02LLR_min.js');
 } catch (e) {
-    console.warn("Module WASM non disponible dans ce contexte, repli JS pur.");
+    console.error("Erreur critique lors du chargement des moteurs VSOP/ELP :", e);
 }
 
 BigNumber.config({ DECIMAL_PLACES: 30, ROUNDING_MODE: BigNumber.ROUND_HALF_UP });
