@@ -576,73 +576,91 @@
         }
     }
 
-    function traiterMessageWorker(e) {
-    
+// --- RENDERER MAIN THREAD (SOLUTION SYSTEMA SENTINELA v18.6) ---
+
+function traiterMessageWorker(e) {
     const data = e.data;
-    console.log("[SENTINELA DEBUG] Message reçu du Worker :", data); // <--- AJOUTER CETTE LIGNE
+    if (!data || data.type !== 'RESULTS') return;
+
+    // 1. MÉTÉO & MÉTRIQUES SOLAIRES (Alignement rigoureux des IDs HTML "val-*")
+    if (data.solarMetrics) {
+        const sm = data.solarMetrics;
         
-    if (data.type === 'WORKER_ERROR') {
-    ecrireLog("CRASH WORKER : " + data.message);
-    console.error("Stack trace Worker :", data.stack);
-    return;
+        const elEqTemps = document.getElementById('val-eq-temps');
+        const elExcentricite = document.getElementById('val-excentricite');
+        const elObliquite = document.getElementById('val-obliquite');
+        const elLongSolaire = document.getElementById('val-long-solaire');
+        const elTsm = document.getElementById('val-tsm');
+        const elTsv = document.getElementById('val-tsv');
+
+        if (elEqTemps) elEqTemps.innerText = `${sm.eqTempsMin.toFixed(2)} min`;
+        if (elExcentricite) elExcentricite.innerText = sm.excentricite.toFixed(6);
+        if (elObliquite) elObliquite.innerText = `${sm.obliquite.toFixed(4)}°`;
+        if (elLongSolaire) elLongSolaire.innerText = `${sm.longitudeSolaire.toFixed(2)}°`;
+        if (elTsm) elTsm.innerText = sm.tsm;
+        if (elTsv) elTsv.innerText = sm.tsv;
     }
-        
-    if (!data) return;
-    // ... suite de la fonction
 
-        if (data.type === 'READY' || data.type === 'WMM_READY' || data.status === 'WASM_READY') {
-            document.getElementById('lbl-worker-status').innerText = "ACTIF";
-            document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-            return;
-        } 
-
-        // Extraction robuste de l'objet contenant les métriques et astres
-        const payload = data.data || data.payload || data;
-
-        // 1. Mise à jour des métriques solaires
-        const metricsSol = payload.solarMetrics || data.solarMetrics;
-        if (metricsSol) {
-            mettreAJourMetricsSolaires(metricsSol);
-        }
-
-        // 2. Extraction du dictionnaire d'astres
-        const rawAstres = payload.bodies || payload.astres || payload.results || (payload.soleil || payload.sun ? payload : null);
-        if (rawAstres && typeof rawAstres === 'object') {
-            derniersResultatsAstres = rawAstres;
-            mettreAJourTableauEtTrier(derniersResultatsAstres);
-            dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
-        }
-
-        // 3. Temps JPL / GAST / LST
-        const tempsJpl = payload.tempsJpl || data.tempsJpl;
-        if (tempsJpl || payload.gastDeg !== undefined) {
-            const gast = tempsJpl?.gastDeg ?? payload.gastDeg ?? data.gast ?? 0;
-            const lst = tempsJpl?.lstDeg ?? payload.lstDeg ?? data.lst ?? 0;
-            document.getElementById('val-gast').innerText = `${gast.toFixed(2)}° / ${lst.toFixed(2)}°`;
-        }
-
-        // 4. WMM
-        const wmmData = payload.wmm || data.wmm;
-        if (wmmData) {
-            resultatWmmCourant = wmmData;
-            document.getElementById('val-dec-wmm').innerText = `${wmmData.declination >= 0 ? '+' : ''}${wmmData.declination.toFixed(2)}°`;
-            document.getElementById('val-inc-wmm').innerText = `${wmmData.inclination >= 0 ? '+' : ''}${wmmData.inclination.toFixed(2)}°`;
+    // 2. GÉODÉSIE & LST / GAST (ID : val-gast)
+    if (data.tempsJpl) {
+        const elGast = document.getElementById('val-gast');
+        if (elGast) {
+            elGast.innerText = `${data.tempsJpl.gastDeg.toFixed(2)}° / ${data.tempsJpl.lstDeg.toFixed(2)}°`;
         }
     }
 
-    function initialiserWorkerAstronomie() {
-        if (typeof Worker === 'undefined') return;
+    // 3. TABLEAU DES CORPS CÉLESTES
+    if (Array.isArray(data.bodies)) {
+        afficherTableauAstres(data.bodies);
+        derniersResultatsAstres = data.bodies;
+        // Met à jour le radar avec le cap géromagnétique/vrai
+        if (typeof dessinerRadarAstres === 'function') {
+            dessinerRadarAstres(data.bodies, capVraiActuel);
+        }
+    }
+}
+
+function afficherTableauAstres(bodies) {
+    const tbody = document.getElementById('table-body');
+    if (!tbody) return;
+
+    let html = '';
+    bodies.forEach(astre => {
+        const estVisible = astre.elevation >= 0;
+        const classeLigne = estVisible ? 'visible-row' : 'hidden-row';
+        const couleurElevation = estVisible ? 'var(--neon-green)' : 'var(--rose)';
+        
+        html += `
+            <tr class="${classeLigne}">
+                <td style="font-weight:bold; color:var(--sky);">${astre.nom}</td>
+                <td style="color:${couleurElevation}; font-weight:bold;">${astre.elevation.toFixed(2)}°</td>
+                <td>${astre.azimut.toFixed(2)}°</td>
+                <td>${Math.round(astre.distanceKm).toLocaleString('fr-FR')} km</td>
+                <td class="time-tsm">${astre.leverTSM || '--:--:--'}</td>
+                <td class="time-tsm">${astre.culminationTSM || '--:--:--'}</td>
+                <td class="time-tsm">${astre.coucherTSM || '--:--:--'}</td>
+                <td><span style="color:${astre.calculOk ? 'var(--neon-green)' : 'var(--rose)'};">[${astre.statut || 'OK'}]</span></td>
+            </tr>
+        `;
+    });
+    tbody.innerHTML = html;
+}
+
+function initialiserWorkerAstronomie() {
+    try {
         astroWorker = new Worker('worker_astronomie.js');
-        
         astroWorker.onmessage = traiterMessageWorker;
-        
         astroWorker.onerror = (err) => {
-            document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
-            document.getElementById('lbl-worker-status').style.color = "var(--rose)";
-            ecrireLog(`ERREUR CRITIQUE WORKER : ${err.message} (ligne ${err.lineno} dans ${err.filename})`);
+            ecrireLog(`[KERNEL ERROR] Worker Astronomie : ${err.message}`);
+            document.getElementById('lbl-worker-status').innerText = 'ERREUR';
+            document.getElementById('lbl-worker-status').style.color = 'var(--rose)';
         };
-
-        if (matriceJplLive) astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+        document.getElementById('lbl-worker-status').innerText = 'ACTIF';
+        document.getElementById('lbl-worker-status').style.color = 'var(--neon-green)';
+        ecrireLog("Worker astronomique initialisé avec succès.");
+    } catch (e) {
+        ecrireLog(`[KERNEL ERROR] Échec initialisation Worker: ${e.message}`);
+    }
     }
 
     function mettreAJourMetricsSolaires(m) {
