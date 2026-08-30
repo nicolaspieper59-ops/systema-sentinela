@@ -9,18 +9,12 @@
     <meta name="theme-color" content="#f0f2f5">
 
     <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('coop-coep-sw.js').then(() => {
-                if (!crossOriginIsolated && !sessionStorage.getItem('coop_reloaded')) {
-                    sessionStorage.setItem('coop_reloaded', 'true');
-                    window.location.reload();
-                }
-            }).catch(() => {
-                sessionStorage.removeItem('coop_reloaded');
-            });
-        }
+    if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
+        navigator.serviceWorker.register('coop-coep-sw.js').catch(err => {
+            console.warn('SW Non enregistré :', err);
+        });
+    }
     </script>
-
     <style>
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
@@ -887,11 +881,13 @@
 
             if (astroWorker) {
                 astroWorker.postMessage({
-                    type: 'COMPUTE',
-                    timestampUtc: timestampExact,
-                    station: stationActive,
-                    meteo: meteoActive
-                });
+    type: 'COMPUTE',
+    timestampUtc: timestampExact,
+    timestamp: timestampExact,
+    station: stationActive,
+    coords: stationActive,
+    meteo: meteoActive
+});
             }
         }, 1000);
 
