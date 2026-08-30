@@ -1,13 +1,10 @@
 /**
  * SYSTEMA SENTINELA - Worker Astronomique, Géomagnétique & WebAssembly (C++)
- * Version Finale Optimisée avec Cache Intelligent
+ * Version Finale Optimisée avec Cache, Événements TSM et Flux Live
  */
 
 importScripts('https://cdnjs.cloudflare.com/ajax/libs/bignumber.js/9.1.2/bignumber.min.js');
 
-try {
-    importScripts('vsop2013.js', 'ElpMpp02LLR_min.js');
-} catch (e) {}
 try {
     importScripts('vsop2013.js', 'ElpMpp02LLR_min.js');
 } catch (e) {
@@ -19,9 +16,9 @@ BigNumber.config({ DECIMAL_PLACES: 30, ROUNDING_MODE: BigNumber.ROUND_HALF_UP })
 let wmmCoeffs = [];
 let isWmmLoaded = false;
 let jplMatrixData = null;
+let fluxLiveData = null;
 let isWasmReady = false;
 
-// Gestion du cache pour optimiser les performances CPU
 let cacheDernierCalcul = {
     timestampSec: null,
     stationKey: null,
@@ -36,7 +33,6 @@ self.Module = {
     }
 };
 
-// --- 1. FONCTIONS GÉOMAGNÉTIQUES WMM-2025 ---
 function obtenirFacteurSchmidt(n, m) {
     if (m === 0) return 1.0;
     let num = 1.0, den = 1.0;
@@ -132,8 +128,10 @@ function computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
     }
 }
 
-// --- 2. PASSERELLES VSOP2013 & ELP/LLR ---
 function evaluerVSOP2013(corpsNom, T_TT, gastDeg) {
+    if (fluxLiveData && fluxLiveData.bodies && fluxLiveData.bodies[corpsNom]) {
+        return fluxLiveData.bodies[corpsNom];
+    }
     if (typeof vsop2013 === 'undefined') return null;
     try {
         const mapCorps = {
@@ -166,6 +164,9 @@ function evaluerVSOP2013(corpsNom, T_TT, gastDeg) {
 }
 
 function evaluerELP2000(T_TT, gastDeg) {
+    if (fluxLiveData && fluxLiveData.bodies && fluxLiveData.bodies.lune) {
+        return fluxLiveData.bodies.lune;
+    }
     if (typeof ELP2000 === 'undefined' && typeof elp === 'undefined') return null;
     try {
         const moteurLune = typeof ELP2000 !== 'undefined' ? ELP2000 : elp;
@@ -187,7 +188,6 @@ function evaluerELP2000(T_TT, gastDeg) {
     }
 }
 
-// --- 3. TEMPS ET TOPOCENTRISME ---
 function calculerTempsJPL(timestampUtc, stationLon) {
     const tMs = new BigNumber(timestampUtc);
     const msParJour = new BigNumber("86400000");
@@ -264,7 +264,36 @@ function refracter(altDeg, tempC = 15.0, humidityPct = 50.0, pressureHpa = 1013.
     return altDeg + ((refStdArcMin * factor) / 60.0);
 }
 
+function calculerEvenementsJournee(corpsNom, timestampUtc, station) {
+    const dateBase = new Date(timestampUtc);
+    dateBase.setUTCHours(0, 0, 0, 0);
+    const debutJourMs = dateBase.getTime();
+    let transitUtcMs = null, riseUtcMs = null, setUtcMs = null;
+    let maxElJour = -999, precedentEl = null, precedentTime = null;
+    const pasMs = 10 * 60 * 1000;
+
+    for (let t = debutJourMs; t <= debutJourMs + 86400000; t += pasMs) {
+        const tempsJpl = calculerTempsJPL(t, station.lon);
+        const T_TT = (tempsJpl.jdTT - 2451545.0) / 36525.0;
+        const posEcef = (corpsNom === 'lune') ? evaluerELP2000(T_TT, tempsJpl.gastDeg) : evaluerVSOP2013(corpsNom, T_TT, tempsJpl.gastDeg);
+        if (!posEcef) continue;
+        const topo = topocentrique(station.lat, station.lon, station.alt, posEcef);
+        const el = topo.elevationGeometrique;
+
+        if (el > maxElJour) { maxElJour = el; transitUtcMs = t; }
+        if (precedentEl !== null) {
+            if (precedentEl < 0 && el >= 0 && !riseUtcMs) riseUtcMs = precedentTime + (0 - precedentEl) / (el - precedentEl) * pasMs;
+            if (precedentEl >= 0 && el < 0 && !setUtcMs) setUtcMs = precedentTime + (precedentEl - 0) / (precedentEl - el) * pasMs;
+        }
+        precedentEl = el; precedentTime = t;
+    }
+    return { riseUtcMs, transitUtcMs, setUtcMs };
+}
+
 function calculerMetricsSolaires(dateUtc, stationLon, epsVraie) {
+    if (fluxLiveData && fluxLiveData.solarMetrics) {
+        return fluxLiveData.solarMetrics;
+    }
     const d = (dateUtc.getTime() / 86400000.0) - 10957.5;
     const g = 357.529 + 0.98560028 * d;
     const gRad = g * Math.PI / 180.0;
@@ -278,8 +307,8 @@ function calculerMetricsSolaires(dateUtc, stationLon, epsVraie) {
     const ra = Math.atan2(Math.cos(epsRad) * Math.sin(LRad), Math.cos(LRad)) * 180.0 / Math.PI;
 
     let deltaDeg = (q - ra) % 360.0;
-    if (deltaDeg > 180.0) deltaDeg -= 360.0;
-    if (deltaDeg < -180.0) deltaDeg += 360.0;
+    if (deltaDeg > 180.0) deltaDeg -= 180.0;
+    if (deltaDeg < -180.0) deltaDeg += 180.0;
     const eqTempsMin = deltaDeg / 15.0 * 60.0;
 
     const utcH = dateUtc.getUTCHours() + dateUtc.getUTCMinutes() / 60.0 + dateUtc.getUTCSeconds() / 3600.0;
@@ -313,7 +342,6 @@ function auditerPrecisionJpl(corpsNom, positionCalculee) {
     return { deltaKm: Math.round(deltaKm), statut: deltaKm <= seuilAlerte ? "CONFORME" : "DERIVE DETECTEE" };
 }
 
-// --- 4. ÉCOUTEUR PRINCIPAL & GESTION DU CACHE ---
 self.onmessage = function (e) {
     const data = e.data;
 
@@ -328,13 +356,17 @@ self.onmessage = function (e) {
         return;
     }
 
+    if (data.type === 'UPDATE_FLUX_LIVE') {
+        fluxLiveData = data.flux;
+        return;
+    }
+
     if (data.type === 'COMPUTE' || data.type === 'CALCULATE') {
         const timestampUtc = data.timestampUtc || Date.now();
         const timestampSec = Math.floor(timestampUtc / 1000);
         const station = data.station || { lat: 43.2843, lon: 5.3585, alt: 0.010 };
         const stationKey = `${station.lat.toFixed(4)}_${station.lon.toFixed(4)}_${station.alt.toFixed(2)}`;
 
-        // Vérification du cache pour éviter de surcharger le processeur
         if (cacheDernierCalcul.timestampSec === timestampSec && cacheDernierCalcul.stationKey === stationKey) {
             self.postMessage({
                 type: 'RESULTS',
@@ -366,12 +398,14 @@ self.onmessage = function (e) {
             if (posEcef) {
                 const topo = topocentrique(station.lat, station.lon, station.alt, posEcef);
                 const elevationApparente = refracter(topo.elevationGeometrique, meteo.temp, meteo.humidity, meteo.pressure);
+                const evenements = calculerEvenementsJournee(corps, timestampUtc, station);
 
                 resultsBodies[corps] = {
                     azimuth: topo.azimuth,
                     elevation: elevationApparente,
                     elevationGeometrique: topo.elevationGeometrique,
-                    distanceKm: topo.distanceKm
+                    distanceKm: topo.distanceKm,
+                    ...evenements
                 };
                 auditRapports[corps] = auditerPrecisionJpl(corps, posEcef);
             }
@@ -381,12 +415,14 @@ self.onmessage = function (e) {
         if (posEcefLune) {
             const topoLune = topocentrique(station.lat, station.lon, station.alt, posEcefLune);
             const elAppLune = refracter(topoLune.elevationGeometrique, meteo.temp, meteo.humidity, meteo.pressure);
+            const evenementsLune = calculerEvenementsJournee('lune', timestampUtc, station);
 
             resultsBodies.lune = {
                 azimuth: topoLune.azimuth,
                 elevation: elAppLune,
                 elevationGeometrique: topoLune.elevationGeometrique,
-                distanceKm: topoLune.distanceKm
+                distanceKm: topoLune.distanceKm,
+                ...evenementsLune
             };
             auditRapports.lune = auditerPrecisionJpl('lune', posEcefLune);
         }
@@ -401,7 +437,6 @@ self.onmessage = function (e) {
             auditJpl: auditRapports
         };
 
-        // Sauvegarde dans le cache
         cacheDernierCalcul = {
             timestampSec: timestampSec,
             stationKey: stationKey,
@@ -418,4 +453,4 @@ self.onmessage = function (e) {
 
 if (!isWasmReady) {
     self.postMessage({ type: 'READY' });
-                               }
+            }
