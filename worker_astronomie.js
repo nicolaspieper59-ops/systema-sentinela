@@ -476,10 +476,19 @@ self.onmessage = function (e) {
             donnees: resultatFinal
         };
 
+        // Dans worker_astronomie.js
+self.onmessage = function(e) {
+    try {
+        // --- Ton code de traitement habituel ---
+        if (e.data.type === 'COMPUTE' || e.data.action === 'COMPUTE') {
+            // ... exécution des calculs ...
+        }
+    } catch (err) {
+        // Envoie l'erreur au thread principal au lieu de planter en silence
         self.postMessage({
-            type: 'RESULTS',
-            ...resultatFinal,
-            fromCache: false
+            type: 'WORKER_ERROR',
+            message: err.message,
+            stack: err.stack
         });
     }
 };
