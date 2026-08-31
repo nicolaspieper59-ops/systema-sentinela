@@ -2,10 +2,10 @@ name: Compilation C++ Wasm et Déploiement PWA
 
 on:
   schedule:
-    - cron: '0 0 * * *'   # Régénération quotidienne à 00:00 UTC
+    - cron: '0 0 * * *'
   push:
-    branches: [ main ]     # Exécution à chaque push sur main
-  workflow_dispatch:      # Permet le lancement manuel
+    branches: [ main ]
+  workflow_dispatch:
     inputs:
       lat:
         description: 'Latitude station'
@@ -62,17 +62,18 @@ jobs:
           LON: ${{ inputs.lon || vars.STATION_LON || '5.358507' }}
           ALT: ${{ inputs.alt || vars.STATION_ALT || '99.31' }}
         run: |
-          python build_ephemerides.py "$LAT" "$LON" "$ALT"
+          python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT"
 
-      - name: Validate Generated JSON
+      - name: Validate Generated Files
         run: |
-          test -s flux_live.json || (echo "[ERROR] flux_live.json est vide ou manquant !" && exit 1)
+          test -s flux_live.json || (echo "[ERROR] flux_live.json manquant ou vide" && exit 1)
+          test -s wasm_astronomie.wasm || (echo "[ERROR] Compilation Wasm échouée" && exit 1)
 
       - name: Commit and Push
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
-          git add flux_live.json wasm_astronomie.js wasm_astronomie.wasm worker_astronomie.js 2>/devnull || true
+          git add flux_live.json wasm_astronomie.js wasm_astronomie.wasm 2>/devnull || true
           if git diff --staged --quiet; then
             echo "Aucune modification à commiter."
           else
