@@ -897,55 +897,69 @@
     }
 
     // Dans index.html, à la fin du handler 'load'
-function demanderCalculImmediat() {
-    if (astroWorker) {
-        astroWorker.postMessage({
-            type: 'COMPUTE',
-            timestampUtc: obtenirTimestampUTCExact(),
-            coords: { lat: stationActive.lat, lon: stationActive.lon, alt: stationActive.altMeters / 1000.0 },
-            meteo: meteoActive
-        });
+// Fonction centrale pour émettre une demande de calcul complète
+function envoyerDemandeCalculWorker() {
+    if (!astroWorker) return;
+
+    const timestampExact = obtenirTimestampUTCExact();
+    const dateUtc = new Date(timestampExact);
+
+    // Mise à jour de l'affichage de l'horloge système/NTP
+    const elEpoch = document.getElementById('lbl-epoch');
+    if (elEpoch) {
+        elEpoch.innerText = dateUtc.toISOString().substring(11, 19) + " UTC";
     }
+
+    // Transmission explicite avec l'objet 'coords' rigoureusement structuré
+    astroWorker.postMessage({
+        type: 'COMPUTE',
+        timestampUtc: timestampExact,
+        coords: {
+            lat: stationActive.lat,
+            lon: stationActive.lon,
+            alt: stationActive.altMeters / 1000.0 // Altitude convertie en km pour WMM/VSOP
+        },
+        meteo: meteoActive
+    });
 }
-// Appeler immédiatement après chargerEtParserWMM()
-demanderCalculImmediat();
 
-    window.addEventListener('load', async () => {
-        document.getElementById('html-root').classList.add('day-mode');
-        
-        dessinerRadarAstres({}, 0);
-        initGlobe3D();
-        
-        initialiserWorkerAstronomie();
-        await synchroniserHeureAtomique();
-        
-        setInterval(verifierEtRecalibrerHeure, 5 * 60 * 1000);
-
-        await chargerFluxLiveJPL();
-        await chargerEtParserWMM();
-        appliquerCoordonneesManuelles(true);
-
-        setInterval(() => {
-            const timestampExact = obtenirTimestampUTCExact();
-            const dateUtc = new Date(timestampExact);
-
-            document.getElementById('lbl-epoch').innerText = dateUtc.toISOString().substring(11, 19) + " UTC";
-
-            if (astroWorker) {
-                astroWorker.postMessage({
-    type: 'COMPUTE',
-    timestampUtc: timestampExact,
-    coords: {
-        lat: stationActive.lat,
-        lon: stationActive.lon,
-        alt: stationActive.altMeters / 1000.0 // Altitude convertie en km pour le Worker
-    },
-    meteo: meteoActive
+// Relance immédiate lors de la sortie de veille sous Android
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        verifierEtRecalibrerHeure();
+        envoyerDemandeCalculWorker();
+    }
 });
-            }
-        }, 1000);
 
-        ecrireLog("SYSTEMA SENTINELA v18.7 prêt.");
+// Événement de chargement complet
+window.addEventListener('load', async () => {
+    document.getElementById('html-root').classList.add('day-mode');
+    
+    dessinerRadarAstres({}, 0);
+    initGlobe3D();
+    
+    // Initialisation du Worker
+    initialiserWorkerAstronomie();
+    
+    // Synchronisation horaire initiale
+    await synchroniserHeureAtomique();
+    setInterval(verifierEtRecalibrerHeure, 5 * 60 * 1000);
+
+    // Chargement des fichiers externes
+    await chargerFluxLiveJPL();
+    await chargerEtParserWMM();
+    
+    // Application explicite des coordonnées topocentriques
+    appliquerCoordonneesManuelles(true);
+
+    // Premier calcul immédiat (élimine les "--" au démarrage)
+    envoyerDemandeCalculWorker();
+
+    // Boucle de rafraîchissement d'une seconde
+    setInterval(envoyerDemandeCalculWorker, 1000);
+
+    ecrireLog("SYSTEMA SENTINELA v18.7 prêt et synchronisé.");
+});ecrireLog("SYSTEMA SENTINELA v18.7 prêt.");
     });
 </script>    
 </body>
