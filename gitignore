@@ -1,0 +1,18 @@
+# Ephemeris Kernels NASA JPL (Ne jamais commiter)
+*.bsp
+*.bsp.*
+
+# Python Cache & Environnement
+__pycache__/
+*.pyc
+.venv/
+env/
+
+# Fichiers système & Éditeurs
+.DS_Store
+.vscode/
+.idea/
+
+# Fichiers temporaires de build Wasm
+*.o
+*.out
