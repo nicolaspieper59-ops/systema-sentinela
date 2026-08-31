@@ -2,11 +2,24 @@ name: Dynamic Ephemeris Generation
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Exécution quotidienne à minuit UTC
-  workflow_dispatch:      # Permet de lancer le workflow manuellement depuis GitHub
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      lat:
+        description: 'Latitude station'
+        required: true
+        default: '43.284356'
+      lon:
+        description: 'Longitude station'
+        required: true
+        default: '5.358507'
+      alt:
+        description: 'Altitude (mètres)'
+        required: true
+        default: '99.31'
 
 permissions:
-  contents: write         # INDISPENSABLE pour autoriser le git push
+  contents: write
 
 jobs:
   generate-ephemeris:
@@ -26,16 +39,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install skyfield numpy
 
-      - name: Download DE440s Kernel (Fast Mirror with Timeout)
-        run: |
-          if [ ! -f "de440s.bsp" ]; then
-            echo "Téléchargement accéléré de de440s.bsp..."
-            curl --connect-timeout 15 --max-time 60 -k -SL -A "Mozilla/5.0" -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || true
-          fi
-
       - name: Run DE440s Topocentric Extractor
+        env:
+          LAT: ${{ inputs.lat || vars.STATION_LAT || '43.284356' }}
+          LON: ${{ inputs.lon || vars.STATION_LON || '5.358507' }}
+          ALT: ${{ inputs.alt || vars.STATION_ALT || '99.31' }}
         run: |
-          python dynamic_multiphysics_engine.py 38.7317 -9.1448 137.0
+          python build_ephemerides.py "$LAT" "$LON" "$ALT"
+
+      - name: Validate Generated JSON
+        run: |
+          test -s flux_live.json || (echo "[ERROR] flux_live.json est vide !" && exit 1)
 
       - name: Commit and Push flux_live.json
         run: |
