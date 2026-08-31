@@ -4,42 +4,33 @@ import os
 import sys
 import json
 import time
-import urllib.request
 from datetime import datetime, timedelta, timezone
 from skyfield.api import Loader, wgs84
 from skyfield.framelib import itrs
 
-def telecharger_noyau_if_missing(filename):
-    if not os.path.exists(filename) or os.path.getsize(filename) < 1000000:
-        url = f"https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/{filename}"
-        print(f"[INFO] Téléchargement du noyau {filename} depuis la NASA...")
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=60) as response, open(filename, 'wb') as out_file:
-            out_file.write(response.read())
-        print(f"[INFO] Téléchargement terminé ({os.path.getsize(filename)} octets).")
-
-def Obtenir_corps(eph, nom_standard):
-    # Gestion des différences d'indexation entre noyaux JPL
-    candidats = [nom_standard, f"{nom_standard} barycenter"]
-    for c in candidats:
-        if c in eph:
-            return eph[c]
-    raise KeyError(f"Impossible de trouver '{nom_standard}' dans le fichier BSP.")
+def Obtenir_corps(eph, nom):
+    # Teste d'abord le nom simple, puis l'alias barycentre
+    for cible in [nom, f"{nom} barycenter", f"{nom} barycentre"]:
+        if cible in eph:
+            return eph[cible]
+    raise KeyError(f"Impossible de trouver le corps céleste '{nom}' dans le noyau BSP.")
 
 def main():
     if len(sys.argv) < 4:
         print("[ERREUR] Usage : python3 dynamic_multiphysics_engine.py <lat> <lon> <alt_m>")
         sys.exit(1)
 
-    lat_target = float(sys.argv[1])
-    lon_target = float(sys.argv[2])
-    alt_target = float(sys.argv[3])
+    try:
+        lat_target = float(sys.argv[1])
+        lon_target = float(sys.argv[2])
+        alt_target = float(sys.argv[3])
+    except ValueError as e:
+        print(f"[ERREUR] Coordonnées invalides : {e}")
+        sys.exit(1)
 
     kernel_path = 'de440s.bsp'
-    try:
-        telecharger_noyau_if_missing(kernel_path)
-    except Exception as e:
-        print(f"[ERREUR CRITIQUE] Échec du téléchargement du fichier BSP : {e}")
+    if not os.path.exists(kernel_path) or os.path.getsize(kernel_path) < 1000000:
+        print(f"[ERREUR] Le fichier {kernel_path} est introuvable ou corrompu.")
         sys.exit(1)
 
     loader = Loader(os.getcwd(), verbose=False)
@@ -67,12 +58,11 @@ def main():
         try:
             corps_celestes[cle_json] = Obtenir_corps(eph, nom_jpl)
         except KeyError as e:
-            print(f"[ERREUR] Clé non trouvée : {e}")
+            print(f"[ERREUR CRITIQUE] {e}")
             sys.exit(1)
 
     matrice_24h = {name: [] for name in corps_celestes.keys()}
 
-    # Pas de 1 minute sur 24h (1441 points)
     for minute in range(1441):
         instant = date_base + timedelta(minutes=minute)
         t = ts.from_datetime(instant)
@@ -99,7 +89,7 @@ def main():
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(',', ':'))
 
-    print(f"[SUCCÈS] flux_live.json généré ({os.path.getsize('flux_live.json')} octets).")
+    print(f"[SUCCÈS] flux_live.json généré avec succès ({os.path.getsize('flux_live.json')} octets).")
 
 if __name__ == "__main__":
     main()
