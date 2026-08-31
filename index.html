@@ -734,14 +734,16 @@
     }
 
     async function chargerEtParserWMM() {
-        try {
-            const reponse = await fetch('WMM2025.COF');
-            if (!reponse.ok) throw new Error("WMM2025.COF introuvable");
-            const texte = await reponse.text();
-            if (astroWorker) astroWorker.postMessage({ type: 'INIT_WMM', cofText: texte });
-        } catch (e) {
-            ecrireLog(`WMM : ${e.message}`);
+    try {
+        const reponse = await fetch('./WMM2025.COF');
+        if (!reponse.ok) throw new Error(`Fichier WMM2025.COF introuvable (HTTP ${reponse.status})`);
+        const texte = await reponse.text();
+        if (astroWorker) {
+            astroWorker.postMessage({ type: 'INIT_WMM', cofText: texte });
         }
+    } catch (e) {
+        ecrireLog(`[WMM ERROR] ${e.message}`);
+    }
     }
 
     function dessinerRadarAstres(astresData, cap = 0) {
@@ -894,6 +896,20 @@
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
+    // Dans index.html, à la fin du handler 'load'
+function demanderCalculImmediat() {
+    if (astroWorker) {
+        astroWorker.postMessage({
+            type: 'COMPUTE',
+            timestampUtc: obtenirTimestampUTCExact(),
+            coords: { lat: stationActive.lat, lon: stationActive.lon, alt: stationActive.altMeters / 1000.0 },
+            meteo: meteoActive
+        });
+    }
+}
+// Appeler immédiatement après chargerEtParserWMM()
+demanderCalculImmediat();
+
     window.addEventListener('load', async () => {
         document.getElementById('html-root').classList.add('day-mode');
         
@@ -917,13 +933,15 @@
 
             if (astroWorker) {
                 astroWorker.postMessage({
-                    type: 'COMPUTE',
-                    timestampUtc: timestampExact,
-                    timestamp: timestampExact,
-                    station: { lat: stationActive.lat, lon: stationActive.lon, alt: stationActive.altMeters / 1000.0 },
-                    coords: stationActive,
-                    meteo: meteoActive
-                });
+    type: 'COMPUTE',
+    timestampUtc: timestampExact,
+    coords: {
+        lat: stationActive.lat,
+        lon: stationActive.lon,
+        alt: stationActive.altMeters / 1000.0 // Altitude convertie en km pour le Worker
+    },
+    meteo: meteoActive
+});
             }
         }, 1000);
 
