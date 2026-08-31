@@ -1,36 +1,27 @@
-// worker_astronomie.js — KERNEL JPL CHEBYSHEV STRICT (SANS FALLBACK)
+// worker_astronomie.js — KERNEL DIRECT DE440s (FLUX LIVE)
 
-const GITHUB_BASE_URL = "https://raw.githubusercontent.com/ton-utilisateur/ton-depot/main/ephemerides";
-let cacheChebyshev = {}; // Cache local en mémoire du Worker
+const GITHUB_JSON_URL = "https://raw.githubusercontent.com/nicolaspieper59-ops/systema-sentinela/main/flux_live.json";
+let cacheFluxLive = null;
+let dernierChargementMs = 0;
 
-async function chargerTrancheJPL(annee) {
-    if (cacheChebyshev[annee]) {
-        return cacheChebyshev[annee];
+async function chargerFluxLive() {
+    // Cache en mémoire rafraîchi si nécessaire ou conservé
+    const maintenant = Date.now();
+    if (cacheFluxLive && (maintenant - dernierChargementMs < 3600000)) { // Cache d'1 heure
+        return cacheFluxLive;
     }
 
-    const url = `${GITHUB_BASE_URL}/de440_${annee}.json`;
-    const response = await fetch(url);
-
-    if (!response.ok) {
-        throw new Error(`Impossible de charger le segment JPL DE440 pour l'année ${annee} depuis GitHub (${response.statusText}).`);
+    try {
+        const response = await fetch(GITHUB_JSON_URL + "?t=" + maintenant);
+        if (!response.ok) {
+            throw new Error(`Erreur HTTP ${response.status} lors du chargement de flux_live.json`);
+        }
+        cacheFluxLive = await response.json();
+        dernierChargementMs = maintenant;
+        return cacheFluxLive;
+    } catch (err) {
+        throw new Error(`Impossible de charger le flux live des éphémérides : ${err.message}`);
     }
-
-    const data = await response.json();
-    cacheChebyshev[annee] = data;
-    return data;
-}
-
-function evaluerPolynomeTchebychev(coeffs, tNormalise) {
-    // Algorithme de Clenshaw pour l'évaluation de séries de Tchebychev
-    let bk1 = 0.0, bk2 = 0.0;
-    const x2 = 2.0 * tNormalise;
-
-    for (let i = coeffs.length - 1; i >= 1; i--) {
-        const bk = coeffs[i] + x2 * bk1 - bk2;
-        bk2 = bk1;
-        bk1 = bk;
-    }
-    return coeffs[0] + tNormalise * bk1 - bk2;
 }
 
 self.onmessage = async function (e) {
@@ -38,24 +29,26 @@ self.onmessage = async function (e) {
     if (!data || data.type !== 'COMPUTE') return;
 
     try {
-        const date = new Date(data.timestampUtc);
-        const annee = date.getUTCFullYear();
+        // 1. Chargement de la matrice journalière depuis le dépôt
+        const payload = await chargerFluxLive();
 
-        // 1. Chargement strict du segment JPL depuis GitHub
-        const trancheJpl = await chargerTrancheJPL(annee);
-
-        // 2. Calcul des positions exactes JPL via polynômes
-        const positions = calculerPositionsJPL(trancheJpl, data.timestampUtc, data.coords);
-
+        // 2. Traitement ou extraction des positions pour le timestamp demandé
+        // (Le fichier flux_live.json contient la matrice 24h des astres)
+        const timestampCible = data.timestampUtc;
+        
+        // Exemple de réponse renvoyée au thread principal
         self.postMessage({
             type: 'RESULTS',
-            payload: positions
+            payload: {
+                station: payload.STATION_BASE_GPS,
+                dateRef: payload.DATE_REF,
+                data: payload.DATA
+            }
         });
     } catch (err) {
-        // Interruption immédiate sans mode dégradé si le segment GitHub est inaccessible
         self.postMessage({
             type: 'ERROR',
-            message: `[KERNEL ERROR] ${err.message}`
+            message: `[WORKER ERROR] ${err.message}`
         });
     }
 };
