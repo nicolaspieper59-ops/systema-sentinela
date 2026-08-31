@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v18.6 — KERNEL RIGOROUS REPOSITORY</title>
+    <title>SYSTEMA SENTINELA v18.7 — KERNEL RIGOROUS REPOSITORY</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#f0f2f5">
@@ -75,7 +75,7 @@
 <body class="">
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v18.6 — KERNEL RIGOROUS REPOSITORY</div>
+        <div class="brand">SYSTEMA SENTINELA v18.7 — KERNEL RIGOROUS REPOSITORY</div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <div>JPL FLUX : <span id="lbl-jpl-status" style="color:var(--amber); font-weight:bold;">CHARGEMENT...</span></div>
             <div>WORKER : <span id="lbl-worker-status" style="color:var(--amber); font-weight:bold;">INIT...</span></div>
@@ -105,9 +105,9 @@
                             <th>ÉLÉVATION APP. (°)</th>
                             <th>AZIMUT (°)</th>
                             <th>DISTANCE (km)</th>
-                            <th>LEVER (TSM)</th>
-                            <th>CULMINATION (TSM)</th>
-                            <th>COUCHER (TSM)</th>
+                            <th>LEVER (TSV)</th>
+                            <th>CULMINATION (TSV)</th>
+                            <th>COUCHER (TSV)</th>
                             <th>ÉTAT CALCUL</th>
                         </tr>
                     </thead>
@@ -121,7 +121,7 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                 <div class="astro-grid">
                     <div class="metric-card"><div>STATION ACTIVE</div><div class="metric-val" id="val-station-nom" style="color:var(--sky)">ACQUISITION...</div></div>
-                    <div class="metric-card"><div>LAT / LON / ALT</div><div class="metric-val" id="val-station-coords">--° / --° / --km</div></div>
+                    <div class="metric-card"><div>LAT / LON / ALT</div><div class="metric-val" id="val-station-coords">--° / --° / --m</div></div>
                     <div class="metric-card"><div>GAST (GREENWICH) / LST</div><div class="metric-val" id="val-gast" style="color:var(--amber)">--° / --°</div></div>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 4px; font-size: 10px;">
@@ -134,8 +134,8 @@
                         <input type="number" id="input-lon" value="5.3585" step="0.0001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
                     </div>
                     <div>
-                        <label style="color: var(--sky);">ALT (km)</label>
-                        <input type="number" id="input-alt" value="0.010" step="0.001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
+                        <label style="color: var(--sky);">ALT (mètres)</label>
+                        <input type="number" id="input-alt" value="10" step="1" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
                     </div>
                 </div>
             </div>
@@ -164,7 +164,7 @@
         <div class="panel">
             <div class="panel-title">5. VECTEUR XYZ (ECEF) &amp; GLOBE 3D</div>
             <div style="font-size: 9.5px; background: rgba(0,0,0,0.03); padding: 5px; border-radius: 4px; border: 1px solid var(--border-dim); margin-bottom: 6px;">
-                <div style="color: var(--amber); margin-bottom: 2px; font-weight: bold;">ECEF (km) :</div>
+                <div style="color: var(--amber); margin-bottom: 2px; font-weight: bold;">ECEF WGS84 (km) :</div>
                 <div>X : <span id="val-xyz-x" style="color:var(--text-main);">--</span> | Y : <span id="val-xyz-y" style="color:var(--text-main);">--</span> | Z : <span id="val-xyz-z" style="color:var(--text-main);">--</span></div>
             </div>
             <canvas id="globeCanvas" width="260" height="150"></canvas>
@@ -186,8 +186,6 @@
 
 <script>
     let modeJourActif = true;
-    
-    // Purge préventive de tout offset corrompu de plus de 60 secondes au démarrage
     let rawOffset = parseFloat(localStorage.getItem('sentinela_offset') || '0');
     if (Math.abs(rawOffset) > 60000) {
         localStorage.removeItem('sentinela_offset');
@@ -196,8 +194,9 @@
     let decalageTempsAtomiqueMs = rawOffset;
     const SEUIL_DERIVE_MAX_MS = 1.0;
 
-    let stationActive = { lat: 43.2843, lon: 5.3585, alt: 0.010, nom: 'STATION INITIALE' };
+    let stationActive = { lat: 43.2843, lon: 5.3585, altMeters: 10.0, nom: 'STATION INITIALE' };
     let meteoActive = { temperatureC: 15.0, humiditePct: 50.0, pressionBaro: 1013.25 };
+    let currentEqTempsMin = 0.0;
     
     let horodatageDernierFetchMeteo = 0;
     let derniereLatMeteo = null, derniereLonMeteo = null;
@@ -218,20 +217,17 @@
     let globeScene, globeCamera, globeRenderer, curseurPositionMesh;
     let isDragging = false, lastX = 0, lastY = 0;
 
+    // Correctif Réfraction Atmosphérique (Formule de Bennett ajustée selon JPL Horizons)
     function calculerRefractionMeteoDeg(altDeg, T_C, H_pct, P_hPa) {
-        if (altDeg < -1.0) return 0.0;
-        const altCalculee = Math.max(altDeg, -0.5);
+        if (altDeg < -1.5) return 0.0;
         const deg2rad = Math.PI / 180.0;
-
-        const altCorrectionRad = (10.3 / (altCalculee + 5.1)) * deg2rad;
-        const refStdArcMinutes = 1.02 / Math.tan(altCalculee * deg2rad + altCorrectionRad);
-
-        const e_sat = 6.1121 * Math.exp((17.502 * T_C) / (240.97 + T_C));
-        const e_vapeur = (H_pct / 100.0) * e_sat;
-        const P_effective = P_hPa - 0.1507 * e_vapeur;
-
-        const correctionFactor = (P_effective / 1013.25) * (288.15 / (273.15 + T_C));
-        return (refStdArcMinutes * correctionFactor) / 60.0;
+        const refStdArcMin = 1.0 / Math.tan((altDeg + (7.31 / (altDeg + 4.4))) * deg2rad);
+        
+        const correctionPression = P_hPa / 1010.0;
+        const correctionTemp = 283.15 / (273.15 + T_C);
+        
+        const refAjustee = refStdArcMin * correctionPression * correctionTemp;
+        return Math.max(0, refAjustee / 60.0);
     }
 
     function ecrireLog(msg) {
@@ -246,17 +242,20 @@
         return Date.now() + decalageTempsAtomiqueMs;
     }
 
-    function formaterHeureTSM(timestampUtc, lonDeg) {
+    // Formateur de Temps Solaire Vrai (TSV - Conforme JPL 34)
+    function formaterHeureTSV(timestampUtc, lonDeg, eqTempsMin = 0) {
         if (!timestampUtc || isNaN(timestampUtc)) return "--:--:--";
         const date = new Date(timestampUtc);
         const secUtc = date.getUTCHours() * 3600 + date.getUTCMinutes() * 60 + date.getUTCSeconds();
         const offsetLongitudeSec = (lonDeg / 15.0) * 3600.0;
-        let secTsm = (secUtc + offsetLongitudeSec) % 86400.0;
-        if (secTsm < 0) secTsm += 86400.0;
+        const offsetEotSec = eqTempsMin * 60.0;
 
-        const h = Math.floor(secTsm / 3600);
-        const m = Math.floor((secTsm % 3600) / 60);
-        const s = Math.floor(secTsm % 60);
+        let secTsv = (secUtc + offsetLongitudeSec + offsetEotSec) % 86400.0;
+        if (secTsv < 0) secTsv += 86400.0;
+
+        const h = Math.floor(secTsv / 3600);
+        const m = Math.floor((secTsv % 3600) / 60);
+        const s = Math.floor(secTsv % 60);
         return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     }
 
@@ -449,11 +448,11 @@
 
             const lat = pos.coords.latitude;
             const lon = pos.coords.longitude;
-            const alt = pos.coords.altitude;
+            const alt = pos.coords.altitude !== null ? pos.coords.altitude : 10.0;
             
             document.getElementById('input-lat').value = lat.toFixed(4);
             document.getElementById('input-lon').value = lon.toFixed(4);
-            if (alt !== null) document.getElementById('input-alt').value = (alt / 1000).toFixed(3);
+            document.getElementById('input-alt').value = Math.round(alt);
             
             appliquerCoordonneesManuelles(true);
 
@@ -505,7 +504,8 @@
             if (!capteursActifs) return;
 
             if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
-                mettreAJourCapBrut(e.webkitCompassHeading);
+                // Sur iOS webkitCompassHeading renvoie déjà le cap orienté au Nord Vrai
+                mettreAJourCapBrut(e.webkitCompassHeading, true);
                 return;
             }
 
@@ -525,12 +525,16 @@
         const yawRad = Math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz));
         let capMag = (360 - (yawRad * (180 / Math.PI))) % 360;
         if (capMag < 0) capMag += 360;
-        mettreAJourCapBrut(capMag);
+        mettreAJourCapBrut(capMag, false);
     }
 
-    function mettreAJourCapBrut(capMag) {
-        capVraiActuel = (capMag + resultatWmmCourant.declination + 360.0) % 360.0;
-        document.getElementById('val-cap-brut').innerText = `${capMag.toFixed(1)}°`;
+    function mettreAJourCapBrut(capVal, estNordVrai = false) {
+        if (estNordVrai) {
+            capVraiActuel = (capVal + 360.0) % 360.0;
+        } else {
+            capVraiActuel = (capVal + resultatWmmCourant.declination + 360.0) % 360.0;
+        }
+        document.getElementById('val-cap-brut').innerText = `${capVal.toFixed(1)}°`;
         document.getElementById('val-cap-net').innerText = `${capVraiActuel.toFixed(1)}°`;
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
@@ -576,97 +580,64 @@
         }
     }
 
-// --- RENDERER MAIN THREAD (SOLUTION SYSTEMA SENTINELA v18.6) ---
+    function traiterMessageWorker(e) {
+        const data = e.data;
+        if (!data) return;
 
-function traiterMessageWorker(e) {
-    const data = e.data;
-    if (!data || data.type !== 'RESULTS') return;
+        if (data.type === 'READY' || data.type === 'WMM_READY' || data.status === 'WASM_READY') {
+            document.getElementById('lbl-worker-status').innerText = "ACTIF";
+            document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+            return;
+        } 
 
-    // 1. MÉTÉO & MÉTRIQUES SOLAIRES (Alignement rigoureux des IDs HTML "val-*")
-    if (data.solarMetrics) {
-        const sm = data.solarMetrics;
-        
-        const elEqTemps = document.getElementById('val-eq-temps');
-        const elExcentricite = document.getElementById('val-excentricite');
-        const elObliquite = document.getElementById('val-obliquite');
-        const elLongSolaire = document.getElementById('val-long-solaire');
-        const elTsm = document.getElementById('val-tsm');
-        const elTsv = document.getElementById('val-tsv');
+        const payload = data.data || data.payload || data;
 
-        if (elEqTemps) elEqTemps.innerText = `${sm.eqTempsMin.toFixed(2)} min`;
-        if (elExcentricite) elExcentricite.innerText = sm.excentricite.toFixed(6);
-        if (elObliquite) elObliquite.innerText = `${sm.obliquite.toFixed(4)}°`;
-        if (elLongSolaire) elLongSolaire.innerText = `${sm.longitudeSolaire.toFixed(2)}°`;
-        if (elTsm) elTsm.innerText = sm.tsm;
-        if (elTsv) elTsv.innerText = sm.tsv;
-    }
+        const metricsSol = payload.solarMetrics || data.solarMetrics;
+        if (metricsSol) {
+            mettreAJourMetricsSolaires(metricsSol);
+        }
 
-    // 2. GÉODÉSIE & LST / GAST (ID : val-gast)
-    if (data.tempsJpl) {
-        const elGast = document.getElementById('val-gast');
-        if (elGast) {
-            elGast.innerText = `${data.tempsJpl.gastDeg.toFixed(2)}° / ${data.tempsJpl.lstDeg.toFixed(2)}°`;
+        const rawAstres = payload.bodies || payload.astres || payload.results || (payload.soleil || payload.sun ? payload : null);
+        if (rawAstres && typeof rawAstres === 'object') {
+            derniersResultatsAstres = rawAstres;
+            mettreAJourTableauEtTrier(derniersResultatsAstres);
+            dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
+        }
+
+        const tempsJpl = payload.tempsJpl || data.tempsJpl;
+        if (tempsJpl || payload.gastDeg !== undefined) {
+            const gast = tempsJpl?.gastDeg ?? payload.gastDeg ?? data.gast ?? 0;
+            const lst = tempsJpl?.lstDeg ?? payload.lstDeg ?? data.lst ?? 0;
+            document.getElementById('val-gast').innerText = `${gast.toFixed(2)}° / ${lst.toFixed(2)}°`;
+        }
+
+        const wmmData = payload.wmm || data.wmm;
+        if (wmmData) {
+            resultatWmmCourant = wmmData;
+            document.getElementById('val-dec-wmm').innerText = `${wmmData.declination >= 0 ? '+' : ''}${wmmData.declination.toFixed(2)}°`;
+            document.getElementById('val-inc-wmm').innerText = `${wmmData.inclination >= 0 ? '+' : ''}${wmmData.inclination.toFixed(2)}°`;
         }
     }
 
-    // 3. TABLEAU DES CORPS CÉLESTES
-    if (Array.isArray(data.bodies)) {
-        afficherTableauAstres(data.bodies);
-        derniersResultatsAstres = data.bodies;
-        // Met à jour le radar avec le cap géromagnétique/vrai
-        if (typeof dessinerRadarAstres === 'function') {
-            dessinerRadarAstres(data.bodies, capVraiActuel);
-        }
-    }
-}
-
-function afficherTableauAstres(bodies) {
-    const tbody = document.getElementById('table-body');
-    if (!tbody) return;
-
-    let html = '';
-    bodies.forEach(astre => {
-        const estVisible = astre.elevation >= 0;
-        const classeLigne = estVisible ? 'visible-row' : 'hidden-row';
-        const couleurElevation = estVisible ? 'var(--neon-green)' : 'var(--rose)';
-        
-        html += `
-            <tr class="${classeLigne}">
-                <td style="font-weight:bold; color:var(--sky);">${astre.nom}</td>
-                <td style="color:${couleurElevation}; font-weight:bold;">${astre.elevation.toFixed(2)}°</td>
-                <td>${astre.azimut.toFixed(2)}°</td>
-                <td>${Math.round(astre.distanceKm).toLocaleString('fr-FR')} km</td>
-                <td class="time-tsm">${astre.leverTSM || '--:--:--'}</td>
-                <td class="time-tsm">${astre.culminationTSM || '--:--:--'}</td>
-                <td class="time-tsm">${astre.coucherTSM || '--:--:--'}</td>
-                <td><span style="color:${astre.calculOk ? 'var(--neon-green)' : 'var(--rose)'};">[${astre.statut || 'OK'}]</span></td>
-            </tr>
-        `;
-    });
-    tbody.innerHTML = html;
-}
-
-function initialiserWorkerAstronomie() {
-    try {
+    function initialiserWorkerAstronomie() {
+        if (typeof Worker === 'undefined') return;
         astroWorker = new Worker('worker_astronomie.js');
+        
         astroWorker.onmessage = traiterMessageWorker;
+        
         astroWorker.onerror = (err) => {
-            ecrireLog(`[KERNEL ERROR] Worker Astronomie : ${err.message}`);
-            document.getElementById('lbl-worker-status').innerText = 'ERREUR';
-            document.getElementById('lbl-worker-status').style.color = 'var(--rose)';
+            document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
+            document.getElementById('lbl-worker-status').style.color = "var(--rose)";
+            ecrireLog(`ERREUR WORKER : ${err.message}`);
         };
-        document.getElementById('lbl-worker-status').innerText = 'ACTIF';
-        document.getElementById('lbl-worker-status').style.color = 'var(--neon-green)';
-        ecrireLog("Worker astronomique initialisé avec succès.");
-    } catch (e) {
-        ecrireLog(`[KERNEL ERROR] Échec initialisation Worker: ${e.message}`);
-    }
+
+        if (matriceJplLive) astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
     }
 
     function mettreAJourMetricsSolaires(m) {
         if (!m) return;
-        const eqMins = m.eqTempsMin ?? m.equationOfTime ?? m.eqTemps ?? 0;
-        document.getElementById('val-eq-temps').innerText = `${eqMins >= 0 ? '+' : ''}${eqMins.toFixed(2)} min`;
+        currentEqTempsMin = m.eqTempsMin ?? m.equationOfTime ?? m.eqTemps ?? 0;
+        document.getElementById('val-eq-temps').innerText = `${currentEqTempsMin >= 0 ? '+' : ''}${currentEqTempsMin.toFixed(2)} min`;
         document.getElementById('val-excentricite').innerText = (m.excentricite ?? m.eccentricity ?? 0).toFixed(6);
         document.getElementById('val-obliquite').innerText = `${(m.obliquite ?? m.obliquity ?? 0).toFixed(4)}°`;
         document.getElementById('val-long-solaire').innerText = `${(m.longitudeSolaire ?? m.solarLongitude ?? 0).toFixed(2)}°`;
@@ -678,7 +649,6 @@ function initialiserWorkerAstronomie() {
         const tbody = document.getElementById('table-body');
         if (!tbody || !results) return;
 
-        // Normalisation multi-alias (elevation, elevationGeometrique, alt, altitude, el)
         let entries = Object.entries(results).filter(([k, v]) => {
             if (typeof v !== 'object' || v === null) return false;
             return (v.elevation !== undefined || v.elevationGeometrique !== undefined || v.alt !== undefined || v.altitude !== undefined || v.el !== undefined);
@@ -709,9 +679,9 @@ function initialiserWorkerAstronomie() {
             const transitTime = data.transitUtcMs ?? data.transit ?? data.culmination;
             const setTime = data.setUtcMs ?? data.set ?? data.coucher;
 
-            const leverTSM = riseTime ? formaterHeureTSM(riseTime, stationActive.lon) : "--:--:--";
-            const culmTSM = transitTime ? formaterHeureTSM(transitTime, stationActive.lon) : "--:--:--";
-            const coucherTSM = setTime ? formaterHeureTSM(setTime, stationActive.lon) : "--:--:--";
+            const leverTSV = riseTime ? formaterHeureTSV(riseTime, stationActive.lon, currentEqTempsMin) : "--:--:--";
+            const culmTSV = transitTime ? formaterHeureTSV(transitTime, stationActive.lon, currentEqTempsMin) : "--:--:--";
+            const coucherTSV = setTime ? formaterHeureTSV(setTime, stationActive.lon, currentEqTempsMin) : "--:--:--";
 
             row.className = isVisible ? 'visible-row' : 'hidden-row';
             row.innerHTML = `
@@ -719,39 +689,46 @@ function initialiserWorkerAstronomie() {
                 <td>${elApparente.toFixed(2)}°</td>
                 <td>${azimuth.toFixed(2)}°</td>
                 <td>${Math.round(distance).toLocaleString('fr-FR')} km</td>
-                <td class="time-tsm">${leverTSM}</td>
-                <td class="time-tsm">${culmTSM}</td>
-                <td class="time-tsm">${coucherTSM}</td>
+                <td class="time-tsm">${leverTSV}</td>
+                <td class="time-tsm">${culmTSV}</td>
+                <td class="time-tsm">${coucherTSV}</td>
                 <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--rose)'}; font-weight:bold;">${isVisible ? 'VISIBLE' : 'SOUS L\'HORIZON'}</td>
             `;
             tbody.appendChild(row);
         });
     }
 
+    // Normalisation ECEF WGS84 avec Altitude strictement gérée en mètres
     function appliquerCoordonneesManuelles(silencieux = false) {
         const lat = parseFloat(document.getElementById('input-lat').value.replace(',', '.'));
         const lon = parseFloat(document.getElementById('input-lon').value.replace(',', '.'));
-        const alt = parseFloat(document.getElementById('input-alt').value.replace(',', '.'));
+        const altM = parseFloat(document.getElementById('input-alt').value.replace(',', '.'));
 
-        if (isNaN(lat) || isNaN(lon) || isNaN(alt)) return;
+        if (isNaN(lat) || isNaN(lon) || isNaN(altM)) return;
 
-        const a = 6378.137, f = 1.0 / 298.257223563, b = a * (1.0 - f), e2 = (a*a - b*b) / (a*a);
-        const phi = lat * (Math.PI / 180.0), lambda = lon * (Math.PI / 180.0);
-        const sinPhi = Math.sin(phi), cosPhi = Math.cos(phi);
-        const N_val = a / Math.sqrt(1.0 - e2 * sinPhi * sinPhi);
+        const a = 6378137.0; // Rayon WGS84 en mètres
+        const f = 1.0 / 298.257223563;
+        const e2 = f * (2.0 - f);
+        
+        const phi = lat * (Math.PI / 180.0);
+        const lambda = lon * (Math.PI / 180.0);
+        const sinPhi = Math.sin(phi);
+        const cosPhi = Math.cos(phi);
+        
+        const N = a / Math.sqrt(1.0 - e2 * sinPhi * sinPhi);
 
-        const X = (N_val + alt) * cosPhi * Math.cos(lambda);
-        const Y = (N_val + alt) * cosPhi * Math.sin(lambda);
-        const Z = (N_val * (1.0 - e2) + alt) * sinPhi;
+        const X_km = ((N + altM) * cosPhi * Math.cos(lambda)) / 1000.0;
+        const Y_km = ((N + altM) * cosPhi * Math.sin(lambda)) / 1000.0;
+        const Z_km = ((N * (1.0 - e2) + altM) * sinPhi) / 1000.0;
 
-        document.getElementById('val-xyz-x').innerText = X.toFixed(2);
-        document.getElementById('val-xyz-y').innerText = Y.toFixed(2);
-        document.getElementById('val-xyz-z').innerText = Z.toFixed(2);
+        document.getElementById('val-xyz-x').innerText = X_km.toFixed(2);
+        document.getElementById('val-xyz-y').innerText = Y_km.toFixed(2);
+        document.getElementById('val-xyz-z').innerText = Z_km.toFixed(2);
 
-        stationActive = { lat, lon, alt, nom: silencieux ? stationActive.nom : 'SAISIE MANUELLE' };
+        stationActive = { lat: lat, lon: lon, altMeters: altM, nom: silencieux ? stationActive.nom : 'SAISIE MANUELLE' };
 
         document.getElementById('val-station-nom').innerText = stationActive.nom;
-        document.getElementById('val-station-coords').innerText = `${lat.toFixed(4)}° / ${lon.toFixed(4)}° / ${(alt*1000).toFixed(0)}m`;
+        document.getElementById('val-station-coords').innerText = `${lat.toFixed(4)}° / ${lon.toFixed(4)}° / ${Math.round(altM)}m`;
 
         actualiserPositionCurseurGlobe(lat, lon);
     }
@@ -932,48 +909,27 @@ function initialiserWorkerAstronomie() {
         await chargerEtParserWMM();
         appliquerCoordonneesManuelles(true);
 
-        // Boucle d'envoi unifiée avec alias universels
-        // Boucle d'envoi robuste à insérer dans window.addEventListener('load')
-setInterval(() => {
-    const timestampExact = obtenirTimestampUTCExact();
-    const dateUtc = new Date(timestampExact);
+        setInterval(() => {
+            const timestampExact = obtenirTimestampUTCExact();
+            const dateUtc = new Date(timestampExact);
 
-    document.getElementById('lbl-epoch').innerText = dateUtc.toISOString().substring(11, 19) + " UTC";
+            document.getElementById('lbl-epoch').innerText = dateUtc.toISOString().substring(11, 19) + " UTC";
 
-    if (astroWorker) {
-        // Calculation du Jour Julien (JD) de secours
-        const jdCalcule = (timestampExact / 86400000.0) + 2440587.5;
+            if (astroWorker) {
+                astroWorker.postMessage({
+                    type: 'COMPUTE',
+                    timestampUtc: timestampExact,
+                    timestamp: timestampExact,
+                    station: { lat: stationActive.lat, lon: stationActive.lon, alt: stationActive.altMeters / 1000.0 },
+                    coords: stationActive,
+                    meteo: meteoActive
+                });
+            }
+        }, 1000);
 
-        astroWorker.postMessage({
-            type: 'COMPUTE',
-            action: 'COMPUTE',
-            // Horodatages
-            timestampUtc: timestampExact,
-            timestamp: timestampExact,
-            time: timestampExact,
-            jd: jdCalcule,
-            julianDate: jdCalcule,
-            // Coordonnées imbriquées ET aplaties
-            station: stationActive,
-            coords: stationActive,
-            location: stationActive,
-            lat: stationActive.lat,
-            latitude: stationActive.lat,
-            lon: stationActive.lon,
-            longitude: stationActive.lon,
-            alt: stationActive.alt,
-            altitude: stationActive.alt,
-            // Météo
-            meteo: meteoActive,
-            temp: meteoActive.temperatureC,
-            press: meteoActive.pressionBaro
-        });
-    }
-}, 1000);
-
-        ecrireLog("SYSTEMA SENTINELA v18.6 prêt.");
+        ecrireLog("SYSTEMA SENTINELA v18.7 prêt.");
     });
 </script>    
 </body>
 </html>
-  
+     
