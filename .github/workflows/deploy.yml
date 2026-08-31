@@ -9,15 +9,15 @@ on:
     inputs:
       lat:
         description: 'Latitude station'
-        required: true
+        required: false
         default: '43.284356'
       lon:
         description: 'Longitude station'
-        required: true
+        required: false
         default: '5.358507'
       alt:
         description: 'Altitude (mètres)'
-        required: true
+        required: false
         default: '99.31'
 
 permissions:
@@ -46,16 +46,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install skyfield numpy
 
-      - name: Build WebAssembly Module
-        run: |
-          emcc src/astro_engine.cpp -O3 -std=c++17 \
-            -s WASM=1 \
-            -s FORCE_FILESYSTEM=1 \
-            -s ALLOW_MEMORY_GROWTH=1 \
-            -s EXPORTED_FUNCTIONS='["_calculerDepuisECEF","_calculerPositionTopocentrique","_malloc","_free"]' \
-            -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
-            -o wasm_astronomie.js
-
       - name: Cache DE440s Kernel
         uses: actions/cache@v4
         with:
@@ -69,14 +59,28 @@ jobs:
             curl -sSL --connect-timeout 20 --retry 3 -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || \
             curl -sSL --connect-timeout 20 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
           fi
-          test -s de440s.bsp || (echo "[ERREUR CRITIQUE] Impossible d'obtenir de440s.bsp" && exit 1)
+          test -s de440s.bsp || (echo "[ERREUR CRITIQUE] Fichier de440s.bsp invalide" && exit 1)
+
+      - name: Build WebAssembly Module
+        run: |
+          emcc src/astro_engine.cpp -O3 -std=c++17 \
+            -s WASM=1 \
+            -s FORCE_FILESYSTEM=1 \
+            -s ALLOW_MEMORY_GROWTH=1 \
+            -s EXPORTED_FUNCTIONS='["_calculerDepuisECEF","_calculerPositionTopocentrique","_malloc","_free"]' \
+            -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
+            -o wasm_astronomie.js
 
       - name: Run DE440s Topocentric Extractor
-        env:
-          LAT: ${{ inputs.lat || vars.STATION_LAT || '43.284356' }}
-          LON: ${{ inputs.lon || vars.STATION_LON || '5.358507' }}
-          ALT: ${{ inputs.alt || vars.STATION_ALT || '99.31' }}
         run: |
+          LAT="${{ inputs.lat }}"
+          LON="${{ inputs.lon }}"
+          ALT="${{ inputs.alt }}"
+
+          LAT=${LAT:-"43.284356"}
+          LON=${LON:-"5.358507"}
+          ALT=${ALT:-"99.31"}
+
           python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT"
 
       - name: Validate Generated Files
