@@ -1,0 +1,40 @@
+name: Actualisation Journalière JPL DE440s
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Exécution tous les jours à 00:00 UTC
+  workflow_dispatch: # Permet un lancement manuel depuis l'onglet Actions de GitHub
+
+jobs:
+  generate-flux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Cloner le dépôt
+        uses: actions/checkout@v4
+
+      - name: 🐍 Configurer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 📦 Installer les dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install skyfield
+
+      - name: 🛰️ Télécharger le noyau DE440s (si absent)
+        run: |
+          if [ ! -f "de440s.bsp" ]; then
+            curl -O https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp
+          fi
+
+      - name: ⚙️ Exécuter le moteur de calcul
+        run: python dynamic_multiphysics_engine.py
+
+      - name: 🚀 Publier le nouveau flux_live.json
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add flux_live.json
+          git commit -m "Actualisation journalière UTC de la matrice d'état DE440s [CI]" || exit 0
+          git push
