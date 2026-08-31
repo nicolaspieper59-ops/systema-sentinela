@@ -100,4 +100,4 @@ function executerCalculsReels(timestampUtc, coords) {
     return {
         // Payload calculé
     };
-}
+        }
