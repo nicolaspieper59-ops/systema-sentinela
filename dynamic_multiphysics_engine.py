@@ -34,7 +34,11 @@ def main():
 
     aujourdhui = datetime.now(timezone.utc).date()
     date_base = datetime(aujourdhui.year, aujourdhui.month, aujourdhui.day, 0, 0, tzinfo=timezone.utc)
+    
+    # Correction : Association de la Terre avec la position topographique WGS84
+    terre = eph['earth']
     station_base = wgs84.latlon(lat_target, lon_target, elevation_m=alt_target)
+    observateur = terre + station_base
 
     mapping_astres = {
         'soleil': 'sun',
@@ -57,7 +61,9 @@ def main():
     for minute in range(1441):
         instant = date_base + timedelta(minutes=minute)
         t = ts.from_datetime(instant)
-        position_observateur = station_base.at(t)
+        
+        # Calcul de la position de l'observateur topocentrique
+        position_observateur = observateur.at(t)
 
         for nom, cible in corps_celestes.items():
             astre_apparent = position_observateur.observe(cible).apparent()
