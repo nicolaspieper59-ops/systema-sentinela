@@ -69,6 +69,23 @@ jobs:
           test -s flux_live.json || (echo "[ERROR] flux_live.json manquant ou vide" && exit 1)
           test -s wasm_astronomie.wasm || (echo "[ERROR] Compilation Wasm échouée" && exit 1)
 
+          - name: Cache DE440s Kernel
+        uses: actions/cache@v4
+        with:
+          path: de440s.bsp
+          key: de440s-bsp-v1
+
+      - name: Download DE440s if not cached
+        run: |
+          if [ ! -f "de440s.bsp" ] || [ $(wc -c < de440s.bsp) -lt 10000000 ]; then
+            echo "Téléchargement du noyau DE440s..."
+            curl -sSL -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp
+          fi
+
+      - name: Run Ephemeris Engine
+        run: |
+          python dynamic_multiphysics_engine.py "43.284356" "5.358507" "99.31"
+
       - name: Commit and Push
         run: |
           git config --local user.email "action@github.com"
