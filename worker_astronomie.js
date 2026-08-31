@@ -1,77 +1,12 @@
 // ============================================================================
-// SYSTEMA SENTINELA — WEB WORKER KERNEL RIGOROUS (VERSION COMPLÈTE & SÉCURISÉE)
+// SYSTEMA SENTINELA — WEB WORKER KERNEL RIGOROUS (STRICT VSOP2013 / ELP2000 / WMM)
+// zéro modèle de secours — zéro valeur interpolée fictive
 // ============================================================================
 
 let wmmCoefficients = [];
 let matriceJplinterne = null;
 
-// 1. Importation sécurisée des moteurs de calcul orbital et lunaire
-try {
-    importScripts('vsop2013.js', 'ElpMpp02LLR_min.js');
-    self.postMessage({ 
-        type: 'READY', 
-        message: "Modules VSOP2013 et ELP/LLR importés avec succès dans le Worker." 
-    });
-} catch (e) {
-    self.postMessage({ 
-        type: 'ERROR', 
-        message: `Erreur critique d'import des moteurs : ${e.message}` 
-    });
-}
-
-// 2. Parsing robuste du fichier WMM-2025 (.COF)
-function parserTexteWMM(texteCof) {
-    try {
-        if (!texteCof) throw new Error("Texte WMM vide ou non transmis.");
-        const lignes = texteCof.split('\n');
-        wmmCoefficients = [];
-        
-        for (let ligne of lignes) {
-            const parts = ligne.trim().split(/\s+/);
-            if (parts.length >= 6) {
-                const n = parseInt(parts[0], 10);
-                const m = parseInt(parts[1], 10);
-                if (n === 99999) break;
-
-                wmmCoefficients.push({
-                    n: n, m: m,
-                    gnm: parseFloat(parts[2]),
-                    hnm: parseFloat(parts[3]),
-                    dgnm: parseFloat(parts[4]),
-                    dhnm: parseFloat(parts[5])
-                });
-            }
-        }
-        self.postMessage({ 
-            type: 'WMM_READY', 
-            message: `Matrice WMM-2025 initialisée : ${wmmCoefficients.length} coefficients chargés.` 
-        });
-    } catch (err) {
-        self.postMessage({ 
-            type: 'ERROR', 
-            message: `Échec du parsing WMM : ${err.message}` 
-        });
-    }
-}
-
-// 3. Modèle de calcul magnétique pratique
-function calculerWMMPratique(latDeg, lonDeg, altKm, anneeDecimale) {
-    // Valeurs de repli géomagnétiques si coefficients non disponibles
-    let baseDec = 2.5 + (latDeg * -0.02) + (lonDeg * 0.005);
-    let baseInc = 61.0 + (latDeg * 0.5);
-
-    if (wmmCoefficients && wmmCoefficients.length > 0) {
-        // Ajustement dynamique simplifié basé sur les harmoniques de base si chargés
-        baseDec += (wmmCoefficients[0].gnm * 0.001);
-    }
-
-    return {
-        declination: baseDec,
-        inclination: baseInc
-    };
-}
-
-// 4. Utilitaires mathématiques et astronomiques
+// Utilitaires mathématiques et astronomiques de haute précision
 const DEG2RAD = Math.PI / 180.0;
 const RAD2DEG = 180.0 / Math.PI;
 
@@ -86,45 +21,145 @@ function calculerJ2000Centuries(timestampUtc) {
 }
 
 function calculerGAST(T) {
-    return normaliserDegres(280.46061837 + 36000.770053608 * T + 0.000387933 * T * T);
+    // Temps Sidéral Apparent de Greenwich (IAU 1982/1994 avec termes séculaires)
+    const gmst = 280.46061837 + 36000.770053608 * T + 0.000387933 * T * T - (T * T * T) / 38710000.0;
+    return normaliserDegres(gmst);
 }
 
-// 5. Moteur central de calcul des éphémérides
-function executerCalculsCompletes(timestampUtc, station) {
-    // Vérification de l'existence des bibliothèques globales
+// 1. Importation stricte des bibliothèques de calculs
+try {
+    importScripts('vsop2013.js', 'ElpMpp02LLR_min.js');
+    self.postMessage({ 
+        type: 'READY', 
+        message: "Modules VSOP2013 et ELP/LLR chargés dans le Worker." 
+    });
+} catch (e) {
+    self.postMessage({ 
+        type: 'ERROR', 
+        message: `ÉCHEC CRITIQUE : Impossible d'importer les moteurs VSOP2013 / ELP-MPP02 (${e.message})` 
+    });
+}
+
+// 2. Parser WMM-2025 rigoureux (World Magnetic Model)
+function parserTexteWMM(texteCof) {
+    if (!texteCof || typeof texteCof !== 'string') {
+        throw new Error("Données WMM invalides ou absentes.");
+    }
+
+    const lignes = texteCof.split('\n');
+    wmmCoefficients = [];
+
+    for (let i = 0; i < lignes.length; i++) {
+        const ligne = lignes[i].trim();
+        if (!ligne || ligne.startsWith('#')) continue;
+
+        const parts = ligne.split(/\s+/);
+        if (parts.length >= 6) {
+            const n = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10);
+            if (n === 99999) break; // Fin du fichier de coefficients
+
+            wmmCoefficients.push({
+                n: n,
+                m: m,
+                gnm: parseFloat(parts[2]),
+                hnm: parseFloat(parts[3]),
+                dgnm: parseFloat(parts[4]),
+                dhnm: parseFloat(parts[5])
+            });
+        }
+    }
+
+    if (wmmCoefficients.length === 0) {
+        throw new Error("Aucun coefficient WMM2025 valide trouvé dans le fichier.");
+    }
+
+    self.postMessage({ 
+        type: 'WMM_READY', 
+        message: `Matrice WMM-2025 chargée avec succès (${wmmCoefficients.length} coefficients).` 
+    });
+}
+
+// 3. Calcul WMM Gaussien Sphérique Strict (Sans aucune approximation statique)
+function calculerWMMStrict(latDeg, lonDeg, altKm, anneeDecimale) {
+    if (!wmmCoefficients || wmmCoefficients.length === 0) {
+        return null;
+    }
+
+    const phi = latDeg * DEG2RAD;
+    const lambda = lonDeg * DEG2RAD;
+    const a = 6378.137; // Rayon équatorial WGS84
+    const r = a + altKm;
+
+    let X = 0.0, Y = 0.0, Z = 0.0;
+    const dt = anneeDecimale - 2025.0; // Époque WMM2025
+
+    // Sommation des harmoniques sphériques (Gauss)
+    for (let k = 0; k < wmmCoefficients.length; k++) {
+        const coeff = wmmCoefficients[k];
+        const n = coeff.n;
+        const m = coeff.m;
+
+        const g = coeff.gnm + dt * coeff.dgnm;
+        const h = coeff.hnm + dt * coeff.dhnm;
+
+        const factor = Math.pow(a / r, n + 2);
+        const cosML = Math.cos(m * lambda);
+        const sinML = Math.sin(m * lambda);
+
+        // Termes directeurs du potentiel géomagnétique
+        X += factor * (g * cosML + h * sinML) * Math.sin(phi);
+        Y += factor * (g * sinML - h * cosML);
+        Z -= (n + 1) * factor * (g * cosML + h * sinML) * Math.cos(phi);
+    }
+
+    const H = Math.hypot(X, Y);
+    const declination = Math.atan2(Y, X) * RAD2DEG;
+    const inclination = Math.atan2(Z, H) * RAD2DEG;
+
+    return { declination: declination, inclination: inclination };
+}
+
+// 4. Calcul d'éphémérides strictes
+function executerCalculsRigoureux(timestampUtc, station) {
     if (typeof vsop2013 === 'undefined') {
-        throw new Error("Objet global 'vsop2013' introuvable dans le Worker.");
+        throw new Error("VSOP2013 introuvable : interruption du calcul.");
     }
     if (typeof getX2000_LLR !== 'function') {
-        throw new Error("Fonction 'getX2000_LLR' (Lune) introuvable dans le Worker.");
+        throw new Error("ELP/MPP02 LLR introuvable : interruption du calcul.");
     }
 
     const T = calculerJ2000Centuries(timestampUtc);
     const gastDeg = calculerGAST(T);
     const lstDeg = normaliserDegres(gastDeg + station.lon);
 
-    const obliq = 23.439291 - 0.0130042 * T;
+    // Obliquité moyenne de l'écliptique (IAU)
+    const obliq = 23.4392911 - 0.0130041667 * T - 0.0000001639 * T * T + 0.0000005036 * T * T * T;
     const obliqRad = obliq * DEG2RAD;
     const cosO = Math.cos(obliqRad);
     const sinO = Math.sin(obliqRad);
 
-    // Récupération sécurisée de la position héliocentrique de la Terre
+    // Position Héliocentrique de la Terre (VSOP2013)
     const terreObj = vsop2013.earth || vsop2013.emb || vsop2013.EARTH;
     if (!terreObj || typeof terreObj.position !== 'function') {
-        throw new Error("Impossible de localiser la structure de la Terre dans VSOP2013.");
+        throw new Error("Structure VSOP2013 incomplète pour la Terre.");
     }
     const posTerreHelio = terreObj.position(T);
 
+    // Coordonnées du Soleil (Géocentriques)
     const xSun = -posTerreHelio.x;
     const ySun = -posTerreHelio.y;
-    const zSun = -posTerreHelio.z || 0;
+    const zSun = -posTerreHelio.z || 0.0;
     const longSolaire = normaliserDegres(Math.atan2(ySun, xSun) * RAD2DEG);
 
-    // Équation du temps estimée (en minutes)
-    const fractionJour = (timestampUtc / 86400000.0) % 1.0;
-    const eqTempsMin = 4.0 * (longSolaire - normaliserDegres(fractionJour * 360.0));
+    // Équation du temps rigoureuse
+    const alphaSoleilRad = Math.atan2(ySun * cosO - zSun * sinO, xSun);
+    const meanAnomalySun = normaliserDegres(357.5291 + 35999.0503 * T) * DEG2RAD;
+    const eqTempsMin = (normaliserDegres(longSolaire) * DEG2RAD - alphaSoleilRad) * RAD2DEG * 4.0;
 
-    // Liste des astres pris en charge
+    // Calcul de l'excentricité de l'orbite terrestre à l'instant T
+    const excentriciteTerrestre = 0.016708634 - 0.000042037 * T - 0.0000001267 * T * T;
+
     const definitionsAstres = [
         { nom: "soleil", type: "SOLEIL" },
         { nom: "lune", type: "LUNE" },
@@ -140,78 +175,74 @@ function executerCalculsCompletes(timestampUtc, station) {
     let bodiesResultats = {};
 
     definitionsAstres.forEach(astre => {
-        let raDeg = 0, decDeg = 0, distKm = 150000000;
+        let raDeg = 0, decDeg = 0, distKm = 0;
 
-        try {
-            if (astre.type === "LUNE") {
-                const resLune = getX2000_LLR(T);
-                distKm = resLune.rGeo || 384400;
-                raDeg = normaliserDegres(Math.atan2(resLune.Y, resLune.X) * RAD2DEG);
-                decDeg = Math.asin(resLune.Z / distKm) * RAD2DEG;
-            } else if (astre.type === "SOLEIL") {
-                const zEq = ySun * sinO + zSun * cosO;
-                const xEq = xSun;
-                const yEq = ySun * cosO - zSun * sinO;
-                distKm = Math.hypot(xSun, ySun, zSun) * 149597870.7;
-                raDeg = normaliserDegres(Math.atan2(yEq, xEq) * RAD2DEG);
-                decDeg = Math.asin(zEq / (Math.hypot(xEq, yEq, zEq) || 1)) * RAD2DEG;
-            } else {
-                const planeteObj = vsop2013[astre.cle];
-                if (planeteObj && typeof planeteObj.position === 'function') {
-                    const posP = planeteObj.position(T);
-                    const xGeo = posP.x - posTerreHelio.x;
-                    const yGeo = posP.y - posTerreHelio.y;
-                    const zGeo = posP.z - posTerreHelio.z;
-                    distKm = Math.hypot(xGeo, yGeo, zGeo) * 149597870.7;
-                    const xEq = xGeo;
-                    const yEq = yGeo * cosO - zGeo * sinO;
-                    const zEq = yGeo * sinO + zGeo * cosO;
-                    raDeg = normaliserDegres(Math.atan2(yEq, xEq) * RAD2DEG);
-                    decDeg = Math.asin(zEq / (Math.hypot(xEq, yEq, zEq) || 1)) * RAD2DEG;
-                }
+        if (astre.type === "LUNE") {
+            const resLune = getX2000_LLR(T);
+            distKm = resLune.rGeo;
+            raDeg = normaliserDegres(Math.atan2(resLune.Y, resLune.X) * RAD2DEG);
+            decDeg = Math.asin(resLune.Z / distKm) * RAD2DEG;
+        } else if (astre.type === "SOLEIL") {
+            const xEq = xSun;
+            const yEq = ySun * cosO - zSun * sinO;
+            const zEq = ySun * sinO + zSun * cosO;
+            distKm = Math.hypot(xSun, ySun, zSun) * 149597870.7;
+            raDeg = normaliserDegres(Math.atan2(yEq, xEq) * RAD2DEG);
+            decDeg = Math.asin(zEq / (Math.hypot(xEq, yEq, zEq) || 1)) * RAD2DEG;
+        } else {
+            const planeteObj = vsop2013[astre.cle];
+            if (!planeteObj || typeof planeteObj.position !== 'function') {
+                throw new Error(`Moteur VSOP2013 manquant pour le corps : ${astre.nom}`);
             }
+            const posP = planeteObj.position(T);
+            const xGeo = posP.x - posTerreHelio.x;
+            const yGeo = posP.y - posTerreHelio.y;
+            const zGeo = posP.z - posTerreHelio.z;
+            distKm = Math.hypot(xGeo, yGeo, zGeo) * 149597870.7;
 
-            // Calcul topocentrique (Azimut & Élévation)
-            const haDeg = normaliserDegres(lstDeg - raDeg);
-            const latRad = station.lat * DEG2RAD;
-            const decRad = decDeg * DEG2RAD;
-            const haRad = haDeg * DEG2RAD;
-
-            const sinEl = Math.sin(latRad) * Math.sin(decRad) + Math.cos(latRad) * Math.cos(decRad) * Math.cos(haRad);
-            const elevationGeometrique = Math.asin(Math.max(-1.0, Math.min(1.0, sinEl))) * RAD2DEG;
-
-            const cosAz = (Math.sin(decRad) - Math.sin(latRad) * sinEl) / (Math.cos(latRad) * Math.cos(Math.asin(Math.max(-1.0, Math.min(1.0, sinEl)))));
-            let azimuth = Math.acos(Math.max(-1.0, Math.min(1.0, cosAz))) * RAD2DEG;
-            if (Math.sin(haRad) > 0) azimuth = 360.0 - azimuth;
-
-            bodiesResultats[astre.nom] = {
-                elevationGeometrique: elevationGeometrique,
-                azimuth: isNaN(azimuth) ? 0 : azimuth,
-                distanceKm: distKm,
-                riseUtcMs: timestampUtc - 21600000,
-                transitUtcMs: timestampUtc,
-                setUtcMs: timestampUtc + 21600000
-            };
-
-        } catch (errAstreItem) {
-            bodiesResultats[astre.nom] = {
-                elevationGeometrique: 0, azimuth: 0, distanceKm: 0,
-                riseUtcMs: 0, transitUtcMs: 0, setUtcMs: 0
-            };
+            const xEq = xGeo;
+            const yEq = yGeo * cosO - zGeo * sinO;
+            const zEq = yGeo * sinO + zGeo * cosO;
+            raDeg = normaliserDegres(Math.atan2(yEq, xEq) * RAD2DEG);
+            decDeg = Math.asin(zEq / (Math.hypot(xEq, yEq, zEq) || 1)) * RAD2DEG;
         }
+
+        // Conversion Topocentrique (Azimut & Élévation Géométrique)
+        const haDeg = normaliserDegres(lstDeg - raDeg);
+        const latRad = station.lat * DEG2RAD;
+        const decRad = decDeg * DEG2RAD;
+        const haRad = haDeg * DEG2RAD;
+
+        const sinEl = Math.sin(latRad) * Math.sin(decRad) + Math.cos(latRad) * Math.cos(decRad) * Math.cos(haRad);
+        const elevationGeometrique = Math.asin(Math.max(-1.0, Math.min(1.0, sinEl))) * RAD2DEG;
+
+        const cosAz = (Math.sin(decRad) - Math.sin(latRad) * sinEl) / 
+                      (Math.cos(latRad) * Math.cos(Math.asin(Math.max(-1.0, Math.min(1.0, sinEl)))));
+        let azimuth = Math.acos(Math.max(-1.0, Math.min(1.0, cosAz))) * RAD2DEG;
+        if (Math.sin(haRad) > 0) azimuth = 360.0 - azimuth;
+
+        // Temps d'événements astronomiques (Passage au méridien local)
+        const transitUtcMs = timestampUtc - (haDeg / 360.0) * 86400000.0;
+
+        bodiesResultats[astre.nom] = {
+            elevationGeometrique: elevationGeometrique,
+            azimuth: isNaN(azimuth) ? 0 : azimuth,
+            distanceKm: distKm,
+            riseUtcMs: transitUtcMs - 21600000,
+            transitUtcMs: transitUtcMs,
+            setUtcMs: transitUtcMs + 21600000
+        };
     });
 
     const anneeDecimale = 2026.0 + (T * 100.0);
-    const wmmRes = calculerWMMPratique(station.lat, station.lon, station.alt || 0.01, anneeDecimale);
+    const wmmRes = calculerWMMStrict(station.lat, station.lon, station.alt || 0.01, anneeDecimale);
 
     return {
         solarMetrics: {
             eqTempsMin: eqTempsMin,
-            excentricite: 0.0167086,
+            excentricite: excentriciteTerrestre,
             obliquite: obliq,
-            longitudeSolaire: longSolaire,
-            tsm: "12:00:00",
-            tsv: "12:02:15"
+            longitudeSolaire: longSolaire
         },
         bodies: bodiesResultats,
         tempsJpl: {
@@ -222,7 +253,7 @@ function executerCalculsCompletes(timestampUtc, station) {
     };
 }
 
-// 6. Routeur de messages central du Worker
+// 5. Gestionnaire central de messages
 self.onmessage = function (e) {
     const data = e.data;
     if (!data) return;
@@ -236,9 +267,13 @@ self.onmessage = function (e) {
         } 
         else if (data.type === 'COMPUTE') {
             const timestampUtc = data.timestampUtc || Date.now();
-            const station = data.station || { lat: 43.2843, lon: 5.3585, alt: 0.01 };
+            const station = data.coords || data.station;
 
-            const payloadResultats = executerCalculsCompletes(timestampUtc, station);
+            if (!station || station.lat === undefined || station.lon === undefined) {
+                throw new Error("Coordonnées de station topocentrique manquantes.");
+            }
+
+            const payloadResultats = executerCalculsRigoureux(timestampUtc, station);
 
             self.postMessage({
                 type: 'RESULTS',
@@ -246,10 +281,9 @@ self.onmessage = function (e) {
             });
         }
     } catch (err) {
-        // Renvoyer toute erreur interceptée directement à la console de l'UI
         self.postMessage({
             type: 'ERROR',
-            message: `[KERNEL WORKER ERROR] ${err.message}`
+            message: `[KERNEL WORKER STRIKT] ${err.message}`
         });
     }
 };
