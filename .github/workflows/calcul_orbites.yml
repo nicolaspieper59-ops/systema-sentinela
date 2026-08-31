@@ -45,7 +45,7 @@ jobs:
           LON: ${{ inputs.lon || vars.STATION_LON || '5.358507' }}
           ALT: ${{ inputs.alt || vars.STATION_ALT || '99.31' }}
         run: |
-          python build_ephemerides.py "$LAT" "$LON" "$ALT"
+        python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT"
 
       - name: Validate Generated JSON
         run: |
