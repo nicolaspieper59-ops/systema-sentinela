@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v18.7 — KERNEL RIGOROUS REPOSITORY</title>
+    <title>SYSTEMA SENTINELA v18.8 — KERNEL RIGOROUS REPOSITORY</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#f0f2f5">
@@ -75,7 +75,7 @@
 <body class="">
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v18.7 — KERNEL RIGOROUS REPOSITORY</div>
+        <div class="brand">SYSTEMA SENTINELA v18.8 — KERNEL RIGOROUS REPOSITORY</div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <div>JPL FLUX : <span id="lbl-jpl-status" style="color:var(--amber); font-weight:bold;">CHARGEMENT...</span></div>
             <div>WORKER : <span id="lbl-worker-status" style="color:var(--amber); font-weight:bold;">INIT...</span></div>
@@ -175,7 +175,7 @@
 
         <div class="panel" style="grid-column: 1 / -1; margin-bottom: 0;">
             <div class="panel-title" style="margin-bottom: 5px;">6. CONSOLE KERNEL EXÉCUTION</div>
-            <div class="log-console" id="logConsole">[SENTINELA-KERNEL] Initialisation du système...<br></div>
+            <div class="log-console" id="logConsole"></div>
         </div>
     </div>
 </div>
@@ -217,25 +217,38 @@
     let globeScene, globeCamera, globeRenderer, curseurPositionMesh;
     let isDragging = false, lastX = 0, lastY = 0;
 
-    // Correctif Réfraction Atmosphérique (Formule de Bennett ajustée selon JPL Horizons)
+    // Correctif Réfraction Atmosphérique (Formule de Bennett ajustée avec humidité relative)
     function calculerRefractionMeteoDeg(altDeg, T_C, H_pct, P_hPa) {
         if (altDeg < -1.5) return 0.0;
         const deg2rad = Math.PI / 180.0;
         const refStdArcMin = 1.0 / Math.tan((altDeg + (7.31 / (altDeg + 4.4))) * deg2rad);
         
-        const correctionPression = P_hPa / 1010.0;
+        // Pression de vapeur d'eau approchée (formule de Magnus-Tetens) pour impact hygrométrique fin
+        const pVapeurEaux = (H_pct / 100.0) * 6.1078 * Math.pow(10, (7.5 * T_C) / (237.3 + T_C));
+        const pTotaleCorrigee = P_hPa - (0.378 * pVapeurEaux);
+
+        const correctionPression = pTotaleCorrigee / 1010.0;
         const correctionTemp = 283.15 / (273.15 + T_C);
         
         const refAjustee = refStdArcMin * correctionPression * correctionTemp;
         return Math.max(0, refAjustee / 60.0);
     }
 
+    // Console optimisée (Évite la destruction totale du DOM via innerHTML +=)
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
         if (!consoleEl) return;
-        const timeStr = new Date().toISOString().substring(11, 19);
-        consoleEl.innerHTML += `[${timeStr}] ${msg}<br>`;
+        const timeStr = new Date(obtenirTimestampUTCExact()).toISOString().substring(11, 19);
+        
+        const line = document.createElement('div');
+        line.textContent = `[${timeStr}] ${msg}`;
+        consoleEl.appendChild(line);
         consoleEl.scrollTop = consoleEl.scrollHeight;
+
+        // Limite l'historique à 100 lignes max pour préserver la mémoire mobile
+        while (consoleEl.children.length > 100) {
+            consoleEl.removeChild(consoleEl.firstChild);
+        }
     }
 
     function obtenirTimestampUTCExact() {
@@ -426,7 +439,7 @@
 
             const elBaro = document.getElementById('val-baro-statut');
             if (elBaro && capteursActifs) {
-                elBaro.innerText = `${current.surface_pressure.toFixed(1)} hPa (${current.temperature_2m.toFixed(1)}°C)`;
+                elBaro.innerText = `${current.surface_pressure.toFixed(1)} hPa (${current.temperature_2m.toFixed(1)}°C, ${current.relative_humidity_2m}%)`;
                 elBaro.style.color = "var(--neon-green)";
             }
 
@@ -434,7 +447,7 @@
             derniereLatMeteo = lat;
             derniereLonMeteo = lon;
 
-            ecrireLog(`Météo live : ${current.surface_pressure} hPa | ${current.temperature_2m}°C`);
+            ecrireLog(`Météo live : ${current.surface_pressure} hPa | ${current.temperature_2m}°C | ${current.relative_humidity_2m}%`);
         } catch (err) {
             ecrireLog(`Erreur météo live : ${err.message}`);
         }
@@ -504,7 +517,6 @@
             if (!capteursActifs) return;
 
             if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
-                // Sur iOS webkitCompassHeading renvoie déjà le cap orienté au Nord Vrai
                 mettreAJourCapBrut(e.webkitCompassHeading, true);
                 return;
             }
@@ -706,7 +718,7 @@
 
         if (isNaN(lat) || isNaN(lon) || isNaN(altM)) return;
 
-        const a = 6378137.0; // Rayon WGS84 en mètres
+        const a = 6378137.0; 
         const f = 1.0 / 298.257223563;
         const e2 = f * (2.0 - f);
         
@@ -734,16 +746,16 @@
     }
 
     async function chargerEtParserWMM() {
-    try {
-        const reponse = await fetch('./WMM2025.COF');
-        if (!reponse.ok) throw new Error(`Fichier WMM2025.COF introuvable (HTTP ${reponse.status})`);
-        const texte = await reponse.text();
-        if (astroWorker) {
-            astroWorker.postMessage({ type: 'INIT_WMM', cofText: texte });
+        try {
+            const reponse = await fetch('./WMM2025.COF');
+            if (!reponse.ok) throw new Error(`Fichier WMM2025.COF introuvable (HTTP ${reponse.status})`);
+            const texte = await reponse.text();
+            if (astroWorker) {
+                astroWorker.postMessage({ type: 'INIT_WMM', cofText: texte });
+            }
+        } catch (e) {
+            ecrireLog(`[WMM ERROR] ${e.message}`);
         }
-    } catch (e) {
-        ecrireLog(`[WMM ERROR] ${e.message}`);
-    }
     }
 
     function dessinerRadarAstres(astresData, cap = 0) {
@@ -896,70 +908,60 @@
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
-    // Dans index.html, à la fin du handler 'load'
-// Fonction centrale pour émettre une demande de calcul complète
-function envoyerDemandeCalculWorker() {
-    if (!astroWorker) return;
+    function envoyerDemandeCalculWorker() {
+        if (!astroWorker) return;
 
-    const timestampExact = obtenirTimestampUTCExact();
-    const dateUtc = new Date(timestampExact);
+        const timestampExact = obtenirTimestampUTCExact();
+        const dateUtc = new Date(timestampExact);
 
-    // Mise à jour de l'affichage de l'horloge système/NTP
-    const elEpoch = document.getElementById('lbl-epoch');
-    if (elEpoch) {
-        elEpoch.innerText = dateUtc.toISOString().substring(11, 19) + " UTC";
+        const elEpoch = document.getElementById('lbl-epoch');
+        if (elEpoch) {
+            elEpoch.innerText = dateUtc.toISOString().substring(11, 19) + " UTC";
+        }
+
+        astroWorker.postMessage({
+            type: 'COMPUTE',
+            timestampUtc: timestampExact,
+            coords: {
+                lat: stationActive.lat,
+                lon: stationActive.lon,
+                alt: stationActive.altMeters / 1000.0 
+            },
+            meteo: meteoActive
+        });
     }
 
-    // Transmission explicite avec l'objet 'coords' rigoureusement structuré
-    astroWorker.postMessage({
-        type: 'COMPUTE',
-        timestampUtc: timestampExact,
-        coords: {
-            lat: stationActive.lat,
-            lon: stationActive.lon,
-            alt: stationActive.altMeters / 1000.0 // Altitude convertie en km pour WMM/VSOP
-        },
-        meteo: meteoActive
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            verifierEtRecalibrerHeure();
+            envoyerDemandeCalculWorker();
+        }
     });
-}
 
-// Relance immédiate lors de la sortie de veille sous Android
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-        verifierEtRecalibrerHeure();
+    window.addEventListener('load', async () => {
+        document.getElementById('html-root').classList.add('day-mode');
+        
+        dessinerRadarAstres({}, 0);
+        initGlobe3D();
+        
+        initialiserWorkerAstronomie();
+        
+        await synchroniserHeureAtomique();
+        setInterval(verifierEtRecalibrerHeure, 5 * 60 * 1000);
+
+        await chargerFluxLiveJPL();
+        await chargerEtParserWMM();
+        
+        appliquerCoordonneesManuelles(true);
+
         envoyerDemandeCalculWorker();
-    }
-});
 
-// Événement de chargement complet
-window.addEventListener('load', async () => {
-    document.getElementById('html-root').classList.add('day-mode');
-    
-    dessinerRadarAstres({}, 0);
-    initGlobe3D();
-    
-    // Initialisation du Worker
-    initialiserWorkerAstronomie();
-    
-    // Synchronisation horaire initiale
-    await synchroniserHeureAtomique();
-    setInterval(verifierEtRecalibrerHeure, 5 * 60 * 1000);
+        setInterval(envoyerDemandeCalculWorker, 1000);
 
-    // Chargement des fichiers externes
-    await chargerFluxLiveJPL();
-    await chargerEtParserWMM();
-    
-    // Application explicite des coordonnées topocentriques
-    appliquerCoordonneesManuelles(true);
-
-    // Premier calcul immédiat (élimine les "--" au démarrage)
-    envoyerDemandeCalculWorker();
-
-    // Boucle de rafraîchissement d'une seconde
-    setInterval(envoyerDemandeCalculWorker, 1000);
-
-    ecrireLog("SYSTEMA SENTINELA v18.7 prêt et synchronisé.");
-});
+        ecrireLog("SYSTEMA SENTINELA v18.8 prêt et synchronisé.");
+    });
+</script>
 </body>
 </html>
-     
+
+  
