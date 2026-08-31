@@ -62,14 +62,14 @@ jobs:
           path: de440s.bsp
           key: de440s-bsp-v1
 
-      - name: Download DE440s Kernel (Avec miroir de secours)
+      - name: Download DE440s Kernel
         run: |
           if [ ! -f "de440s.bsp" ] || [ $(wc -c < de440s.bsp) -lt 10000000 ]; then
-            echo "Téléchargement du noyau DE440s depuis la NASA..."
-            curl -sSL --connect-timeout 15 --retry 3 -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || \
-            curl -sSL --connect-timeout 15 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
+            echo "Téléchargement du noyau DE440s..."
+            curl -sSL --connect-timeout 20 --retry 3 -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || \
+            curl -sSL --connect-timeout 20 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
           fi
-          test -s de440s.bsp || (echo "[ERREUR CRITIQUE] Impossible de télécharger de440s.bsp" && exit 1)
+          test -s de440s.bsp || (echo "[ERREUR CRITIQUE] Impossible d'obtenir de440s.bsp" && exit 1)
 
       - name: Run DE440s Topocentric Extractor
         env:
