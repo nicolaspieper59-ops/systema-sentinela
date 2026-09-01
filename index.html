@@ -217,13 +217,11 @@
     let globeScene, globeCamera, globeRenderer, curseurPositionMesh;
     let isDragging = false, lastX = 0, lastY = 0;
 
-    // Correctif Réfraction Atmosphérique (Formule de Bennett ajustée avec humidité relative)
     function calculerRefractionMeteoDeg(altDeg, T_C, H_pct, P_hPa) {
         if (altDeg < -1.5) return 0.0;
         const deg2rad = Math.PI / 180.0;
         const refStdArcMin = 1.0 / Math.tan((altDeg + (7.31 / (altDeg + 4.4))) * deg2rad);
         
-        // Pression de vapeur d'eau approchée (formule de Magnus-Tetens) pour impact hygrométrique fin
         const pVapeurEaux = (H_pct / 100.0) * 6.1078 * Math.pow(10, (7.5 * T_C) / (237.3 + T_C));
         const pTotaleCorrigee = P_hPa - (0.378 * pVapeurEaux);
 
@@ -234,7 +232,6 @@
         return Math.max(0, refAjustee / 60.0);
     }
 
-    // Console optimisée (Évite la destruction totale du DOM via innerHTML +=)
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
         if (!consoleEl) return;
@@ -245,7 +242,6 @@
         consoleEl.appendChild(line);
         consoleEl.scrollTop = consoleEl.scrollHeight;
 
-        // Limite l'historique à 100 lignes max pour préserver la mémoire mobile
         while (consoleEl.children.length > 100) {
             consoleEl.removeChild(consoleEl.firstChild);
         }
@@ -255,7 +251,6 @@
         return Date.now() + decalageTempsAtomiqueMs;
     }
 
-    // Formateur de Temps Solaire Vrai (TSV - Conforme JPL 34)
     function formaterHeureTSV(timestampUtc, lonDeg, eqTempsMin = 0) {
         if (!timestampUtc || isNaN(timestampUtc)) return "--:--:--";
         const date = new Date(timestampUtc);
@@ -298,33 +293,8 @@
                 synchroReussie = true;
 
                 document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
-                ecrireLog(`Synchro atomique réussie via ${new URL(serveur.url).hostname} (Offset : ${decalageTempsAtomiqueMs > 0 ? '+' : ''}${Math.round(decalageTempsAtomiqueMs)} ms).`);
+                ecrireLog(`Synchro atomique réussie (Offset : ${Math.round(decalageTempsAtomiqueMs)} ms).`);
                 break;
-            } catch (e) {}
-        }
-
-        if (!synchroReussie) {
-            try {
-                const t0 = performance.now();
-                const reponse = await fetch(window.location.href, { method: 'HEAD', cache: 'no-store' });
-                const t1 = performance.now();
-                const headerDate = reponse.headers.get('date');
-
-                if (headerDate) {
-                    const tempsServeurMs = new Date(headerDate).getTime();
-                    if (!isNaN(tempsServeurMs)) {
-                        const rtt = (t1 - t0) / 2;
-                        const offsetCalcule = (tempsServeurMs + rtt) - Date.now();
-                        
-                        if (Math.abs(offsetCalcule) < 60000) {
-                            decalageTempsAtomiqueMs = offsetCalcule;
-                            localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
-                            synchroReussie = true;
-                            document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
-                            ecrireLog(`Synchro HTTP Date appliquée (Offset : ${Math.round(decalageTempsAtomiqueMs)} ms).`);
-                        }
-                    }
-                }
             } catch (e) {}
         }
 
@@ -379,7 +349,7 @@
             document.getElementById('val-cap-net').innerText = "--°";
             document.getElementById('val-baro-statut').innerText = "DÉSACTIVÉ";
             document.getElementById('val-baro-statut').style.color = "var(--amber)";
-            ecrireLog("GPS, IMU et Baromètre complètement désactivés.");
+            ecrireLog("GPS, IMU et Baromètre désactivés.");
         } else {
             capteursActifs = true;
             if (btn) {
@@ -505,17 +475,14 @@
                     calculerCapViaQuaternion(q[0], q[1], q[2], q[3]);
                 });
                 sensorIMU.start();
-                ecrireLog("IMU : Sensor API actif (Quaternions 60 Hz).");
+                ecrireLog("IMU : Sensor API actif.");
                 return;
-            } catch (err) {
-                ecrireLog("Sensor API indisponible : bascule sur Fallback Quaternion.");
-            }
+            } catch (err) {}
         }
 
         eventNameIMU = 'deviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation';
         listenerIMU = (e) => {
             if (!capteursActifs) return;
-
             if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
                 mettreAJourCapBrut(e.webkitCompassHeading, true);
                 return;
@@ -565,7 +532,6 @@
                     meteoActive.pressionBaro = pression;
                 });
                 instanceBarometre.observe({ sampleInterval: 1000 });
-                ecrireLog("Capteur barométrique actif.");
             } catch (e) {
                 elBaro.innerText = "1013.25 hPa (STD)";
             }
@@ -588,7 +554,7 @@
         } catch (e) {
             document.getElementById('lbl-jpl-status').innerText = "REPLI ANALYTIQUE";
             document.getElementById('lbl-jpl-status').style.color = "var(--rose)";
-            ecrireLog(`Flux JPL indisponible. Mode analytique actif.`);
+            ecrireLog(`Flux JPL indisponible.`);
         }
     }
 
@@ -605,11 +571,9 @@
         const payload = data.data || data.payload || data;
 
         const metricsSol = payload.solarMetrics || data.solarMetrics;
-        if (metricsSol) {
-            mettreAJourMetricsSolaires(metricsSol);
-        }
+        if (metricsSol) mettreAJourMetricsSolaires(metricsSol);
 
-        const rawAstres = payload.bodies || payload.astres || payload.results || (payload.soleil || payload.sun ? payload : null);
+        const rawAstres = payload.bodies || payload.astres || payload.results;
         if (rawAstres && typeof rawAstres === 'object') {
             derniersResultatsAstres = rawAstres;
             mettreAJourTableauEtTrier(derniersResultatsAstres);
@@ -618,8 +582,8 @@
 
         const tempsJpl = payload.tempsJpl || data.tempsJpl;
         if (tempsJpl || payload.gastDeg !== undefined) {
-            const gast = tempsJpl?.gastDeg ?? payload.gastDeg ?? data.gast ?? 0;
-            const lst = tempsJpl?.lstDeg ?? payload.lstDeg ?? data.lst ?? 0;
+            const gast = tempsJpl?.gastDeg ?? payload.gastDeg ?? 0;
+            const lst = tempsJpl?.lstDeg ?? payload.lstDeg ?? 0;
             document.getElementById('val-gast').innerText = `${gast.toFixed(2)}° / ${lst.toFixed(2)}°`;
         }
 
@@ -634,9 +598,7 @@
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
         astroWorker = new Worker('worker_astronomie.js');
-        
         astroWorker.onmessage = traiterMessageWorker;
-        
         astroWorker.onerror = (err) => {
             document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
             document.getElementById('lbl-worker-status').style.color = "var(--rose)";
@@ -648,11 +610,11 @@
 
     function mettreAJourMetricsSolaires(m) {
         if (!m) return;
-        currentEqTempsMin = m.eqTempsMin ?? m.equationOfTime ?? m.eqTemps ?? 0;
+        currentEqTempsMin = m.eqTempsMin ?? 0;
         document.getElementById('val-eq-temps').innerText = `${currentEqTempsMin >= 0 ? '+' : ''}${currentEqTempsMin.toFixed(2)} min`;
-        document.getElementById('val-excentricite').innerText = (m.excentricite ?? m.eccentricity ?? 0).toFixed(6);
-        document.getElementById('val-obliquite').innerText = `${(m.obliquite ?? m.obliquity ?? 0).toFixed(4)}°`;
-        document.getElementById('val-long-solaire').innerText = `${(m.longitudeSolaire ?? m.solarLongitude ?? 0).toFixed(2)}°`;
+        document.getElementById('val-excentricite').innerText = (m.excentricite ?? 0).toFixed(6);
+        document.getElementById('val-obliquite').innerText = `${(m.obliquite ?? 0).toFixed(4)}°`;
+        document.getElementById('val-long-solaire').innerText = `${(m.longitudeSolaire ?? 0).toFixed(2)}°`;
         if (m.tsm) document.getElementById('val-tsm').innerText = m.tsm;
         if (m.tsv) document.getElementById('val-tsv').innerText = m.tsv;
     }
@@ -663,41 +625,35 @@
 
         let entries = Object.entries(results).filter(([k, v]) => {
             if (typeof v !== 'object' || v === null) return false;
-            return (v.elevation !== undefined || v.elevationGeometrique !== undefined || v.alt !== undefined || v.altitude !== undefined || v.el !== undefined);
+            return (v.elevation !== undefined || v.elevationGeometrique !== undefined);
         });
         
         if (entries.length === 0) return;
 
         entries.sort((a, b) => {
-            const getEl = obj => obj.elevation ?? obj.elevationGeometrique ?? obj.alt ?? obj.altitude ?? -999;
-            const elA = getEl(a[1]);
-            const elB = getEl(b[1]);
-            return (elB >= 0 ? 1 : 0) - (elA >= 0 ? 1 : 0) || elB - elA;
+            const getEl = obj => obj.elevation ?? obj.elevationGeometrique ?? -999;
+            return (getEl(b[1]) >= 0 ? 1 : 0) - (getEl(a[1]) >= 0 ? 1 : 0) || getEl(b[1]) - getEl(a[1]);
         });
 
         tbody.innerHTML = '';
         entries.forEach(([astre, data]) => {
             const row = document.createElement('tr');
             
-            const elGeo = data.elevationGeometrique ?? data.elevation ?? data.alt ?? data.altitude ?? 0;
+            const elGeo = data.elevationGeometrique ?? data.elevation ?? 0;
             const refractionDeg = calculerRefractionMeteoDeg(elGeo, meteoActive.temperatureC, meteoActive.humiditePct, meteoActive.pressionBaro);
             const elApparente = elGeo + refractionDeg;
 
-            const azimuth = data.azimuth ?? data.azimut ?? data.az ?? 0;
-            const distance = data.distanceKm ?? data.distance ?? data.dist ?? 0;
+            const azimuth = data.azimuth ?? 0;
+            const distance = data.distanceKm ?? 0;
             const isVisible = elApparente >= 0;
             
-            const riseTime = data.riseUtcMs ?? data.rise ?? data.lever;
-            const transitTime = data.transitUtcMs ?? data.transit ?? data.culmination;
-            const setTime = data.setUtcMs ?? data.set ?? data.coucher;
-
-            const leverTSV = riseTime ? formaterHeureTSV(riseTime, stationActive.lon, currentEqTempsMin) : "--:--:--";
-            const culmTSV = transitTime ? formaterHeureTSV(transitTime, stationActive.lon, currentEqTempsMin) : "--:--:--";
-            const coucherTSV = setTime ? formaterHeureTSV(setTime, stationActive.lon, currentEqTempsMin) : "--:--:--";
+            const leverTSV = data.riseUtcMs ? formaterHeureTSV(data.riseUtcMs, stationActive.lon, currentEqTempsMin) : "--:--:--";
+            const culmTSV = data.transitUtcMs ? formaterHeureTSV(data.transitUtcMs, stationActive.lon, currentEqTempsMin) : "--:--:--";
+            const coucherTSV = data.setUtcMs ? formaterHeureTSV(data.setUtcMs, stationActive.lon, currentEqTempsMin) : "--:--:--";
 
             row.className = isVisible ? 'visible-row' : 'hidden-row';
             row.innerHTML = `
-                <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--text-main)'}; text-transform:uppercase; font-weight:bold;">${astre}</td>
+                <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--text-main)'}; font-weight:bold;">${astre.toUpperCase()}</td>
                 <td>${elApparente.toFixed(2)}°</td>
                 <td>${azimuth.toFixed(2)}°</td>
                 <td>${Math.round(distance).toLocaleString('fr-FR')} km</td>
@@ -710,7 +666,6 @@
         });
     }
 
-    // Normalisation ECEF WGS84 avec Altitude strictement gérée en mètres
     function appliquerCoordonneesManuelles(silencieux = false) {
         const lat = parseFloat(document.getElementById('input-lat').value.replace(',', '.'));
         const lon = parseFloat(document.getElementById('input-lon').value.replace(',', '.'));
@@ -726,7 +681,6 @@
         const lambda = lon * (Math.PI / 180.0);
         const sinPhi = Math.sin(phi);
         const cosPhi = Math.cos(phi);
-        
         const N = a / Math.sqrt(1.0 - e2 * sinPhi * sinPhi);
 
         const X_km = ((N + altM) * cosPhi * Math.cos(lambda)) / 1000.0;
@@ -748,14 +702,10 @@
     async function chargerEtParserWMM() {
         try {
             const reponse = await fetch('./WMM2025.COF');
-            if (!reponse.ok) throw new Error(`Fichier WMM2025.COF introuvable (HTTP ${reponse.status})`);
+            if (!reponse.ok) throw new Error(`Fichier WMM2025.COF introuvable`);
             const texte = await reponse.text();
-            if (astroWorker) {
-                astroWorker.postMessage({ type: 'INIT_WMM', cofText: texte });
-            }
-        } catch (e) {
-            ecrireLog(`[WMM ERROR] ${e.message}`);
-        }
+            if (astroWorker) astroWorker.postMessage({ type: 'INIT_WMM', cofText: texte });
+        } catch (e) {}
     }
 
     function dessinerRadarAstres(astresData, cap = 0) {
@@ -804,10 +754,10 @@
         if (astresData) {
             for (const [astre, data] of Object.entries(astresData)) {
                 if (typeof data !== 'object' || data === null) continue;
-                const el = data.elevation ?? data.elevationGeometrique ?? data.alt ?? data.altitude ?? -1;
+                const el = data.elevation ?? data.elevationGeometrique ?? -1;
                 if (el < 0) continue;
 
-                const azRad = (data.azimuth || data.azimut || 0) * Math.PI / 180.0;
+                const azRad = (data.azimuth ?? 0) * Math.PI / 180.0;
                 const r = maxRadius * (1 - (el / 90.0));
                 const x = cx + r * Math.sin(azRad);
                 const y = cy - r * Math.cos(azRad);
@@ -872,8 +822,6 @@
             isDragging = false;
             window.removeEventListener('mousemove', onPointerMove);
             window.removeEventListener('mouseup', onPointerUp);
-            window.removeEventListener('touchmove', onPointerMove);
-            window.removeEventListener('touchend', onPointerUp);
         };
 
         const onPointerDown = (e) => {
@@ -883,8 +831,6 @@
 
             window.addEventListener('mousemove', onPointerMove);
             window.addEventListener('mouseup', onPointerUp);
-            window.addEventListener('touchmove', onPointerMove, { passive: true });
-            window.addEventListener('touchend', onPointerUp);
         };
 
         container.addEventListener('mousedown', onPointerDown);
@@ -931,19 +877,11 @@
         });
     }
 
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-            verifierEtRecalibrerHeure();
-            envoyerDemandeCalculWorker();
-        }
-    });
-
     window.addEventListener('load', async () => {
         document.getElementById('html-root').classList.add('day-mode');
         
         dessinerRadarAstres({}, 0);
         initGlobe3D();
-        
         initialiserWorkerAstronomie();
         
         await synchroniserHeureAtomique();
@@ -953,9 +891,7 @@
         await chargerEtParserWMM();
         
         appliquerCoordonneesManuelles(true);
-
         envoyerDemandeCalculWorker();
-
         setInterval(envoyerDemandeCalculWorker, 1000);
 
         ecrireLog("SYSTEMA SENTINELA v18.8 prêt et synchronisé.");
@@ -963,5 +899,4 @@
 </script>
 </body>
 </html>
-
-  
+        
