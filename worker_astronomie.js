@@ -34,7 +34,6 @@ self.onmessage = function (e) {
 
     // 2. Initialisation ou traitement WMM (si requis)
     if (data.type === 'INIT_WMM') {
-        // Traitement WMM optionnel géré ici si besoin
         self.postMessage({ type: 'WMM_READY', wmm: { declination: 2.45, inclination: 61.15 } });
         return;
     }
@@ -68,14 +67,13 @@ self.onmessage = function (e) {
             for (const [astre, matricePositions] of Object.entries(dataset)) {
                 if (!Array.isArray(matricePositions) || matricePositions.length === 0) continue;
 
-                // Récupération directe du vecteur ECEF topocentrique en mètres (indexé par minute)
                 const posXYZ = matricePositions[indexMinute] || matricePositions[0];
                 const x = posXYZ[0], y = posXYZ[1], z = posXYZ[2];
 
                 // Appel de la fonction native C++ compilée en WebAssembly
                 Module._calculerDepuisECEF(
                     x, y, z,
-                    coordsStation.lat, coordsStation.lon, coordsStation.alt * 1000.0, // Conversion alt en mètres
+                    coordsStation.lat, coordsStation.lon, coordsStation.alt * 1000.0,
                     0.0, // eraRad
                     meteo.temperatureC, meteo.pressionBaro,
                     0.0, // magnitude apparente
@@ -83,7 +81,7 @@ self.onmessage = function (e) {
                     ptrResultGlobal
                 );
 
-                // Lecture directe et performante depuis le Heap WebAssembly
+                // Lecture directe depuis le Heap WebAssembly
                 const azim          = Module.HEAPF64[ptrResultGlobal / 8];
                 const elevGeom      = Module.HEAPF64[(ptrResultGlobal + 8) / 8];
                 const elevRefractee = Module.HEAPF64[(ptrResultGlobal + 16) / 8];
