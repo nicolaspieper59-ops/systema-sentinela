@@ -247,8 +247,19 @@
         }
     }
 
-    function obtenirTimestampUTCExact() {
-        return Date.now() + decalageTempsAtomiqueMs;
+    let baseTempsAtomiqueMs = null;
+let basePerformanceNow = null;
+
+function initialiserAncrageTemporel(tempsAtomiqueRecu) {
+    baseTempsAtomiqueMs = tempsAtomiqueRecu;
+    basePerformanceNow = performance.now();
+}
+
+function obtenirTimestampUTCExact() {
+    if (baseTempsAtomiqueMs === null || basePerformanceNow === null) {
+        return Date.now();
+    }
+    return baseTempsAtomiqueMs + (performance.now() - basePerformanceNow);
     }
 
     function formaterHeureTSV(timestampUtc, lonDeg, eqTempsMin = 0) {
