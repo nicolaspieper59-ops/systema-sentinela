@@ -186,13 +186,39 @@
 
 <script>
     let modeJourActif = true;
-    let rawOffset = parseFloat(localStorage.getItem('sentinela_offset') || '0');
-    if (Math.abs(rawOffset) > 60000) {
-        localStorage.removeItem('sentinela_offset');
-        rawOffset = 0;
-    }
-    let decalageTempsAtomiqueMs = rawOffset;
+    
+    // --- KERNEL TEMPOREL SOUVERAIN (ÉLIMINATION DE DATE.NOW() DANS LA BOUCLE) ---
+    let baseTempsAtomiqueMs = null;
+    let basePerformanceNow = null;
+    let decalageTempsAtomiqueMs = parseFloat(localStorage.getItem('sentinela_offset') || '0');
     const SEUIL_DERIVE_MAX_MS = 1.0;
+
+    // Restauration de l'ancre hors-ligne persistante
+    const savedAtomTime = parseFloat(localStorage.getItem('sentinela_atom_time') || '0');
+    const savedPerfTime = parseFloat(localStorage.getItem('sentinela_perf_time') || '0');
+    if (savedAtomTime > 0 && savedPerfTime > 0) {
+        const deltaEcouleFermeture = performance.now() - savedPerfTime;
+        baseTempsAtomiqueMs = savedAtomTime + deltaEcouleFermeture;
+        basePerformanceNow = performance.now();
+    }
+
+    function initialiserAncrageTemporel(tempsAtomiqueRecu) {
+        baseTempsAtomiqueMs = tempsAtomiqueRecu;
+        basePerformanceNow = performance.now();
+        localStorage.setItem('sentinela_atom_time', tempsAtomiqueRecu.toString());
+        localStorage.setItem('sentinela_perf_time', basePerformanceNow.toString());
+    }
+
+    function obtenirTimestampUTCExact() {
+        if (baseTempsAtomiqueMs === null || basePerformanceNow === null) {
+            // Repli sécurisé strictement contraint si aucune synchro réseau initiale
+            return Date.now() + decalageTempsAtomiqueMs;
+        }
+        // Évolution strictement monotone basée sur performance.now() (insensible au changement d'année/heure OS)
+        const deltaEcoule = performance.now() - basePerformanceNow;
+        return baseTempsAtomiqueMs + deltaEcoule;
+    }
+    // -------------------------------------------------------------------------
 
     let stationActive = { lat: 43.2843, lon: 5.3585, altMeters: 10.0, nom: 'STATION INITIALE' };
     let meteoActive = { temperatureC: 15.0, humiditePct: 50.0, pressionBaro: 1013.25 };
@@ -247,21 +273,6 @@
         }
     }
 
-    let baseTempsAtomiqueMs = null;
-let basePerformanceNow = null;
-
-function initialiserAncrageTemporel(tempsAtomiqueRecu) {
-    baseTempsAtomiqueMs = tempsAtomiqueRecu;
-    basePerformanceNow = performance.now();
-}
-
-function obtenirTimestampUTCExact() {
-    if (baseTempsAtomiqueMs === null || basePerformanceNow === null) {
-        return Date.now();
-    }
-    return baseTempsAtomiqueMs + (performance.now() - basePerformanceNow);
-    }
-
     function formaterHeureTSV(timestampUtc, lonDeg, eqTempsMin = 0) {
         if (!timestampUtc || isNaN(timestampUtc)) return "--:--:--";
         const date = new Date(timestampUtc);
@@ -299,28 +310,34 @@ function obtenirTimestampUTCExact() {
                 if (isNaN(tempsServeurMs)) continue;
 
                 const rtt = (t1 - t0) / 2;
-                decalageTempsAtomiqueMs = (tempsServeurMs + rtt) - Date.now();
+                const tempsExactReel = tempsServeurMs + rtt;
+                
+                initialiserAncrageTemporel(tempsExactReel);
+                
+                decalageTempsAtomiqueMs = tempsExactReel - Date.now();
                 localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
                 synchroReussie = true;
 
                 document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
-                ecrireLog(`Synchro atomique réussie (Offset : ${Math.round(decalageTempsAtomiqueMs)} ms).`);
+                ecrireLog(`Synchro atomique réussie (Ancre établie).`);
                 break;
             } catch (e) {}
         }
 
         if (!synchroReussie) {
-            document.getElementById('lbl-epoch').style.color = decalageTempsAtomiqueMs !== 0 ? "var(--amber)" : "var(--rose)";
-            ecrireLog(`Conservation de l'offset mémorisé (${Math.round(decalageTempsAtomiqueMs)} ms).`);
+            document.getElementById('lbl-epoch').style.color = baseTempsAtomiqueMs !== null ? "var(--amber)" : "var(--rose)";
+            ecrireLog(`Conservation de l'ancre temporelle locale/hors-ligne.`);
         }
     }
 
     async function verifierEtRecalibrerHeure() {
-        const ancienOffset = decalageTempsAtomiqueMs;
+        const ancienneAncre = baseTempsAtomiqueMs;
         await synchroniserHeureAtomique();
-        const delta = Math.abs(decalageTempsAtomiqueMs - ancienOffset);
-        if (delta >= SEUIL_DERIVE_MAX_MS) {
-            ecrireLog(`Dérive détectée (${delta.toFixed(3)} ms) : recalibrage appliqué.`);
+        if (baseTempsAtomiqueMs !== null && ancienneAncre !== null) {
+            const delta = Math.abs(baseTempsAtomiqueMs - ancienneAncre);
+            if (delta >= SEUIL_DERIVE_MAX_MS) {
+                ecrireLog(`Dérive temporelle détectée (${delta.toFixed(3)} ms) : recalibrage appliqué.`);
+            }
         }
     }
 
@@ -910,4 +927,3 @@ function obtenirTimestampUTCExact() {
 </script>
 </body>
 </html>
-        
