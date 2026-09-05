@@ -63,12 +63,12 @@ jobs:
 
       - name: Build WebAssembly Module
         run: |
-          emcc src/astro_engine.cpp -O3 -std=c++17 \
+          emcc src/wasm_astronomie.cpp -O3 -std=c++17 \
             -s WASM=1 \
             -s FORCE_FILESYSTEM=1 \
             -s ALLOW_MEMORY_GROWTH=1 \
-            -s EXPORTED_FUNCTIONS='["_calculerDepuisECEF","_calculerPositionTopocentrique","_malloc","_free"]' \
-            -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
+            -s EXPORTED_FUNCTIONS='["_calculerParametresSiderauxEtSolaires","_calculerDepuisECEF","_calculerPositionTopocentrique","_malloc","_free"]' \
+            -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","HEAPF64","HEAP32"]' \
             -o wasm_astronomie.js
 
       - name: Run DE440s Topocentric Extractor
