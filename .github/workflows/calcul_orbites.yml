@@ -1,4 +1,4 @@
-name: Dynamic Ephemeris Generation
+name: Dynamic Ephemeris Generation & WASM Compilation
 
 on:
   schedule:
@@ -22,7 +22,7 @@ permissions:
   contents: write
 
 jobs:
-  generate-ephemeris:
+  build-and-generate:
     runs-on: ubuntu-latest
 
     steps:
@@ -51,14 +51,29 @@ jobs:
         run: |
           python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT"
 
-      - name: Validate Generated JSON
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+
+      - name: Compile C++ to WebAssembly
+        run: |
+          emcc src/wasm_astronomie.cpp -o wasm_astronomie.js \
+            -s WASM=1 \
+            -s EXPORTED_FUNCTIONS='["_calculerParametresSiderauxEtSolaires", "_calculerDepuisECEF", "_calculerPositionTopocentrique", "_malloc", "_free"]' \
+            -s EXPORTED_RUNTIME_METHODS='["HEAPF64", "HEAP32"]' \
+            -s ALLOW_MEMORY_GROWTH=1 \
+            -O3
+
+      - name: Validate Generated Files
         run: |
           test -s flux_live.json || (echo "[ERROR] flux_live.json est vide !" && exit 1)
+          test -s wasm_astronomie.wasm || (echo "[ERROR] wasm_astronomie.wasm est vide !" && exit 1)
 
-      - name: Commit and Push flux_live.json
+      - name: Commit and Push Assets
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
-          git add flux_live.json
-          git commit -m "Update DE440s topocentric flux_live.json [skip ci]" || exit 0
+          git add flux_live.json wasm_astronomie.js wasm_astronomie.wasm
+          git commit -m "Auto-update DE440s flux and compile WebAssembly binaries [skip ci]" || exit 0
           git push
