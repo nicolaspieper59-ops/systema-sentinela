@@ -587,7 +587,6 @@
     }
 
     function traiterMessageWorker(e) {
-    function traiterMessageWorker(e) {
     const data = e.data;
     if (!data) return;
 
@@ -601,30 +600,81 @@
         const payload = data.payload;
         if (!payload) return;
 
-        // 1. Mise à jour des métriques solaires & écliptiques
         if (payload.solarMetrics) {
-            const sm = payload.solarMetrics;
-            const elEq = document.getElementById('val-eq-temps');
-            if (elEq) elEq.innerText = `${sm.eqTempsMin >= 0 ? '+' : ''}${sm.eqTempsMin.toFixed(2)} min`;
-            
-            const elOb = document.getElementById('val-obliquite');
-            if (elOb) elOb.innerText = `${sm.obliquite.toFixed(4)}°`;
+            mettreAJourMetricsSolaires(payload.solarMetrics);
         }
 
-        // 2. Mise à jour du Temps Sidéral (GAST / LST)
         if (payload.tempsJpl) {
             const tp = payload.tempsJpl;
             const elGast = document.getElementById('val-gast');
-            if (elGast) elGast.innerText = `${tp.gastDeg.toFixed(2)}°`;
-            
-            const elLst = document.getElementById('val-lst');
-            if (elLst) elLst.innerText = `${tp.lstDeg.toFixed(2)}°`;
+            if (elGast) elGast.innerText = `${tp.gastDeg.toFixed(2)}° / ${tp.lstDeg.toFixed(2)}°`;
         }
 
-        // 3. Mise à jour du tableau des corps célestes
         if (payload.bodies) {
+            derniersResultatsAstres = payload.bodies;
             mettreAJourTableauAstres(payload.bodies);
+            dessinerRadarAstres(payload.bodies, capVraiActuel);
         }
+    }
+}
+
+function initialiserWorkerAstronomie() {
+    if (typeof Worker === 'undefined') return;
+    astroWorker = new Worker('worker_astronomie.js');
+    astroWorker.onmessage = traiterMessageWorker;
+    astroWorker.onerror = (err) => {
+        document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
+        document.getElementById('lbl-worker-status').style.color = "var(--rose)";
+        ecrireLog(`ERREUR WORKER : ${err.message}`);
+    };
+
+    if (matriceJplLive) astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+}
+
+function mettreAJourMetricsSolaires(m) {
+    if (!m) return;
+    currentEqTempsMin = m.eqTempsMin ?? 0;
+    document.getElementById('val-eq-temps').innerText = `${currentEqTempsMin >= 0 ? '+' : ''}${currentEqTempsMin.toFixed(2)} min`;
+    document.getElementById('val-excentricite').innerText = (m.excentricite ?? 0).toFixed(6);
+    document.getElementById('val-obliquite').innerText = `${(m.obliquite ?? 0).toFixed(4)}°`;
+    document.getElementById('val-long-solaire').innerText = `${(m.longitudeSolaire ?? 0).toFixed(2)}°`;
+    if (m.tsm) document.getElementById('val-tsm').innerText = m.tsm;
+    if (m.tsv) document.getElementById('val-tsv').innerText = m.tsv;
+}
+
+function mettreAJourTableauAstres(bodiesData) {
+    const tbody = document.getElementById('table-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+
+    for (const [nomAstre, data] of Object.entries(bodiesData)) {
+        const tr = document.createElement('tr');
+        tr.id = `row-${nomAstre.toLowerCase()}`;
+
+        const statutsVisibilite = ["Invisible", "Œil nu", "Jumelles", "Télescope"];
+        const etatTexte = statutsVisibilite[data.visibiliteCode] ?? "Inconnu";
+
+        const elev = data.elevationGeometrique !== undefined ? data.elevationGeometrique.toFixed(2) + '°' : '--';
+        const azim = data.azimuth !== undefined ? data.azimuth.toFixed(2) + '°' : '--';
+        const dist = data.distanceKm !== undefined ? Math.round(data.distanceKm).toLocaleString() + ' km' : '--';
+        
+        const lever = data.leverTsv || '--';
+        const culmination = data.culminationTsv || '--';
+        const coucher = data.coucherTsv || '--';
+
+        tr.innerHTML = `
+            <td><strong>${nomAstre.toUpperCase()}</strong></td>
+            <td class="col-elevation">${elev}</td>
+            <td class="col-azimuth">${azim}</td>
+            <td class="col-distance">${dist}</td>
+            <td>${lever}</td>
+            <td>${culmination}</td>
+            <td>${coucher}</td>
+            <td><span class="col-etat" data-code="${data.visibiliteCode}">${etatTexte}</span></td>
+        `;
+
+        tbody.appendChild(tr);
     }
 }
 
