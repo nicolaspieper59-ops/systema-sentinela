@@ -131,11 +131,23 @@ self.onmessage = function (e) {
                 };
             }
 
+            // Exemple de récupération ou calcul des données annexes dans le Worker
             self.postMessage({
                 type: 'RESULTS',
                 payload: {
                     timestamp: timestampCible,
-                    solarMetrics: data.solarMetrics || { eqTempsMin: 0.0, excentricite: 0.0167, obliquite: 23.4392, longitudeSolaire: 0.0 },
+                    solarMetrics: {
+                        eqTempsMin: Module.HEAPF64[(ptrResultGlobal + 72) / 8] || 0.0, // Exemple d'offset mémoire WASM
+                        excentricite: 0.016708,
+                        obliquite: 23.4393,
+                        longitudeSolaire: 0.0,
+                        tsm: "10:31:06", // À dynamiser selon le calcul UTC/Longitude
+                        tsv: "10:28:42"
+                    },
+                    tempsJpl: {
+                        gastDeg: Module.HEAPF64[(ptrResultGlobal + 80) / 8] || 0.0,
+                        lstDeg: Module.HEAPF64[(ptrResultGlobal + 88) / 8] || 0.0
+                    },
                     bodies: resultsCalc,
                     wmm: { declination: 2.45, inclination: 61.15 }
                 }
