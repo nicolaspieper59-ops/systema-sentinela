@@ -734,44 +734,7 @@ function mettreAJourTableauAstres(bodiesData) {
         const tbody = document.getElementById('table-body');
         if (!tbody || !results) return;
 
-function mettreAJourTableauAstres(bodiesData) {
-    const tbody = document.getElementById('table-body');
-    if (!tbody) return;
 
-    // Vandalisme propre du contenu existant pour recréer / actualiser les lignes
-    tbody.innerHTML = '';
-
-    for (const [nomAstre, data] of Object.entries(bodiesData)) {
-        const tr = document.createElement('tr');
-        tr.id = `row-${nomAstre.toLowerCase()}`;
-
-        // Libellé de l'état de visibilité basé sur le code retourné par le WASM
-        const statutsVisibilite = ["Invisible", "Œil nu", "Jumelles", "Télescope"];
-        const etatTexte = statutsVisibilite[data.visibiliteCode] ?? "Inconnu";
-
-        // Formatage sécurisé des données numériques et des heures TSV
-        const elev = data.elevationGeometrique !== undefined ? data.elevationGeometrique.toFixed(2) + '°' : '--';
-        const azim = data.azimuth !== undefined ? data.azimuth.toFixed(2) + '°' : '--';
-        const dist = data.distanceKm !== undefined ? Math.round(data.distanceKm).toLocaleString() + ' km' : '--';
-        
-        const lever = data.leverTsv || '--';
-        const culmination = data.culminationTsv || '--';
-        const coucher = data.coucherTsv || '--';
-
-        tr.innerHTML = `
-            <td><strong>${nomAstre.toUpperCase()}</strong></td>
-            <td>${elev}</td>
-            <td>${azim}</td>
-            <td>${dist}</td>
-            <td>${lever}</td>
-            <td>${culmination}</td>
-            <td>${coucher}</td>
-            <td><span class="etat-badge code-${data.visibiliteCode}">${etatTexte}</span></td>
-        `;
-
-        tbody.appendChild(tr);
-    }
-    }
 
     function appliquerCoordonneesManuelles(silencieux = false) {
         const lat = parseFloat(document.getElementById('input-lat').value.replace(',', '.'));
