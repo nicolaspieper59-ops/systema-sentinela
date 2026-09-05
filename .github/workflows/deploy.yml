@@ -61,7 +61,7 @@ jobs:
           fi
           test -s de440s.bsp || (echo "[ERREUR CRITIQUE] Fichier de440s.bsp invalide" && exit 1)
 
-      - - name: Build WebAssembly Module
+      - name: Build WebAssembly Module
         run: |
           emcc src/astro_engine.cpp -O3 -std=c++17 \
             -s WASM=1 \
