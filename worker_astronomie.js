@@ -6,13 +6,13 @@ importScripts('wasm_astronomie.js');
 
 let wasmReady = false;
 let ptrResultGlobal = 0;
-const cacheEphemerides = new Map();
-let wmmCoefficients = null;
+let ptrSystemMetrics = 0; // Pointeur dédié aux métriques globales
 
 if (typeof Module !== 'undefined') {
     Module.onRuntimeInitialized = function() {
         wasmReady = true;
-        ptrResultGlobal = Module._malloc(80);
+        ptrResultGlobal = Module._malloc(80);   // Pour les calculs par astre (AstroResult)
+        ptrSystemMetrics = Module._malloc(40);  // Pour GAST, LST, Équation du temps (5 doubles)
         self.postMessage({ type: 'READY', status: 'WASM_READY' });
     };
 } else {
@@ -131,27 +131,30 @@ self.onmessage = function (e) {
                 };
             }
 
-            // Exemple de récupération ou calcul des données annexes dans le Worker
-            self.postMessage({
-                type: 'RESULTS',
-                payload: {
-                    timestamp: timestampCible,
-                    solarMetrics: {
-                        eqTempsMin: Module.HEAPF64[(ptrResultGlobal + 72) / 8] || 0.0, // Exemple d'offset mémoire WASM
-                        excentricite: 0.016708,
-                        obliquite: 23.4393,
-                        longitudeSolaire: 0.0,
-                        tsm: "10:31:06", // À dynamiser selon le calcul UTC/Longitude
-                        tsv: "10:28:42"
-                    },
-                    tempsJpl: {
-                        gastDeg: Module.HEAPF64[(ptrResultGlobal + 80) / 8] || 0.0,
-                        lstDeg: Module.HEAPF64[(ptrResultGlobal + 88) / 8] || 0.0
-                    },
-                    bodies: resultsCalc,
-                    wmm: { declination: 2.45, inclination: 61.15 }
-                }
-            });
+            // Appel de la fonction globale avec son pointeur dédié
+if (typeof Module._calculerParametresSiderauxEtSolaires === 'function') {
+    Module._calculerParametresSiderauxEtSolaires(timestampCible, coordsStation.lon, ptrSystemMetrics);
+}
+
+self.postMessage({
+    type: 'RESULTS',
+    payload: {
+        timestamp: timestampCible,
+        solarMetrics: {
+            eqTempsMin: ptrSystemMetrics ? Module.HEAPF64[ptrSystemMetrics / 8] : 0.0,
+            obliquite: ptrSystemMetrics ? Module.HEAPF64[(ptrSystemMetrics + 8) / 8] : 23.4393,
+            longitudeSolaire: ptrSystemMetrics ? Module.HEAPF64[(ptrSystemMetrics + 16) / 8] : 0.0,
+            tsm: "10:31:06",
+            tsv: "10:28:42"
+        },
+        tempsJpl: {
+            gastDeg: ptrSystemMetrics ? Module.HEAPF64[(ptrSystemMetrics + 24) / 8] : 0.0,
+            lstDeg: ptrSystemMetrics ? Module.HEAPF64[(ptrSystemMetrics + 32) / 8] : 0.0
+        },
+        bodies: resultsCalc,
+        wmm: { declination: 2.45, inclination: 61.15 }
+    }
+});
 
         } catch (err) {
             self.postMessage({ type: 'ERROR', message: `[WORKER EXCEPTION] ${err.message}` });
