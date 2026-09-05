@@ -587,41 +587,46 @@
     }
 
     function traiterMessageWorker(e) {
-        const data = e.data;
-        if (!data) return;
+    function traiterMessageWorker(e) {
+    const data = e.data;
+    if (!data) return;
 
-        if (data.type === 'READY' || data.type === 'WMM_READY' || data.status === 'WASM_READY') {
-            document.getElementById('lbl-worker-status').innerText = "ACTIF";
-            document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-            return;
-        } 
+    if (data.type === 'READY') {
+        const statutEl = document.getElementById('lbl-worker-status');
+        if (statutEl) statutEl.innerText = "ACTIF";
+        return;
+    }
 
-        const payload = data.data || data.payload || data;
+    if (data.type === 'RESULTS') {
+        const payload = data.payload;
+        if (!payload) return;
 
-        const metricsSol = payload.solarMetrics || data.solarMetrics;
-        if (metricsSol) mettreAJourMetricsSolaires(metricsSol);
-
-        const rawAstres = payload.bodies || payload.astres || payload.results;
-        if (rawAstres && typeof rawAstres === 'object') {
-            derniersResultatsAstres = rawAstres;
-            mettreAJourTableauEtTrier(derniersResultatsAstres);
-            dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
+        // 1. Mise à jour des métriques solaires & écliptiques
+        if (payload.solarMetrics) {
+            const sm = payload.solarMetrics;
+            const elEq = document.getElementById('val-eq-temps');
+            if (elEq) elEq.innerText = `${sm.eqTempsMin >= 0 ? '+' : ''}${sm.eqTempsMin.toFixed(2)} min`;
+            
+            const elOb = document.getElementById('val-obliquite');
+            if (elOb) elOb.innerText = `${sm.obliquite.toFixed(4)}°`;
         }
 
-        const tempsJpl = payload.tempsJpl || data.tempsJpl;
-        if (tempsJpl || payload.gastDeg !== undefined) {
-            const gast = tempsJpl?.gastDeg ?? payload.gastDeg ?? 0;
-            const lst = tempsJpl?.lstDeg ?? payload.lstDeg ?? 0;
-            document.getElementById('val-gast').innerText = `${gast.toFixed(2)}° / ${lst.toFixed(2)}°`;
+        // 2. Mise à jour du Temps Sidéral (GAST / LST)
+        if (payload.tempsJpl) {
+            const tp = payload.tempsJpl;
+            const elGast = document.getElementById('val-gast');
+            if (elGast) elGast.innerText = `${tp.gastDeg.toFixed(2)}°`;
+            
+            const elLst = document.getElementById('val-lst');
+            if (elLst) elLst.innerText = `${tp.lstDeg.toFixed(2)}°`;
         }
 
-        const wmmData = payload.wmm || data.wmm;
-        if (wmmData) {
-            resultatWmmCourant = wmmData;
-            document.getElementById('val-dec-wmm').innerText = `${wmmData.declination >= 0 ? '+' : ''}${wmmData.declination.toFixed(2)}°`;
-            document.getElementById('val-inc-wmm').innerText = `${wmmData.inclination >= 0 ? '+' : ''}${wmmData.inclination.toFixed(2)}°`;
+        // 3. Mise à jour du tableau des corps célestes
+        if (payload.bodies) {
+            mettreAJourTableauAstres(payload.bodies);
         }
     }
+}
 
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
@@ -647,51 +652,75 @@
         if (m.tsv) document.getElementById('val-tsv').innerText = m.tsv;
     }
 
+    function mettreAJourTableauAstres(bodiesData) {
+    for (const [nomAstre, data] of Object.entries(bodiesData)) {
+        // Recherche de la ligne correspondante dans le tableau via un attribut data-astre ou un ID unique
+        const ligne = document.getElementById(`row-${nomAstre.toLowerCase()}`);
+        if (!ligne) continue;
+
+        // Mise à jour de l'élévation apparente (ou géométrique selon vos classes CSS)
+        const elElev = ligne.querySelector('.col-elevation');
+        if (elElev) elElev.innerText = `${data.elevationGeometrique.toFixed(2)}°`;
+
+        // Mise à jour de l'azimut
+        const elAzim = ligne.querySelector('.col-azimuth');
+        if (elAzim) elAzim.innerText = `${data.azimuth.toFixed(2)}°`;
+
+        // Mise à jour de la distance en km
+        const elDist = ligne.querySelector('.col-distance');
+        if (elDist) elDist.innerText = `${Math.round(data.distanceKm).toLocaleString()} km`;
+
+        // Mise à jour de l'état de visibilité ou codes spécifiques
+        const elEtat = ligne.querySelector('.col-etat');
+        if (elEtat) {
+            const statuts = ["Invisible", "Œil nu", "Jumelles", "Télescope"];
+            elEtat.innerText = statuts[data.visibiliteCode] || "Inconnu";
+            elEtat.setAttribute('data-code', data.visibiliteCode);
+        }
+    }
+    }
+
     function mettreAJourTableauEtTrier(results) {
         const tbody = document.getElementById('table-body');
         if (!tbody || !results) return;
 
-        let entries = Object.entries(results).filter(([k, v]) => {
-            if (typeof v !== 'object' || v === null) return false;
-            return (v.elevation !== undefined || v.elevationGeometrique !== undefined);
-        });
+function mettreAJourTableauAstres(bodiesData) {
+    const tbody = document.getElementById('table-body');
+    if (!tbody) return;
+
+    // Vandalisme propre du contenu existant pour recréer / actualiser les lignes
+    tbody.innerHTML = '';
+
+    for (const [nomAstre, data] of Object.entries(bodiesData)) {
+        const tr = document.createElement('tr');
+        tr.id = `row-${nomAstre.toLowerCase()}`;
+
+        // Libellé de l'état de visibilité basé sur le code retourné par le WASM
+        const statutsVisibilite = ["Invisible", "Œil nu", "Jumelles", "Télescope"];
+        const etatTexte = statutsVisibilite[data.visibiliteCode] ?? "Inconnu";
+
+        // Formatage sécurisé des données numériques et des heures TSV
+        const elev = data.elevationGeometrique !== undefined ? data.elevationGeometrique.toFixed(2) + '°' : '--';
+        const azim = data.azimuth !== undefined ? data.azimuth.toFixed(2) + '°' : '--';
+        const dist = data.distanceKm !== undefined ? Math.round(data.distanceKm).toLocaleString() + ' km' : '--';
         
-        if (entries.length === 0) return;
+        const lever = data.leverTsv || '--';
+        const culmination = data.culminationTsv || '--';
+        const coucher = data.coucherTsv || '--';
 
-        entries.sort((a, b) => {
-            const getEl = obj => obj.elevation ?? obj.elevationGeometrique ?? -999;
-            return (getEl(b[1]) >= 0 ? 1 : 0) - (getEl(a[1]) >= 0 ? 1 : 0) || getEl(b[1]) - getEl(a[1]);
-        });
+        tr.innerHTML = `
+            <td><strong>${nomAstre.toUpperCase()}</strong></td>
+            <td>${elev}</td>
+            <td>${azim}</td>
+            <td>${dist}</td>
+            <td>${lever}</td>
+            <td>${culmination}</td>
+            <td>${coucher}</td>
+            <td><span class="etat-badge code-${data.visibiliteCode}">${etatTexte}</span></td>
+        `;
 
-        tbody.innerHTML = '';
-        entries.forEach(([astre, data]) => {
-            const row = document.createElement('tr');
-            
-            const elGeo = data.elevationGeometrique ?? data.elevation ?? 0;
-            const refractionDeg = calculerRefractionMeteoDeg(elGeo, meteoActive.temperatureC, meteoActive.humiditePct, meteoActive.pressionBaro);
-            const elApparente = elGeo + refractionDeg;
-
-            const azimuth = data.azimuth ?? 0;
-            const distance = data.distanceKm ?? 0;
-            const isVisible = elApparente >= 0;
-            
-            const leverTSV = data.riseUtcMs ? formaterHeureTSV(data.riseUtcMs, stationActive.lon, currentEqTempsMin) : "--:--:--";
-            const culmTSV = data.transitUtcMs ? formaterHeureTSV(data.transitUtcMs, stationActive.lon, currentEqTempsMin) : "--:--:--";
-            const coucherTSV = data.setUtcMs ? formaterHeureTSV(data.setUtcMs, stationActive.lon, currentEqTempsMin) : "--:--:--";
-
-            row.className = isVisible ? 'visible-row' : 'hidden-row';
-            row.innerHTML = `
-                <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--text-main)'}; font-weight:bold;">${astre.toUpperCase()}</td>
-                <td>${elApparente.toFixed(2)}°</td>
-                <td>${azimuth.toFixed(2)}°</td>
-                <td>${Math.round(distance).toLocaleString('fr-FR')} km</td>
-                <td class="time-tsm">${leverTSV}</td>
-                <td class="time-tsm">${culmTSV}</td>
-                <td class="time-tsm">${coucherTSV}</td>
-                <td style="color:${isVisible ? 'var(--neon-green)' : 'var(--rose)'}; font-weight:bold;">${isVisible ? 'VISIBLE' : 'SOUS L\'HORIZON'}</td>
-            `;
-            tbody.appendChild(row);
-        });
+        tbody.appendChild(tr);
+    }
     }
 
     function appliquerCoordonneesManuelles(silencieux = false) {
