@@ -840,16 +840,12 @@
             elEpoch.innerText = dateUtc.toISOString().substring(11, 19) + " UTC";
         }
 
-        astroWorker.postMessage({
-            type: 'COMPUTE',
-            timestampUtc: timestampExact,
-            coords: {
-                lat: stationActive.lat,
-                lon: stationActive.lon,
-                alt: stationActive.altMeters / 1000.0 
-            },
-            meteo: meteoActive
-        });
+        worker.postMessage({
+    type: 'COMPUTE',
+    timestampUtc: Date.now() / 1000,
+    coords: { lat: 43.2843, lon: 5.3585, alt: 10 },
+    meteo: { tempC: 20, presHpa: 1013 }
+});
     }
 
     window.addEventListener('load', async () => {
