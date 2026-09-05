@@ -1,14 +1,15 @@
-// Importation du script de liaison Emscripten généré par le build
-importScripts('wasm_astronomie.js');
+var Module = {
+    onRuntimeInitialized: function() {
+        wasmReady = true;
+        console.log("[Worker] Module WebAssembly chargé et prêt.");
+        postMessage({ type: 'READY' });
+    }
+};
 
 let wasmReady = false;
 
-// Initialisation du Module WASM
-Module.onRuntimeInitialized = function() {
-    wasmReady = true;
-    console.log("[Worker] Module WebAssembly chargé et prêt.");
-    postMessage({ type: 'READY' });
-};
+// 2. Importation du script de liaison Emscripten ensuite
+importScripts('wasm_astronomie.js');
 
 // Écoute des messages venant du thread principal (UI)
 onmessage = function(e) {
