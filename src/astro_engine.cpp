@@ -31,6 +31,71 @@ inline double normaliserDegres(double deg) {
     return res < 0.0 ? res + 360.0 : res;
 }
 
+struct SystemMetrics {
+    double eqTempsMin;     // Équation du temps en minutes
+    double obliquiteDeg;   // Obliquité de l'écliptique (degrés)
+    double longSolaireDeg; // Longitude solaire vraie (degrés)
+    double gastDeg;        // Greenwich Apparent Sidereal Time (degrés)
+    double lstDeg;         // Local Sidereal Time (degrés)
+};
+
+extern "C" {
+
+/**
+ * Calcul analytique des paramètres sidéraux et solaires globaux
+ */
+EMSCRIPTEN_KEEPALIVE
+void calculerParametresSiderauxEtSolaires(
+    double timestampUtc,
+    double lonDeg,
+    SystemMetrics* metrics
+) {
+    // 1. Conversion du Timestamp Unix (secondes) en Jour Julien (JD)
+    double jd = (timestampUtc / 86400.0) + 2440587.5;
+    double d = jd - 2451545.0; // J2000.0 epoch offset
+    double T = d / 36525.0;    // Siècles juliens
+
+    // 2. Longitude moyenne et anomalie moyenne du Soleil
+    double L0 = std::fmod(280.46646 + 36000.76983 * T, 360.0);
+    if (L0 < 0.0) L0 += 360.0;
+
+    double M = std::fmod(357.52911 + 35999.05029 * T, 360.0);
+    if (M < 0.0) M += 360.0;
+    double MRad = M * DEG2RAD;
+
+    // 3. Longitude écliptique vraie du Soleil
+    double C = (1.914602 - 0.004817 * T) * std::sin(MRad) + (0.019993 - 0.000101 * T) * std::sin(2.0 * MRad);
+    double sunLong = L0 + C;
+    metrics->longSolaireDeg = normaliserDegres(sunLong);
+
+    // 4. Obliquité de l'écliptique
+    double eps = 23.4392911 - 0.0130042 * T;
+    metrics->obliquiteDeg = eps;
+
+    // 5. Ascension droite apparente du Soleil pour l'Équation du Temps
+    double sunLongRad = metrics->longSolaireDeg * DEG2RAD;
+    double epsRad = eps * DEG2RAD;
+    double y = std::cos(epsRad) * std::sin(sunLongRad);
+    double x = std::cos(sunLongRad);
+    double alpha = std::atan2(y, x) * RAD2DEG;
+    alpha = normaliserDegres(alpha);
+
+    // Équation du temps en minutes (1 degré = 4 minutes de temps)
+    double eqTempsDeg = L0 - alpha;
+    if (eqTempsDeg > 180.0) eqTempsDeg -= 360.0;
+    if (eqTempsDeg < -180.0) eqTempsDeg += 360.0;
+    metrics->eqTempsMin = eqTempsDeg * 4.0;
+
+    // 6. Greenwich Mean Sidereal Time (GMST) en degrés
+    double gmst = 280.46061837 + 360.98564736629 * d + 0.000387933 * T * T - (T * T * T) / 38710000.0;
+    gmst = normaliserDegres(gmst);
+    metrics->gastDeg = gmst; // Approximation standard GAST ~ GMST
+
+    // 7. Local Sidereal Time (LST)
+    metrics->lstDeg = normaliserDegres(metrics->gastDeg + lonDeg);
+}
+
+}
 /**
  * Calcul topocentrique direct à partir d'un vecteur géocentrique ECEF/ITRS (en mètres)
  */
