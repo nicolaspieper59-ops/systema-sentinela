@@ -8,6 +8,10 @@ let wasmReady = false;
 let ptrResultGlobal = 0;
 let ptrSystemMetrics = 0; // Pointeur dédié aux métriques globales
 
+// Variables globales initiales manquantes dans le script d'origine
+let wmmCoefficients = [];
+let cacheEphemerides = new Map();
+
 if (typeof Module !== 'undefined') {
     Module.onRuntimeInitialized = function() {
         wasmReady = true;
@@ -132,29 +136,29 @@ self.onmessage = function (e) {
             }
 
             // Appel de la fonction globale avec son pointeur dédié
-if (typeof Module._calculerParametresSiderauxEtSolaires === 'function') {
-    Module._calculerParametresSiderauxEtSolaires(timestampCible, coordsStation.lon, ptrSystemMetrics);
-}
+            if (typeof Module._calculerParametresSiderauxEtSolaires === 'function') {
+                Module._calculerParametresSiderauxEtSolaires(timestampCible, coordsStation.lon, ptrSystemMetrics);
+            }
 
-self.postMessage({
-    type: 'RESULTS',
-    payload: {
-        timestamp: timestampCible,
-        solarMetrics: {
-            eqTempsMin: ptrSystemMetrics ? Module.HEAPF64[ptrSystemMetrics / 8] : 0.0,
-            obliquite: ptrSystemMetrics ? Module.HEAPF64[(ptrSystemMetrics + 8) / 8] : 23.4393,
-            longitudeSolaire: ptrSystemMetrics ? Module.HEAPF64[(ptrSystemMetrics + 16) / 8] : 0.0,
-            tsm: "10:31:06",
-            tsv: "10:28:42"
-        },
-        tempsJpl: {
-            gastDeg: ptrSystemMetrics ? Module.HEAPF64[(ptrSystemMetrics + 24) / 8] : 0.0,
-            lstDeg: ptrSystemMetrics ? Module.HEAPF64[(ptrSystemMetrics + 32) / 8] : 0.0
-        },
-        bodies: resultsCalc,
-        wmm: { declination: 2.45, inclination: 61.15 }
-    }
-});
+            self.postMessage({
+                type: 'RESULTS',
+                payload: {
+                    timestamp: timestampCible,
+                    solarMetrics: {
+                        eqTempsMin: ptrSystemMetrics ? Module.HEAPF64[ptrSystemMetrics / 8] : 0.0,
+                        obliquite: ptrSystemMetrics ? Module.HEAPF64[(ptrSystemMetrics + 8) / 8] : 23.4393,
+                        longitudeSolaire: ptrSystemMetrics ? Module.HEAPF64[(ptrSystemMetrics + 16) / 8] : 0.0,
+                        tsm: "10:31:06",
+                        tsv: "10:28:42"
+                    },
+                    tempsJpl: {
+                        gastDeg: ptrSystemMetrics ? Module.HEAPF64[(ptrSystemMetrics + 24) / 8] : 0.0,
+                        lstDeg: ptrSystemMetrics ? Module.HEAPF64[(ptrSystemMetrics + 32) / 8] : 0.0
+                    },
+                    bodies: resultsCalc,
+                    wmm: { declination: 2.45, inclination: 61.15 }
+                }
+            });
 
         } catch (err) {
             self.postMessage({ type: 'ERROR', message: `[WORKER EXCEPTION] ${err.message}` });
