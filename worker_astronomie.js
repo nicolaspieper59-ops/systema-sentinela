@@ -84,15 +84,15 @@ onmessage = function(e) {
                 // Détection dynamique : si c'est la lune, les coordonnées du flux sont en km
                 const estLune = nomAstre.toLowerCase().includes('lune') || nomAstre.toLowerCase().includes('moon');
 
-                Module._calculerPositionTopocentrique(
-                    xEcl, yEcl, zEcl,
-                    lat, lon, alt,
-                    eraRad,
-                    tempC, presHpa,
-                    magnitude,
-                    estLune,
-                    resultPtr
-                );
+                Module._calculerDepuisECEF(
+    xEcl, yEcl, zEcl,
+    lat, lon, alt,
+    eraRad,
+    tempC, presHpa,
+    magnitude,
+    true, // estVecteurTopocentrique = true (car déjà en ECEF/ITRS depuis Python)
+    resultPtr
+);
 
                 const resOffset = resultPtr / 8;
                 bodiesResults[nomAstre] = {
