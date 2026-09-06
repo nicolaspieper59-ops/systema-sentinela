@@ -8,7 +8,7 @@ var Module = {
 
 let wasmReady = false;
 
-// 2. Importation du script de liaison Emscripten ensuite
+// Importation du script de liaison Emscripten
 importScripts('wasm_astronomie.js');
 
 // Écoute des messages venant du thread principal (UI)
@@ -22,19 +22,18 @@ onmessage = function(e) {
             return;
         }
 
+        let metricsPtr = 0;
+        let resultPtr = 0;
+
         try {
             const { timestampUtc, coords, meteo } = data;
             const { lat, lon, alt } = coords;
             const { tempC, presHpa } = meteo || { tempC: 15.0, presHpa: 1013.25 };
 
-            // 1. Allocation mémoire pour les métriques solaires (SystemMetrics struct)
-            // SystemMetrics contient 5 doubles (5 * 8 octets = 40 octets)
-            const metricsPtr = Module._malloc(40);
-            
-            // Appel de la fonction C++ pour l'équation du temps et les paramètres sidéraux
+            // 1. Allocation mémoire pour SystemMetrics (40 octets)
+            metricsPtr = Module._malloc(40);
             Module._calculerParametresSiderauxEtSolaires(timestampUtc, lon, metricsPtr);
 
-            // Lecture des résultats depuis la mémoire HEAPF64 du WebAssembly
             const offset = metricsPtr / 8;
             const solarMetrics = {
                 eqTempsMin: Module.HEAPF64[offset + 0],
@@ -44,12 +43,8 @@ onmessage = function(e) {
                 lstDeg: Module.HEAPF64[offset + 4]
             };
 
-            Module._free(metricsPtr);
-
-            // 2. Exemple de calcul topocentrique pour le Soleil (ou un astre fictif de test)
-            // AstroResult contient plusieurs doubles et un int (taille ~ 64 octets)
-            // 2. Allocation mémoire pour AstroResult (72 octets en raison du padding C++)
-            const resultPtr = Module._malloc(72);
+            // 2. Allocation mémoire pour AstroResult (72 octets avec le padding C++)
+            resultPtr = Module._malloc(72);
             
             const xEcl = 0.5, yEcl = 0.7, zEcl = 0.0; 
             const eraRad = 0.0;
@@ -69,20 +64,8 @@ onmessage = function(e) {
                 elevation: Module.HEAPF64[resOffset + 1], // elevGeom (offset 8)
                 azimuth: Module.HEAPF64[resOffset + 0],   // azim (offset 0)
                 distanceKm: Module.HEAPF64[resOffset + 5] * 149597870700.0 / 1000.0, // distUA (offset 40)
-                visibilite: Module.HEAP32[(resultPtr + 64) / 4] > 0 // visibiliteCode (offset 64 exact)
+                visibilite: Module.HEAP32[(resultPtr + 64) / 4] > 0 // visibiliteCode (offset 64)
             };
-
-            Module._free(resultPtr);
-
-            const resOffset = resultPtr / 8;
-            const solResult = {
-                elevation: Module.HEAPF64[resOffset + 1], // elevGeom
-                azimuth: Module.HEAPF64[resOffset + 0],   // azim
-                distanceKm: Module.HEAPF64[resOffset + 5] * 149597870700.0 / 1000.0,
-                visibilite: Module.HEAP32[(resultPtr + 48) / 4] > 0 // visibiliteCode
-            };
-
-            Module._free(resultPtr);
 
             // 3. Envoi du paquet de résultats consolidé vers le thread UI
             postMessage({
@@ -93,8 +76,8 @@ onmessage = function(e) {
                         eqTempsMin: solarMetrics.eqTempsMin,
                         obliquite: solarMetrics.obliquiteDeg,
                         longitudeSolaire: solarMetrics.longSolaireDeg,
-                        tsm: "12:00:00", // À affiner selon votre logique horaire
-                        tsv: "12:04:12"  // Calculé via l'équation du temps
+                        tsm: "12:00:00",
+                        tsv: "12:04:12"
                     },
                     tempsJpl: {
                         gastDeg: solarMetrics.gastDeg,
@@ -108,6 +91,10 @@ onmessage = function(e) {
 
         } catch (err) {
             postMessage({ type: 'ERROR', message: err.toString() });
+        } finally {
+            // S'assure que la mémoire allouée est toujours libérée proprement
+            if (metricsPtr) Module._free(metricsPtr);
+            if (resultPtr) Module._free(resultPtr);
         }
     }
 };
