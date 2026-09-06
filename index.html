@@ -206,7 +206,8 @@
 
     function obtenirTimestampUTCExact() {
         if (baseTempsAtomiqueMs === null || basePerformanceNow === null) {
-            return Date.now() + decalageTempsAtomiqueMs;
+            ecrireLog("ATTENTION : Heure atomique non disponible, attente de synchro...");
+            return null; // Bloque l'utilisation de l'heure système Android
         }
         const deltaEcoule = performance.now() - basePerformanceNow;
         return baseTempsAtomiqueMs + deltaEcoule;
@@ -238,7 +239,12 @@
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
         if (!consoleEl) return;
-        const timeStr = new Date(obtenirTimestampUTCExact()).toISOString().substring(11, 19);
+        
+        let timeStr = "--:--:--";
+        const ts = obtenirTimestampUTCExact();
+        if (ts !== null) {
+            timeStr = new Date(ts).toISOString().substring(11, 19);
+        }
         
         const line = document.createElement('div');
         line.textContent = `[${timeStr}] ${msg}`;
@@ -287,7 +293,7 @@
 
         if (!synchroReussie) {
             document.getElementById('lbl-epoch').style.color = baseTempsAtomiqueMs !== null ? "var(--amber)" : "var(--rose)";
-            ecrireLog(`Conservation de l'ancre temporelle locale/hors-ligne.`);
+            ecrireLog(`En attente d'une synchronisation réseau valide.`);
         }
     }
 
@@ -373,7 +379,7 @@
         else return 1 * 60 * 1000;
     }
 
-    function calculerDistanceKm(lat1, lon1, lat2, lon2) {
+        function calculerDistanceKm(lat1, lon1, lat2, lon2) {
         const R = 6371.0;
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
@@ -402,7 +408,7 @@
                 elBaro.style.color = "var(--neon-green)";
             }
 
-            horodatageDernierFetchMeteo = obtenirTimestampUTCExact();
+            horodatageDernierFetchMeteo = obtenirTimestampUTCExact() || Date.now();
             derniereLatMeteo = lat;
             derniereLonMeteo = lon;
 
@@ -429,7 +435,8 @@
             appliquerCoordonneesManuelles(true);
 
             const intervalleRequis = determinerIntervalleActualisation(pos.coords.speed);
-            const tempsEcoule = obtenirTimestampUTCExact() - horodatageDernierFetchMeteo;
+            const maintenant = obtenirTimestampUTCExact();
+            const tempsEcoule = maintenant !== null ? maintenant - horodatageDernierFetchMeteo : 0;
 
             let deplacementDepasse = false;
             if (derniereLatMeteo !== null && derniereLonMeteo !== null) {
@@ -547,7 +554,6 @@
         }
     }
 
-    // --- CORRECTION DU WORKER (STRUCTURE UNIFIÉE) ---
     function traiterMessageWorker(e) {
         const data = e.data;
         if (!data) return;
@@ -639,7 +645,6 @@
             tbody.appendChild(tr);
         }
     }
-    // --------------------------------------------------
 
     function appliquerCoordonneesManuelles(silencieux = false) {
         const lat = parseFloat(document.getElementById('input-lat').value.replace(',', '.'));
@@ -829,23 +834,35 @@
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
-        function envoyerDemandeCalculWorker() {
+    function envoyerDemandeCalculWorker() {
         if (!astroWorker) return;
 
         const timestampExact = obtenirTimestampUTCExact();
-        const dateUtc = new Date(timestampExact);
+        if (timestampExact === null) {
+            return; // Stoppe l'envoi si aucune heure atomique n'est disponible
+        }
 
+        const dateUtc = new Date(timestampExact);
         const elEpoch = document.getElementById('lbl-epoch');
         if (elEpoch) {
             elEpoch.innerText = dateUtc.toISOString().substring(11, 19) + " UTC";
         }
 
-        worker.postMessage({
-    type: 'COMPUTE',
-    timestampUtc: Date.now() / 1000,
-    coords: { lat: 43.2843, lon: 5.3585, alt: 10 },
-    meteo: { tempC: 20, presHpa: 1013 }
-});
+        astroWorker.postMessage({
+            type: 'COMPUTE',
+            timestampUtc: timestampExact,
+            coords: {
+                lat: stationActive.lat,
+                lon: stationActive.lon,
+                alt: stationActive.altMeters / 1000.0 
+            },
+            meteo: meteoActive
+        });
+    }
+
+    function lancerBoucleCalculSecurisee() {
+        envoyerDemandeCalculWorker();
+        setTimeout(lancerBoucleCalculSecurisee, 3000); // Flux séquentiel espacé pour éviter la saturation
     }
 
     window.addEventListener('load', async () => {
@@ -862,12 +879,10 @@
         await chargerEtParserWMM();
         
         appliquerCoordonneesManuelles(true);
-        envoyerDemandeCalculWorker();
-        setInterval(envoyerDemandeCalculWorker, 1000);
+        lancerBoucleCalculSecurisee();
 
         ecrireLog("SYSTEMA SENTINELA v18.8 prêt et synchronisé.");
     });
 </script>
 </body>
 </html>
-         
