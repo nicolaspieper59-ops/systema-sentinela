@@ -135,3 +135,12 @@ onmessage = function(e) {
         }
     }
 };
+// Dans worker_astronomie.js, ajoutez l'écouteur :
+if (data.type === 'INIT_WMM') {
+    // Logique de parsing des coefficients WMM2025.COF
+    // Une fois calculé pour la position active :
+    postMessage({
+        type: 'WMM_RESULTS',
+        payload: { declination: valDeclinaison, inclination: valInclinaison }
+    });
+}
