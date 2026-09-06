@@ -61,22 +61,23 @@ onmessage = function(e) {
             resultPtr = Module._malloc(72);
 
             for (const [nomAstre, coordsEcl] of Object.entries(corpsACalculer)) {
-    const xEcl = coordsEcl.x ?? 0.0;
-    const yEcl = coordsEcl.y ?? 0.0;
-    const zEcl = coordsEcl.z ?? 0.0;
-    const magnitude = coordsEcl.mag ?? 0.0;
-    
-    // Détection dynamique : si c'est la lune, les coordonnées du flux sont en km
-    const estLune = nomAstre.toLowerCase().includes('lune') || nomAstre.toLowerCase().includes('moon');
+                const xEcl = coordsEcl.x ?? 0.0;
+                const yEcl = coordsEcl.y ?? 0.0;
+                const zEcl = coordsEcl.z ?? 0.0;
+                const magnitude = coordsEcl.mag ?? 0.0;
+                
+                // Détection dynamique : si c'est la lune, les coordonnées du flux sont en km
+                const estLune = nomAstre.toLowerCase().includes('lune') || nomAstre.toLowerCase().includes('moon');
 
-    Module._calculerPositionTopocentrique(
-        xEcl, yEcl, zEcl,
-        lat, lon, alt,
-        eraRad,
-        tempC, presHpa,
-        magnitude,
-        estLune, // <-- Passage dynamique ici au lieu de 'false' en dur
-        resultPtr
+                Module._calculerPositionTopocentrique(
+                    xEcl, yEcl, zEcl,
+                    lat, lon, alt,
+                    eraRad,
+                    tempC, presHpa,
+                    magnitude,
+                    estLune,
+                    resultPtr
+                ); // <-- Correction ici : fermeture correcte de l'appel C++
 
                 const resOffset = resultPtr / 8;
                 bodiesResults[nomAstre] = {
