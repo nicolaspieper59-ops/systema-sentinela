@@ -257,44 +257,92 @@
     }
 
     async function synchroniserHeureAtomique() {
-        const serveursTemps = [
-            { url: 'https://worldtimeapi.org/api/timezone/Etc/UTC', parse: d => new Date(d.utc_datetime).getTime() },
-            { url: 'https://timeapi.io/api/v1/time/current/zone?timeZone=UTC', parse: d => new Date(d.dateTime || d.currentLocalTime).getTime() }
-        ];
+    let synchroReussie = false;
 
-        let synchroReussie = false;
+    // Tentative 1 : Cloudflare Trace (très rarement bloqué, renvoie un timestamp UNIX précis 'ts=...')
+    try {
+        const t0 = performance.now();
+        const reponse = await fetch('https://cloudflare.com/cdn-cgi/trace', { cache: 'no-store' });
+        const t1 = performance.now();
 
-        for (const serveur of serveursTemps) {
-            try {
-                const t0 = performance.now();
-                const reponse = await fetch(serveur.url, { cache: 'no-store' });
-                const t1 = performance.now();
-
-                if (!reponse.ok) continue;
-
-                const data = await reponse.json();
-                const tempsServeurMs = serveur.parse(data);
-                if (isNaN(tempsServeurMs)) continue;
-
+        if (reponse.ok) {
+            const texte = await reponse.text();
+            const match = texte.match(/ts=([0-9.]+)/);
+            if (match) {
+                const tempsServeurMs = parseFloat(match[1]) * 1000;
                 const rtt = (t1 - t0) / 2;
                 const tempsExactReel = tempsServeurMs + rtt;
                 
                 initialiserAncrageTemporel(tempsExactReel);
-                
                 decalageTempsAtomiqueMs = tempsExactReel - Date.now();
                 localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
                 synchroReussie = true;
 
                 document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
-                ecrireLog(`Synchro atomique réussie.`);
-                break;
-            } catch (e) {}
+                ecrireLog("Synchro atomique Cloudflare réussie.");
+            }
         }
+    } catch (e) {
+        // Ignorer et passer au plan B
+    }
 
-        if (!synchroReussie) {
-            document.getElementById('lbl-epoch').style.color = baseTempsAtomiqueMs !== null ? "var(--amber)" : "var(--rose)";
-            ecrireLog(`En attente d'une synchronisation réseau valide.`);
+    // Tentative 2 : En-tête HTTP Date de GitHub Pages (zéro dépendance externe tierce)
+    if (!synchroReussie) {
+        try {
+            const t0 = performance.now();
+            const reponse = await fetch(window.location.href, { method: 'HEAD', cache: 'no-store' });
+            const t1 = performance.now();
+            
+            const dateHeader = reponse.headers.get('date');
+            if (dateHeader) {
+                const tempsServeurMs = new Date(dateHeader).getTime();
+                if (!isNaN(tempsServeurMs)) {
+                    const rtt = (t1 - t0) / 2;
+                    const tempsExactReel = tempsServeurMs + rtt;
+                    
+                    initialiserAncrageTemporel(tempsExactReel);
+                    decalageTempsAtomiqueMs = tempsExactReel - Date.now();
+                    localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
+                    synchroReussie = true;
+
+                    document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
+                    ecrireLog("Synchro via Header Date (GitHub) réussie.");
+                }
+            }
+        } catch (e) {
+            // Ignorer et passer au cache
         }
+    }
+
+    // Si le réseau échoue entièrement, on s'appuie strictement sur le cache valide
+    if (!synchroReussie) {
+        const cachedAtomTime = parseFloat(localStorage.getItem('sentinela_atom_time') || '0');
+        const cachedPerfTime = parseFloat(localStorage.getItem('sentinela_perf_time') || '0');
+        
+        if (cachedAtomTime > 0 && cachedPerfTime > 0) {
+            const deltaEcouleFermeture = performance.now() - cachedPerfTime;
+            baseTempsAtomiqueMs = cachedAtomTime + deltaEcouleFermeture;
+            basePerformanceNow = performance.now();
+            
+            document.getElementById('lbl-epoch').style.color = "var(--amber)";
+            ecrireLog("Mode hors-ligne : Utilisation du cache de synchronisation.");
+            synchroReussie = true;
+        }
+    }
+
+    if (!synchroReussie) {
+        document.getElementById('lbl-epoch').style.color = "var(--rose)";
+        ecrireLog("ERREUR CRITIQUE : Échec de synchro et aucun cache valide.");
+    }
+}
+
+function obtenirTimestampUTCExact() {
+    if (baseTempsAtomiqueMs === null || basePerformanceNow === null) {
+        ecrireLog("BLOQUÉ : En attente d'une référence temporelle valide (aucun recours système autorisé).");
+        return null; // Strictrion : Empêche l'utilisation de l'horloge locale brute
+    }
+    const deltaEcoule = performance.now() - basePerformanceNow;
+    return baseTempsAtomiqueMs + deltaEcoule;
     }
 
     async function verifierEtRecalibrerHeure() {
