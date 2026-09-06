@@ -625,11 +625,18 @@ function obtenirTimestampUTCExact() {
                 const elGast = document.getElementById('val-gast');
                 if (elGast) elGast.innerText = `${tp.gastDeg.toFixed(2)}° / ${tp.lstDeg.toFixed(2)}°`;
             }
+            
+            if (data.type === 'WMM_RESULTS') {
+    resultatWmmCourant = data.payload;
+    document.getElementById('val-dec-wmm').innerText = `${resultatWmmCourant.declination.toFixed(2)}°`;
+    document.getElementById('val-inc-wmm').innerText = `${resultatWmmCourant.inclination.toFixed(2)}°`;
+            }
 
             if (payload.bodies) {
                 derniersResultatsAstres = payload.bodies;
                 mettreAJourTableauAstres(payload.bodies);
                 dessinerRadarAstres(payload.bodies, capVraiActuel);
+            
             }
         }
     }
@@ -782,6 +789,7 @@ function obtenirTimestampUTCExact() {
         if (astresData) {
             for (const [astre, data] of Object.entries(astresData)) {
                 if (typeof data !== 'object' || data === null) continue;
+                // Remplacer la ligne de récupération de l'élévation dans dessinerRadarAstres :
                 const el = data.elevation ?? data.elevationGeometrique ?? -1;
                 if (el < 0) continue;
 
