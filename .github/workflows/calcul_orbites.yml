@@ -58,7 +58,7 @@ jobs:
 
       - name: Compile C++ to WebAssembly
         run: |
-          emcc src/wasm_astronomie.cpp -o wasm_astronomie.js \
+          emcc src/astro_engine.cpp -o wasm_astronomie.js \
             -s WASM=1 \
             -s EXPORTED_FUNCTIONS='["_calculerParametresSiderauxEtSolaires", "_calculerDepuisECEF", "_calculerPositionTopocentrique", "_malloc", "_free"]' \
             -s EXPORTED_RUNTIME_METHODS='["HEAPF64", "HEAP32"]' \
