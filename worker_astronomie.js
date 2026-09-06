@@ -48,22 +48,31 @@ onmessage = function(e) {
 
             // 2. Exemple de calcul topocentrique pour le Soleil (ou un astre fictif de test)
             // AstroResult contient plusieurs doubles et un int (taille ~ 64 octets)
-            const resultPtr = Module._malloc(64);
+            // 2. Allocation mémoire pour AstroResult (72 octets en raison du padding C++)
+            const resultPtr = Module._malloc(72);
             
-            // Coordonnées écliptiques factices ou issues de votre flux JSON DE440s
-            // (Exemple avec des valeurs par défaut si le flux externe n'est pas encore branché)
             const xEcl = 0.5, yEcl = 0.7, zEcl = 0.0; 
-            const eraRad = 0.0; // Angle de rotation terrestre approximatif
+            const eraRad = 0.0;
 
             Module._calculerPositionTopocentrique(
                 xEcl, yEcl, zEcl,
                 lat, lon, alt,
                 eraRad,
                 tempC, presHpa,
-                -26.74, // Magnitude apparente du Soleil
+                -26.74,
                 false,
                 resultPtr
             );
+
+            const resOffset = resultPtr / 8;
+            const solResult = {
+                elevation: Module.HEAPF64[resOffset + 1], // elevGeom (offset 8)
+                azimuth: Module.HEAPF64[resOffset + 0],   // azim (offset 0)
+                distanceKm: Module.HEAPF64[resOffset + 5] * 149597870700.0 / 1000.0, // distUA (offset 40)
+                visibilite: Module.HEAP32[(resultPtr + 64) / 4] > 0 // visibiliteCode (offset 64 exact)
+            };
+
+            Module._free(resultPtr);
 
             const resOffset = resultPtr / 8;
             const solResult = {
