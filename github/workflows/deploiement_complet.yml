@@ -1,0 +1,95 @@
+name: Pipeline Ephemerides DE440s & Wasm Build
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'dynamic_multiphysics_engine.py'
+  workflow_dispatch:
+    inputs:
+      lat:
+        description: 'Latitude station'
+        required: true
+        default: '43.284356'
+      lon:
+        description: 'Longitude station'
+        required: true
+        default: '5.358507'
+      alt:
+        description: 'Altitude (mètres)'
+        required: true
+        default: '99.31'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Cloner le dépôt
+        uses: actions/checkout@v4
+
+      - name: 🐍 Configurer Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Installer les dépendances Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install skyfield numpy
+
+      - name: ⚙️ Configurer Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.64
+
+      - name: 🛰️ Cache ou Téléchargement du noyau DE440s
+        uses: actions/cache@v4
+        with:
+          path: de440s.bsp
+          key: de440s-bsp-v1
+
+      - name: 📥 Téléchargement de secours DE440s
+        run: |
+          if [ ! -f "de440s.bsp" ] || [ $(wc -c < de440s.bsp) -lt 10000000 ]; then
+            curl -sSL --connect-timeout 20 --retry 3 -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || \
+            curl -sSL --connect-timeout 20 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
+          fi
+          test -s de440s.bsp || (echo "[ERREUR CRITIQUE] Fichier de440s.bsp invalide" && exit 1)
+
+      - name: 🌍 Exécution de l'extracteur DE440s (Soleil, Lune, Planètes)
+        env:
+          LAT: ${{ inputs.lat || vars.STATION_LAT || '43.284356' }}
+          LON: ${{ inputs.lon || vars.STATION_LON || '5.358507' }}
+          ALT: ${{ inputs.alt || vars.STATION_ALT || '99.31' }}
+        run: |
+          python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT"
+
+      - name: 🔨 Compilation C++ vers WebAssembly (Wasm)
+        run: |
+          emcc src/astro_engine.cpp -O3 -std=c++17 \
+            -s WASM=1 \
+            -s FORCE_FILESYSTEM=1 \
+            -s ALLOW_MEMORY_GROWTH=1 \
+            -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_calculerPositionTopocentrique','_malloc','_free']" \
+            -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32']" \
+            -o wasm_astronomie.js
+
+      - name: 🔍 Validation des fichiers générés
+        run: |
+          test -s flux_live.json || (echo "[ERREUR] flux_live.json manquant ou vide" && exit 1)
+          test -s wasm_astronomie.wasm || (echo "[ERREUR] wasm_astronomie.wasm manquant ou vide" && exit 1)
+
+      - name: 🚀 Publication automatique sur GitHub Pages
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Bot"
+          git add flux_live.json wasm_astronomie.js wasm_astronomie.wasm
+          git commit -m "Auto-update DE440s flux (Lune & Planètes) & compile Wasm [skip ci]" || exit 0
+          git push
