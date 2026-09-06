@@ -53,10 +53,25 @@ onmessage = function(e) {
             const eraRad = (solarMetrics.gastDeg % 360.0) * (Math.PI / 180.0);
             const bodiesResults = {};
 
-            // 2. Traitement dynamique de chaque corps présent dans flux_live.json ou repli analytique
-            const corpsACalculer = (matriceJplGlobal && matriceJplGlobal.bodies) ? matriceJplGlobal.bodies : {
-                soleil: { x: 1.0, y: 0.0, z: 0.0, mag: -26.74 }
-            };
+            // 2. Indexation temporelle : extraction de la minute UTC exacte pour le tableau de flux Python
+            const dateActuelle = new Date(timestampUtc);
+            const minutesDepuisMinuit = dateActuelle.getUTCHours() * 60 + dateActuelle.getUTCMinutes();
+            const indexMinute = Math.min(Math.max(0, minutesDepuisMinuit), 1440);
+
+            const sourceDonnees = (matriceJplGlobal && matriceJplGlobal.DATA) ? matriceJplGlobal.DATA : null;
+            const corpsACalculer = {};
+
+            if (sourceDonnees) {
+                for (const [nomAstre, tableauMinutes] of Object.entries(sourceDonnees)) {
+                    if (tableauMinutes && tableauMinutes[indexMinute]) {
+                        const [x, y, z] = tableauMinutes[indexMinute];
+                        corpsACalculer[nomAstre] = { x, y, z, mag: 0.0 };
+                    }
+                }
+            } else {
+                // Mode de repli si flux_live.json n'est pas encore chargé
+                corpsACalculer.soleil = { x: 1.0, y: 0.0, z: 0.0, mag: -26.74 };
+            }
 
             resultPtr = Module._malloc(72);
 
@@ -77,7 +92,7 @@ onmessage = function(e) {
                     magnitude,
                     estLune,
                     resultPtr
-                ); // <-- Correction ici : fermeture correcte de l'appel C++
+                );
 
                 const resOffset = resultPtr / 8;
                 bodiesResults[nomAstre] = {
@@ -85,9 +100,9 @@ onmessage = function(e) {
                     azimuth: Module.HEAPF64[resOffset + 0],
                     distanceKm: Module.HEAPF64[resOffset + 5] * 149597870700.0 / 1000.0,
                     visibiliteCode: Module.HEAP32[(resultPtr + 64) / 4],
-                    leverTsv: coordsEcl.lever || "--:--",
-                    culminationTsv: coordsEcl.culmination || "--:--",
-                    coucherTsv: coordsEcl.coucher || "--:--"
+                    leverTsv: "--:--",
+                    culminationTsv: "--:--",
+                    coucherTsv: "--:--"
                 };
             }
 
