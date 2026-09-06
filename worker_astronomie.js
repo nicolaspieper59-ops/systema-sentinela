@@ -16,11 +16,24 @@ onmessage = function(e) {
     const data = e.data;
     if (!data) return;
 
+    // 1. Mise à jour de la matrice JPL
     if (data.type === 'UPDATE_JPL_MATRIX') {
         matriceJplGlobal = data.matrix;
         return;
     }
 
+    // 2. Initialisation ou traitement WMM (CORRIGÉ : placé à l'intérieur de onmessage)
+    if (data.type === 'INIT_WMM') {
+        // Logique de parsing des coefficients WMM2025.COF (à implémenter ou simuler)
+        // Exemple de retour vers l'UI une fois calculé :
+        postMessage({
+            type: 'WMM_RESULTS',
+            payload: { declination: 2.45, inclination: 61.15 }
+        });
+        return;
+    }
+
+    // 3. Calcul principal des éphémérides
     if (data.type === 'COMPUTE') {
         if (!wasmReady) {
             postMessage({ type: 'ERROR', message: "WASM non initialisé." });
@@ -37,7 +50,7 @@ onmessage = function(e) {
 
             const timestampSec = timestampUtc / 1000.0;
 
-            // 1. Paramètres sidéraux et solaires globaux
+            // Paramètres sidéraux et solaires globaux
             metricsPtr = Module._malloc(40);
             Module._calculerParametresSiderauxEtSolaires(timestampSec, lon, metricsPtr);
 
@@ -53,7 +66,6 @@ onmessage = function(e) {
             const eraRad = (solarMetrics.gastDeg % 360.0) * (Math.PI / 180.0);
             const bodiesResults = {};
 
-            // 2. Indexation temporelle : extraction de la minute UTC exacte pour le tableau de flux Python
             const dateActuelle = new Date(timestampUtc);
             const minutesDepuisMinuit = dateActuelle.getUTCHours() * 60 + dateActuelle.getUTCMinutes();
             const indexMinute = Math.min(Math.max(0, minutesDepuisMinuit), 1440);
@@ -69,7 +81,6 @@ onmessage = function(e) {
                     }
                 }
             } else {
-                // Mode de repli si flux_live.json n'est pas encore chargé
                 corpsACalculer.soleil = { x: 1.0, y: 0.0, z: 0.0, mag: -26.74 };
             }
 
@@ -80,19 +91,16 @@ onmessage = function(e) {
                 const yEcl = coordsEcl.y ?? 0.0;
                 const zEcl = coordsEcl.z ?? 0.0;
                 const magnitude = coordsEcl.mag ?? 0.0;
-                
-                // Détection dynamique : si c'est la lune, les coordonnées du flux sont en km
-                const estLune = nomAstre.toLowerCase().includes('lune') || nomAstre.toLowerCase().includes('moon');
 
                 Module._calculerDepuisECEF(
-    xEcl, yEcl, zEcl,
-    lat, lon, alt,
-    eraRad,
-    tempC, presHpa,
-    magnitude,
-    true, // estVecteurTopocentrique = true (car déjà en ECEF/ITRS depuis Python)
-    resultPtr
-);
+                    xEcl, yEcl, zEcl,
+                    lat, lon, alt,
+                    eraRad,
+                    tempC, presHpa,
+                    magnitude,
+                    true, // Vecteur déjà topocentrique en mètres (depuis Python)
+                    resultPtr
+                );
 
                 const resOffset = resultPtr / 8;
                 bodiesResults[nomAstre] = {
@@ -106,7 +114,6 @@ onmessage = function(e) {
                 };
             }
 
-            // 3. Envoi du paquet consolidé vers l'UI
             postMessage({
                 type: 'RESULTS',
                 payload: {
@@ -135,12 +142,3 @@ onmessage = function(e) {
         }
     }
 };
-// Dans worker_astronomie.js, ajoutez l'écouteur :
-if (data.type === 'INIT_WMM') {
-    // Logique de parsing des coefficients WMM2025.COF
-    // Une fois calculé pour la position active :
-    postMessage({
-        type: 'WMM_RESULTS',
-        payload: { declination: valDeclinaison, inclination: valInclinaison }
-    });
-}
