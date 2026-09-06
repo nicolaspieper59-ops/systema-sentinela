@@ -12,7 +12,6 @@ let matriceJplGlobal = null;
 // Importation du script de liaison Emscripten
 importScripts('wasm_astronomie.js');
 
-// Écoute des messages venant du thread principal (UI)
 onmessage = function(e) {
     const data = e.data;
     if (!data) return;
@@ -36,10 +35,9 @@ onmessage = function(e) {
             const { lat, lon, alt } = coords;
             const { tempC, presHpa } = meteo || { tempC: 15.0, presHpa: 1013.25 };
 
-            // Conversion du Timestamp Unix (secondes) à partir de la valeur reçue en millisecondes
             const timestampSec = timestampUtc / 1000.0;
 
-            // 1. Allocation mémoire pour SystemMetrics (40 octets)
+            // 1. Paramètres sidéraux et solaires globaux
             metricsPtr = Module._malloc(40);
             Module._calculerParametresSiderauxEtSolaires(timestampSec, lon, metricsPtr);
 
@@ -52,39 +50,43 @@ onmessage = function(e) {
                 lstDeg: Module.HEAPF64[offset + 4]
             };
 
-            // 2. Calcul topocentrique pour le Soleil (exemple dynamique basé sur la longitude solaire)
-            resultPtr = Module._malloc(72);
-            
-            // Approximation géocentrique écliptique du Soleil basée sur sa longitude vraie
-            const sunRad = solarMetrics.longSolaireDeg * (Math.PI / 180.0);
-            const distUASoleil = 1.00014 - 0.01671 * Math.cos(sunRad); // Approximation excentricité
-            const xEcl = distUASoleil * Math.cos(sunRad);
-            const yEcl = distUASoleil * Math.sin(sunRad);
-            const zEcl = 0.0; 
-
-            // Calcul de l'Angle de Rotation Terrestre (ERA) approximatif depuis le GAST
             const eraRad = (solarMetrics.gastDeg % 360.0) * (Math.PI / 180.0);
+            const bodiesResults = {};
 
-            Module._calculerPositionTopocentrique(
-                xEcl, yEcl, zEcl,
-                lat, lon, alt,
-                eraRad,
-                tempC, presHpa,
-                -26.74, // Magnitude apparente du Soleil
-                false,
-                resultPtr
-            );
-
-            const resOffset = resultPtr / 8;
-            const solResult = {
-                elevationGeometrique: Module.HEAPF64[resOffset + 1],
-                azimuth: Module.HEAPF64[resOffset + 0],
-                distanceKm: Module.HEAPF64[resOffset + 5] * 149597870700.0 / 1000.0,
-                visibiliteCode: Module.HEAP32[(resultPtr + 64) / 4],
-                leverTsv: "06:42",
-                culminationTsv: "13:15",
-                coucherTsv: "19:48"
+            // 2. Traitement dynamique de chaque corps présent dans flux_live.json ou repli analytique
+            const corpsACalculer = (matriceJplGlobal && matriceJplGlobal.bodies) ? matriceJplGlobal.bodies : {
+                soleil: { x: 1.0, y: 0.0, z: 0.0, mag: -26.74 }
             };
+
+            resultPtr = Module._malloc(72);
+
+            for (const [nomAstre, coordsEcl] of Object.entries(corpsACalculer)) {
+                const xEcl = coordsEcl.x ?? 0.0;
+                const yEcl = coordsEcl.y ?? 0.0;
+                const zEcl = coordsEcl.z ?? 0.0;
+                const magnitude = coordsEcl.mag ?? 0.0;
+
+                Module._calculerPositionTopocentrique(
+                    xEcl, yEcl, zEcl,
+                    lat, lon, alt,
+                    eraRad,
+                    tempC, presHpa,
+                    magnitude,
+                    false,
+                    resultPtr
+                );
+
+                const resOffset = resultPtr / 8;
+                bodiesResults[nomAstre] = {
+                    elevationGeometrique: Module.HEAPF64[resOffset + 1],
+                    azimuth: Module.HEAPF64[resOffset + 0],
+                    distanceKm: Module.HEAPF64[resOffset + 5] * 149597870700.0 / 1000.0,
+                    visibiliteCode: Module.HEAP32[(resultPtr + 64) / 4],
+                    leverTsv: coordsEcl.lever || "--:--",
+                    culminationTsv: coordsEcl.culmination || "--:--",
+                    coucherTsv: coordsEcl.coucher || "--:--"
+                };
+            }
 
             // 3. Envoi du paquet consolidé vers l'UI
             postMessage({
@@ -103,9 +105,7 @@ onmessage = function(e) {
                         gastDeg: solarMetrics.gastDeg,
                         lstDeg: solarMetrics.lstDeg
                     },
-                    bodies: {
-                        soleil: solResult
-                    }
+                    bodies: bodiesResults
                 }
             });
 
