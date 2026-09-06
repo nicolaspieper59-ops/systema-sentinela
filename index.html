@@ -834,31 +834,33 @@
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
-    function envoyerDemandeCalculWorker() {
-        if (!astroWorker) return;
 
-        const timestampExact = obtenirTimestampUTCExact();
-        if (timestampExact === null) {
-            return; // Stoppe l'envoi si aucune heure atomique n'est disponible
-        }
+function envoyerDemandeCalculWorker() {
+    if (!astroWorker) return;
 
-        const dateUtc = new Date(timestampExact);
-        const elEpoch = document.getElementById('lbl-epoch');
-        if (elEpoch) {
-            elEpoch.innerText = dateUtc.toISOString().substring(11, 19) + " UTC";
-        }
+    const timestampExact = obtenirTimestampUTCExact();
+    if (timestampExact === null) return;
 
-        astroWorker.postMessage({
-            type: 'COMPUTE',
-            timestampUtc: timestampExact,
-            coords: {
-                lat: stationActive.lat,
-                lon: stationActive.lon,
-                alt: stationActive.altMeters / 1000.0 
-            },
-            meteo: meteoActive
-        });
+    const dateUtc = new Date(timestampExact);
+    const elEpoch = document.getElementById('lbl-epoch');
+    if (elEpoch) {
+        elEpoch.innerText = dateUtc.toISOString().substring(11, 19) + " UTC";
     }
+
+    astroWorker.postMessage({
+        type: 'COMPUTE',
+        timestampUtc: timestampExact,
+        coords: {
+            lat: stationActive.lat,
+            lon: stationActive.lon,
+            alt: stationActive.altMeters // en mètres (le worker gère la conversion si besoin, ou passez l'alt en mètres directement)
+        },
+        meteo: {
+            tempC: meteoActive.temperatureC,
+            presHpa: meteoActive.pressionBaro
+        }
+    });
+        }
 
     function lancerBoucleCalculSecurisee() {
         envoyerDemandeCalculWorker();
