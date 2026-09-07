@@ -46,22 +46,18 @@ def corriger_altitude_station(lat, lon, alt_ellipsoidale_brute, chemin_gfc="EGM2
     """
     Convertit l'altitude GPS brute (h) en altitude orthométrique (H = h - N)
     """
-    # Ondulation standard de référence locale (ex: ~48.25m pour Marseille)
-    # Isolé de toute interférence magnétique ou astronomique.
     ondulation_N = 48.25 if os.path.exists(chemin_gfc) else 0.0
     return alt_ellipsoidale_brute - ondulation_N
 
 def generer_arcs_chebyshev(temps_secondes, positions_xyz, degre=10):
     """
     Découpe et ajuste des polynômes de Chebyshev par arcs temporels.
-    Garantit une précision spectrale sans surcharge de données.
     """
     t = np.array(temps_secondes, dtype=float)
     x_coords = np.array([p[0] for p in positions_xyz], dtype=float)
     y_coords = np.array([p[1] for p in positions_xyz], dtype=float)
     z_coords = np.array([p[2] for p in positions_xyz], dtype=float)
 
-    # Découpage par blocs d'une heure (3600 secondes) pour une précision optimale
     arcs = []
     pas_arc = 3600
     t_debut_jour = t[0]
@@ -74,7 +70,6 @@ def generer_arcs_chebyshev(temps_secondes, positions_xyz, degre=10):
         
         if np.sum(masque) >= 2:
             t_arc = t[masque]
-            # Normalisation du temps de l'arc dans [-1, 1]
             t_min, t_max = t_arc[0], t_arc[-1]
             if t_min == t_max:
                 t_norm = np.zeros_like(t_arc)
@@ -104,7 +99,6 @@ def main():
     except ValueError:
         lat_target, lon_target, alt_brute = 43.284356, 5.358507, 99.31
 
-    # Correction rigoureuse de l'altitude via EGM2008 (isolé de l'astro et du WMM)
     alt_target = corriger_altitude_station(lat_target, lon_target, alt_brute, "EGM2008.gfc")
 
     kernel_path = 'de440s.bsp'
@@ -139,8 +133,8 @@ def main():
     for cle_json, nom_jpl in mapping_astres.items():
         corps_celestes[cle_json] = obtenir_corps(eph, nom_jpl)
 
-    # Collecte des points par minute pour ajustement des coefficients
-    donnees_ Brutes = {name: {"timestamps": [], "positions": []} for name in corps_celestes.keys()}
+    # Correction de l'espace dans le nom de la variable (donnees_brutes au lieu de donnees_ Brutes)
+    donnees_brutes = {name: {"timestamps": [], "positions": []} for name in corps_celestes.keys()}
 
     for minute in range(1441):
         instant = date_base + timedelta(minutes=minute)
@@ -152,12 +146,11 @@ def main():
         for nom, cible in corps_celestes.items():
             astre_apparent = position_observateur.observe(cible).apparent()
             x_m, y_m, z_m = astre_apparent.frame_xyz(itrs).m
-            donnees_Brutes[nom]["timestamps"].append(t_sec)
-            donnees_Brutes[nom]["positions"].append([float(x_m), float(y_m), float(z_m)])
+            donnees_brutes[nom]["timestamps"].append(t_sec)
+            donnees_brutes[nom]["positions"].append([float(x_m), float(y_m), float(z_m)])
 
-    # Génération de la matrice de coefficients de Chebyshev par astre
     matrice_chebyshev_24h = {}
-    for nom, donnees in donnees_Brutes.items():
+    for nom, donnees in donnees_brutes.items():
         matrice_chebyshev_24h[nom] = generer_arcs_chebyshev(donnees["timestamps"], donnees["positions"], degre=10)
 
     payload = {
