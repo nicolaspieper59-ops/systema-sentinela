@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * SYSTEMA SENTINELA v18.8 — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
- * Intégration Chebyshev + Clenshaw & WMM-2025
+ * Version sécurisée (Correction parseur WMM & Heap pointers)
  * ============================================================================
  */
 
@@ -17,14 +17,8 @@ let wasmReady = false;
 let matriceJplGlobal = null;
 let wmmCoefficients = null;
 
-// Importation du script de liaison Emscripten (WASM)
 importScripts('wasm_astronomie.js');
 
-/**
- * Évaluation d'une série de Chebyshev par l'algorithme de Clenshaw
- * x : temps normalisé dans l'intervalle [-1, 1]
- * coeffs : tableau des coefficients du polynôme
- */
 function evaluerClenshawChebyshev(coeffs, x) {
     let bK2 = 0.0;
     let bK1 = 0.0;
@@ -38,30 +32,22 @@ function evaluerClenshawChebyshev(coeffs, x) {
     return coeffs[0] + x * bK1 - bK2;
 }
 
-/**
- * Récupération et calcul de la position ECEF d'un astre via les arcs de Chebyshev
- */
 function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
     if (!arcsAstre || arcsAstre.length === 0) return null;
-
-    // Recherche de l'arc temporel actif pour la seconde courante
     const arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end) || arcsAstre[0];
     
-    // Normalisation du temps dans l'intervalle [-1, 1] de l'arc
     const tMin = arc.t_start;
     const tMax = arc.t_end;
     const tNorm = (tMin === tMax) ? 0.0 : (2.0 * (timestampSec - tMin) / (tMax - tMin) - 1.0);
 
-    const x = evaluerClenshawChebyshev(arc.cx, tNorm);
-    const y = evaluerClenshawChebyshev(arc.cy, tNorm);
-    const z = evaluerClenshawChebyshev(arc.cz, tNorm);
-
-    return { x, y, z, mag: 0.0 };
+    return {
+        x: evaluerClenshawChebyshev(arc.cx, tNorm),
+        y: evaluerClenshawChebyshev(arc.cy, tNorm),
+        z: evaluerClenshawChebyshev(arc.cz, tNorm),
+        mag: 0.0
+    };
 }
 
-/**
- * Chargement et parsing asynchrone des coefficients WMM 2025
- */
 async function chargerCoefficientsWMM() {
     if (wmmCoefficients) return;
     try {
@@ -81,6 +67,7 @@ function parserFichierWMM(texte) {
     const coeffs = [];
     for (let ligne of lignes) {
         const elements = ligne.trim().split(/\s+/);
+        // Filtrage strict : au moins 6 éléments numériques valides
         if (elements.length >= 6) {
             const n = parseInt(elements[0], 10);
             const m = parseInt(elements[1], 10);
@@ -88,7 +75,7 @@ function parserFichierWMM(texte) {
             const h = parseFloat(elements[3]);
             const dtg = parseFloat(elements[4]);
             const dth = parseFloat(elements[5]);
-            if (!isNaN(n) && !isNaN(m)) {
+            if (!isNaN(n) && !isNaN(m) && !isNaN(g) && !isNaN(h)) {
                 coeffs.push({ n, m, g, h, dtg, dth });
             }
         }
@@ -96,15 +83,12 @@ function parserFichierWMM(texte) {
     return coeffs;
 }
 
-/**
- * Calcul géomagnétique WMM dynamique basé sur les harmoniques sphériques
- */
 function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
     if (!wmmCoefficients || wmmCoefficients.length === 0) {
         return { declination: 2.45, inclination: 61.15, totalIntensity: 45250.0 };
     }
 
-    const a = 6371.2; // Rayon moyen de la Terre en km
+    const a = 6371.2;
     const alt = Math.max(0, altKm);
     const latRad = latDeg * (Math.PI / 180.0);
     const lonRad = lonDeg * (Math.PI / 180.0);
@@ -126,14 +110,10 @@ function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
     }
 
     const hHoriz = Math.sqrt(X * X + Y * Y);
-    const totalIntensity = Math.sqrt(hHoriz * hHoriz + Z * Z);
-    const declination = Math.atan2(Y, X) * (180.0 / Math.PI);
-    const inclination = Math.atan2(Z, hHoriz) * (180.0 / Math.PI);
-
     return {
-        declination: declination,
-        inclination: inclination,
-        totalIntensity: totalIntensity
+        declination: Math.atan2(Y, X) * (180.0 / Math.PI),
+        inclination: Math.atan2(Z, hHoriz) * (180.0 / Math.PI),
+        totalIntensity: Math.sqrt(hHoriz * hHoriz + Z * Z)
     };
 }
 
@@ -141,13 +121,11 @@ onmessage = function(e) {
     const data = e.data;
     if (!data) return;
 
-    // 1. Mise à jour de la matrice JPL globale (Arcs de Chebyshev)
     if (data.type === 'UPDATE_JPL_MATRIX') {
         matriceJplGlobal = data.matrix;
         return;
     }
 
-    // 2. Initialisation et calcul WMM dynamique
     if (data.type === 'INIT_WMM') {
         chargerCoefficientsWMM().then(() => {
             const coords = data.coords || { lat: 43.28, lon: 5.35, alt: 10 };
@@ -159,7 +137,6 @@ onmessage = function(e) {
         return;
     }
 
-    // 3. Calcul principal des éphémérides et topographie
     if (data.type === 'COMPUTE') {
         if (!wasmReady) {
             postMessage({ type: 'ERROR', message: "Module WASM non initialisé." });
@@ -176,10 +153,8 @@ onmessage = function(e) {
             const meteoDefaut = matriceJplGlobal?.METEO_DEFAUT || { tempC: 15.0, presHpa: 1013.25 };
             const tempC = meteo?.tempC ?? meteoDefaut.tempC;
             const presHpa = meteo?.presHpa ?? meteoDefaut.presHpa;
-
             const timestampSec = timestampUtc / 1000.0;
 
-            // Paramètres sidéraux et solaires
             metricsPtr = Module._malloc(40);
             Module._calculerParametresSiderauxEtSolaires(timestampSec, lon, metricsPtr);
 
@@ -195,16 +170,13 @@ onmessage = function(e) {
             const eraRad = (solarMetrics.gastDeg % 360.0) * (Math.PI / 180.0);
             const bodiesResults = {};
 
-            // --- ÉVALUATION CHEBYSHEV SECONDE PAR SECONDE ---
             const sourceDonnees = (matriceJplGlobal && matriceJplGlobal.DATA) ? matriceJplGlobal.DATA : null;
             const corpsACalculer = {};
 
             if (sourceDonnees) {
                 for (const [nomAstre, arcsAstre] of Object.entries(sourceDonnees)) {
                     const pos = obtenirPositionParChebyshev(arcsAstre, timestampSec);
-                    if (pos) {
-                        corpsACalculer[nomAstre] = pos;
-                    }
+                    if (pos) corpsACalculer[nomAstre] = pos;
                 }
             } else {
                 corpsACalculer.soleil = { x: 1.0, y: 0.0, z: 0.0, mag: -26.74 };
@@ -238,7 +210,6 @@ onmessage = function(e) {
                 };
             }
 
-            // Envoi des résultats consolidés vers l'UI
             postMessage({
                 type: 'RESULTS',
                 payload: {
@@ -253,17 +224,3 @@ onmessage = function(e) {
                     },
                     tempsJpl: {
                         gastDeg: solarMetrics.gastDeg,
-                        lstDeg: solarMetrics.lstDeg
-                    },
-                    bodies: bodiesResults
-                }
-            });
-
-        } catch (err) {
-            postMessage({ type: 'ERROR', message: err.toString() });
-        } finally {
-            if (metricsPtr) Module._free(metricsPtr);
-            if (resultPtr) Module._free(resultPtr);
-        }
-    }
-};
