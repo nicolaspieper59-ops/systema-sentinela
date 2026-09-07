@@ -1010,12 +1010,12 @@ function lancerCalculsPeriode(worker) {
             coords: { lat: 43.2883, lon: 5.3560, alt: 84 },
             meteo: { tempC: 25.0, presHpa: 1016.7 }
         });
-    }, 1000); // Actualisation chaque seconde
+    }, 100); // Actualisation chaque seconde
 }
 
     function lancerBoucleCalculSecurisee() {
         envoyerDemandeCalculWorker();
-        setTimeout(lancerBoucleCalculSecurisee, 3000);
+        setTimeout(lancerBoucleCalculSecurisee, 300);
     }
 
     window.addEventListener('load', async () => {
@@ -1024,9 +1024,7 @@ function lancerCalculsPeriode(worker) {
         dessinerRadarAstres({}, 0);
         initGlobe3D();
         initialiserWorkerAstronomie();
-        
-        await synchroniserHeureAtomique();
-        setInterval(verifierEtRecalibrerHeure, 5 * 60 * 1000);
+    
 
         await actualiserIndiceKpRapide();
         setInterval(actualiserIndiceKpRapide, 60 * 60 * 1000);
