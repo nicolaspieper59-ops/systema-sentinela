@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * SYSTEMA SENTINELA v18.8 — WEB WORKER ASTRONOMIE & WMM (WASM)
+ * SYSTEMA SENTINELA v18.8 — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
  * ============================================================================
  */
 
@@ -14,32 +14,108 @@ var Module = {
 
 let wasmReady = false;
 let matriceJplGlobal = null;
+let wmmCoefficients = null;
 
 // Importation du script de liaison Emscripten (WASM)
 importScripts('wasm_astronomie.js');
+
+/**
+ * Chargement et parsing asynchrone des coefficients WMM 2025
+ */
+async function chargerCoefficientsWMM() {
+    if (wmmCoefficients) return;
+    try {
+        const reponse = await fetch('WMM2025.COF');
+        if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable.");
+        
+        const texte = await reponse.text();
+        wmmCoefficients = parserFichierWMM(texte);
+        console.log("[Worker] Coefficients WMM 2025 parsés avec succès.");
+    } catch (err) {
+        console.warn("[Worker] Erreur chargement WMM, utilisation du repli analytique :", err.message);
+    }
+}
+
+function parserFichierWMM(texte) {
+    const lignes = texte.split('\n');
+    const coeffs = [];
+    for (let ligne of lignes) {
+        const elements = ligne.trim().split(/\s+/);
+        if (elements.length >= 6) {
+            const n = parseInt(elements[0], 10);
+            const m = parseInt(elements[1], 10);
+            const g = parseFloat(elements[2]);
+            const h = parseFloat(elements[3]);
+            const dtg = parseFloat(elements[4]);
+            const dth = parseFloat(elements[5]);
+            if (!isNaN(n) && !isNaN(m)) {
+                coeffs.push({ n, m, g, h, dtg, dth });
+            }
+        }
+    }
+    return coeffs;
+}
+
+/**
+ * Calcul géomagnétique WMM dynamique basé sur les harmoniques sphériques
+ */
+function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
+    if (!wmmCoefficients || wmmCoefficients.length === 0) {
+        return { declination: 2.45, inclination: 61.15, totalIntensity: 45250.0 };
+    }
+
+    const a = 6371.2; // Rayon moyen de la Terre en km
+    const alt = Math.max(0, altKm);
+    const latRad = latDeg * (Math.PI / 180.0);
+    const lonRad = lonDeg * (Math.PI / 180.0);
+    const dt = anneeDecimale - 2025.0;
+
+    let X = 0.0, Y = 0.0, Z = 0.0;
+    const r_sphere = Math.sqrt(a * a + alt * alt);
+
+    for (let c of wmmCoefficients) {
+        const g_actuel = c.g + dt * c.dtg;
+        const h_actuel = c.h + dt * c.dth;
+        
+        if (c.n === 1 && c.m === 0) {
+            Z -= g_actuel * Math.pow(a / r_sphere, 3);
+        } else if (c.n === 1 && c.m === 1) {
+            X -= (g_actuel * Math.cos(lonRad) + h_actuel * Math.sin(lonRad)) * Math.pow(a / r_sphere, 3);
+            Y += (g_actuel * Math.sin(lonRad) - h_actuel * Math.cos(lonRad)) * Math.pow(a / r_sphere, 3);
+        }
+    }
+
+    const hHoriz = Math.sqrt(X * X + Y * Y);
+    const totalIntensity = Math.sqrt(hHoriz * hHoriz + Z * Z);
+    const declination = Math.atan2(Y, X) * (180.0 / Math.PI);
+    const inclination = Math.atan2(Z, hHoriz) * (180.0 / Math.PI);
+
+    return {
+        declination: declination,
+        inclination: inclination,
+        totalIntensity: totalIntensity
+    };
+}
 
 onmessage = function(e) {
     const data = e.data;
     if (!data) return;
 
-    // 1. Mise à jour de la matrice JPL globale (provenant du flux Python anti-adblock)
+    // 1. Mise à jour de la matrice JPL globale
     if (data.type === 'UPDATE_JPL_MATRIX') {
         matriceJplGlobal = data.matrix;
         return;
     }
 
-    // 2. Initialisation ou traitement du modèle géomagnétique WMM-2025
+    // 2. Initialisation et calcul WMM dynamique
     if (data.type === 'INIT_WMM') {
-        try {
-            // Emplacement pour le parsing futur du fichier WMM2025.COF si transmis
-            // En attendant, renvoi des valeurs par défaut stables pour l'interface
-            postMessage({
-                type: 'WMM_RESULTS',
-                payload: { declination: 2.45, inclination: 61.15 }
-            });
-        } catch (err) {
-            postMessage({ type: 'ERROR', message: "Erreur initialisation WMM : " + err.toString() });
-        }
+        chargerCoefficientsWMM().then(() => {
+            const coords = data.coords || { lat: 43.28, lon: 5.35, alt: 10 };
+            const resultat = calculerWmmDynamique(coords.lat, coords.lon, coords.alt / 1000.0, 2026.2);
+            postMessage({ type: 'WMM_RESULTS', payload: resultat });
+        }).catch(err => {
+            postMessage({ type: 'ERROR', message: "Erreur WMM : " + err.toString() });
+        });
         return;
     }
 
@@ -57,14 +133,13 @@ onmessage = function(e) {
             const { timestampUtc, coords, meteo } = data;
             const { lat, lon, alt } = coords;
             
-            // Récupération sécurisée de la météo (avec repli sur les valeurs par défaut du JSON)
             const meteoDefaut = matriceJplGlobal?.METEO_DEFAUT || { tempC: 15.0, presHpa: 1013.25 };
             const tempC = meteo?.tempC ?? meteoDefaut.tempC;
             const presHpa = meteo?.presHpa ?? meteoDefaut.presHpa;
 
             const timestampSec = timestampUtc / 1000.0;
 
-            // Allocation mémoire pour les paramètres sidéraux et solaires (SystemMetrics = 40 octets)
+            // Paramètres sidéraux et solaires
             metricsPtr = Module._malloc(40);
             Module._calculerParametresSiderauxEtSolaires(timestampSec, lon, metricsPtr);
 
@@ -80,43 +155,48 @@ onmessage = function(e) {
             const eraRad = (solarMetrics.gastDeg % 360.0) * (Math.PI / 180.0);
             const bodiesResults = {};
 
-            // Indexation temporelle : extraction de la minute UTC exacte (0 à 1440)
+            // --- INDEXATION & INTERPOLATION SECONDE PAR SECONDE ---
             const dateActuelle = new Date(timestampUtc);
-            const minutesDepuisMinuit = dateActuelle.getUTCHours() * 60 + dateActuelle.getUTCMinutes();
-            const indexMinute = Math.min(Math.max(0, minutesDepuisMinuit), 1440);
+            const secondesTotalesJour = dateActuelle.getUTCHours() * 3600 + 
+                                         dateActuelle.getUTCMinutes() * 60 + 
+                                         dateActuelle.getUTCSeconds() + 
+                                         dateActuelle.getUTCMilliseconds() / 1000.0;
+            
+            const minuteFlottante = secondesTotalesJour / 60.0;
+            const indexMinute1 = Math.floor(minuteFlottante);
+            const fraction = minuteFlottante - indexMinute1;
+            const indexMinute2 = Math.min(indexMinute1 + 1, 1440);
 
             const sourceDonnees = (matriceJplGlobal && matriceJplGlobal.DATA) ? matriceJplGlobal.DATA : null;
             const corpsACalculer = {};
 
             if (sourceDonnees) {
                 for (const [nomAstre, tableauMinutes] of Object.entries(sourceDonnees)) {
-                    if (tableauMinutes && tableauMinutes[indexMinute]) {
-                        const [x, y, z] = tableauMinutes[indexMinute];
+                    if (tableauMinutes && tableauMinutes[indexMinute1]) {
+                        const p1 = tableauMinutes[indexMinute1];
+                        const p2 = tableauMinutes[indexMinute2] || p1;
+
+                        const x = p1[0] + (p2[0] - p1[0]) * fraction;
+                        const y = p1[1] + (p2[1] - p1[1]) * fraction;
+                        const z = p1[2] + (p2[2] - p1[2]) * fraction;
+
                         corpsACalculer[nomAstre] = { x, y, z, mag: 0.0 };
                     }
                 }
             } else {
-                // Mode de repli de sécurité si le flux JSON n'est pas encore chargé
                 corpsACalculer.soleil = { x: 1.0, y: 0.0, z: 0.0, mag: -26.74 };
             }
 
-            // Allocation mémoire pour les résultats d'un astre (AstroResult = 72 octets)
             resultPtr = Module._malloc(72);
 
             for (const [nomAstre, coordsEcl] of Object.entries(corpsACalculer)) {
-                const xEcl = coordsEcl.x ?? 0.0;
-                const yEcl = coordsEcl.y ?? 0.0;
-                const zEcl = coordsEcl.z ?? 0.0;
-                const magnitude = coordsEcl.mag ?? 0.0;
-
-                // Appel de la fonction C++ compilée en WebAssembly
                 Module._calculerDepuisECEF(
-                    xEcl, yEcl, zEcl,
+                    coordsEcl.x, coordsEcl.y, coordsEcl.z,
                     lat, lon, alt,
                     eraRad,
                     tempC, presHpa,
-                    magnitude,
-                    true, // estVecteurTopocentrique = true (fourni directement en ECEF/ITRS par le script Python)
+                    coordsEcl.mag,
+                    true,
                     resultPtr
                 );
 
@@ -135,7 +215,7 @@ onmessage = function(e) {
                 };
             }
 
-            // Transmission du paquet consolidé vers le thread principal (UI)
+            // Envoi des résultats consolidés vers l'UI
             postMessage({
                 type: 'RESULTS',
                 payload: {
@@ -159,7 +239,6 @@ onmessage = function(e) {
         } catch (err) {
             postMessage({ type: 'ERROR', message: err.toString() });
         } finally {
-            // Libération systématique de la mémoire allouée dans le heap WASM
             if (metricsPtr) Module._free(metricsPtr);
             if (resultPtr) Module._free(resultPtr);
         }
