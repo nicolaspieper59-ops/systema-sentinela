@@ -1,227 +1,169 @@
 /**
  * ============================================================================
- * SYSTEMA SENTINELA — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
- * Version rigoureuse optimisée v18.8
+ * KERNEL C++ WEBMASSEMBLY — ASTROMÉTRIE DE HAUTE PRÉCISION
  * ============================================================================
  */
 
-var Module = {
-    onRuntimeInitialized: function() {
-        wasmReady = true;
-        console.log("[Worker] Module WebAssembly chargé et prêt.");
-        postMessage({ type: 'READY' });
-    }
+#include <emscripten/emscripten.h>
+#include <cmath>
+#include <cstring>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+#define DEG2RAD (M_PI / 180.0)
+#define RAD2DEG (180.0 / M_PI)
+
+struct AstroResult {
+    double azim;          
+    double elevGeom;      
+    double elevRefractee; 
+    double raDeg;         
+    double decDeg;        
+    double distUA;        
+    double leverUT;       
+    double coucherUT;     
+    int visibiliteCode;   
 };
 
-let wasmReady = false;
-let matriceJplGlobal = null;
-let wmmCoefficients = null;
+struct SystemMetrics {
+    double eqTempsMin;     
+    double obliquiteDeg;   
+    double longSolaireDeg; 
+    double gastDeg;        
+    double lstDeg;         
+};
 
-importScripts('wasm_astronomie.js');
+extern "C" {
 
-function evaluerClenshawChebyshev(coeffs, x) {
-    let bK2 = 0.0;
-    let bK1 = 0.0;
-    let bK = 0.0;
-
-    for (let i = coeffs.length - 1; i >= 1; i--) {
-        bK = coeffs[i] + 2.0 * x * bK1 - bK2;
-        bK2 = bK1;
-        bK1 = bK;
-    }
-    return coeffs[0] + x * bK1 - bK2;
+EMSCRIPTEN_KEEPALIVE
+inline double normaliserDegres(double deg) {
+    double res = std::fmod(deg, 360.0);
+    return res < 0.0 ? res + 360.0 : res;
 }
 
-function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
-    if (!arcsAstre || arcsAstre.length === 0) return null;
-    const arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end) || arcsAstre[0];
+EMSCRIPTEN_KEEPALIVE
+void calculerParametresSiderauxEtSolaires(
+    double timestampUtc,
+    double lonDeg,
+    SystemMetrics* metrics
+) {
+    if (!metrics) return;
+
+    double jd = (timestampUtc / 86400.0) + 2440587.5;
+    double d = jd - 2451545.0; 
+    double T = d / 36525.0;    
+
+    double L0 = std::fmod(280.46646 + 36000.76983 * T, 360.0);
+    if (L0 < 0.0) L0 += 360.0;
+
+    double M = std::fmod(357.52911 + 35999.05029 * T, 360.0);
+    if (M < 0.0) M += 360.0;
+    double MRad = M * DEG2RAD;
+
+    double C = (1.914602 - 0.004817 * T) * std::sin(MRad) + (0.019993 - 0.000101 * T) * std::sin(2.0 * MRad);
+    double sunLong = L0 + C;
+    metrics->longSolaireDeg = normaliserDegres(sunLong);
+
+    double eps = 23.4392911 - 0.0130042 * T;
+    metrics->obliquiteDeg = eps;
+
+    double sunLongRad = metrics->longSolaireDeg * DEG2RAD;
+    double epsRad = eps * DEG2RAD;
+    double y = std::cos(epsRad) * std::sin(sunLongRad);
+    double x = std::cos(sunLongRad);
+    double alpha = std::atan2(y, x) * RAD2DEG;
+    alpha = normaliserDegres(alpha);
+
+    double eqTempsDeg = L0 - alpha;
+    if (eqTempsDeg > 180.0) eqTempsDeg -= 360.0;
+    if (eqTempsDeg < -180.0) eqTempsDeg += 360.0;
+    metrics->eqTempsMin = eqTempsDeg * 4.0;
+
+    double gmst = 280.46061837 + 360.98564736629 * d + 0.000387933 * T * T - (T * T * T) / 38710000.0;
+    metrics->gastDeg = normaliserDegres(gmst);
+    metrics->lstDeg = normaliserDegres(metrics->gastDeg + lonDeg);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void calculerDepuisECEF(
+    double xECEF, double yECEF, double zECEF,
+    double latDeg, double lonDeg, double altM,
+    double eraRad,
+    double tempC, double presHpa,
+    double magApparente,
+    bool estVecteurTopocentrique,
+    AstroResult* result
+) {
+    if (!result) return;
+
+    double phi = latDeg * DEG2RAD;
+    double lambda = lonDeg * DEG2RAD;
     
-    const tMin = arc.t_start;
-    const tMax = arc.t_end;
-    const tNorm = (tMin === tMax) ? 0.0 : (2.0 * (timestampSec - tMin) / (tMax - tMin) - 1.0);
+    double a = 6378137.0;
+    double f = 1.0 / 298.257223563;
+    double e2 = f * (2.0 - f);
 
-    return {
-        x: evaluerClenshawChebyshev(arc.cx, tNorm),
-        y: evaluerClenshawChebyshev(arc.cy, tNorm),
-        z: evaluerClenshawChebyshev(arc.cz, tNorm),
-        mag: 0.0
-    };
+    double dx = xECEF;
+    double dy = yECEF;
+    double dz = zECEF;
+
+    if (!estVecteurTopocentrique) {
+        double N = a / std::sqrt(1.0 - e2 * std::sin(phi) * std::sin(phi));
+        double xObs = (N + altM) * std::cos(phi) * std::cos(lambda);
+        double yObs = (N + altM) * std::cos(phi) * std::sin(lambda);
+        double zObs = (N * (1.0 - e2) + altM) * std::sin(phi);
+
+        dx -= xObs;
+        dy -= yObs;
+        dz -= zObs;
+    }
+
+    double E = -std::sin(lambda) * dx + std::cos(lambda) * dy;
+    double N_top = -std::sin(phi) * std::cos(lambda) * dx - std::sin(phi) * std::sin(lambda) * dy + std::cos(phi) * dz;
+    double U =  std::cos(phi) * std::cos(lambda) * dx + std::cos(phi) * std::sin(lambda) * dy + std::sin(phi) * dz;
+
+    double distM = std::sqrt(dx*dx + dy*dy + dz*dz);
+    result->distUA = distM / 149597870700.0;
+
+    result->azim = normaliserDegres(std::atan2(E, N_top) * RAD2DEG);
+    double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
+    result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
+
+    if (result->elevGeom > -2.0) {
+        double h = std::max(result->elevGeom, -1.0);
+        double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
+        double corMeteo = (presHpa / 1013.25) * (288.15 / (273.15 + tempC));
+        result->elevRefractee = result->elevGeom + (refArcMin * corMeteo) / 60.0;
+    } else {
+        result->elevRefractee = result->elevGeom;
+    }
+
+    double lonTerrestreDeg = std::atan2(yECEF, xECEF) * RAD2DEG;
+    result->raDeg = normaliserDegres(lonTerrestreDeg + (eraRad * RAD2DEG));
+    
+    double normR = std::sqrt(xECEF*xECEF + yECEF*yECEF + zECEF*zECEF);
+    result->decDeg = (normR > 0.0) ? std::asin(zECEF / normR) * RAD2DEG : 0.0;
+    
+    result->leverUT = 0.0;
+    result->coucherUT = 0.0;
+
+    if (result->elevRefractee < 0.0) {
+        result->visibiliteCode = 0;
+    } else {
+        double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
+        double airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
+        double magEff = magApparente + (0.2 * airMass);
+
+        if (magEff <= 5.5) result->visibiliteCode = 1;
+        else if (magEff <= 9.5) result->visibiliteCode = 2;
+        else result->visibiliteCode = 3;
+    }
 }
 
-async function chargerCoefficientsWMM() {
-    if (wmmCoefficients) return;
-    const reponse = await fetch('WMM2025.COF');
-    if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable.");
-    const texte = await reponse.text();
-    wmmCoefficients = parserFichierWMM(texte);
-    console.log("[Worker] Coefficients WMM 2025 parsés intégralement.");
 }
 
-function parserFichierWMM(texte) {
-    const lignes = texte.split('\n');
-    const coeffs = [];
-    for (let ligne of lignes) {
-        const elements = ligne.trim().split(/\s+/);
-        if (elements.length >= 6) {
-            const n = parseInt(elements[0], 10);
-            const m = parseInt(elements[1], 10);
-            const g = parseFloat(elements[2]);
-            const h = parseFloat(elements[3]);
-            const dtg = parseFloat(elements[4]);
-            const dth = parseFloat(elements[5]);
-            if (!isNaN(n) && !isNaN(m) && !isNaN(g) && !isNaN(h)) {
-                coeffs.push({ n, m, g, h, dtg, dth });
-            }
-        }
-    }
-    return coeffs;
+int main() {
+    return 0;
 }
-
-function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
-    if (!wmmCoefficients || wmmCoefficients.length === 0) {
-        throw new Error("Erreur WMM : Coefficients non chargés.");
-    }
-
-    const a = 6371.2;
-    const alt = Math.max(0, altKm);
-    const latRad = latDeg * (Math.PI / 180.0);
-    const lonRad = lonDeg * (Math.PI / 180.0);
-    const dt = anneeDecimale - 2025.0;
-    const r_sphere = Math.sqrt(a * a + alt * alt);
-
-    let X = 0.0, Y = 0.0, Z = 0.0;
-
-    for (let c of wmmCoefficients) {
-        const g_actuel = c.g + dt * c.dtg;
-        const h_actuel = c.h + dt * c.dth;
-        const ratio = Math.pow(a / r_sphere, c.n + 2);
-
-        if (c.m === 0) {
-            Z -= (c.n + 1) * g_actuel * ratio * Math.sin(c.n * latRad);
-        } else {
-            X -= (g_actuel * Math.cos(c.m * lonRad) + h_actuel * Math.sin(c.m * lonRad)) * ratio;
-            Y += (g_actuel * Math.sin(c.m * lonRad) - h_actuel * Math.cos(c.m * lonRad)) * ratio;
-        }
-    }
-
-    const hHoriz = Math.sqrt(X * X + Y * Y);
-    return {
-        declination: Math.atan2(Y, X) * (180.0 / Math.PI),
-        inclination: Math.atan2(Z, hHoriz) * (180.0 / Math.PI),
-        totalIntensity: Math.sqrt(hHoriz * hHoriz + Z * Z)
-    };
-}
-
-onmessage = function(e) {
-    const data = e.data;
-    if (!data) return;
-
-    if (data.type === 'UPDATE_JPL_MATRIX') {
-        matriceJplGlobal = data.matrix;
-        return;
-    }
-
-    if (data.type === 'INIT_WMM') {
-        chargerCoefficientsWMM().then(() => {
-            const coords = data.coords || { lat: 43.28, lon: 5.35, alt: 10 };
-            const resultat = calculerWmmDynamique(coords.lat, coords.lon, coords.alt / 1000.0, 2026.2);
-            postMessage({ type: 'WMM_RESULTS', payload: resultat });
-        }).catch(err => {
-            postMessage({ type: 'ERROR', message: "Erreur WMM critique : " + err.toString() });
-        });
-        return;
-    }
-
-    if (data.type === 'COMPUTE') {
-        if (!wasmReady) {
-            postMessage({ type: 'ERROR', message: "Module WASM non initialisé." });
-            return;
-        }
-
-        let metricsPtr = 0;
-        let resultPtr = 0;
-
-        try {
-            const { timestampUtc, coords, meteo } = data;
-            const { lat, lon, alt } = coords;
-            
-            const meteoDefaut = matriceJplGlobal?.METEO_DEFAUT || { tempC: 15.0, presHpa: 1013.25 };
-            const tempC = meteo?.tempC ?? meteoDefaut.tempC;
-            const presHpa = meteo?.presHpa ?? meteoDefaut.presHpa;
-            const timestampSec = timestampUtc / 1000.0;
-
-            metricsPtr = Module._malloc(40);
-            Module._calculerParametresSiderauxEtSolaires(timestampSec, lon, metricsPtr);
-
-            const offset = metricsPtr / 8;
-            const solarMetrics = {
-                eqTempsMin: Module.HEAPF64[offset + 0],
-                obliquiteDeg: Module.HEAPF64[offset + 1],
-                longSolaireDeg: Module.HEAPF64[offset + 2],
-                gastDeg: Module.HEAPF64[offset + 3],
-                lstDeg: Module.HEAPF64[offset + 4]
-            };
-
-            const eraRad = (solarMetrics.gastDeg % 360.0) * (Math.PI / 180.0);
-            const bodiesResults = {};
-
-            const sourceDonnees = (matriceJplGlobal && matriceJplGlobal.DATA) ? matriceJplGlobal.DATA : null;
-            const corpsACalculer = {};
-
-            if (sourceDonnees) {
-                for (const [nomAstre, arcsAstre] of Object.entries(sourceDonnees)) {
-                    const pos = obtenirPositionParChebyshev(arcsAstre, timestampSec);
-                    if (pos) corpsACalculer[nomAstre] = pos;
-                }
-            }
-
-            resultPtr = Module._malloc(72);
-
-            for (const [nomAstre, coordsEcl] of Object.entries(corpsACalculer)) {
-                Module._calculerDepuisECEF(
-                    coordsEcl.x, coordsEcl.y, coordsEcl.z,
-                    lat, lon, alt,
-                    eraRad,
-                    tempC, presHpa,
-                    coordsEcl.mag,
-                    true,
-                    resultPtr
-                );
-
-                const resOffset = resultPtr / 8;
-                bodiesResults[nomAstre] = {
-                    azimuth: Module.HEAPF64[resOffset + 0],
-                    elevationGeometrique: Module.HEAPF64[resOffset + 1],
-                    elevationRefractee: Module.HEAPF64[resOffset + 2],
-                    raDeg: Module.HEAPF64[resOffset + 3],
-                    decDeg: Module.HEAPF64[resOffset + 4],
-                    distanceKm: Module.HEAPF64[resOffset + 5] * 149597870700.0 / 1000.0,
-                    visibiliteCode: Module.HEAP32[(resultPtr + 64) / 4]
-                };
-            }
-
-            postMessage({
-                type: 'RESULTS',
-                payload: {
-                    timestamp: timestampUtc,
-                    solarMetrics: {
-                        eqTempsMin: solarMetrics.eqTempsMin,
-                        obliquite: solarMetrics.obliquiteDeg,
-                        longitudeSolaire: solarMetrics.longSolaireDeg
-                    },
-                    tempsJpl: {
-                        gastDeg: solarMetrics.gastDeg,
-                        lstDeg: solarMetrics.lstDeg
-                    },
-                    bodies: bodiesResults
-                }
-            });
-
-        } catch (err) {
-            postMessage({ type: 'ERROR', message: err.toString() });
-        } finally {
-            if (metricsPtr) Module._free(metricsPtr);
-            if (resultPtr) Module._free(resultPtr);
-        }
-    }
-};
