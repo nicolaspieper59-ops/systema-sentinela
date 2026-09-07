@@ -1,6 +1,7 @@
 /**
  * ============================================================================
  * SYSTEMA SENTINELA v18.8 — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
+ * Intégration Chebyshev + Clenshaw & WMM-2025
  * ============================================================================
  */
 
@@ -18,6 +19,45 @@ let wmmCoefficients = null;
 
 // Importation du script de liaison Emscripten (WASM)
 importScripts('wasm_astronomie.js');
+
+/**
+ * Évaluation d'une série de Chebyshev par l'algorithme de Clenshaw
+ * x : temps normalisé dans l'intervalle [-1, 1]
+ * coeffs : tableau des coefficients du polynôme
+ */
+function evaluerClenshawChebyshev(coeffs, x) {
+    let bK2 = 0.0;
+    let bK1 = 0.0;
+    let bK = 0.0;
+
+    for (let i = coeffs.length - 1; i >= 1; i--) {
+        bK = coeffs[i] + 2.0 * x * bK1 - bK2;
+        bK2 = bK1;
+        bK1 = bK;
+    }
+    return coeffs[0] + x * bK1 - bK2;
+}
+
+/**
+ * Récupération et calcul de la position ECEF d'un astre via les arcs de Chebyshev
+ */
+function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
+    if (!arcsAstre || arcsAstre.length === 0) return null;
+
+    // Recherche de l'arc temporel actif pour la seconde courante
+    const arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end) || arcsAstre[0];
+    
+    // Normalisation du temps dans l'intervalle [-1, 1] de l'arc
+    const tMin = arc.t_start;
+    const tMax = arc.t_end;
+    const tNorm = (tMin === tMax) ? 0.0 : (2.0 * (timestampSec - tMin) / (tMax - tMin) - 1.0);
+
+    const x = evaluerClenshawChebyshev(arc.cx, tNorm);
+    const y = evaluerClenshawChebyshev(arc.cy, tNorm);
+    const z = evaluerClenshawChebyshev(arc.cz, tNorm);
+
+    return { x, y, z, mag: 0.0 };
+}
 
 /**
  * Chargement et parsing asynchrone des coefficients WMM 2025
@@ -101,7 +141,7 @@ onmessage = function(e) {
     const data = e.data;
     if (!data) return;
 
-    // 1. Mise à jour de la matrice JPL globale
+    // 1. Mise à jour de la matrice JPL globale (Arcs de Chebyshev)
     if (data.type === 'UPDATE_JPL_MATRIX') {
         matriceJplGlobal = data.matrix;
         return;
@@ -155,32 +195,15 @@ onmessage = function(e) {
             const eraRad = (solarMetrics.gastDeg % 360.0) * (Math.PI / 180.0);
             const bodiesResults = {};
 
-            // --- INDEXATION & INTERPOLATION SECONDE PAR SECONDE ---
-            const dateActuelle = new Date(timestampUtc);
-            const secondesTotalesJour = dateActuelle.getUTCHours() * 3600 + 
-                                         dateActuelle.getUTCMinutes() * 60 + 
-                                         dateActuelle.getUTCSeconds() + 
-                                         dateActuelle.getUTCMilliseconds() / 1000.0;
-            
-            const minuteFlottante = secondesTotalesJour / 60.0;
-            const indexMinute1 = Math.floor(minuteFlottante);
-            const fraction = minuteFlottante - indexMinute1;
-            const indexMinute2 = Math.min(indexMinute1 + 1, 1440);
-
+            // --- ÉVALUATION CHEBYSHEV SECONDE PAR SECONDE ---
             const sourceDonnees = (matriceJplGlobal && matriceJplGlobal.DATA) ? matriceJplGlobal.DATA : null;
             const corpsACalculer = {};
 
             if (sourceDonnees) {
-                for (const [nomAstre, tableauMinutes] of Object.entries(sourceDonnees)) {
-                    if (tableauMinutes && tableauMinutes[indexMinute1]) {
-                        const p1 = tableauMinutes[indexMinute1];
-                        const p2 = tableauMinutes[indexMinute2] || p1;
-
-                        const x = p1[0] + (p2[0] - p1[0]) * fraction;
-                        const y = p1[1] + (p2[1] - p1[1]) * fraction;
-                        const z = p1[2] + (p2[2] - p1[2]) * fraction;
-
-                        corpsACalculer[nomAstre] = { x, y, z, mag: 0.0 };
+                for (const [nomAstre, arcsAstre] of Object.entries(sourceDonnees)) {
+                    const pos = obtenirPositionParChebyshev(arcsAstre, timestampSec);
+                    if (pos) {
+                        corpsACalculer[nomAstre] = pos;
                     }
                 }
             } else {
