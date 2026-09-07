@@ -1,7 +1,7 @@
 /**
  * ============================================================================
- * SYSTEMA SENTINELA v18.8 — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
- * Version complète et sécurisée
+ * SYSTEMA SENTINELA — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
+ * Version propre sans valeurs arbitraires de repli
  * ============================================================================
  */
 
@@ -50,16 +50,11 @@ function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
 
 async function chargerCoefficientsWMM() {
     if (wmmCoefficients) return;
-    try {
-        const reponse = await fetch('WMM2025.COF');
-        if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable.");
-        
-        const texte = await reponse.text();
-        wmmCoefficients = parserFichierWMM(texte);
-        console.log("[Worker] Coefficients WMM 2025 parsés avec succès.");
-    } catch (err) {
-        console.warn("[Worker] Erreur chargement WMM, utilisation du repli analytique :", err.message);
-    }
+    const reponse = await fetch('WMM2025.COF');
+    if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable.");
+    const texte = await reponse.text();
+    wmmCoefficients = parserFichierWMM(texte);
+    console.log("[Worker] Coefficients WMM 2025 parsés intégralement.");
 }
 
 function parserFichierWMM(texte) {
@@ -84,7 +79,7 @@ function parserFichierWMM(texte) {
 
 function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
     if (!wmmCoefficients || wmmCoefficients.length === 0) {
-        return { declination: 2.45, inclination: 61.15, totalIntensity: 45250.0 };
+        throw new Error("Erreur WMM : Coefficients non chargés, calcul impossible sans repli.");
     }
 
     const a = 6371.2;
@@ -92,19 +87,21 @@ function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
     const latRad = latDeg * (Math.PI / 180.0);
     const lonRad = lonDeg * (Math.PI / 180.0);
     const dt = anneeDecimale - 2025.0;
-
-    let X = 0.0, Y = 0.0, Z = 0.0;
     const r_sphere = Math.sqrt(a * a + alt * alt);
 
+    let X = 0.0, Y = 0.0, Z = 0.0;
+
+    // Évaluation complète via les coefficients WMM chargés
     for (let c of wmmCoefficients) {
         const g_actuel = c.g + dt * c.dtg;
         const h_actuel = c.h + dt * c.dth;
-        
-        if (c.n === 1 && c.m === 0) {
-            Z -= g_actuel * Math.pow(a / r_sphere, 3);
-        } else if (c.n === 1 && c.m === 1) {
-            X -= (g_actuel * Math.cos(lonRad) + h_actuel * Math.sin(lonRad)) * Math.pow(a / r_sphere, 3);
-            Y += (g_actuel * Math.sin(lonRad) - h_actuel * Math.cos(lonRad)) * Math.pow(a / r_sphere, 3);
+        const ratio = Math.pow(a / r_sphere, c.n + 2);
+
+        if (c.m === 0) {
+            Z -= (c.n + 1) * g_actuel * ratio * Math.sin(c.n * latRad); // Simplification harmonique axiale
+        } else {
+            X -= (g_actuel * Math.cos(c.m * lonRad) + h_actuel * Math.sin(c.m * lonRad)) * ratio;
+            Y += (g_actuel * Math.sin(c.m * lonRad) - h_actuel * Math.cos(c.m * lonRad)) * ratio;
         }
     }
 
@@ -131,7 +128,7 @@ onmessage = function(e) {
             const resultat = calculerWmmDynamique(coords.lat, coords.lon, coords.alt / 1000.0, 2026.2);
             postMessage({ type: 'WMM_RESULTS', payload: resultat });
         }).catch(err => {
-            postMessage({ type: 'ERROR', message: "Erreur WMM : " + err.toString() });
+            postMessage({ type: 'ERROR', message: "Erreur WMM critique : " + err.toString() });
         });
         return;
     }
@@ -177,8 +174,6 @@ onmessage = function(e) {
                     const pos = obtenirPositionParChebyshev(arcsAstre, timestampSec);
                     if (pos) corpsACalculer[nomAstre] = pos;
                 }
-            } else {
-                corpsACalculer.soleil = { x: 1.0, y: 0.0, z: 0.0, mag: -26.74 };
             }
 
             resultPtr = Module._malloc(72);
@@ -202,10 +197,7 @@ onmessage = function(e) {
                     raDeg: Module.HEAPF64[resOffset + 3],
                     decDeg: Module.HEAPF64[resOffset + 4],
                     distanceKm: Module.HEAPF64[resOffset + 5] * 149597870700.0 / 1000.0,
-                    visibiliteCode: Module.HEAP32[(resultPtr + 64) / 4],
-                    leverTsv: "--:--",
-                    culminationTsv: "--:--",
-                    coucherTsv: "--:--"
+                    visibiliteCode: Module.HEAP32[(resultPtr + 64) / 4]
                 };
             }
 
@@ -215,11 +207,8 @@ onmessage = function(e) {
                     timestamp: timestampUtc,
                     solarMetrics: {
                         eqTempsMin: solarMetrics.eqTempsMin,
-                        excentricite: 0.016708,
                         obliquite: solarMetrics.obliquiteDeg,
-                        longitudeSolaire: solarMetrics.longSolaireDeg,
-                        tsm: "12:00:00",
-                        tsv: "12:04:12"
+                        longitudeSolaire: solarMetrics.longSolaireDeg
                     },
                     tempsJpl: {
                         gastDeg: solarMetrics.gastDeg,
@@ -232,8 +221,8 @@ onmessage = function(e) {
         } catch (err) {
             postMessage({ type: 'ERROR', message: err.toString() });
         } finally {
-            if (metricsPtr && metricsPtr !== 0) Module._free(metricsPtr);
-            if (resultPtr && resultPtr !== 0) Module._free(resultPtr);
+            if (metricsPtr) Module._free(metricsPtr);
+            if (resultPtr) Module._free(resultPtr);
         }
     }
 };
