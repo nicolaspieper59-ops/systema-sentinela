@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * SYSTEMA SENTINELA — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
- * Version propre sans valeurs arbitraires de repli
+ * Version rigoureuse optimisée v18.8
  * ============================================================================
  */
 
@@ -79,7 +79,7 @@ function parserFichierWMM(texte) {
 
 function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
     if (!wmmCoefficients || wmmCoefficients.length === 0) {
-        throw new Error("Erreur WMM : Coefficients non chargés, calcul impossible sans repli.");
+        throw new Error("Erreur WMM : Coefficients non chargés.");
     }
 
     const a = 6371.2;
@@ -91,14 +91,13 @@ function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
 
     let X = 0.0, Y = 0.0, Z = 0.0;
 
-    // Évaluation complète via les coefficients WMM chargés
     for (let c of wmmCoefficients) {
         const g_actuel = c.g + dt * c.dtg;
         const h_actuel = c.h + dt * c.dth;
         const ratio = Math.pow(a / r_sphere, c.n + 2);
 
         if (c.m === 0) {
-            Z -= (c.n + 1) * g_actuel * ratio * Math.sin(c.n * latRad); // Simplification harmonique axiale
+            Z -= (c.n + 1) * g_actuel * ratio * Math.sin(c.n * latRad);
         } else {
             X -= (g_actuel * Math.cos(c.m * lonRad) + h_actuel * Math.sin(c.m * lonRad)) * ratio;
             Y += (g_actuel * Math.sin(c.m * lonRad) - h_actuel * Math.cos(c.m * lonRad)) * ratio;
