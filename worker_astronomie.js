@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * SYSTEMA SENTINELA v18.8 — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
- * Version sécurisée (Correction parseur WMM & Heap pointers)
+ * Version complète et sécurisée
  * ============================================================================
  */
 
@@ -67,7 +67,6 @@ function parserFichierWMM(texte) {
     const coeffs = [];
     for (let ligne of lignes) {
         const elements = ligne.trim().split(/\s+/);
-        // Filtrage strict : au moins 6 éléments numériques valides
         if (elements.length >= 6) {
             const n = parseInt(elements[0], 10);
             const m = parseInt(elements[1], 10);
@@ -224,3 +223,17 @@ onmessage = function(e) {
                     },
                     tempsJpl: {
                         gastDeg: solarMetrics.gastDeg,
+                        lstDeg: solarMetrics.lstDeg
+                    },
+                    bodies: bodiesResults
+                }
+            });
+
+        } catch (err) {
+            postMessage({ type: 'ERROR', message: err.toString() });
+        } finally {
+            if (metricsPtr && metricsPtr !== 0) Module._free(metricsPtr);
+            if (resultPtr && resultPtr !== 0) Module._free(resultPtr);
+        }
+    }
+};
