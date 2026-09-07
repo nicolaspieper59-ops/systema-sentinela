@@ -962,20 +962,56 @@
             elEpoch.style.color = "var(--sky)";
         }
 
-        astroWorker.postMessage({
-            type: 'COMPUTE',
-            timestampUtc: timestampExact,
-            coords: {
-                lat: stationActive.lat,
-                lon: stationActive.lon,
-                alt: stationActive.altMeters
-            },
-            meteo: {
-                tempC: meteoActive.temperatureC,
-                presHpa: meteoActive.pressionBaro
-            }
-        });
+        // 1. Instanciation du Worker
+const astroWorker = new Worker('worker_astronomie.js');
+
+astroWorker.onmessage = function(e) {
+    const { type, payload } = e.data;
+
+    if (type === 'READY') {
+        console.log("[UI] Worker prêt. Chargement des flux JPL...");
+        // 2. Chargement du flux généré par la pipeline Python
+        fetch('flux_live.json')
+            .then(res => res.json())
+            .then(jplData => {
+                // Transmission de la matrice au worker
+                astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: jplData });
+                
+                // Initialisation du modèle géomagnétique WMM
+                astroWorker.postMessage({ 
+                    type: 'INIT_WMM', 
+                    coords: { lat: 43.2883, lon: 5.3560, alt: 84 } 
+                });
+
+                // Lancement d'un premier calcul immédiat
+                lancerCalculsPeriode(astroWorker);
+            })
+            .catch(err => console.error("[UI] Erreur de chargement flux_live.json :", err));
     }
+
+    if (type === 'RESULTS') {
+        mettreAJourInterface(payload);
+    }
+
+    if (type === 'WMM_RESULTS') {
+        mettreAJourWMM(payload);
+    }
+
+    if (type === 'ERROR') {
+        console.error("[Worker Error]:", e.data.message);
+    }
+};
+
+function lancerCalculsPeriode(worker) {
+    const intervalle = setInterval(() => {
+        worker.postMessage({
+            type: 'COMPUTE',
+            timestampUtc: Date.now(),
+            coords: { lat: 43.2883, lon: 5.3560, alt: 84 },
+            meteo: { tempC: 25.0, presHpa: 1016.7 }
+        });
+    }, 1000); // Actualisation chaque seconde
+}
 
     function lancerBoucleCalculSecurisee() {
         envoyerDemandeCalculWorker();
