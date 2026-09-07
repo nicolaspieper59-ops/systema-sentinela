@@ -980,6 +980,30 @@
         });
     }
 
+    function mettreAJourInterface(payload) {
+    if (!payload) return;
+
+    // 1. Mise à jour des métriques solaires et de l'équation du temps
+    if (payload.solarMetrics) {
+        const m = payload.solarMetrics;
+        document.getElementById('val-eq-temps').innerText = `${m.eqTempsMin >= 0 ? '+' : ''}${m.eqTempsMin.toFixed(4)} min`;
+        document.getElementById('val-excentricite').innerText = (m.excentricite ?? 0.0167).toFixed(6); // Valeur par défaut si absente
+        document.getElementById('val-obliquite').innerText = `${(m.obliquite ?? 23.439).toFixed(4)}°`;
+        document.getElementById('val-long-solaire').innerText = `${(m.longitudeSolaire ?? 0).toFixed(4)}°`;
+    }
+
+    // 2. Mise à jour du GAST / LST
+    if (payload.tempsJpl) {
+        document.getElementById('val-gast').innerText = `${payload.tempsJpl.gastDeg.toFixed(4)}° / ${payload.tempsJpl.lstDeg.toFixed(4)}°`;
+    }
+
+    // 3. Injection des données dans le tableau des astres
+    if (payload.bodies) {
+        mettreAJourTableauAstres(payload.bodies);
+        dessinerRadarAstres(payload.bodies, capVraiActuel);
+    }
+    }
+    
     function lancerBoucleCalculSecurisee() {
         envoyerDemandeCalculWorker();
         setTimeout(lancerBoucleCalculSecurisee, 1000); // Cadencé à 1 seconde pour éviter la surcharge CPU
