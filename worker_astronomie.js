@@ -34,7 +34,14 @@ function evaluerClenshawChebyshev(coeffs, x) {
 
 function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
     if (!arcsAstre || arcsAstre.length === 0) return null;
-    const arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end) || arcsAstre[0];
+    
+    // Recherche de l'arc exact, ou repli de secours sur le premier/dernier arc le plus proche
+    let arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end);
+    if (!arc) {
+        // Fallback de sécurité pour éviter le retour à null si léger décalage temporel
+        if (timestampSec < arcsAstre[0].t_start) arc = arcsAstre[0];
+        else arc = arcsAstre[arcsAstre.length - 1];
+    }
     
     const tMin = arc.t_start;
     const tMax = arc.t_end;
