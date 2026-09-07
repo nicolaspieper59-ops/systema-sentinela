@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * SYSTEMA SENTINELA — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
- * Version rigoureuse optimisée v18.8
+ * Version rigoureuse optimisée v18.8 (Corrigée & Sécurisée)
  * ============================================================================
  */
 
@@ -35,10 +35,9 @@ function evaluerClenshawChebyshev(coeffs, x) {
 function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
     if (!arcsAstre || arcsAstre.length === 0) return null;
     
-    // Recherche de l'arc exact, ou repli de secours sur le premier/dernier arc le plus proche
+    // Recherche de l'arc exact avec fallback de sécurité aux frontières
     let arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end);
     if (!arc) {
-        // Fallback de sécurité pour éviter le retour à null si léger décalage temporel
         if (timestampSec < arcsAstre[0].t_start) arc = arcsAstre[0];
         else arc = arcsAstre[arcsAstre.length - 1];
     }
@@ -53,15 +52,6 @@ function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
         z: evaluerClenshawChebyshev(arc.cz, tNorm),
         mag: 0.0
     };
-}
-
-async function chargerCoefficientsWMM() {
-    if (wmmCoefficients) return;
-    const reponse = await fetch('WMM2025.COF');
-    if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable.");
-    const texte = await reponse.text();
-    wmmCoefficients = parserFichierWMM(texte);
-    console.log("[Worker] Coefficients WMM 2025 parsés intégralement.");
 }
 
 function parserFichierWMM(texte) {
@@ -82,6 +72,14 @@ function parserFichierWMM(texte) {
         }
     }
     return coeffs;
+}
+
+async function chargerCoefficientsWMM() {
+    if (wmmCoefficients) return;
+    const reponse = await fetch('WMM2025.COF');
+    if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable.");
+    const texte = await reponse.text();
+    wmmCoefficients = parserFichierWMM(texte);
 }
 
 function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
@@ -119,7 +117,7 @@ function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
     };
 }
 
-onmessage = function(e) {
+onmessage = async function(e) {
     const data = e.data;
     if (!data) return;
 
@@ -129,13 +127,19 @@ onmessage = function(e) {
     }
 
     if (data.type === 'INIT_WMM') {
-        chargerCoefficientsWMM().then(() => {
-            const coords = data.coords || { lat: 43.28, lon: 5.35, alt: 10 };
+        try {
+            // Utilisation prioritaire du texte transmis par le thread principal pour éviter les erreurs de fetch distant
+            if (data.cofText) {
+                wmmCoefficients = parserFichierWMM(data.cofText);
+            } else {
+                await chargerCoefficientsWMM();
+            }
+            const coords = data.coords || { lat: 43.2843, lon: 5.3585, alt: 10 };
             const resultat = calculerWmmDynamique(coords.lat, coords.lon, coords.alt / 1000.0, 2026.2);
             postMessage({ type: 'WMM_RESULTS', payload: resultat });
-        }).catch(err => {
+        } catch (err) {
             postMessage({ type: 'ERROR', message: "Erreur WMM critique : " + err.toString() });
-        });
+        }
         return;
     }
 
@@ -166,7 +170,8 @@ onmessage = function(e) {
                 obliquiteDeg: Module.HEAPF64[offset + 1],
                 longSolaireDeg: Module.HEAPF64[offset + 2],
                 gastDeg: Module.HEAPF64[offset + 3],
-                lstDeg: Module.HEAPF64[offset + 4]
+                lstDeg: Module.HEAPF64[offset + 4],
+                excentricite: 0.01671022 // Constante orbitale standard intégrée
             };
 
             const eraRad = (solarMetrics.gastDeg % 360.0) * (Math.PI / 180.0);
@@ -211,11 +216,7 @@ onmessage = function(e) {
                 type: 'RESULTS',
                 payload: {
                     timestamp: timestampUtc,
-                    solarMetrics: {
-                        eqTempsMin: solarMetrics.eqTempsMin,
-                        obliquite: solarMetrics.obliquiteDeg,
-                        longitudeSolaire: solarMetrics.longSolaireDeg
-                    },
+                    solarMetrics: solarMetrics,
                     tempsJpl: {
                         gastDeg: solarMetrics.gastDeg,
                         lstDeg: solarMetrics.lstDeg
