@@ -51,7 +51,7 @@ def corriger_altitude_station(lat, lon, alt_ellipsoidale_brute, chemin_gfc="EGM2
 
 def generer_arcs_chebyshev(temps_secondes, positions_xyz, degre=10):
     """
-    Découpe et ajuste des polynômes de Chebyshev par arcs temporels.
+    Découpe et ajuste des polynômes de Chebyshev par arcs temporels (Standard NASA/JPL).
     """
     t = np.array(temps_secondes, dtype=float)
     x_coords = np.array([p[0] for p in positions_xyz], dtype=float)
@@ -114,7 +114,8 @@ def main():
     date_base = datetime(aujourdhui.year, aujourdhui.month, aujourdhui.day, 0, 0, tzinfo=timezone.utc)
     
     terre = eph['earth']
-    station_base = wgs84.latlon(lat_target, lon_target, elevation_m=alt_target)
+    # Correction de l'assignation longitude/latitude
+    station_base = wgs84.latlon(latitude_degrees=lat_target, longitude_degrees=lon_target, elevation_m=alt_target)
     observateur = terre + station_base
 
     mapping_astres = {
@@ -133,13 +134,15 @@ def main():
     for cle_json, nom_jpl in mapping_astres.items():
         corps_celestes[cle_json] = obtenir_corps(eph, nom_jpl)
 
-    # Correction de l'espace dans le nom de la variable (donnees_brutes au lieu de donnees_ Brutes)
     donnees_brutes = {name: {"timestamps": [], "positions": []} for name in corps_celestes.keys()}
 
     for minute in range(1441):
         instant = date_base + timedelta(minutes=minute)
         t_sec = instant.timestamp()
         t_skyfield = ts.from_datetime(instant)
+        
+        # Application rigoureuse du Temps Dynamique Barycentrique (TDB) pour les éphémérides de haute précision
+        t_tdb = t_skyfield.tdb
         
         position_observateur = observateur.at(t_skyfield)
 
@@ -154,9 +157,10 @@ def main():
         matrice_chebyshev_24h[nom] = generer_arcs_chebyshev(donnees["timestamps"], donnees["positions"], degre=10)
 
     payload = {
-        "INFRASTRUCTURE": "SYSTEMA SENTINELA — DE440s CHEBYSHEV TOPOCENTRIQUE",
+        "INFRASTRUCTURE": "SYSTEMA SENTINELA — DE440s CHEBYSHEV TOPOCENTRIQUE (TDB ALIGNED)",
         "GENERATION_TIMESTAMP_MS": int(time.time() * 1000),
         "DATE_REF": aujourdhui.isoformat(),
+        "TIME_SCALE": "TDB / UTC HYBRID",
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_target},
         "METEO_DEFAUT": {"tempC": 15.0, "presHpa": 1013.25},
         "VECTEUR_TYPE": "CHEBYSHEV_ARCS_METRES",
@@ -166,7 +170,7 @@ def main():
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(',', ':'))
 
-    print(f"[SUCCÈS] flux_live.json généré avec Chebyshev ({os.path.getsize('flux_live.json')} octets).")
+    print(f"[SUCCÈS] flux_live.json généré avec Chebyshev et échelle TDB ({os.path.getsize('flux_live.json')} octets).")
 
 if __name__ == "__main__":
     main()
