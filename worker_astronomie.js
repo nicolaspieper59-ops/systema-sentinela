@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * SYSTEMA SENTINELA — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
- * Version rigoureuse optimisée v18.8 (Intégration TSM/TSV & Sécurisation)
+ * Version rigoureuse optimisée v18.8 (Intégration TSM/TSV & CI/CD Compatible)
  * ============================================================================
  */
 
@@ -17,7 +17,7 @@ let wasmReady = false;
 let matriceJplGlobal = null;
 let wmmCoefficients = null;
 
-// Importation du module WASM compilé
+// Importation du module WASM compilé par le pipeline CI/CD
 importScripts('wasm_astronomie.js');
 
 function evaluerClenshawChebyshev(coeffs, x) {
@@ -167,6 +167,7 @@ onmessage = async function(e) {
             const presHpa = meteo?.presHpa ?? meteoDefaut.presHpa;
             const timestampSec = timestampUtc / 1000.0;
 
+            // Appel direct de la fonction exportée par Emscripten (_calculerParametresSiderauxEtSolaires)
             metricsPtr = Module._malloc(40);
             Module._calculerParametresSiderauxEtSolaires(timestampSec, lon, metricsPtr);
 
@@ -224,17 +225,45 @@ onmessage = async function(e) {
                 );
 
                 const resOffset = resultPtr / 8;
+                const decDeg = Module.HEAPF64[resOffset + 4];
+                const raDeg = Module.HEAPF64[resOffset + 3];
+
+                // Calcul trigonométrique de secours pour les heures TSV (Lever, Culmination, Coucher)
+                let tsvLeverStr = "--";
+                let tsvCulminationStr = "--";
+                let tsvCoucherStr = "--";
+
+                const latRad = lat * (Math.PI / 180.0);
+                const decRad = decDeg * (Math.PI / 180.0);
+                const cosH0 = -Math.tan(latRad) * Math.tan(decRad);
+
+                if (cosH0 >= -1.0 && cosH0 <= 1.0) {
+                    const H0 = Math.acos(cosH0) * (180.0 / Math.PI);
+                    let culminationHours = (raDeg - lon - (eqTempsMin * 4.0)) / 15.0;
+                    culminationHours = (culminationHours % 24 + 24) % 24;
+                    
+                    let leverHours = culminationHours - (H0 / 15.0);
+                    let coucherHours = culminationHours + (H0 / 15.0);
+                    
+                    leverHours = (leverHours % 24 + 24) % 24;
+                    coucherHours = (coucherHours % 24 + 24) % 24;
+
+                    tsvLeverStr = formaterHeureDecimale(leverHours);
+                    tsvCulminationStr = formaterHeureDecimale(culminationHours);
+                    tsvCoucherStr = formaterHeureDecimale(coucherHours);
+                }
+
                 bodiesResults[nomAstre] = {
                     azimuth: Module.HEAPF64[resOffset + 0],
                     elevationGeometrique: Module.HEAPF64[resOffset + 1],
                     elevationRefractee: Module.HEAPF64[resOffset + 2],
-                    raDeg: Module.HEAPF64[resOffset + 3],
-                    decDeg: Module.HEAPF64[resOffset + 4],
+                    raDeg: raDeg,
+                    decDeg: decDeg,
                     distanceKm: Module.HEAPF64[resOffset + 5] * 149597870700.0 / 1000.0,
                     visibiliteCode: Module.HEAP32[(resultPtr + 64) / 4],
-                    leverTsv: "--",
-                    culminationTsv: "--",
-                    coucherTsv: "--"
+                    leverTsv: tsvLeverStr,
+                    culminationTsv: tsvCulminationStr,
+                    coucherTsv: tsvCoucherStr
                 };
             }
 
