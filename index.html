@@ -774,20 +774,23 @@
     }
 
     window.addEventListener('load', async () => {
-        document.getElementById('html-root').classList.add('day-mode');
-        dessinerRadarAstres({}, 0);
-        initGlobe3D();
-        initialiserWorkerAstronomie();
+    document.getElementById('html-root').classList.add('day-mode');
+    dessinerRadarAstres({}, 0);
+    initGlobe3D();
+    
+    // CORRECTION : Appel de la synchronisation atomique au démarrage
+    await synchroniserHeureAtomique();
 
-        await actualiserIndiceKpRapide();
-        setInterval(actualiserIndiceKpRapide, 60 * 60 * 1000);
-        await chargerFluxLiveJPL();
-        await chargerEtParserWMM();
-        
-        appliquerCoordonneesManuelles(true);
-        lancerBoucleCalculSecurisee();
-        ecrireLog("SYSTEMA SENTINELA v18.8 prêt.");
-    });
+    initialiserWorkerAstronomie();
+    await actualiserIndiceKpRapide();
+    setInterval(actualiserIndiceKpRapide, 60 * 60 * 1000);
+    await chargerFluxLiveJPL();
+    await chargerEtParserWMM();
+    
+    appliquerCoordonneesManuelles(true);
+    lancerBoucleCalculSecurisee();
+    ecrireLog("SYSTEMA SENTINELA v18.8 prêt et synchronisé.");
+});
 </script>
 </body>
 </html>
