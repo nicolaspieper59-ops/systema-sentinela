@@ -1,12 +1,13 @@
 /**
  * ============================================================================
- * KERNEL C++ WEBMASSEMBLY — ASTROMÉTRIE DE HAUTE PRÉCISION
+ * SYSTEMA SENTINELA — KERNEL C++ WEBMASSEMBLY (ASTROMÉTRIE & CHEBYSHEV)
+ * Version rigoureuse optimisée v18.8
  * ============================================================================
  */
 
 #include <emscripten/emscripten.h>
 #include <cmath>
-#include <cstring>
+#include <algorithm>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -41,6 +42,38 @@ EMSCRIPTEN_KEEPALIVE
 inline double normaliserDegres(double deg) {
     double res = std::fmod(deg, 360.0);
     return res < 0.0 ? res + 360.0 : res;
+}
+
+// Évaluation d'une série de Chebyshev par l'algorithme de Clenshaw
+double evaluerChebyshev(const double* coeffs, int degre, double xNorm) {
+    double b2 = 0.0;
+    double b1 = 0.0;
+    double b0 = 0.0;
+    
+    for (int i = degre; i >= 1; --i) {
+        b0 = 2.0 * xNorm * b1 - b2 + coeffs[i];
+        b2 = b1;
+        b1 = b0;
+    }
+    return xNorm * b1 - b2 + (coeffs[0] * 0.5);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void obtenirPositionAstreChebyshev(
+    double timestamp,
+    const double* coeffsX, const double* coeffsY, const double* coeffsZ,
+    int degre, double tStart, double tEnd,
+    double* outCoords
+) {
+    if (!outCoords || timestamp < tStart || timestamp > tEnd) return;
+    
+    double tMin = tStart;
+    double tMax = tEnd;
+    double xNorm = (tMin == tMax) ? 0.0 : (2.0 * (timestamp - tMin) / (tMax - tMin) - 1.0);
+    
+    outCoords[0] = evaluerChebyshev(coeffsX, degre, xNorm);
+    outCoords[1] = evaluerChebyshev(coeffsY, degre, xNorm);
+    outCoords[2] = evaluerChebyshev(coeffsZ, degre, xNorm);
 }
 
 EMSCRIPTEN_KEEPALIVE
