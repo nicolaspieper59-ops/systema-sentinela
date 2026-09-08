@@ -710,18 +710,37 @@
     }
 
     function mettreAJourMetricsSolaires(m) {
-    if (!m) return;
-    currentEqTempsMin = m.eqTempsMin ?? 0;
-    
-    document.getElementById('val-eq-temps').innerText = `${currentEqTempsMin >= 0 ? '+' : ''}${currentEqTempsMin.toFixed(4)} min`;
-    document.getElementById('val-excentricite').innerText = (m.excentricite ?? 0.01671022).toFixed(8);
-    // Utilisation des bons identifiants de propriétés (obliquiteDeg et longSolaireDeg)
-    document.getElementById('val-obliquite').innerText = `${(m.obliquiteDeg ?? 0).toFixed(4)}°`;
-    document.getElementById('val-long-solaire').innerText = `${(m.longSolaireDeg ?? 0).toFixed(4)}°`;
-    
-    if (m.tsm) document.getElementById('val-tsm').innerText = m.tsm;
-    if (m.tsv) document.getElementById('val-tsv').innerText = m.tsv;
+        if (!m) return;
+        currentEqTempsMin = m.eqTempsMin ?? 0;
+        
+        // Affichage sécurisé avec correspondance exacte des clés du Worker
+        document.getElementById('val-eq-temps').innerText = `${currentEqTempsMin >= 0 ? '+' : ''}${currentEqTempsMin.toFixed(4)} min`;
+        document.getElementById('val-excentricite').innerText = (m.excentricite ?? 0.01671022).toFixed(8);
+        document.getElementById('val-obliquite').innerText = `${(m.obliquiteDeg ?? 0).toFixed(4)}°`;
+        document.getElementById('val-long-solaire').innerText = `${(m.longSolaireDeg ?? 0).toFixed(4)}°`;
+        
+        if (m.tsm) document.getElementById('val-tsm').innerText = m.tsm;
+        if (m.tsv) document.getElementById('val-tsv').innerText = m.tsv;
+    }
+
+    function mettreAJourInterface(payload) {
+        if (!payload) return;
+
+        if (payload.solarMetrics) {
+            mettreAJourMetricsSolaires(payload.solarMetrics);
         }
+
+        if (payload.tempsJpl) {
+            const tp = payload.tempsJpl;
+            const elGast = document.getElementById('val-gast');
+            if (elGast) elGast.innerText = `${tp.gastDeg.toFixed(4)}° / ${tp.lstDeg.toFixed(4)}°`;
+        }
+
+        if (payload.bodies) {
+            mettreAJourTableauAstres(payload.bodies);
+            dessinerRadarAstres(payload.bodies, capVraiActuel);
+        }
+                }
 
     function mettreAJourTableauAstres(bodiesData) {
         const tbody = document.getElementById('table-body');
