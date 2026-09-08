@@ -177,9 +177,8 @@
             <div class="log-console" id="logConsole"></div>
         </div>
     </div>
-</div>
 
-<script src="three.min.js"></script>
+    <script src="three.min.js"></script>
 
 <script>
     // Correction de la portée globale en mode strict
@@ -493,41 +492,61 @@
         }
     }
 
+    // --- CORRECTION : FERMETURE CORRECTE DE LA FONCTION & GESTION READY ---
     function traiterMessageWorker(e) {
-    const data = e.data;
-    if (!data) return;
+        const data = e.data;
+        if (!data) return;
 
-    if (data.type === 'RESULTS_BINARY') {
-        const floatMap = new Float64Array(data.buffer);
-        const bodiesResults = {};
-        let index = 0;
-
-        // Reconstitution de l'objet bodies à partir du buffer binaire
-        for (const [nomAstre, meta] of Object.entries(data.metaAstres)) {
-            bodiesResults[nomAstre] = {
-                azimuth: floatMap[index++],
-                elevationGeometrique: floatMap[index++],
-                elevationRefractee: floatMap[index++],
-                raDeg: floatMap[index++],
-                decDeg: floatMap[index++],
-                distanceKm: floatMap[index++],
-                visibiliteCode: meta.visibiliteCode,
-                leverTsv: meta.leverTsv,
-                culminationTsv: meta.culminationTsv,
-                coucherTsv: meta.coucherTsv
-            };
+        if (data.type === 'READY') {
+            workerPret = true;
+            document.getElementById('lbl-worker-status').innerText = "ACTIF";
+            document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+            while (fileDAttenteWorker.length > 0) {
+                astroWorker.postMessage(fileDAttenteWorker.shift());
+            }
+            return;
         }
 
-        // Transmission au pipeline d'affichage habituel
-        mettreAJourInterface({
-            timestamp: data.timestamp,
-            solarMetrics: data.solarMetrics,
-            tempsJpl: data.tempsJpl,
-            bodies: bodiesResults
-        });
-        return;
-    }
-    
+        if (data.type === 'WMM_RESULTS') {
+            if (data.payload) {
+                resultatWmmCourant = data.payload;
+                document.getElementById('val-dec-wmm').innerText = `${data.payload.declination.toFixed(4)}°`;
+                document.getElementById('val-inc-wmm').innerText = `${data.payload.inclination.toFixed(4)}°`;
+                document.getElementById('val-intensity-wmm').innerText = `${data.payload.totalIntensity.toFixed(2)} nT`;
+            }
+            return;
+        }
+
+        if (data.type === 'RESULTS_BINARY') {
+            const floatMap = new Float64Array(data.buffer);
+            const bodiesResults = {};
+            let index = 0;
+
+            for (const [nomAstre, meta] of Object.entries(data.metaAstres)) {
+                bodiesResults[nomAstre] = {
+                    azimuth: floatMap[index++],
+                    elevationGeometrique: floatMap[index++],
+                    elevationRefractee: floatMap[index++],
+                    raDeg: floatMap[index++],
+                    decDeg: floatMap[index++],
+                    distanceKm: floatMap[index++],
+                    visibiliteCode: meta.visibiliteCode,
+                    leverTsv: meta.leverTsv,
+                    culminationTsv: meta.culminationTsv,
+                    coucherTsv: meta.coucherTsv
+                };
+            }
+
+            mettreAJourInterface({
+                timestamp: data.timestamp,
+                solarMetrics: data.solarMetrics,
+                tempsJpl: data.tempsJpl,
+                bodies: bodiesResults
+            });
+            return;
+        }
+    } // <-- Accolade fermante correctement ajoutée ici
+
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
         astroWorker = new Worker('worker_astronomie.js');
