@@ -182,6 +182,8 @@
 <script src="three.min.js"></script>
 
 <script>
+    // Correction de la portée globale en mode strict
+    let currentEqTempsMin = 0;
     let modeJourActif = true;
     let baseTempsAtomiqueMs = null;
     let basePerformanceNow = null;
@@ -189,6 +191,18 @@
     
     let historiqueRttMs = [];
     let seuilDeriveActuelMs = 2.0; 
+
+    // Sécurité Worker asynchrone
+    let workerPret = false;
+    let fileDAttenteWorker = [];
+
+    function envoyerMessageWorkerSecurise(message) {
+        if (astroWorker && workerPret) {
+            astroWorker.postMessage(message);
+        } else {
+            fileDAttenteWorker.push(message);
+        }
+    }
 
     const savedAtomTime = parseFloat(localStorage.getItem('sentinela_atom_time') || '0');
     const savedPerfTime = parseFloat(localStorage.getItem('sentinela_perf_time') || '0');
@@ -377,14 +391,6 @@
         return 10 * 60 * 1000;
     }
 
-    function calculerDistanceKm(lat1, lon1, lat2, lon2) {
-        const R = 6371.0;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-
     async function fetchMeteoReelle(lat, lon) {
         try {
             const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(6)}&longitude=${lon.toFixed(6)}&current=temperature_2m,relative_humidity_2m,surface_pressure`;
@@ -480,7 +486,7 @@
             matriceJplLive = await reponse.json();
             document.getElementById('lbl-jpl-status').innerText = "SYNCHRONISÉ";
             document.getElementById('lbl-jpl-status').style.color = "var(--neon-green)";
-            if (astroWorker) astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+            envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
         } catch (e) {
             document.getElementById('lbl-jpl-status').innerText = "REPLI ANALYTIQUE";
             document.getElementById('lbl-jpl-status').style.color = "var(--rose)";
@@ -491,8 +497,14 @@
         const data = e.data;
         if (!data) return;
         if (data.type === 'READY') {
+            workerPret = true;
             const statutEl = document.getElementById('lbl-worker-status');
             if (statutEl) statutEl.innerText = "ACTIF";
+            while (fileDAttenteWorker.length > 0) {
+                const msg = fileDAttenteWorker.shift();
+                astroWorker.postMessage(msg);
+            }
+            ecrireLog("Web Worker initialisé et file d'attente vidée.");
             return;
         }
         if (data.type === 'WMM_RESULTS') {
@@ -518,10 +530,9 @@
             document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
             document.getElementById('lbl-worker-status').style.color = "var(--rose)";
         };
-        if (matriceJplLive) astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+        if (matriceJplLive) envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
     }
 
-    // UNIQUE et unifiée fonction de mise à jour des métriques solaires
     function mettreAJourMetricsSolaires(m) {
         if (!m) return;
         currentEqTempsMin = m.eqTempsMin ?? 0;
@@ -533,7 +544,6 @@
         if (m.tsv) document.getElementById('val-tsv').innerText = m.tsv;
     }
 
-    // UNIQUE et unifiée fonction de mise à jour globale de l'interface
     function mettreAJourInterface(payload) {
         if (!payload) return;
         if (payload.solarMetrics) {
@@ -601,7 +611,7 @@
             const reponse = await fetch('./WMM2025.COF');
             if (!reponse.ok) throw new Error(`Fichier WMM2025.COF introuvable`);
             const texte = await reponse.text();
-            if (astroWorker) astroWorker.postMessage({ type: 'INIT_WMM', cofText: texte });
+            envoyerMessageWorkerSecurise({ type: 'INIT_WMM', cofText: texte });
         } catch (e) { ecrireLog("WMM : Utilisation des coefficients par défaut."); }
     }
 
@@ -725,7 +735,7 @@
             elEpoch.style.color = "var(--sky)";
         }
 
-        astroWorker.postMessage({
+        envoyerMessageWorkerSecurise({
             type: 'COMPUTE',
             timestampUtc: timestampExact,
             coords: { lat: stationActive.lat, lon: stationActive.lon, alt: stationActive.altMeters },
