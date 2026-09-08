@@ -42,7 +42,6 @@ jobs:
       - name: 📦 Installer les dépendances Python (SPICE & Numerics)
         run: |
           python -m pip install --upgrade pip
-          # Installation de spiceypy pour respecter le standard SPICE Toolkit de la NASA
           pip install spiceypy numpy
 
       - name: ⚙️ Configurer Emscripten SDK
@@ -70,7 +69,6 @@ jobs:
           LON: ${{ inputs.lon || vars.STATION_LON || '5.358507' }}
           ALT: ${{ inputs.alt || vars.STATION_ALT || '99.31' }}
         run: |
-          # Le script Python doit charger de440s.bsp via spiceypy et convertir l'UTC en TDB
           python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT"
 
       - name: 🔨 Compilation C++ vers WebAssembly (Wasm)
