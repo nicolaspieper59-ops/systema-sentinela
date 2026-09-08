@@ -382,30 +382,27 @@
     }
 
     async function actualiserIndiceKpRapide() {
-        try {
-            const reponse = await fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
-            if (!reponse.ok) throw new Error("Erreur réseau NOAA");
-            
-            const donnees = await reponse.json();
-            if (donnees && donnees.length > 1) {
-                const derniereLigne = donnees[donnees.length - 1];
-                const kpActuel = parseFloat(derniereLigne[1]);
-                
+    try {
+        const reponse = await fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
+        if (!reponse.ok) throw new Error("Erreur réseau NOAA");
+        
+        const donnees = await reponse.json();
+        // Ignorer l'en-tête et trouver la dernière ligne numérique valide
+        for (let i = donnees.length - 1; i >= 1; i--) {
+            const val = parseFloat(donnees[i][1]);
+            if (!isNaN(val)) {
                 const elKp = document.getElementById('val-kp-index');
                 if (elKp) {
-                    elKp.innerText = `Kp ${kpActuel.toFixed(2)}`;
-                    if (kpActuel >= 5) {
-                        elKp.style.color = "var(--rose)";
-                        ecrireLog(`ALERTE GÉOMAGNÉTIQUE : Indice Kp élevé détecté (${kpActuel}) !`);
-                    } else {
-                        elKp.style.color = "var(--neon-green)";
-                    }
+                    elKp.innerText = `Kp ${val.toFixed(2)}`;
+                    elKp.style.color = val >= 5 ? "var(--rose)" : "var(--neon-green)";
                 }
+                break;
             }
-        } catch (err) {
-            ecrireLog(`Impossible de charger l'indice Kp : ${err.message}`);
         }
+    } catch (err) {
+        document.getElementById('val-kp-index').innerText = "Kp N/A";
     }
+        }
 
     async function basculerTousLesCapteurs() {
         const btn = document.getElementById('btn-toggle-capteurs');
