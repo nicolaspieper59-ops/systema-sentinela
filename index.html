@@ -494,34 +494,40 @@
     }
 
     function traiterMessageWorker(e) {
-        const data = e.data;
-        if (!data) return;
-        if (data.type === 'READY') {
-            workerPret = true;
-            const statutEl = document.getElementById('lbl-worker-status');
-            if (statutEl) statutEl.innerText = "ACTIF";
-            while (fileDAttenteWorker.length > 0) {
-                const msg = fileDAttenteWorker.shift();
-                astroWorker.postMessage(msg);
-            }
-            ecrireLog("Web Worker initialisé et file d'attente vidée.");
-            return;
-        }
-        if (data.type === 'WMM_RESULTS') {
-            const payload = data.payload;
-            if (payload) {
-                resultatWmmCourant = payload;
-                document.getElementById('val-dec-wmm').innerText = `${payload.declination >= 0 ? '+' : ''}${payload.declination.toFixed(6)}°`;
-                document.getElementById('val-inc-wmm').innerText = `${payload.inclination.toFixed(6)}°`;
-                document.getElementById('val-intensity-wmm').innerText = `${payload.totalIntensity.toFixed(4)} nT`;
-            }
-            return;
-        }
-        if (data.type === 'RESULTS') {
-            mettreAJourInterface(data.payload);
-        }
-    }
+    const data = e.data;
+    if (!data) return;
 
+    if (data.type === 'RESULTS_BINARY') {
+        const floatMap = new Float64Array(data.buffer);
+        const bodiesResults = {};
+        let index = 0;
+
+        // Reconstitution de l'objet bodies à partir du buffer binaire
+        for (const [nomAstre, meta] of Object.entries(data.metaAstres)) {
+            bodiesResults[nomAstre] = {
+                azimuth: floatMap[index++],
+                elevationGeometrique: floatMap[index++],
+                elevationRefractee: floatMap[index++],
+                raDeg: floatMap[index++],
+                decDeg: floatMap[index++],
+                distanceKm: floatMap[index++],
+                visibiliteCode: meta.visibiliteCode,
+                leverTsv: meta.leverTsv,
+                culminationTsv: meta.culminationTsv,
+                coucherTsv: meta.coucherTsv
+            };
+        }
+
+        // Transmission au pipeline d'affichage habituel
+        mettreAJourInterface({
+            timestamp: data.timestamp,
+            solarMetrics: data.solarMetrics,
+            tempsJpl: data.tempsJpl,
+            bodies: bodiesResults
+        });
+        return;
+    }
+    
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
         astroWorker = new Worker('worker_astronomie.js');
