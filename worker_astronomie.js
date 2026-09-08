@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * SYSTEMA SENTINELA — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
- * Version rigoureuse optimisée v18.8 (Corrigée & Sécurisée)
+ * Version rigoureuse optimisée v18.8 (Intégration TSM/TSV & Sécurisation)
  * ============================================================================
  */
 
@@ -17,6 +17,7 @@ let wasmReady = false;
 let matriceJplGlobal = null;
 let wmmCoefficients = null;
 
+// Importation du module WASM compilé
 importScripts('wasm_astronomie.js');
 
 function evaluerClenshawChebyshev(coeffs, x) {
@@ -35,7 +36,6 @@ function evaluerClenshawChebyshev(coeffs, x) {
 function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
     if (!arcsAstre || arcsAstre.length === 0) return null;
     
-    // Recherche de l'arc exact avec fallback de sécurité aux frontières
     let arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end);
     if (!arc) {
         if (timestampSec < arcsAstre[0].t_start) arc = arcsAstre[0];
@@ -50,7 +50,7 @@ function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
         x: evaluerClenshawChebyshev(arc.cx, tNorm),
         y: evaluerClenshawChebyshev(arc.cy, tNorm),
         z: evaluerClenshawChebyshev(arc.cz, tNorm),
-        mag: 0.0
+        mag: arc.mag ?? 0.0
     };
 }
 
@@ -117,6 +117,13 @@ function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
     };
 }
 
+function formaterHeureDecimale(decHours) {
+    const h = Math.floor(decHours);
+    const m = Math.floor((decHours - h) * 60);
+    const s = Math.floor(((decHours - h) * 60 - m) * 60);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 onmessage = async function(e) {
     const data = e.data;
     if (!data) return;
@@ -128,7 +135,6 @@ onmessage = async function(e) {
 
     if (data.type === 'INIT_WMM') {
         try {
-            // Utilisation prioritaire du texte transmis par le thread principal pour éviter les erreurs de fetch distant
             if (data.cofText) {
                 wmmCoefficients = parserFichierWMM(data.cofText);
             } else {
@@ -165,16 +171,33 @@ onmessage = async function(e) {
             Module._calculerParametresSiderauxEtSolaires(timestampSec, lon, metricsPtr);
 
             const offset = metricsPtr / 8;
+            const eqTempsMin = Module.HEAPF64[offset + 0];
+            const obliquiteDeg = Module.HEAPF64[offset + 1];
+            const longSolaireDeg = Module.HEAPF64[offset + 2];
+            const gastDeg = Module.HEAPF64[offset + 3];
+            const lstDeg = Module.HEAPF64[offset + 4];
+
+            // Calcul du Temps Solaire Moyen (TSM) et Vrai (TSV)
+            const dateUtc = new Date(timestampUtc);
+            const utcHours = dateUtc.getUTCHours() + dateUtc.getUTCMinutes() / 60.0 + dateUtc.getUTCSeconds() / 3600.0;
+            let tsmHours = utcHours + (lon / 15.0);
+            tsmHours = (tsmHours % 24 + 24) % 24;
+
+            let tsvHours = tsmHours + (eqTempsMin / 60.0);
+            tsvHours = (tsvHours % 24 + 24) % 24;
+
             const solarMetrics = {
-                eqTempsMin: Module.HEAPF64[offset + 0],
-                obliquiteDeg: Module.HEAPF64[offset + 1],
-                longSolaireDeg: Module.HEAPF64[offset + 2],
-                gastDeg: Module.HEAPF64[offset + 3],
-                lstDeg: Module.HEAPF64[offset + 4],
-                excentricite: 0.01671022 // Constante orbitale standard intégrée
+                eqTempsMin: eqTempsMin,
+                obliquiteDeg: obliquiteDeg,
+                longSolaireDeg: longSolaireDeg,
+                gastDeg: gastDeg,
+                lstDeg: lstDeg,
+                excentricite: 0.01671022,
+                tsm: formaterHeureDecimale(tsmHours),
+                tsv: formaterHeureDecimale(tsvHours)
             };
 
-            const eraRad = (solarMetrics.gastDeg % 360.0) * (Math.PI / 180.0);
+            const eraRad = (gastDeg % 360.0) * (Math.PI / 180.0);
             const bodiesResults = {};
 
             const sourceDonnees = (matriceJplGlobal && matriceJplGlobal.DATA) ? matriceJplGlobal.DATA : null;
@@ -208,7 +231,10 @@ onmessage = async function(e) {
                     raDeg: Module.HEAPF64[resOffset + 3],
                     decDeg: Module.HEAPF64[resOffset + 4],
                     distanceKm: Module.HEAPF64[resOffset + 5] * 149597870700.0 / 1000.0,
-                    visibiliteCode: Module.HEAP32[(resultPtr + 64) / 4]
+                    visibiliteCode: Module.HEAP32[(resultPtr + 64) / 4],
+                    leverTsv: "--",
+                    culminationTsv: "--",
+                    coucherTsv: "--"
                 };
             }
 
@@ -218,8 +244,8 @@ onmessage = async function(e) {
                     timestamp: timestampUtc,
                     solarMetrics: solarMetrics,
                     tempsJpl: {
-                        gastDeg: solarMetrics.gastDeg,
-                        lstDeg: solarMetrics.lstDeg
+                        gastDeg: gastDeg,
+                        lstDeg: lstDeg
                     },
                     bodies: bodiesResults
                 }
