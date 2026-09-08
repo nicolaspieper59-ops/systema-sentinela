@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * SYSTEMA SENTINELA — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
- * Version rigoureuse optimisée v18.8
+ * Version rigoureuse optimisée v18.8 (avec Transferable Objects)
  * ============================================================================
  */
 
@@ -212,15 +212,42 @@ onmessage = async function(e) {
                 };
             }
 
+            // --- OPTIMISATION : SÉRIALISATION BINAIRE & TRANSFERABLE OBJECTS ---
+            const nbAstres = Object.keys(bodiesResults).length;
+            const floatsParAstre = 7; 
+            const bufferSize = nbAstres * floatsParAstre * Float64Array.BYTES_PER_ELEMENT;
+            const resultArrayBuffer = new ArrayBuffer(bufferSize);
+            const resultMap = new Float64Array(resultArrayBuffer);
+
+            let index = 0;
+            const metaAstres = {};
+
+            for (const [nomAstre, data] of Object.entries(bodiesResults)) {
+                metaAstres[nomAstre] = {
+                    visibiliteCode: data.visibiliteCode,
+                    leverTsv: data.leverTsv,
+                    culminationTsv: data.culminationTsv,
+                    coucherTsv: data.coucherTsv
+                };
+
+                resultMap[index++] = data.azimuth;
+                resultMap[index++] = data.elevationGeometrique;
+                resultMap[index++] = data.elevationRefractee;
+                resultMap[index++] = data.raDeg;
+                resultMap[index++] = data.decDeg;
+                resultMap[index++] = data.distanceKm;
+                resultMap[index++] = data.visibiliteCode;
+            }
+
             postMessage({
-                type: 'RESULTS',
-                payload: {
-                    timestamp: timestampUtc,
-                    solarMetrics,
-                    tempsJpl: { gastDeg, lstDeg },
-                    bodies: bodiesResults
-                }
-            });
+                type: 'RESULTS_BINARY',
+                timestamp: timestampUtc,
+                solarMetrics,
+                tempsJpl: { gastDeg, lstDeg },
+                metaAstres,
+                buffer: resultArrayBuffer
+            }, [resultArrayBuffer]);
+
         } catch (err) {
             postMessage({ type: 'ERROR', message: err.toString() });
         } finally {
