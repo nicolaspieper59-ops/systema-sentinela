@@ -183,15 +183,12 @@
 
 <script>
     let modeJourActif = true;
-    
     let baseTempsAtomiqueMs = null;
     let basePerformanceNow = null;
     let decalageTempsAtomiqueMs = parseFloat(localStorage.getItem('sentinela_offset') || '0');
     
-    // Variables de gestion dynamique de la gigue (Jitter) et du RTT
     let historiqueRttMs = [];
     let seuilDeriveActuelMs = 2.0; 
-    const SEUIL_DERIVE_ABSOLU_SECOURS = 1.0;
 
     const savedAtomTime = parseFloat(localStorage.getItem('sentinela_atom_time') || '0');
     const savedPerfTime = parseFloat(localStorage.getItem('sentinela_perf_time') || '0');
@@ -240,18 +237,14 @@
     function calculerSeuilDynamique(nouveauRtt) {
         historiqueRttMs.push(nouveauRtt);
         if (historiqueRttMs.length > 10) historiqueRttMs.shift();
-
         const moyenneRtt = historiqueRttMs.reduce((a, b) => a + b, 0) / historiqueRttMs.length;
         const variance = historiqueRttMs.reduce((acc, val) => acc + Math.pow(val - moyenneRtt, 2), 0) / historiqueRttMs.length;
-        const ecartType = Math.sqrt(variance);
-
-        seuilDeriveActuelMs = Math.max(1.5, 2.0 + (ecartType * 1.5));
+        seuilDeriveActuelMs = Math.max(1.5, 2.0 + (Math.sqrt(variance) * 1.5));
         return seuilDeriveActuelMs;
     }
 
     let stationActive = { lat: 43.284300, lon: 5.358500, altMeters: 10.0000, nom: 'STATION INITIALE' };
     let meteoActive = { temperatureC: 15.0, humiditePct: 50.0, pressionBaro: 1013.25 };
-    let currentEqTempsMin = 0.0;
     
     let horodatageDernierFetchMeteo = 0;
     let derniereLatMeteo = null, derniereLonMeteo = null;
@@ -275,88 +268,47 @@
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
         if (!consoleEl) return;
-        
         let timeStr = "--:--:--";
         const ts = obtenirTimestampUTCExact();
-        if (ts !== null) {
-            timeStr = new Date(ts).toISOString().substring(11, 19);
-        }
+        if (ts !== null) timeStr = new Date(ts).toISOString().substring(11, 19);
         
         const line = document.createElement('div');
         line.textContent = `[${timeStr}] ${msg}`;
         consoleEl.appendChild(line);
         consoleEl.scrollTop = consoleEl.scrollHeight;
-
-        while (consoleEl.children.length > 100) {
-            consoleEl.removeChild(consoleEl.firstChild);
-        }
+        while (consoleEl.children.length > 100) consoleEl.removeChild(consoleEl.firstChild);
     }
 
     async function synchroniserHeureAtomique() {
         let synchroReussie = false;
-
         try {
             const t0 = performance.now();
             const reponse = await fetch('https://cloudflare.com/cdn-cgi/trace', { cache: 'no-store' });
             const t1 = performance.now();
-
             if (reponse.ok) {
                 const texte = await reponse.text();
                 const match = texte.match(/ts=([0-9.]+)/);
                 if (match) {
                     const tempsServeurMs = parseFloat(match[1]) * 1000;
                     const rtt = t1 - t0;
-                    const latenceReseau = rtt / 2;
-                    
                     calculerSeuilDynamique(rtt);
-                    const tempsExactReel = tempsServeurMs + latenceReseau;
-                    
+                    const tempsExactReel = tempsServeurMs + (rtt / 2);
                     initialiserAncrageTemporel(tempsExactReel);
                     decalageTempsAtomiqueMs = tempsExactReel - Date.now();
                     localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
                     synchroReussie = true;
-
                     document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
-                    ecrireLog(`Synchro Cloudflare réussie (RTT: ${rtt.toFixed(2)}ms | Seuil: ${seuilDeriveActuelMs.toFixed(2)}ms).`);
+                    ecrireLog(`Synchro Cloudflare réussie (RTT: ${rtt.toFixed(2)}ms).`);
                 }
             }
         } catch (e) {}
 
         if (!synchroReussie) {
-            try {
-                const t0 = performance.now();
-                const reponse = await fetch(window.location.href, { method: 'HEAD', cache: 'no-store' });
-                const t1 = performance.now();
-                
-                const dateHeader = reponse.headers.get('date');
-                if (dateHeader) {
-                    const tempsServeurMs = new Date(dateHeader).getTime();
-                    if (!isNaN(tempsServeurMs)) {
-                        const rtt = t1 - t0;
-                        calculerSeuilDynamique(rtt);
-                        const tempsExactReel = tempsServeurMs + (rtt / 2);
-                        
-                        initialiserAncrageTemporel(tempsExactReel);
-                        decalageTempsAtomiqueMs = tempsExactReel - Date.now();
-                        localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
-                        synchroReussie = true;
-
-                        document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
-                        ecrireLog("Synchro via Header Date réussie.");
-                    }
-                }
-            } catch (e) {}
-        }
-
-        if (!synchroReussie) {
             const cachedAtomTime = parseFloat(localStorage.getItem('sentinela_atom_time') || '0');
             const cachedPerfTime = parseFloat(localStorage.getItem('sentinela_perf_time') || '0');
-            
             if (cachedAtomTime > 0 && cachedPerfTime > 0) {
-                const deltaEcouleFermeture = performance.now() - cachedPerfTime;
-                baseTempsAtomiqueMs = cachedAtomTime + deltaEcouleFermeture;
+                baseTempsAtomiqueMs = cachedAtomTime + (performance.now() - cachedPerfTime);
                 basePerformanceNow = performance.now();
-                
                 document.getElementById('lbl-epoch').style.color = "var(--amber)";
                 ecrireLog("Mode hors-ligne : Utilisation du cache de synchronisation.");
                 synchroReussie = true;
@@ -370,99 +322,51 @@
         }
     }
 
-    async function verifierEtRecalibrerHeure() {
-        const ancienneAncre = baseTempsAtomiqueMs;
-        await synchroniserHeureAtomique();
-        if (baseTempsAtomiqueMs !== null && ancienneAncre !== null) {
-            const delta = Math.abs(baseTempsAtomiqueMs - ancienneAncre);
-            if (delta >= seuilDeriveActuelMs) {
-                ecrireLog(`Dérive temporelle détectée (${delta.toFixed(3)} ms > seuil ${seuilDeriveActuelMs.toFixed(2)} ms) : recalibrage appliqué.`);
-            }
-        }
-    }
-
     async function actualiserIndiceKpRapide() {
-    try {
-        const reponse = await fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
-        if (!reponse.ok) throw new Error("Erreur réseau NOAA");
-        
-        const donnees = await reponse.json();
-        // Ignorer l'en-tête et trouver la dernière ligne numérique valide
-        for (let i = donnees.length - 1; i >= 1; i--) {
-            const val = parseFloat(donnees[i][1]);
-            if (!isNaN(val)) {
-                const elKp = document.getElementById('val-kp-index');
-                if (elKp) {
-                    elKp.innerText = `Kp ${val.toFixed(2)}`;
-                    elKp.style.color = val >= 5 ? "var(--rose)" : "var(--neon-green)";
+        try {
+            const reponse = await fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
+            if (!reponse.ok) throw new Error("Erreur réseau NOAA");
+            const donnees = await reponse.json();
+            for (let i = donnees.length - 1; i >= 1; i--) {
+                const val = parseFloat(donnees[i][1]);
+                if (!isNaN(val)) {
+                    const elKp = document.getElementById('val-kp-index');
+                    if (elKp) {
+                        elKp.innerText = `Kp ${val.toFixed(2)}`;
+                        elKp.style.color = val >= 5 ? "var(--rose)" : "var(--neon-green)";
+                    }
+                    break;
                 }
-                break;
             }
+        } catch (err) {
+            document.getElementById('val-kp-index').innerText = "Kp N/A";
         }
-    } catch (err) {
-        document.getElementById('val-kp-index').innerText = "Kp N/A";
     }
-        }
 
     async function basculerTousLesCapteurs() {
         const btn = document.getElementById('btn-toggle-capteurs');
-        
         if (capteursActifs) {
-            if (watchPositionId !== null) {
-                navigator.geolocation.clearWatch(watchPositionId);
-                watchPositionId = null;
-            }
-
-            if (sensorIMU) {
-                try { sensorIMU.stop(); } catch(e) {}
-                sensorIMU = null;
-            }
-
-            if (listenerIMU && eventNameIMU) {
-                window.removeEventListener(eventNameIMU, listenerIMU, true);
-                listenerIMU = null;
-                eventNameIMU = null;
-            }
-
-            if (instanceBarometre) {
-                try { instanceBarometre.disconnect(); } catch(e) {}
-                instanceBarometre = null;
-            }
-
+            if (watchPositionId !== null) { navigator.geolocation.clearWatch(watchPositionId); watchPositionId = null; }
+            if (sensorIMU) { try { sensorIMU.stop(); } catch(e) {} sensorIMU = null; }
+            if (listenerIMU && eventNameIMU) { window.removeEventListener(eventNameIMU, listenerIMU, true); listenerIMU = null; eventNameIMU = null; }
+            if (instanceBarometre) { try { instanceBarometre.disconnect(); } catch(e) {} instanceBarometre = null; }
             capteursActifs = false;
-            if (btn) {
-                btn.innerText = "ACTIVER GPS & CAPTEURS";
-                btn.style.borderColor = "var(--sky)";
-                btn.style.color = "var(--text-main)";
-            }
-
+            if (btn) { btn.innerText = "ACTIVER GPS & CAPTEURS"; btn.style.borderColor = "var(--sky)"; btn.style.color = "var(--text-main)"; }
             document.getElementById('val-cap-brut').innerText = "--°";
             document.getElementById('val-cap-net').innerText = "--°";
             document.getElementById('val-baro-statut').innerText = "DÉSACTIVÉ";
-            document.getElementById('val-baro-statut').style.color = "var(--amber)";
-            ecrireLog("GPS, IMU et Baromètre désactivés.");
+            ecrireLog("Capteurs désactivés.");
         } else {
             capteursActifs = true;
-            if (btn) {
-                btn.innerText = "DÉSACTIVER GPS & CAPTEURS";
-                btn.style.borderColor = "var(--rose)";
-                btn.style.color = "var(--rose)";
-            }
-            ecrireLog("Activation simultanée du GPS, de l'IMU et du Baromètre...");
-
+            if (btn) { btn.innerText = "DÉSACTIVER GPS & CAPTEURS"; btn.style.borderColor = "var(--rose)"; btn.style.color = "var(--rose)"; }
+            ecrireLog("Activation GPS, IMU et Baromètre...");
             acquerirPositionGPS();
-            
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
                     const res = await DeviceOrientationEvent.requestPermission();
                     if (res === 'granted') activerIMU();
-                } catch (err) {
-                    ecrireLog(`Permission IMU : ${err.message}`);
-                }
-            } else {
-                activerIMU();
-            }
-
+                } catch (err) {}
+            } else { activerIMU(); }
             activerBarometre();
         }
     }
@@ -470,18 +374,14 @@
     function determinerIntervalleActualisation(vitesseMs) {
         const vitesseKmh = (vitesseMs || 0) * 3.6;
         if (vitesseKmh < 2.0) return 30 * 60 * 1000;
-        else if (vitesseKmh < 20.0) return 10 * 60 * 1000;
-        else if (vitesseKmh < 80.0) return 3 * 60 * 1000;
-        else return 1 * 60 * 1000;
+        return 10 * 60 * 1000;
     }
 
     function calculerDistanceKm(lat1, lon1, lat2, lon2) {
         const R = 6371.0;
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
@@ -490,59 +390,37 @@
             const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(6)}&longitude=${lon.toFixed(6)}&current=temperature_2m,relative_humidity_2m,surface_pressure`;
             const reponse = await fetch(url);
             if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
-            
             const data = await reponse.json();
-            const current = data.current;
-
-            meteoActive.pressionBaro = current.surface_pressure;
-            meteoActive.temperatureC = current.temperature_2m;
-            meteoActive.humiditePct = current.relative_humidity_2m;
+            meteoActive.pressionBaro = data.current.surface_pressure;
+            meteoActive.temperatureC = data.current.temperature_2m;
+            meteoActive.humiditePct = data.current.relative_humidity_2m;
 
             const elBaro = document.getElementById('val-baro-statut');
             if (elBaro && capteursActifs) {
-                elBaro.innerText = `${current.surface_pressure.toFixed(2)} hPa (${current.temperature_2m.toFixed(2)}°C, ${current.relative_humidity_2m}%)`;
+                elBaro.innerText = `${data.current.surface_pressure.toFixed(2)} hPa (${data.current.temperature_2m.toFixed(2)}°C)`;
                 elBaro.style.color = "var(--neon-green)";
             }
-
             horodatageDernierFetchMeteo = obtenirTimestampUTCExact() || Date.now();
-            derniereLatMeteo = lat;
-            derniereLonMeteo = lon;
-
-            ecrireLog(`Météo live : ${current.surface_pressure} hPa | ${current.temperature_2m}°C`);
-        } catch (err) {
-            ecrireLog(`Erreur météo live : ${err.message}`);
-        }
+            derniereLatMeteo = lat; derniereLonMeteo = lon;
+        } catch (err) {}
     }
 
     function demarrerSuiviMeteoDynamique() {
         if (!('geolocation' in navigator)) return;
-
         watchPositionId = navigator.geolocation.watchPosition((pos) => {
             if (!capteursActifs) return;
-
-            const lat = pos.coords.latitude;
-            const lon = pos.coords.longitude;
-            const alt = pos.coords.altitude !== null ? pos.coords.altitude : 10.0;
-            
+            const lat = pos.coords.latitude, lon = pos.coords.longitude, alt = pos.coords.altitude ?? 10.0;
             document.getElementById('input-lat').value = lat.toFixed(6);
             document.getElementById('input-lon').value = lon.toFixed(6);
             document.getElementById('input-alt').value = alt.toFixed(4);
-            
             appliquerCoordonneesManuelles(true);
 
             const intervalleRequis = determinerIntervalleActualisation(pos.coords.speed);
             const maintenant = obtenirTimestampUTCExact();
-            const tempsEcoule = maintenant !== null ? maintenant - horodatageDernierFetchMeteo : 0;
-
-            let deplacementDepasse = false;
-            if (derniereLatMeteo !== null && derniereLonMeteo !== null) {
-                if (calculerDistanceKm(derniereLatMeteo, derniereLonMeteo, lat, lon) > 5.0) deplacementDepasse = true;
-            }
-
-            if (horodatageDernierFetchMeteo === 0 || tempsEcoule >= intervalleRequis || deplacementDepasse) {
+            if (horodatageDernierFetchMeteo === 0 || (maintenant !== null && maintenant - horodatageDernierFetchMeteo >= intervalleRequis)) {
                 fetchMeteoReelle(lat, lon);
             }
-        }, (err) => ecrireLog(`GPS : ${err.message}`), { enableHighAccuracy: true, timeout: 10000 });
+        }, null, { enableHighAccuracy: true, timeout: 10000 });
     }
 
     function acquerirPositionGPS() {
@@ -551,60 +429,28 @@
     }
 
     function activerIMU() {
-        if (listenerIMU && eventNameIMU) {
-            window.removeEventListener(eventNameIMU, listenerIMU, true);
-            listenerIMU = null;
-            eventNameIMU = null;
-        }
-
-        if ('AbsoluteOrientationSensor' in window) {
-            try {
-                if (sensorIMU) { try { sensorIMU.stop(); } catch(e) {} }
-                sensorIMU = new AbsoluteOrientationSensor({ frequency: 60 });
-                sensorIMU.addEventListener('reading', () => {
-                    if (!capteursActifs) return;
-                    const q = sensorIMU.quaternion;
-                    calculerCapViaQuaternion(q[0], q[1], q[2], q[3]);
-                });
-                sensorIMU.start();
-                ecrireLog("IMU : Sensor API actif.");
-                return;
-            } catch (err) {}
-        }
-
+        if (listenerIMU && eventNameIMU) { window.removeEventListener(eventNameIMU, listenerIMU, true); }
         eventNameIMU = 'deviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation';
         listenerIMU = (e) => {
             if (!capteursActifs) return;
-            if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+            if (e.webkitCompassHeading !== null && e.webkitCompassHeading !== undefined) {
                 mettreAJourCapBrut(e.webkitCompassHeading, true);
                 return;
             }
-
             const alpha = e.alpha ? e.alpha * (Math.PI / 180) : 0;
             const beta = e.beta ? e.beta * (Math.PI / 180) : 0;
             const gamma = e.gamma ? e.gamma * (Math.PI / 180) : 0;
-
-            const euler = new THREE.Euler(beta, gamma, -alpha, 'ZXY');
-            const q = new THREE.Quaternion().setFromEuler(euler);
-            calculerCapViaQuaternion(q.x, q.y, q.z, q.w);
+            const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(beta, gamma, -alpha, 'ZXY'));
+            const yawRad = Math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z));
+            let capMag = (360 - (yawRad * (180 / Math.PI))) % 360;
+            if (capMag < 0) capMag += 360;
+            mettreAJourCapBrut(capMag, false);
         };
-
         window.addEventListener(eventNameIMU, listenerIMU, true);
     }
 
-    function calculerCapViaQuaternion(qx, qy, qz, qw) {
-        const yawRad = Math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz));
-        let capMag = (360 - (yawRad * (180 / Math.PI))) % 360;
-        if (capMag < 0) capMag += 360;
-        mettreAJourCapBrut(capMag, false);
-    }
-
     function mettreAJourCapBrut(capVal, estNordVrai = false) {
-        if (estNordVrai) {
-            capVraiActuel = (capVal + 360.0) % 360.0;
-        } else {
-            capVraiActuel = (capVal + resultatWmmCourant.declination + 360.0) % 360.0;
-        }
+        capVraiActuel = estNordVrai ? (capVal + 360.0) % 360.0 : (capVal + resultatWmmCourant.declination + 360.0) % 360.0;
         document.getElementById('val-cap-brut').innerText = `${capVal.toFixed(6)}°`;
         document.getElementById('val-cap-net').innerText = `${capVraiActuel.toFixed(6)}°`;
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
@@ -613,23 +459,18 @@
     function activerBarometre() {
         const elBaro = document.getElementById('val-baro-statut');
         if (!elBaro) return;
-
         if ('PressureObserver' in window) {
             try {
                 instanceBarometre = new PressureObserver((entries) => {
                     if (!capteursActifs) return;
-                    const pression = entries[entries.length - 1].pressure;
-                    elBaro.innerText = `${pression.toFixed(2)} hPa`;
+                    const p = entries[entries.length - 1].pressure;
+                    elBaro.innerText = `${p.toFixed(2)} hPa`;
                     elBaro.style.color = "var(--neon-green)";
-                    meteoActive.pressionBaro = pression;
+                    meteoActive.pressionBaro = p;
                 });
                 instanceBarometre.observe({ sampleInterval: 1000 });
-            } catch (e) {
-                elBaro.innerText = "1013.2500 hPa (STD)";
-            }
-        } else {
-            elBaro.innerText = "1013.2500 hPa (STD)";
-        }
+            } catch (e) { elBaro.innerText = "1013.2500 hPa (STD)"; }
+        } else { elBaro.innerText = "1013.2500 hPa (STD)"; }
     }
 
     async function chargerFluxLiveJPL() {
@@ -637,29 +478,23 @@
             const reponse = await fetch('flux_live.json');
             if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
             matriceJplLive = await reponse.json();
-            
             document.getElementById('lbl-jpl-status').innerText = "SYNCHRONISÉ";
             document.getElementById('lbl-jpl-status').style.color = "var(--neon-green)";
-            ecrireLog("Matrice JPL DE440s chargée.");
-
             if (astroWorker) astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
         } catch (e) {
             document.getElementById('lbl-jpl-status').innerText = "REPLI ANALYTIQUE";
             document.getElementById('lbl-jpl-status').style.color = "var(--rose)";
-            ecrireLog("Flux JPL indisponible.");
         }
     }
 
-function traiterMessageWorker(e) {
+    function traiterMessageWorker(e) {
         const data = e.data;
         if (!data) return;
-
         if (data.type === 'READY') {
             const statutEl = document.getElementById('lbl-worker-status');
             if (statutEl) statutEl.innerText = "ACTIF";
             return;
         }
-
         if (data.type === 'WMM_RESULTS') {
             const payload = data.payload;
             if (payload) {
@@ -667,11 +502,9 @@ function traiterMessageWorker(e) {
                 document.getElementById('val-dec-wmm').innerText = `${payload.declination >= 0 ? '+' : ''}${payload.declination.toFixed(6)}°`;
                 document.getElementById('val-inc-wmm').innerText = `${payload.inclination.toFixed(6)}°`;
                 document.getElementById('val-intensity-wmm').innerText = `${payload.totalIntensity.toFixed(4)} nT`;
-                ecrireLog(`WMM mis à jour : D=${payload.declination.toFixed(6)}°, I=${payload.inclination.toFixed(6)}°, F=${payload.totalIntensity.toFixed(4)}nT`);
             }
             return;
         }
-
         if (data.type === 'RESULTS') {
             mettreAJourInterface(data.payload);
         }
@@ -684,39 +517,33 @@ function traiterMessageWorker(e) {
         astroWorker.onerror = (err) => {
             document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
             document.getElementById('lbl-worker-status').style.color = "var(--rose)";
-            ecrireLog(`ERREUR WORKER : ${err.message}`);
         };
-
         if (matriceJplLive) astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
     }
 
+    // UNIQUE et unifiée fonction de mise à jour des métriques solaires
     function mettreAJourMetricsSolaires(m) {
         if (!m) return;
         currentEqTempsMin = m.eqTempsMin ?? 0;
-        
-        // Correspondance exacte avec les clés du Web Worker
         document.getElementById('val-eq-temps').innerText = `${currentEqTempsMin >= 0 ? '+' : ''}${currentEqTempsMin.toFixed(4)} min`;
         document.getElementById('val-excentricite').innerText = (m.excentricite ?? 0.01671022).toFixed(8);
         document.getElementById('val-obliquite').innerText = `${(m.obliquiteDeg ?? 0).toFixed(4)}°`;
         document.getElementById('val-long-solaire').innerText = `${(m.longSolaireDeg ?? 0).toFixed(4)}°`;
-        
         if (m.tsm) document.getElementById('val-tsm').innerText = m.tsm;
         if (m.tsv) document.getElementById('val-tsv').innerText = m.tsv;
     }
 
+    // UNIQUE et unifiée fonction de mise à jour globale de l'interface
     function mettreAJourInterface(payload) {
         if (!payload) return;
-
         if (payload.solarMetrics) {
             mettreAJourMetricsSolaires(payload.solarMetrics);
         }
-
         if (payload.tempsJpl) {
             const tp = payload.tempsJpl;
             const elGast = document.getElementById('val-gast');
             if (elGast) elGast.innerText = `${tp.gastDeg.toFixed(4)}° / ${tp.lstDeg.toFixed(4)}°`;
         }
-
         if (payload.bodies) {
             derniersResultatsAstres = payload.bodies;
             mettreAJourTableauAstres(payload.bodies);
@@ -727,36 +554,21 @@ function traiterMessageWorker(e) {
     function mettreAJourTableauAstres(bodiesData) {
         const tbody = document.getElementById('table-body');
         if (!tbody) return;
-
         tbody.innerHTML = '';
-
         for (const [nomAstre, data] of Object.entries(bodiesData)) {
             const tr = document.createElement('tr');
-            tr.id = `row-${nomAstre.toLowerCase()}`;
-
             const statutsVisibilite = ["Invisible", "Œil nu", "Jumelles", "Télescope"];
             const etatTexte = statutsVisibilite[data.visibiliteCode] ?? "Inconnu";
-
-            // Utilisation d'une haute précision (6 décimales) pour les positions d'élévation et d'azimut
-            const elev = data.elevationGeometrique !== undefined ? data.elevationGeometrique.toFixed(6) + '°' : '--';
-            const azim = data.azimuth !== undefined ? data.azimuth.toFixed(6) + '°' : '--';
-            const dist = data.distanceKm !== undefined ? Number(data.distanceKm).toLocaleString(undefined, {minimumFractionDigits: 4, maximumFractionDigits: 4}) + ' km' : '--';
-            
-            const lever = data.leverTsv || '--';
-            const culmination = data.culminationTsv || '--';
-            const coucher = data.coucherTsv || '--';
-
             tr.innerHTML = `
                 <td><strong>${nomAstre.toUpperCase()}</strong></td>
-                <td class="col-elevation">${elev}</td>
-                <td class="col-azimuth">${azim}</td>
-                <td class="col-distance">${dist}</td>
-                <td>${lever}</td>
-                <td>${culmination}</td>
-                <td>${coucher}</td>
-                <td><span class="col-etat" data-code="${data.visibiliteCode}">${etatTexte}</span></td>
+                <td>${data.elevationGeometrique !== undefined ? data.elevationGeometrique.toFixed(6) + '°' : '--'}</td>
+                <td>${data.azimuth !== undefined ? data.azimuth.toFixed(6) + '°' : '--'}</td>
+                <td>${data.distanceKm !== undefined ? Number(data.distanceKm).toLocaleString(undefined, {minimumFractionDigits: 4, maximumFractionDigits: 4}) + ' km' : '--'}</td>
+                <td>${data.leverTsv || '--'}</td>
+                <td>${data.culminationTsv || '--'}</td>
+                <td>${data.coucherTsv || '--'}</td>
+                <td><span data-code="${data.visibiliteCode}">${etatTexte}</span></td>
             `;
-
             tbody.appendChild(tr);
         }
     }
@@ -765,33 +577,22 @@ function traiterMessageWorker(e) {
         const lat = parseFloat(document.getElementById('input-lat').value.replace(',', '.'));
         const lon = parseFloat(document.getElementById('input-lon').value.replace(',', '.'));
         const altM = parseFloat(document.getElementById('input-alt').value.replace(',', '.'));
-
         if (isNaN(lat) || isNaN(lon) || isNaN(altM)) return;
 
-        const a = 6378137.0; 
-        const f = 1.0 / 298.257223563;
-        const e2 = f * (2.0 - f);
-        
-        const phi = lat * (Math.PI / 180.0);
-        const lambda = lon * (Math.PI / 180.0);
-        const sinPhi = Math.sin(phi);
-        const cosPhi = Math.cos(phi);
-        const N = a / Math.sqrt(1.0 - e2 * sinPhi * sinPhi);
+        const a = 6378137.0, f = 1.0 / 298.257223563, e2 = f * (2.0 - f);
+        const phi = lat * (Math.PI / 180.0), lambda = lon * (Math.PI / 180.0);
+        const N = a / Math.sqrt(1.0 - e2 * Math.sin(phi) ** 2);
+        const X_km = ((N + altM) * Math.cos(phi) * Math.cos(lambda)) / 1000.0;
+        const Y_km = ((N + altM) * Math.cos(phi) * Math.sin(lambda)) / 1000.0;
+        const Z_km = ((N * (1.0 - e2) + altM) * Math.sin(phi)) / 1000.0;
 
-        const X_km = ((N + altM) * cosPhi * Math.cos(lambda)) / 1000.0;
-        const Y_km = ((N + altM) * cosPhi * Math.sin(lambda)) / 1000.0;
-        const Z_km = ((N * (1.0 - e2) + altM) * sinPhi) / 1000.0;
-
-        // Affichage des vecteurs XYZ ECEF avec une précision maximale (6 décimales)
         document.getElementById('val-xyz-x').innerText = X_km.toFixed(6);
         document.getElementById('val-xyz-y').innerText = Y_km.toFixed(6);
         document.getElementById('val-xyz-z').innerText = Z_km.toFixed(6);
 
         stationActive = { lat: lat, lon: lon, altMeters: altM, nom: silencieux ? stationActive.nom : 'SAISIE MANUELLE' };
-
         document.getElementById('val-station-nom').innerText = stationActive.nom;
         document.getElementById('val-station-coords').innerText = `${lat.toFixed(6)}° / ${lon.toFixed(6)}° / ${altM.toFixed(4)}m`;
-
         actualiserPositionCurseurGlobe(lat, lon);
     }
 
@@ -801,47 +602,29 @@ function traiterMessageWorker(e) {
             if (!reponse.ok) throw new Error(`Fichier WMM2025.COF introuvable`);
             const texte = await reponse.text();
             if (astroWorker) astroWorker.postMessage({ type: 'INIT_WMM', cofText: texte });
-        } catch (e) {
-            ecrireLog("WMM : Utilisation des coefficients par défaut.");
-        }
+        } catch (e) { ecrireLog("WMM : Utilisation des coefficients par défaut."); }
     }
 
     function dessinerRadarAstres(astresData, cap = 0) {
         const canvas = document.getElementById('radarCanvas');
         if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        const dpr = window.devicePixelRatio || 1;
-        const size = 260;
-        
+        const ctx = canvas.getContext('2d'), dpr = window.devicePixelRatio || 1, size = 260;
         if (canvas.width !== Math.round(size * dpr)) {
-            canvas.width = Math.round(size * dpr);
-            canvas.height = Math.round(size * dpr);
-            canvas.style.width = `${size}px`;
-            canvas.style.height = `${size}px`;
+            canvas.width = Math.round(size * dpr); canvas.height = Math.round(size * dpr);
+            canvas.style.width = `${size}px`; canvas.style.height = `${size}px`;
         }
-
-        ctx.save();
-        ctx.scale(dpr, dpr);
+        ctx.save(); ctx.scale(dpr, dpr);
         const cx = size / 2, cy = size / 2, maxRadius = 110;
-
         ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--radar-bg').trim() || '#e6edf3';
         ctx.fillRect(0, 0, size, size);
-
         ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
         [0.33, 0.66, 1].forEach(ratio => {
             ctx.beginPath(); ctx.arc(cx, cy, maxRadius * ratio, 0, 2 * Math.PI); ctx.stroke();
         });
-
         ctx.beginPath();
         ctx.moveTo(cx, cy - maxRadius); ctx.lineTo(cx, cy + maxRadius);
         ctx.moveTo(cx - maxRadius, cy); ctx.lineTo(cx + maxRadius, cy);
         ctx.strokeStyle = '#30363d'; ctx.stroke();
-
-        ctx.fillStyle = '#8b949e'; ctx.font = '9px monospace';
-        ctx.fillText('N', cx - 3, cy - maxRadius + 10);
-        ctx.fillText('S', cx - 3, cy + maxRadius - 3);
-        ctx.fillText('E', cx + maxRadius - 10, cy + 3);
-        ctx.fillText('O', cx - maxRadius + 3, cy + 3);
 
         const capRad = cap * Math.PI / 180.0;
         ctx.strokeStyle = '#f85149'; ctx.lineWidth = 1.5;
@@ -852,31 +635,21 @@ function traiterMessageWorker(e) {
         if (astresData) {
             for (const [astre, data] of Object.entries(astresData)) {
                 if (typeof data !== 'object' || data === null) continue;
-                const el = data.elevation ?? data.elevationGeometrique ?? -1;
+                const el = data.elevationGeometrique ?? -1;
                 if (el < 0) continue;
-
                 const azRad = (data.azimuth ?? 0) * Math.PI / 180.0;
                 const r = maxRadius * (1 - (el / 90.0));
-                const x = cx + r * Math.sin(azRad);
-                const y = cy - r * Math.cos(azRad);
-
-                ctx.fillStyle = '#3fb950';
-                ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI); ctx.fill();
-                ctx.fillStyle = '#c9d1d9'; ctx.font = '8px monospace';
-                ctx.fillText(astre.toUpperCase(), x + 5, y + 3);
+                const x = cx + r * Math.sin(azRad), y = cy - r * Math.cos(azRad);
+                ctx.fillStyle = '#3fb950'; ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI); ctx.fill();
+                ctx.fillStyle = '#c9d1d9'; ctx.font = '8px monospace'; ctx.fillText(astre.toUpperCase(), x + 5, y + 3);
             }
         }
         ctx.restore();
     }
 
     function convertirLatLonEnVector3(lat, lon, rayon = 1.0) {
-        const phi = (90.0 - lat) * (Math.PI / 180.0);
-        const theta = lon * (Math.PI / 180.0);
-        return new THREE.Vector3(
-            -(rayon * Math.sin(phi) * Math.cos(theta)), 
-            rayon * Math.cos(phi), 
-            rayon * Math.sin(phi) * Math.sin(theta)
-        );
+        const phi = (90.0 - lat) * (Math.PI / 180.0), theta = lon * (Math.PI / 180.0);
+        return new THREE.Vector3(-(rayon * Math.sin(phi) * Math.cos(theta)), rayon * Math.cos(phi), rayon * Math.sin(phi) * Math.sin(theta));
     }
 
     function actualiserPositionCurseurGlobe(lat, lon) {
@@ -887,11 +660,9 @@ function traiterMessageWorker(e) {
     function initGlobe3D() {
         const container = document.getElementById('globeCanvas');
         if (!container || typeof THREE === 'undefined') return;
-
         globeScene = new THREE.Scene();
         globeCamera = new THREE.PerspectiveCamera(45, 260 / 150, 0.1, 1000);
         globeCamera.position.z = 3.5;
-
         globeRenderer = new THREE.WebGLRenderer({ canvas: container, alpha: true, antialias: true });
         globeRenderer.setPixelRatio(window.devicePixelRatio || 1);
 
@@ -900,7 +671,6 @@ function traiterMessageWorker(e) {
             new THREE.MeshBasicMaterial({ color: 0x1f6feb, wireframe: true, transparent: true, opacity: 0.6 })
         );
         globeScene.add(globe);
-
         curseurPositionMesh = new THREE.Mesh(
             new THREE.SphereGeometry(0.04, 16, 16),
             new THREE.MeshBasicMaterial({ color: 0x3fb950 })
@@ -915,22 +685,14 @@ function traiterMessageWorker(e) {
             globe.rotation.x += (clientY - lastY) * 0.008;
             lastX = clientX; lastY = clientY;
         };
-
-        const onPointerUp = () => {
-            isDragging = false;
-            window.removeEventListener('mousemove', onPointerMove);
-            window.removeEventListener('mouseup', onPointerUp);
-        };
-
+        const onPointerUp = () => { isDragging = false; window.removeEventListener('mousemove', onPointerMove); window.removeEventListener('mouseup', onPointerUp); };
         const onPointerDown = (e) => {
             isDragging = true;
             lastX = e.touches ? e.touches[0].clientX : e.clientX;
             lastY = e.touches ? e.touches[0].clientY : e.clientY;
-
             window.addEventListener('mousemove', onPointerMove);
             window.addEventListener('mouseup', onPointerUp);
         };
-
         container.addEventListener('mousedown', onPointerDown);
         container.addEventListener('touchstart', onPointerDown, { passive: true });
 
@@ -940,7 +702,6 @@ function traiterMessageWorker(e) {
             globeRenderer.render(globeScene, globeCamera);
         }
         animate();
-
         actualiserPositionCurseurGlobe(stationActive.lat, stationActive.lon);
     }
 
@@ -952,11 +713,8 @@ function traiterMessageWorker(e) {
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
-        
-
-        function envoyerDemandeCalculWorker() {
+    function envoyerDemandeCalculWorker() {
         if (!astroWorker) return;
-
         const timestampExact = obtenirTimestampUTCExact();
         if (timestampExact === null) return;
 
@@ -967,68 +725,33 @@ function traiterMessageWorker(e) {
             elEpoch.style.color = "var(--sky)";
         }
 
-        // Envoi des paramètres dynamiques au worker existant
         astroWorker.postMessage({
             type: 'COMPUTE',
             timestampUtc: timestampExact,
-            coords: { 
-                lat: stationActive.lat, 
-                lon: stationActive.lon, 
-                alt: stationActive.altMeters 
-            },
-            meteo: { 
-                tempC: meteoActive.temperatureC, 
-                presHpa: meteoActive.pressionBaro 
-            }
+            coords: { lat: stationActive.lat, lon: stationActive.lon, alt: stationActive.altMeters },
+            meteo: { tempC: meteoActive.temperatureC, presHpa: meteoActive.pressionBaro }
         });
     }
 
-    function mettreAJourInterface(payload) {
-    if (!payload) return;
-
-    // 1. Mise à jour des métriques solaires et de l'équation du temps
-    if (payload.solarMetrics) {
-        const m = payload.solarMetrics;
-        document.getElementById('val-eq-temps').innerText = `${m.eqTempsMin >= 0 ? '+' : ''}${m.eqTempsMin.toFixed(4)} min`;
-        document.getElementById('val-excentricite').innerText = (m.excentricite ?? 0.0167).toFixed(6); // Valeur par défaut si absente
-        document.getElementById('val-obliquite').innerText = `${(m.obliquite ?? 23.439).toFixed(4)}°`;
-        document.getElementById('val-long-solaire').innerText = `${(m.longitudeSolaire ?? 0).toFixed(4)}°`;
-    }
-
-    // 2. Mise à jour du GAST / LST
-    if (payload.tempsJpl) {
-        document.getElementById('val-gast').innerText = `${payload.tempsJpl.gastDeg.toFixed(4)}° / ${payload.tempsJpl.lstDeg.toFixed(4)}°`;
-    }
-
-    // 3. Injection des données dans le tableau des astres
-    if (payload.bodies) {
-        mettreAJourTableauAstres(payload.bodies);
-        dessinerRadarAstres(payload.bodies, capVraiActuel);
-    }
-    }
-    
     function lancerBoucleCalculSecurisee() {
         envoyerDemandeCalculWorker();
-        setTimeout(lancerBoucleCalculSecurisee, 1000); // Cadencé à 1 seconde pour éviter la surcharge CPU
+        setTimeout(lancerBoucleCalculSecurisee, 1000);
     }
 
     window.addEventListener('load', async () => {
         document.getElementById('html-root').classList.add('day-mode');
-        
         dessinerRadarAstres({}, 0);
         initGlobe3D();
         initialiserWorkerAstronomie();
 
         await actualiserIndiceKpRapide();
         setInterval(actualiserIndiceKpRapide, 60 * 60 * 1000);
-
         await chargerFluxLiveJPL();
         await chargerEtParserWMM();
         
         appliquerCoordonneesManuelles(true);
         lancerBoucleCalculSecurisee();
-
-        ecrireLog("SYSTEMA SENTINELA v18.8 prêt et synchronisé (Haute Précision & Jitter Adaptatif).");
+        ecrireLog("SYSTEMA SENTINELA v18.8 prêt.");
     });
 </script>
 </body>
