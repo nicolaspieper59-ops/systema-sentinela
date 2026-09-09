@@ -620,47 +620,88 @@
         } catch (e) { ecrireLog("WMM : Utilisation des coefficients par défaut."); }
     }
 
-    function dessinerRadarAstres(astresData, cap = 0) {
-        const canvas = document.getElementById('radarCanvas');
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d'), dpr = window.devicePixelRatio || 1, size = 260;
-        if (canvas.width !== Math.round(size * dpr)) {
-            canvas.width = Math.round(size * dpr); canvas.height = Math.round(size * dpr);
-            canvas.style.width = `${size}px`; canvas.style.height = `${size}px`;
-        }
-        ctx.save(); ctx.scale(dpr, dpr);
-        const cx = size / 2, cy = size / 2, maxRadius = 110;
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--radar-bg').trim() || '#e6edf3';
-        ctx.fillRect(0, 0, size, size);
-        ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
-        [0.33, 0.66, 1].forEach(ratio => {
-            ctx.beginPath(); ctx.arc(cx, cy, maxRadius * ratio, 0, 2 * Math.PI); ctx.stroke();
-        });
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - maxRadius); ctx.lineTo(cx, cy + maxRadius);
-        ctx.moveTo(cx - maxRadius, cy); ctx.lineTo(cx + maxRadius, cy);
-        ctx.strokeStyle = '#30363d'; ctx.stroke();
+    function dessinerRadarAstres(astresData) {
+    const canvas = document.getElementById('radarCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    
+    const width = canvas.width;
+    const height = canvas.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const radius = Math.min(width, height) / 2 - 30;
 
-        const capRad = cap * Math.PI / 180.0;
-        ctx.strokeStyle = '#f85149'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(cx, cy);
-        ctx.lineTo(cx + maxRadius * Math.sin(capRad), cy - maxRadius * Math.cos(capRad));
+    // 1. Nettoyage du canvas
+    ctx.clearRect(0, 0, width, height);
+
+    // 2. Dessin de la grille du radar (cercles d'élévation : 0°, 30°, 60°, 90°)
+    ctx.lineWidth = 1;
+    [0, 30, 60, 90].forEach(elevation => {
+        const r = radius * (1 - elevation / 90);
+        ctx.strokeStyle = elevation === 0 ? 'rgba(0, 255, 204, 0.6)' : 'rgba(0, 255, 204, 0.2)';
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, r, 0, 2 * Math.PI);
         ctx.stroke();
 
-        if (astresData) {
-            for (const [astre, data] of Object.entries(astresData)) {
-                if (typeof data !== 'object' || data === null) continue;
-                const el = data.elevationGeometrique ?? -1;
-                if (el < 0) continue;
-                const azRad = (data.azimuth ?? 0) * Math.PI / 180.0;
-                const r = maxRadius * (1 - (el / 90.0));
-                const x = cx + r * Math.sin(azRad), y = cy - r * Math.cos(azRad);
-                ctx.fillStyle = '#3fb950'; ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI); ctx.fill();
-                ctx.fillStyle = '#c9d1d9'; ctx.font = '8px monospace'; ctx.fillText(astre.toUpperCase(), x + 5, y + 3);
-            }
+        // Texte indicatif de l'élévation
+        if (elevation < 90) {
+            ctx.fillStyle = 'rgba(0, 255, 204, 0.5)';
+            ctx.font = '9px monospace';
+            ctx.fillText(`${elevation}°`, centerX + 4, centerY - r);
         }
-        ctx.restore();
+    });
+
+    // 3. Dessin des axes cardinaux (Nord, Est, Sud, Ouest)
+    ctx.strokeStyle = 'rgba(0, 255, 204, 0.3)';
+    ctx.beginPath();
+    // Axe Nord-Sud
+    ctx.moveTo(centerX, centerY - radius);
+    ctx.lineTo(centerX, centerY + radius);
+    // Axe Est-Ouest
+    ctx.moveTo(centerX - radius, centerY);
+    ctx.lineTo(centerX + radius, centerY);
+    ctx.stroke();
+
+    // Libellés des points cardinaux
+    ctx.fillStyle = '#00ffcc';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('N', centerX, centerY - radius - 8);
+    ctx.fillText('S', centerX, centerY + radius + 15);
+    ctx.textAlign = 'left';
+    ctx.fillText('E', centerX + radius + 5, centerY + 4);
+    ctx.textAlign = 'right';
+    ctx.fillText('W', centerX - radius - 5, centerY + 4);
+
+    // 4. Traçage des astres sur le radar
+    for (const [nomAstre, data] of Object.entries(astresData)) {
+        // On ignore les astres situés sous l'horizon (élévation négative)
+        if (data.elevationRefractee < 0) continue;
+
+        const azimuthDeg = data.azimuth; // 0° = Nord, 90° = Est, etc.
+        const elevationDeg = data.elevationRefractee; // 0° à 90°
+
+        // Conversion azimut/élévation en coordonnées polaires sur le canvas
+        // - 90° pour orienter le 0° (Nord) vers le haut du canvas
+        const azRad = (azimuthDeg - 90) * (Math.PI / 180);
+        const r = radius * (1 - elevationDeg / 90);
+
+        const x = centerX + r * Math.cos(azRad);
+        const y = centerY + r * Math.sin(azRad);
+
+        // Point lumineux représentant l'astre
+        ctx.fillStyle = '#ffcc00';
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, 2 * Math.PI);
+        ctx.fill();
+
+        // Nom de l'astre à côté du point
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(nomAstre, x + 6, y + 3);
     }
+}
 
     function convertirLatLonEnVector3(lat, lon, rayon = 1.0) {
         const phi = (90.0 - lat) * (Math.PI / 180.0), theta = lon * (Math.PI / 180.0);
