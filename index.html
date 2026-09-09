@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v18.8 — KERNEL RIGOROUS REPOSITORY</title>
+    <title>SYSTEMA SENTINELA v18.9 — KERNEL RIGOROUS REPOSITORY</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#f0f2f5">
@@ -20,14 +20,12 @@
         :root {
             --bg-base: #02040a; --bg-surface: #0d1117; --border-dim: #21262d;
             --sky: #58a6ff; --neon-green: #3fb950; --amber: #d29922; --rose: #f85149; --text-main: #c9d1d9;
-            --tsm-color: #d2a8ff;
-            --radar-bg: #01040a;
+            --tsm-color: #d2a8ff; --radar-bg: #01040a;
         }
         .day-mode {
             --bg-base: #f0f2f5; --bg-surface: #ffffff; --border-dim: #d1d5db;
             --sky: #0969da; --neon-green: #1a7f37; --amber: #9a6700; --rose: #cf222e; --text-main: #24292e;
-            --tsm-color: #8250df;
-            --radar-bg: #e6edf3;
+            --tsm-color: #8250df; --radar-bg: #e6edf3;
         }
         * { box-sizing: border-box; }
         body {
@@ -72,7 +70,7 @@
 <body class="">
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v18.8 — KERNEL RIGOROUS REPOSITORY</div>
+        <div class="brand">SYSTEMA SENTINELA v18.9 — KERNEL RIGOROUS REPOSITORY</div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <div>JPL FLUX : <span id="lbl-jpl-status" style="color:var(--amber); font-weight:bold;">CHARGEMENT...</span></div>
             <div>WORKER : <span id="lbl-worker-status" style="color:var(--amber); font-weight:bold;">INIT...</span></div>
@@ -177,11 +175,11 @@
             <div class="log-console" id="logConsole"></div>
         </div>
     </div>
+</div>
 
-    <script src="three.min.js"></script>
+<script src="three.min.js"></script>
 
 <script>
-    // Correction de la portée globale en mode strict
     let currentEqTempsMin = 0;
     let modeJourActif = true;
     let baseTempsAtomiqueMs = null;
@@ -191,7 +189,6 @@
     let historiqueRttMs = [];
     let seuilDeriveActuelMs = 2.0; 
 
-    // Sécurité Worker asynchrone
     let workerPret = false;
     let fileDAttenteWorker = [];
 
@@ -234,7 +231,7 @@
                 <span style="color:var(--rose);">SYNCHRO REQUISE :</span> 
                 <input type="datetime-local" id="input-manual-time" style="background:var(--bg-base); color:var(--neon-green); border:1px solid var(--border-dim); padding:2px; font-family:monospace; font-size:10px;" onchange="validerTempsManuel(this.value)">
             `;
-            ecrireLog("ATTENTION : Veuillez renseigner une heure de référence manuelle pour débloquer le noyau.");
+            ecrireLog("ATTENTION : Saisie manuelle requise.");
         }
     }
 
@@ -243,7 +240,7 @@
         if (!isNaN(timestampSaisi)) {
             initialiserAncrageTemporel(timestampSaisi);
             document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
-            ecrireLog("Heure de référence manuelle appliquée avec succès.");
+            ecrireLog("Heure de référence manuelle appliquée.");
         }
     }
 
@@ -256,11 +253,91 @@
         return seuilDeriveActuelMs;
     }
 
+    // Nouvelle fonction de synchronisation anti-gigue réseau intégrée
+    async function synchroniserHeureAtomique() {
+        let echantillonsValides = [];
+        const nombreEssais = 5;
+        const plafondRttMs = 180.0;
+
+        ecrireLog("Évaluation de la gigue réseau (multi-échantillonnage)...");
+
+        for (let i = 0; i < nombreEssais; i++) {
+            try {
+                const t0 = performance.now();
+                const reponse = await fetch('https://cloudflare.com/cdn-cgi/trace', { cache: 'no-store' });
+                const t1 = performance.now();
+                
+                if (reponse.ok) {
+                    const texte = await reponse.text();
+                    const match = texte.match(/ts=([0-9.]+)/);
+                    if (match) {
+                        const tempsServeurMs = parseFloat(match[1]) * 1000;
+                        const rtt = t1 - t0;
+                        if (rtt <= plafondRttMs) {
+                            const tempsExactReel = tempsServeurMs + (rtt / 2.0);
+                            echantillonsValides.push({ temps: tempsExactReel, rtt: rtt });
+                        }
+                    }
+                }
+            } catch (e) {}
+            await new Promise(resolve => setTimeout(resolve, 150));
+        }
+
+        if (echantillonsValides.length > 0) {
+            echantillonsValides.sort((a, b) => a.rtt - b.rtt);
+            const meilleurEchantillon = echantillonsValides[0];
+            
+            calculerSeuilDynamique(meilleurEchantillon.rtt);
+            initialiserAncrageTemporel(meilleurEchantillon.temps);
+            
+            decalageTempsAtomiqueMs = meilleurEchantillon.temps - Date.now();
+            localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
+            
+            document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
+            ecrireLog(`Synchro atomique validée (RTT min: ${meilleurEchantillon.rtt.toFixed(2)}ms | Validés: ${echantillonsValides.length}/${nombreEssais}).`);
+            return true;
+        }
+
+        const cachedAtomTime = parseFloat(localStorage.getItem('sentinela_atom_time') || '0');
+        const cachedPerfTime = parseFloat(localStorage.getItem('sentinela_perf_time') || '0');
+        if (cachedAtomTime > 0 && cachedPerfTime > 0) {
+            baseTempsAtomiqueMs = cachedAtomTime + (performance.now() - cachedPerfTime);
+            basePerformanceNow = performance.now();
+            document.getElementById('lbl-epoch').style.color = "var(--amber)";
+            ecrireLog("Gigue réseau excessive : Utilisation du cache d'ancrage.");
+            return true;
+        }
+
+        document.getElementById('lbl-epoch').style.color = "var(--rose)";
+        ecrireLog("ERREUR : Échec de synchro temporelle. Saisie manuelle requise.");
+        activerSaisieTemporelleManuelle();
+        return false;
+    }
+
+    async function actualiserIndiceKpRapide() {
+        try {
+            const reponse = await fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
+            if (!reponse.ok) throw new Error("Erreur réseau NOAA");
+            const donnees = await reponse.json();
+            for (let i = donnees.length - 1; i >= 1; i--) {
+                const val = parseFloat(donnees[i][1]);
+                if (!isNaN(val)) {
+                    const elKp = document.getElementById('val-kp-index');
+                    if (elKp) {
+                        elKp.innerText = `Kp ${val.toFixed(2)}`;
+                        elKp.style.color = val >= 5 ? "var(--rose)" : "var(--neon-green)";
+                    }
+                    break;
+                }
+            }
+        } catch (err) {
+            document.getElementById('val-kp-index').innerText = "Kp N/A";
+        }
+    }
+
     let stationActive = { lat: 43.284300, lon: 5.358500, altMeters: 10.0000, nom: 'STATION INITIALE' };
     let meteoActive = { temperatureC: 15.0, humiditePct: 50.0, pressionBaro: 1013.25 };
-    
     let horodatageDernierFetchMeteo = 0;
-    let derniereLatMeteo = null, derniereLonMeteo = null;
     
     let capteursActifs = false;
     let watchPositionId = null;
@@ -290,70 +367,6 @@
         consoleEl.appendChild(line);
         consoleEl.scrollTop = consoleEl.scrollHeight;
         while (consoleEl.children.length > 100) consoleEl.removeChild(consoleEl.firstChild);
-    }
-
-    async function synchroniserHeureAtomique() {
-        let synchroReussie = false;
-        try {
-            const t0 = performance.now();
-            const reponse = await fetch('https://cloudflare.com/cdn-cgi/trace', { cache: 'no-store' });
-            const t1 = performance.now();
-            if (reponse.ok) {
-                const texte = await reponse.text();
-                const match = texte.match(/ts=([0-9.]+)/);
-                if (match) {
-                    const tempsServeurMs = parseFloat(match[1]) * 1000;
-                    const rtt = t1 - t0;
-                    calculerSeuilDynamique(rtt);
-                    const tempsExactReel = tempsServeurMs + (rtt / 2);
-                    initialiserAncrageTemporel(tempsExactReel);
-                    decalageTempsAtomiqueMs = tempsExactReel - Date.now();
-                    localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
-                    synchroReussie = true;
-                    document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
-                    ecrireLog(`Synchro Cloudflare réussie (RTT: ${rtt.toFixed(2)}ms).`);
-                }
-            }
-        } catch (e) {}
-
-        if (!synchroReussie) {
-            const cachedAtomTime = parseFloat(localStorage.getItem('sentinela_atom_time') || '0');
-            const cachedPerfTime = parseFloat(localStorage.getItem('sentinela_perf_time') || '0');
-            if (cachedAtomTime > 0 && cachedPerfTime > 0) {
-                baseTempsAtomiqueMs = cachedAtomTime + (performance.now() - cachedPerfTime);
-                basePerformanceNow = performance.now();
-                document.getElementById('lbl-epoch').style.color = "var(--amber)";
-                ecrireLog("Mode hors-ligne : Utilisation du cache de synchronisation.");
-                synchroReussie = true;
-            }
-        }
-
-        if (!synchroReussie) {
-            document.getElementById('lbl-epoch').style.color = "var(--rose)";
-            ecrireLog("ERREUR : Échec de synchro. Saisie manuelle requise.");
-            activerSaisieTemporelleManuelle();
-        }
-    }
-
-    async function actualiserIndiceKpRapide() {
-        try {
-            const reponse = await fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
-            if (!reponse.ok) throw new Error("Erreur réseau NOAA");
-            const donnees = await reponse.json();
-            for (let i = donnees.length - 1; i >= 1; i--) {
-                const val = parseFloat(donnees[i][1]);
-                if (!isNaN(val)) {
-                    const elKp = document.getElementById('val-kp-index');
-                    if (elKp) {
-                        elKp.innerText = `Kp ${val.toFixed(2)}`;
-                        elKp.style.color = val >= 5 ? "var(--rose)" : "var(--neon-green)";
-                    }
-                    break;
-                }
-            }
-        } catch (err) {
-            document.getElementById('val-kp-index').innerText = "Kp N/A";
-        }
     }
 
     async function basculerTousLesCapteurs() {
@@ -406,7 +419,6 @@
                 elBaro.style.color = "var(--neon-green)";
             }
             horodatageDernierFetchMeteo = obtenirTimestampUTCExact() || Date.now();
-            derniereLatMeteo = lat; derniereLonMeteo = lon;
         } catch (err) {}
     }
 
@@ -492,69 +504,39 @@
         }
     }
 
-    // --- CORRECTION : FERMETURE CORRECTE DE LA FONCTION & GESTION READY ---
     function traiterMessageWorker(e) {
         const data = e.data;
         if (!data) return;
-
         if (data.type === 'READY') {
             workerPret = true;
-            document.getElementById('lbl-worker-status').innerText = "ACTIF";
-            document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+            const statutEl = document.getElementById('lbl-worker-status');
+            if (statutEl) statutEl.innerText = "ACTIF";
             while (fileDAttenteWorker.length > 0) {
-                astroWorker.postMessage(fileDAttenteWorker.shift());
+                const msg = fileDAttenteWorker.shift();
+                astroWorker.postMessage(msg);
             }
+            ecrireLog("Web Worker initialisé.");
             return;
         }
-
         if (data.type === 'WMM_RESULTS') {
-            if (data.payload) {
-                resultatWmmCourant = data.payload;
-                document.getElementById('val-dec-wmm').innerText = `${data.payload.declination.toFixed(4)}°`;
-                document.getElementById('val-inc-wmm').innerText = `${data.payload.inclination.toFixed(4)}°`;
-                document.getElementById('val-intensity-wmm').innerText = `${data.payload.totalIntensity.toFixed(2)} nT`;
+            const payload = data.payload;
+            if (payload) {
+                resultatWmmCourant = payload;
+                document.getElementById('val-dec-wmm').innerText = `${payload.declination >= 0 ? '+' : ''}${payload.declination.toFixed(6)}°`;
+                document.getElementById('val-inc-wmm').innerText = `${payload.inclination.toFixed(6)}°`;
+                document.getElementById('val-intensity-wmm').innerText = `${payload.totalIntensity.toFixed(4)} nT`;
             }
             return;
         }
-
-        if (data.type === 'RESULTS_BINARY') {
-            const floatMap = new Float64Array(data.buffer);
-            const bodiesResults = {};
-            let index = 0;
-
-            for (const [nomAstre, meta] of Object.entries(data.metaAstres)) {
-                bodiesResults[nomAstre] = {
-                    azimuth: floatMap[index++],
-                    elevationGeometrique: floatMap[index++],
-                    elevationRefractee: floatMap[index++],
-                    raDeg: floatMap[index++],
-                    decDeg: floatMap[index++],
-                    distanceKm: floatMap[index++],
-                    visibiliteCode: meta.visibiliteCode,
-                    leverTsv: meta.leverTsv,
-                    culminationTsv: meta.culminationTsv,
-                    coucherTsv: meta.coucherTsv
-                };
-            }
-
-            mettreAJourInterface({
-                timestamp: data.timestamp,
-                solarMetrics: data.solarMetrics,
-                tempsJpl: data.tempsJpl,
-                bodies: bodiesResults
-            });
-            return;
+        if (data.type === 'RESULTS') {
+            mettreAJourInterface(data.payload);
         }
-    } // <-- Accolade fermante correctement ajoutée ici
+    }
 
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
         astroWorker = new Worker('worker_astronomie.js');
         astroWorker.onmessage = traiterMessageWorker;
-        astroWorker.onerror = (err) => {
-            document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
-            document.getElementById('lbl-worker-status').style.color = "var(--rose)";
-        };
         if (matriceJplLive) envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
     }
 
@@ -571,9 +553,7 @@
 
     function mettreAJourInterface(payload) {
         if (!payload) return;
-        if (payload.solarMetrics) {
-            mettreAJourMetricsSolaires(payload.solarMetrics);
-        }
+        if (payload.solarMetrics) mettreAJourMetricsSolaires(payload.solarMetrics);
         if (payload.tempsJpl) {
             const tp = payload.tempsJpl;
             const elGast = document.getElementById('val-gast');
@@ -774,23 +754,21 @@
     }
 
     window.addEventListener('load', async () => {
-    document.getElementById('html-root').classList.add('day-mode');
-    dessinerRadarAstres({}, 0);
-    initGlobe3D();
-    
-    // CORRECTION : Appel de la synchronisation atomique au démarrage
-    await synchroniserHeureAtomique();
+        document.getElementById('html-root').classList.add('day-mode');
+        dessinerRadarAstres({}, 0);
+        initGlobe3D();
+        initialiserWorkerAstronomie();
 
-    initialiserWorkerAstronomie();
-    await actualiserIndiceKpRapide();
-    setInterval(actualiserIndiceKpRapide, 60 * 60 * 1000);
-    await chargerFluxLiveJPL();
-    await chargerEtParserWMM();
-    
-    appliquerCoordonneesManuelles(true);
-    lancerBoucleCalculSecurisee();
-    ecrireLog("SYSTEMA SENTINELA v18.8 prêt et synchronisé.");
-});
+        await actualiserIndiceKpRapide();
+        setInterval(actualiserIndiceKpRapide, 60 * 60 * 1000);
+        await chargerFluxLiveJPL();
+        await chargerEtParserWMM();
+        
+        await synchroniserHeureAtomique();
+        appliquerCoordonneesManuelles(true);
+        lancerBoucleCalculSecurisee();
+        ecrireLog("SYSTEMA SENTINELA v18.9 opérationnel.");
+    });
 </script>
 </body>
 </html>
