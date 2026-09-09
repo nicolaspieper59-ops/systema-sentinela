@@ -551,19 +551,62 @@
         if (m.tsv) document.getElementById('val-tsv').innerText = m.tsv;
     }
 
-    function mettreAJourInterface(payload) {
-        if (!payload) return;
-        if (payload.solarMetrics) mettreAJourMetricsSolaires(payload.solarMetrics);
-        if (payload.tempsJpl) {
-            const tp = payload.tempsJpl;
-            const elGast = document.getElementById('val-gast');
-            if (elGast) elGast.innerText = `${tp.gastDeg.toFixed(4)}° / ${tp.lstDeg.toFixed(4)}°`;
-        }
-        if (payload.bodies) {
-            derniersResultatsAstres = payload.bodies;
-            mettreAJourTableauAstres(payload.bodies);
-            dessinerRadarAstres(payload.bodies, capVraiActuel);
-        }
+    function mettreAJourInterface(solarMetrics, tempsJpl, metaAstres, buffer) {
+    // 1. Mise à jour des métriques solaires et temporelles
+    document.getElementById('val-eq-temps').textContent = 
+        solarMetrics.eqTempsMin !== undefined ? `${solarMetrics.eqTempsMin.toFixed(2)} min` : "-- min";
+    
+    document.getElementById('val-excentricite').textContent = 
+        solarMetrics.excentricite !== undefined ? solarMetrics.excentricite.toFixed(6) : "--";
+    
+    document.getElementById('val-obliquite').textContent = 
+        solarMetrics.obliquiteDeg !== undefined ? `${solarMetrics.obliquiteDeg.toFixed(4)}°` : "--°";
+    
+    document.getElementById('val-long-solaire').textContent = 
+        solarMetrics.longSolaireDeg !== undefined ? `${solarMetrics.longSolaireDeg.toFixed(4)}°` : "--°";
+    
+    document.getElementById('val-tsm').textContent = solarMetrics.tsm || "--";
+    document.getElementById('val-tsv').textContent = solarMetrics.tsv || "--";
+
+    // 2. Mise à jour du Temps Sidéral (GAST / LST)
+    if (tempsJpl) {
+        const gastEl = document.getElementById('val-gast');
+        if (gastEl) gastEl.textContent = `${tempsJpl.gastDeg.toFixed(4)}°`;
+        
+        const lstEl = document.getElementById('val-lst');
+        if (lstEl) lstEl.textContent = `${tempsJpl.lstDeg.toFixed(4)}°`;
+    }
+
+    // 3. Remplissage dynamique du tableau des astres
+    const tbody = document.getElementById('table-body');
+    if (tbody && buffer) {
+        tbody.innerHTML = ''; // Nettoyage des anciennes lignes
+        const resultMap = new Float64Array(buffer);
+        let index = 0;
+
+        Object.entries(metaAstres).forEach(([nomAstre, meta]) => {
+            const azimuth = resultMap[index++];
+            const elevationGeom = resultMap[index++];
+            const elevationRefractee = resultMap[index++];
+            const raDeg = resultMap[index++];
+            const decDeg = resultMap[index++];
+            const distanceKm = resultMap[index++];
+            const visibiliteCode = resultMap[index++];
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${nomAstre}</strong></td>
+                <td>${elevationRefractee.toFixed(2)}°</td>
+                <td>${azimuth.toFixed(2)}°</td>
+                <td>${distanceKm.toLocaleString('fr-FR', { maximumFractionDigits: 0 })}</td>
+                <td>${meta.leverTsv}</td>
+                <td>${meta.culminationTsv}</td>
+                <td>${meta.coucherTsv}</td>
+                <td>${visibiliteCode ? '✅ Visible' : '❌ Souterrain'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
     }
 
     function mettreAJourTableauAstres(bodiesData) {
