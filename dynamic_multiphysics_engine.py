@@ -18,7 +18,7 @@ def obtenir_corps(eph, nom):
 
 def parser_entete_egm2008(chemin_gfc="EGM2008.gfc"):
     """
-    Extrait les paramètres de base du modèle de géoïde EGM2008.
+    Extrait les paramètres de base du modèle de géoïde EGM2008 avec tolérance de repli.
     """
     degre_max = 2159
     a_earth = 6378136.3
@@ -59,7 +59,7 @@ def generer_arcs_chebyshev(temps_secondes, positions_xyz, degre=10):
     z_coords = np.array([p[2] for p in positions_xyz], dtype=float)
 
     arcs = []
-    pas_arc = 3600
+    pas_arc = 3600  # Arcs horaires
     t_debut_jour = t[0]
     t_fin_jour = t[-1]
 
@@ -114,7 +114,6 @@ def main():
     date_base = datetime(aujourdhui.year, aujourdhui.month, aujourdhui.day, 0, 0, tzinfo=timezone.utc)
     
     terre = eph['earth']
-    # Correction de l'assignation longitude/latitude
     station_base = wgs84.latlon(latitude_degrees=lat_target, longitude_degrees=lon_target, elevation_m=alt_target)
     observateur = terre + station_base
 
@@ -140,9 +139,7 @@ def main():
         instant = date_base + timedelta(minutes=minute)
         t_sec = instant.timestamp()
         t_skyfield = ts.from_datetime(instant)
-        
-        # Application rigoureuse du Temps Dynamique Barycentrique (TDB) pour les éphémérides de haute précision
-        t_tdb = t_skyfield.tdb
+        t_tdb = t_skyfield.tdb  # Application rigoureuse TDB
         
         position_observateur = observateur.at(t_skyfield)
 
