@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * SYSTEMA SENTINELA — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
- * Version rigoureuse optimisée v18.8 (avec Transferable Objects)
+ * Version rigoureuse optimisée & fiabilisée v18.9 (avec Transferable Objects)
  * ============================================================================
  */
 
@@ -47,7 +47,8 @@ function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
 }
 
 function parserFichierWMM(texte) {
-    const lignes = texte.split('\n');
+    // CORRECTION : Utilisation d'une expression régulière pour gérer proprement \r\n (Windows) et \n (Linux/Mac)
+    const lignes = texte.split(/\r?\n/);
     const coeffs = [];
     for (let ligne of lignes) {
         const elements = ligne.trim().split(/\s+/);
@@ -178,38 +179,43 @@ onmessage = async function(e) {
 
             resultPtr = Module._malloc(72);
             for (const [nomAstre, coordsEcl] of Object.entries(corpsACalculer)) {
-                Module._calculerDepuisECEF(
-                    coordsEcl.x, coordsEcl.y, coordsEcl.z,
-                    lat, lon, alt, eraRad, tempC, presHpa, coordsEcl.mag, true, resultPtr
-                );
+                // CORRECTION : Isolation des erreurs par astre pour éviter qu'un échec global n'interrompe la boucle
+                try {
+                    Module._calculerDepuisECEF(
+                        coordsEcl.x, coordsEcl.y, coordsEcl.z,
+                        lat, lon, alt, eraRad, tempC, presHpa, coordsEcl.mag, true, resultPtr
+                    );
 
-                const resOffset = resultPtr / 8;
-                const decDeg = Module.HEAPF64[resOffset + 4];
-                const raDeg = Module.HEAPF64[resOffset + 3];
+                    const resOffset = resultPtr / 8;
+                    const decDeg = Module.HEAPF64[resOffset + 4];
+                    const raDeg = Module.HEAPF64[resOffset + 3];
 
-                let tsvLeverStr = "--", tsvCulminationStr = "--", tsvCoucherStr = "--";
-                const latRad = lat * (Math.PI / 180.0), decRad = decDeg * (Math.PI / 180.0);
-                const cosH0 = -Math.tan(latRad) * Math.tan(decRad);
+                    let tsvLeverStr = "--", tsvCulminationStr = "--", tsvCoucherStr = "--";
+                    const latRad = lat * (Math.PI / 180.0), decRad = decDeg * (Math.PI / 180.0);
+                    const cosH0 = -Math.tan(latRad) * Math.tan(decRad);
 
-                if (cosH0 >= -1.0 && cosH0 <= 1.0) {
-                    const H0 = Math.acos(cosH0) * (180.0 / Math.PI);
-                    let culminationHours = ((raDeg - lon - (eqTempsMin * 4.0)) / 15.0 % 24 + 24) % 24;
-                    tsvLeverStr = formaterHeureDecimale(((culminationHours - (H0 / 15.0)) % 24 + 24) % 24);
-                    tsvCulminationStr = formaterHeureDecimale(culminationHours);
-                    tsvCoucherStr = formaterHeureDecimale(((culminationHours + (H0 / 15.0)) % 24 + 24) % 24);
+                    if (cosH0 >= -1.0 && cosH0 <= 1.0) {
+                        const H0 = Math.acos(cosH0) * (180.0 / Math.PI);
+                        let culminationHours = ((raDeg - lon - (eqTempsMin * 4.0)) / 15.0 % 24 + 24) % 24;
+                        tsvLeverStr = formaterHeureDecimale(((culminationHours - (H0 / 15.0)) % 24 + 24) % 24);
+                        tsvCulminationStr = formaterHeureDecimale(culminationHours);
+                        tsvCoucherStr = formaterHeureDecimale(((culminationHours + (H0 / 15.0)) % 24 + 24) % 24);
+                    }
+
+                    bodiesResults[nomAstre] = {
+                        azimuth: Module.HEAPF64[resOffset + 0],
+                        elevationGeometrique: Module.HEAPF64[resOffset + 1],
+                        elevationRefractee: Module.HEAPF64[resOffset + 2],
+                        raDeg, decDeg,
+                        distanceKm: Module.HEAPF64[resOffset + 5] * 149597870700.0 / 1000.0,
+                        visibiliteCode: Module.HEAP32[(resultPtr + 64) / 4],
+                        leverTsv: tsvLeverStr,
+                        culminationTsv: tsvCulminationStr,
+                        coucherTsv: tsvCoucherStr
+                    };
+                } catch (errAstre) {
+                    console.warn(`[Worker] Erreur de calcul ignorée pour l'astre ${nomAstre}:`, errAstre);
                 }
-
-                bodiesResults[nomAstre] = {
-                    azimuth: Module.HEAPF64[resOffset + 0],
-                    elevationGeometrique: Module.HEAPF64[resOffset + 1],
-                    elevationRefractee: Module.HEAPF64[resOffset + 2],
-                    raDeg, decDeg,
-                    distanceKm: Module.HEAPF64[resOffset + 5] * 149597870700.0 / 1000.0,
-                    visibiliteCode: Module.HEAP32[(resultPtr + 64) / 4],
-                    leverTsv: tsvLeverStr,
-                    culminationTsv: tsvCulminationStr,
-                    coucherTsv: tsvCoucherStr
-                };
             }
 
             // --- OPTIMISATION : SÉRIALISATION BINAIRE & TRANSFERABLE OBJECTS ---
