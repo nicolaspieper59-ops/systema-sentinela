@@ -164,6 +164,7 @@ void calculerDepuisECEF(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
+    // Modèle de réfraction de Bennett
     if (result->elevGeom > -2.0) {
         double h = std::max(result->elevGeom, -1.0);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
