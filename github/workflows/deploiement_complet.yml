@@ -1,5 +1,9 @@
 name: Pipeline Ephemerides DE440s & Wasm Build
 
+concurrency:
+  group: pages-build-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   schedule:
     - cron: '0 0 * * *'
@@ -33,34 +37,29 @@ jobs:
     steps:
       - name: 📥 Cloner le dépôt
         uses: actions/checkout@v4
-        # Vérification : Confirmez que le dépôt est cloné en inspectant les fichiers du workspace dans les logs.
 
       - name: 🐍 Configurer Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-        # Vérification : Assurez-vous que la version affichée de Python est bien la 3.11 dans les logs de l'action.
 
       - name: 📦 Installer les dépendances Python
         run: |
           python -m pip install --upgrade pip
           pip install spiceypy numpy
-        # Vérification : Vérifiez que spiceypy et numpy s'installent sans erreur de compilation.
 
       - name: ⚙️ Configurer Emscripten SDK
         uses: mymindstorm/setup-emsdk@v14
         with:
           version: 3.1.64
           actions-cache-folder: 'emsdk-cache'
-        # Vérification : Vérifiez que la version 3.1.64 d'Emscripten est correctement activée.
 
       - name: 🛰️ Cache ou Téléchargement du noyau DE440s
         uses: actions/cache@v4
         with:
           path: de440s.bsp
           key: de440s-bsp-v1
-        # Vérification : Vérifiez si le cache a été restauré ou téléchargé avec succès.
 
       - name: 📥 Téléchargement de secours DE440s
         run: |
@@ -69,7 +68,6 @@ jobs:
             curl -sSL --connect-timeout 20 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
           fi
           test -s de440s.bsp || (echo "[ERREUR CRITIQUE] Fichier de440s.bsp invalide" && exit 1)
-        # Vérification : Contrôlez que la taille du fichier de440s.bsp dépasse 10 Mo.
 
       - name: 🌍 Exécution de l'extracteur DE440s
         env:
@@ -78,7 +76,6 @@ jobs:
           ALT: ${{ github.event.inputs.alt || vars.STATION_ALT || '99.31' }}
         run: |
           python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT"
-        # Vérification : Assurez-vous que le fichier flux_live.json est généré à la racine.
 
       - name: 🔨 Compilation C++ vers WebAssembly (Wasm)
         run: |
@@ -89,19 +86,23 @@ jobs:
             -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_malloc','_free']" \
             -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32']" \
             -o wasm_astronomie.js
-        # Vérification : Confirmez la création des fichiers wasm_astronomie.js et wasm_astronomie.wasm.
 
       - name: 🔍 Validation des fichiers générés
         run: |
           test -s flux_live.json || (echo "[ERREUR] flux_live.json manquant ou vide" && exit 1)
           test -s wasm_astronomie.wasm || (echo "[ERREUR] wasm_astronomie.wasm manquant ou vide" && exit 1)
-        # Vérification : Le test de validation doit se terminer avec un code de sortie 0.
 
-      - name: 🚀 Publication automatique
+      - name: 🚀 Publication automatique intelligente
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
           git add -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm
-          git commit -m "Auto-update DE440s flux & compile Wasm [skip ci]" || exit 0
+          
+          # Empêche le push si le contenu n'a pas varié (stoppe la boucle infinie)
+          if git diff --staged --quiet; then
+            echo "Aucun changement détecté, pas de commit ni de push."
+            exit 0
+          fi
+          
+          git commit -m "Auto-update DE440s flux & compile Wasm [skip ci]"
           git push
-        # Vérification : Consultez l'historique des commits du dépôt pour valider que le push a réussi.
