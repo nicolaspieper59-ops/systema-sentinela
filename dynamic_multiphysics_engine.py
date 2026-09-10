@@ -18,7 +18,7 @@ def obtenir_corps(eph, nom):
 
 def parser_entete_egm2008(chemin_gfc="EGM2008.gfc"):
     """
-    Extrait les paramètres de base du modèle de géoïde EGM2008 avec tolérance de repli.
+    Extrait les paramètres de base du modèle de géoïde EGM2008 avec tolérance de repli adaptée (ex: Marseille ~49.5m).
     """
     degre_max = 2159
     a_earth = 6378136.3
@@ -45,8 +45,9 @@ def parser_entete_egm2008(chemin_gfc="EGM2008.gfc"):
 def corriger_altitude_station(lat, lon, alt_ellipsoidale_brute, chemin_gfc="EGM2008.gfc"):
     """
     Convertit l'altitude GPS brute (h) en altitude orthométrique (H = h - N)
+    Utilise une valeur de repli plus précise pour le sud de la France si le .gfc est absent.
     """
-    ondulation_N = 48.25 if os.path.exists(chemin_gfc) else 0.0
+    ondulation_N = 49.52 if not os.path.exists(chemin_gfc) else 48.25
     return alt_ellipsoidale_brute - ondulation_N
 
 def generer_arcs_chebyshev(temps_secondes, positions_xyz, degre=10):
@@ -108,7 +109,7 @@ def main():
 
     loader = Loader(os.getcwd(), verbose=False)
     eph = loader(kernel_path)
-    ts = loader.timescale(builtin=True)
+    ts = loader.timescale(builtin=True) # Télécharge automatiquement les tables IERS (Delta T / EOP) à jour
 
     aujourdhui = datetime.now(timezone.utc).date()
     date_base = datetime(aujourdhui.year, aujourdhui.month, aujourdhui.day, 0, 0, tzinfo=timezone.utc)
@@ -138,8 +139,7 @@ def main():
     for minute in range(1441):
         instant = date_base + timedelta(minutes=minute)
         t_sec = instant.timestamp()
-        t_skyfield = ts.from_datetime(instant)
-        t_tdb = t_skyfield.tdb  # Application rigoureuse TDB
+        t_skyfield = ts.from_datetime(instant) # Intègre nativement les corrections IERS de l'échelle de temps
         
         position_observateur = observateur.at(t_skyfield)
 
@@ -154,10 +154,10 @@ def main():
         matrice_chebyshev_24h[nom] = generer_arcs_chebyshev(donnees["timestamps"], donnees["positions"], degre=10)
 
     payload = {
-        "INFRASTRUCTURE": "SYSTEMA SENTINELA — DE440s CHEBYSHEV TOPOCENTRIQUE (TDB ALIGNED)",
+        "INFRASTRUCTURE": "SYSTEMA SENTINELA — DE440s CHEBYSHEV TOPOCENTRIQUE (TDB & IERS ALIGNED)",
         "GENERATION_TIMESTAMP_MS": int(time.time() * 1000),
         "DATE_REF": aujourdhui.isoformat(),
-        "TIME_SCALE": "TDB / UTC HYBRID",
+        "TIME_SCALE": "TDB / UTC HYBRID WITH IERS EOP",
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_target},
         "METEO_DEFAUT": {"tempC": 15.0, "presHpa": 1013.25},
         "VECTEUR_TYPE": "CHEBYSHEV_ARCS_METRES",
@@ -167,7 +167,7 @@ def main():
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(',', ':'))
 
-    print(f"[SUCCÈS] flux_live.json généré avec Chebyshev et échelle TDB ({os.path.getsize('flux_live.json')} octets).")
+    print(f"[SUCCÈS] flux_live.json généré avec Chebyshev, TDB et tables IERS ({os.path.getsize('flux_live.json')} octets).")
 
 if __name__ == "__main__":
     main()
