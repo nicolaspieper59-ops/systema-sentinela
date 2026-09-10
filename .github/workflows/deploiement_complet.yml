@@ -6,7 +6,7 @@ concurrency:
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 0 * * *' # Exécution quotidienne à minuit UTC
   push:
     branches: [ main ]
     paths:
@@ -23,9 +23,9 @@ on:
         required: true
         default: '5.358507'
       alt:
-        description: 'Altitude (mètres)'
+        description: 'Altitude orthométrique (mètres)'
         required: true
-        default: '99.31'
+        default: '49.81'
 
 permissions:
   contents: write
@@ -37,11 +37,14 @@ jobs:
     steps:
       - name: 📥 Cloner le dépôt
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: 🐍 Configurer Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
 
       - name: 📦 Installer les dépendances Python
         run: |
@@ -54,25 +57,26 @@ jobs:
           version: 3.1.64
           actions-cache-folder: 'emsdk-cache'
 
-      - name: 🛰️ Cache ou Téléchargement du noyau DE440s
+      - name: 🛰️ Cache du noyau DE440s
         uses: actions/cache@v4
         with:
           path: de440s.bsp
           key: de440s-bsp-v1
 
-      - name: 📥 Téléchargement de secours DE440s
+      - name: 📥 Téléchargement ou Vérification de secours DE440s
         run: |
           if [ ! -f "de440s.bsp" ] || [ $(wc -c < de440s.bsp) -lt 10000000 ]; then
+            echo "[INFO] Téléchargement du noyau DE440s en cours..."
             curl -sSL --connect-timeout 20 --retry 3 -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || \
             curl -sSL --connect-timeout 20 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
           fi
-          test -s de440s.bsp || (echo "[ERREUR CRITIQUE] Fichier de440s.bsp invalide" && exit 1)
+          test -s de440s.bsp || (echo "[ERREUR CRITIQUE] Fichier de440s.bsp introuvable ou invalide" && exit 1)
 
-      - name: 🌍 Exécution de l'extracteur DE440s
+      - name: 🌍 Exécution de l'extracteur multiphysique DE440s
         env:
           LAT: ${{ github.event.inputs.lat || vars.STATION_LAT || '43.284356' }}
           LON: ${{ github.event.inputs.lon || vars.STATION_LON || '5.358507' }}
-          ALT: ${{ github.event.inputs.alt || vars.STATION_ALT || '99.31' }}
+          ALT: ${{ github.event.inputs.alt || vars.STATION_ALT || '49.81' }}
         run: |
           python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT"
 
@@ -86,10 +90,12 @@ jobs:
             -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32']" \
             -o wasm_astronomie.js
 
-      - name: 🔍 Validation des fichiers générés
+      - name: 🔍 Validation stricte des artefacts générés
         run: |
           test -s flux_live.json || (echo "[ERREUR] flux_live.json manquant ou vide" && exit 1)
           test -s wasm_astronomie.wasm || (echo "[ERREUR] wasm_astronomie.wasm manquant ou vide" && exit 1)
+          test -s wasm_astronomie.js || (echo "[ERREUR] wasm_astronomie.js manquant ou vide" && exit 1)
+          echo "[SUCCÈS] Tous les artefacts sont validés."
 
       - name: 🚀 Publication automatique intelligente
         run: |
@@ -97,9 +103,8 @@ jobs:
           git config --local user.name "GitHub Action Bot"
           git add -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm
           
-          # Empêche le push si le contenu n'a pas varié (stoppe la boucle infinie)
           if git diff --staged --quiet; then
-            echo "Aucun changement détecté, pas de commit ni de push."
+            echo "Aucun changement détecté dans les éphémérides ou le code, pas de commit."
             exit 0
           fi
           
