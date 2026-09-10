@@ -47,7 +47,6 @@ function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
 }
 
 function parserFichierWMM(texte) {
-    // CORRECTION : Utilisation d'une expression régulière pour gérer proprement \r\n (Windows) et \n (Linux/Mac)
     const lignes = texte.split(/\r?\n/);
     const coeffs = [];
     for (let ligne of lignes) {
@@ -71,28 +70,99 @@ async function chargerCoefficientsWMM() {
     wmmCoefficients = parserFichierWMM(await reponse.text());
 }
 
+/**
+ * MODULE WMM-2025 CORRIGÉ (HAUTE PRÉCISION GÉOMAGNÉTIQUE)
+ */
 function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
-    if (!wmmCoefficients || wmmCoefficients.length === 0) throw new Error("Erreur WMM : Coefficients non chargés.");
-    const a = 6371.2, alt = Math.max(0, altKm);
-    const latRad = latDeg * (Math.PI / 180.0), lonRad = lonDeg * (Math.PI / 180.0);
-    const dt = anneeDecimale - 2025.0, r_sphere = Math.sqrt(a * a + alt * alt);
-    let X = 0.0, Y = 0.0, Z = 0.0;
+    if (!wmmCoefficients || wmmCoefficients.length === 0) {
+        throw new Error("Erreur WMM : Coefficients non chargés.");
+    }
 
-    for (let c of wmmCoefficients) {
-        const g_actuel = c.g + dt * c.dtg, h_actuel = c.h + dt * c.dth;
-        const ratio = Math.pow(a / r_sphere, c.n + 2);
-        if (c.m === 0) {
-            Z -= (c.n + 1) * g_actuel * ratio * Math.sin(c.n * latRad);
-        } else {
-            X -= (g_actuel * Math.cos(c.m * lonRad) + h_actuel * Math.sin(c.m * lonRad)) * ratio;
-            Y += (g_actuel * Math.sin(c.m * lonRad) - h_actuel * Math.cos(c.m * lonRad)) * ratio;
+    const a = 6378.137;          // Rayon équatorial WGS84 en km
+    const b = 6356.7523142;      // Rayon polaire WGS84 en km
+    const alt = Math.max(0, altKm);
+    
+    const latRad = latDeg * (Math.PI / 180.0);
+    const lonRad = lonDeg * (Math.PI / 180.0);
+
+    const cosLat = Math.cos(latRad);
+    const sinLat = Math.sin(latRad);
+    const e2 = (a * a - b * b) / (a * a);
+    
+    const N = a / Math.sqrt(1.0 - e2 * sinLat * sinLat);
+    const r = Math.sqrt((N * cosLat + alt * cosLat) ** 2 + ((N * (1.0 - e2) + alt) * sinLat) ** 2);
+    
+    const theta = Math.asin(Math.max(-1.0, Math.min(1.0, ((N * (1.0 - e2) + alt) * sinLat) / r)));
+    const colat = (Math.PI / 2.0) - theta;
+
+    const dt = anneeDecimale - 2025.0;
+    const a_r = 6371.2; // Rayon de référence WMM
+
+    let Br = 0.0, Btheta = 0.0, Bphi = 0.0;
+    const maxN = 12;
+
+    const P = Array(maxN + 2).fill(0).map(() => Array(maxN + 2).fill(0));
+    const dP = Array(maxN + 2).fill(0).map(() => Array(maxN + 2).fill(0));
+
+    P[0][0] = 1.0;
+    dP[0][0] = 0.0;
+
+    const sinColat = Math.sin(colat);
+    const cosColat = Math.cos(colat);
+
+    for (let n = 1; n <= maxN; n++) {
+        for (let m = 0; m <= n; m++) {
+            if (n === m) {
+                P[n][n] = sinColat * P[n - 1][n - 1];
+                dP[n][n] = sinColat * dP[n - 1][n - 1] + cosColat * P[n - 1][n - 1];
+            } else if (n === 1 && m === 0) {
+                P[1][0] = cosColat * P[0][0];
+                dP[1][0] = -sinColat * P[0][0];
+            } else if (n > 1 && n !== m) {
+                let k = (((n - 1) * (n - 1)) - (m * m)) / (((2 * n - 1) * (2 * n - 3)));
+                P[n][m] = cosColat * P[n - 1][m] - Math.sqrt(k) * P[n - 2][m];
+                dP[n][m] = cosColat * dP[n - 1][m] - sinColat * P[n - 1][m] - Math.sqrt(k) * dP[n - 2][m];
+            }
         }
     }
+
+    for (let c of wmmCoefficients) {
+        const n = c.n;
+        const m = c.m;
+        if (n > maxN) continue;
+
+        const g = c.g + dt * c.dtg;
+        const h = c.h + dt * c.dth;
+
+        const ratio = Math.pow(a_r / r, n + 2);
+        const cosM = Math.cos(m * lonRad);
+        const sinM = Math.sin(m * lonRad);
+
+        const term = ratio * (g * cosM + h * sinM);
+        const termDeriv = ratio * (g * cosM + h * sinM);
+
+        Br += (n + 1) * term * P[n][m];
+        if (sinColat > 1e-15) {
+            Btheta -= termDeriv * dP[n][m];
+        }
+        if (m > 0) {
+            const termPhi = ratio * m * (-g * sinM + h * cosM);
+            Bphi += termPhi * P[n][m] / sinColat;
+        }
+    }
+
+    const psi = latRad - theta;
+    const X = -Btheta * Math.cos(psi) - Br * Math.sin(psi);
+    const Y = Bphi;
+    const Z = -Btheta * Math.sin(psi) + Br * Math.cos(psi);
+
     const hHoriz = Math.sqrt(X * X + Y * Y);
+    const totalIntensity = Math.sqrt(hHoriz * hHoriz + Z * Z);
+    
     return {
         declination: Math.atan2(Y, X) * (180.0 / Math.PI),
         inclination: Math.atan2(Z, hHoriz) * (180.0 / Math.PI),
-        totalIntensity: Math.sqrt(hHoriz * hHoriz + Z * Z)
+        totalIntensity: totalIntensity
     };
 }
 
@@ -179,7 +249,6 @@ onmessage = async function(e) {
 
             resultPtr = Module._malloc(72);
             for (const [nomAstre, coordsEcl] of Object.entries(corpsACalculer)) {
-                // CORRECTION : Isolation des erreurs par astre pour éviter qu'un échec global n'interrompe la boucle
                 try {
                     Module._calculerDepuisECEF(
                         coordsEcl.x, coordsEcl.y, coordsEcl.z,
@@ -218,7 +287,6 @@ onmessage = async function(e) {
                 }
             }
 
-            // --- OPTIMISATION : SÉRIALISATION BINAIRE & TRANSFERABLE OBJECTS ---
             const nbAstres = Object.keys(bodiesResults).length;
             const floatsParAstre = 7; 
             const bufferSize = nbAstres * floatsParAstre * Float64Array.BYTES_PER_ELEMENT;
