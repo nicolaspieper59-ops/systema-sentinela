@@ -50,6 +50,61 @@ def corriger_altitude_station(lat, lon, alt_ellipsoidale_brute, chemin_gfc="EGM2
     ondulation_N = 49.52 if not os.path.exists(chemin_gfc) else 48.25
     return alt_ellipsoidale_brute - ondulation_N
 
+def verifier_erreur_chebyshev(donnees_brutes, matrice_chebyshev):
+    """
+    Calcule l'erreur maximale d'interpolation (distance euclidienne en mètres)
+    entre les points bruts de référence et les valeurs restituées par les polynômes de Chebyshev.
+    """
+    erreurs_maximales = {}
+    
+    for nom, arcs in matrice_chebyshev.items():
+        timestamps_bruts = np.array(donnees_brutes[nom]["timestamps"])
+        positions_brutes = np.array(donnees_brutes[nom]["positions"])
+        
+        max_err_astre = 0.0
+        
+        for arc in arcs:
+            t_min = arc["t_start"]
+            t_max = arc["t_end"]
+            
+            # Sélectionner les points bruts appartenant à cet arc temporel
+            masque = (timestamps_bruts >= t_min) & (timestamps_bruts <= t_max)
+            if not np.any(masque):
+                continue
+                
+            t_arc = timestamps_bruts[masque]
+            pos_arc = positions_brutes[masque]
+            
+            # Normalisation temporelle identique à la génération
+            if t_min == t_max:
+                t_norm = np.zeros_like(t_arc)
+            else:
+                t_norm = 2.0 * (t_arc - t_min) / (t_max - t_min) - 1.0
+                
+            # Reconstruction des polynômes à partir des coefficients stockés
+            fit_x = Chebyshev(arc["cx"])
+            fit_y = Chebyshev(arc["cy"])
+            fit_z = Chebyshev(arc["cz"])
+            
+            x_interp = fit_x(t_norm)
+            y_interp = fit_y(t_norm)
+            z_interp = fit_z(t_norm)
+            
+            # Calcul de la distance euclidienne (erreur 3D en mètres)
+            erreurs_3d = np.sqrt(
+                (x_interp - pos_arc[:, 0])**2 + 
+                (y_interp - pos_arc[:, 1])**2 + 
+                (z_interp - pos_arc[:, 2])**2
+            )
+            
+            arc_max = np.max(erreurs_3d)
+            if arc_max > max_err_astre:
+                max_err_astre = arc_max
+                
+        erreurs_maximales[nom] = float(max_err_astre)
+        
+    return erreurs_maximales
+
 def generer_arcs_chebyshev(temps_secondes, positions_xyz, degre=10):
     """
     Découpe et ajuste des polynômes de Chebyshev par arcs temporels (Standard NASA/JPL).
@@ -153,6 +208,13 @@ def main():
     for nom, donnees in donnees_brutes.items():
         matrice_chebyshev_24h[nom] = generer_arcs_chebyshev(donnees["timestamps"], donnees["positions"], degre=10)
 
+    # --- RAPPORT DE VALIDATION ---
+    rapport_erreurs = verifier_erreur_chebyshev(donnees_brutes, matrice_chebyshev_24h)
+    print("\n[RAPPORT] Erreur maximale d'interpolation Chebyshev (Degré 10, Arcs 1h) :")
+    for astre, err_m in rapport_erreurs.items():
+        print(f"  - {astre.capitalize()} : {err_m:.6f} mètres")
+    print("-" * 65)
+
     payload = {
         "INFRASTRUCTURE": "SYSTEMA SENTINELA — DE440s CHEBYSHEV TOPOCENTRIQUE (TDB & IERS ALIGNED)",
         "GENERATION_TIMESTAMP_MS": int(time.time() * 1000),
@@ -163,6 +225,10 @@ def main():
         "VECTEUR_TYPE": "CHEBYSHEV_ARCS_METRES",
         "DATA": matrice_chebyshev_24h
     }
+
+
+
+    
 
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(',', ':'))
