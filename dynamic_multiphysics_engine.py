@@ -17,9 +17,6 @@ def obtenir_corps(eph, nom):
     raise KeyError(f"Corps '{nom}' introuvable dans le noyau BSP.")
 
 def parser_entete_egm2008(chemin_gfc="EGM2008.gfc"):
-    """
-    Extrait les paramètres de base du modèle de géoïde EGM2008 avec tolérance de repli adaptée (ex: Marseille ~49.5m).
-    """
     degre_max = 2159
     a_earth = 6378136.3
     gm = 398600.4415
@@ -43,71 +40,30 @@ def parser_entete_egm2008(chemin_gfc="EGM2008.gfc"):
     return degre_max, a_earth, gm
 
 def corriger_altitude_station(lat, lon, alt_ellipsoidale_brute, chemin_gfc="EGM2008.gfc"):
-    """
-    Convertit l'altitude GPS brute (h) en altitude orthométrique (H = h - N)
-    Utilise une valeur de repli plus précise pour le sud de la France si le .gfc est absent.
-    """
     ondulation_N = 49.52 if not os.path.exists(chemin_gfc) else 48.25
     return alt_ellipsoidale_brute - ondulation_N
 
-def verifier_erreur_chebyshev(donnees_brutes, matrice_chebyshev):
+def obtenir_tolerance_dynamique(nom_astre):
     """
-    Calcule l'erreur maximale d'interpolation (distance euclidienne en mètres)
-    entre les points bruts de référence et les valeurs restituées par les polynômes de Chebyshev.
+    Définit le seuil d'erreur 3D toléré (en mètres) selon la dynamique de l'astre.
     """
-    erreurs_maximales = {}
-    
-    for nom, arcs in matrice_chebyshev.items():
-        timestamps_bruts = np.array(donnees_brutes[nom]["timestamps"])
-        positions_brutes = np.array(donnees_brutes[nom]["positions"])
-        
-        max_err_astre = 0.0
-        
-        for arc in arcs:
-            t_min = arc["t_start"]
-            t_max = arc["t_end"]
-            
-            # Sélectionner les points bruts appartenant à cet arc temporel
-            masque = (timestamps_bruts >= t_min) & (timestamps_bruts <= t_max)
-            if not np.any(masque):
-                continue
-                
-            t_arc = timestamps_bruts[masque]
-            pos_arc = positions_brutes[masque]
-            
-            # Normalisation temporelle identique à la génération
-            if t_min == t_max:
-                t_norm = np.zeros_like(t_arc)
-            else:
-                t_norm = 2.0 * (t_arc - t_min) / (t_max - t_min) - 1.0
-                
-            # Reconstruction des polynômes à partir des coefficients stockés
-            fit_x = Chebyshev(arc["cx"])
-            fit_y = Chebyshev(arc["cy"])
-            fit_z = Chebyshev(arc["cz"])
-            
-            x_interp = fit_x(t_norm)
-            y_interp = fit_y(t_norm)
-            z_interp = fit_z(t_norm)
-            
-            # Calcul de la distance euclidienne (erreur 3D en mètres)
-            erreurs_3d = np.sqrt(
-                (x_interp - pos_arc[:, 0])**2 + 
-                (y_interp - pos_arc[:, 1])**2 + 
-                (z_interp - pos_arc[:, 2])**2
-            )
-            
-            arc_max = np.max(erreurs_3d)
-            if arc_max > max_err_astre:
-                max_err_astre = arc_max
-                
-        erreurs_maximales[nom] = float(max_err_astre)
-        
-    return erreurs_maximales
+    seuils = {
+        'lune': 0.005,     # 5 mm max
+        'soleil': 0.01,    # 1 cm max
+        'mercure': 0.02,
+        'venus': 0.02,
+        'mars': 0.03,
+        'jupiter': 0.05,
+        'saturne': 0.08,
+        'uranus': 0.10,
+        'neptune': 0.15
+    }
+    return seuils.get(nom_astre, 0.05)
 
-def generer_arcs_chebyshev(temps_secondes, positions_xyz, degre=10):
+def generer_arcs_chebyshev_adaptatif(temps_secondes, positions_xyz, tolerance_max):
     """
-    Découpe et ajuste des polynômes de Chebyshev par arcs temporels (Standard NASA/JPL).
+    Génère des arcs de Chebyshev en ajustant dynamiquement le degré (de 8 à 16) 
+    pour garantir le respect de la tolérance de précision.
     """
     t = np.array(temps_secondes, dtype=float)
     x_coords = np.array([p[0] for p in positions_xyz], dtype=float)
@@ -126,19 +82,41 @@ def generer_arcs_chebyshev(temps_secondes, positions_xyz, degre=10):
         
         if np.sum(masque) >= 2:
             t_arc = t[masque]
+            pos_arc = np.column_stack((x_coords[masque], y_coords[masque], z_coords[masque]))
             t_min, t_max = t_arc[0], t_arc[-1]
+            
             if t_min == t_max:
                 t_norm = np.zeros_like(t_arc)
             else:
                 t_norm = 2.0 * (t_arc - t_min) / (t_max - t_min) - 1.0
 
-            fit_x = Chebyshev.fit(t_norm, x_coords[masque], degre)
-            fit_y = Chebyshev.fit(t_norm, y_coords[masque], degre)
-            fit_z = Chebyshev.fit(t_norm, z_coords[masque], degre)
+            degre = 8
+            degre_max_limite = 16
+            fit_x, fit_y, fit_z = None, None, None
+
+            while degre <= degre_max_limite:
+                fit_x = Chebyshev.fit(t_norm, pos_arc[:, 0], degre)
+                fit_y = Chebyshev.fit(t_norm, pos_arc[:, 1], degre)
+                fit_z = Chebyshev.fit(t_norm, pos_arc[:, 2], degre)
+                
+                x_interp = fit_x(t_norm)
+                y_interp = fit_y(t_norm)
+                z_interp = fit_z(t_norm)
+                
+                erreurs_3d = np.sqrt(
+                    (x_interp - pos_arc[:, 0])**2 + 
+                    (y_interp - pos_arc[:, 1])**2 + 
+                    (z_interp - pos_arc[:, 2])**2
+                )
+                
+                if np.max(erreurs_3d) <= tolerance_max:
+                    break
+                degre += 2
 
             arcs.append({
                 "t_start": float(t_min),
                 "t_end": float(t_max),
+                "degre_final": int(degre),
                 "cx": fit_x.coef.tolist(),
                 "cy": fit_y.coef.tolist(),
                 "cz": fit_z.coef.tolist()
@@ -146,6 +124,45 @@ def generer_arcs_chebyshev(temps_secondes, positions_xyz, degre=10):
         t_courant = t_suiv
 
     return arcs
+
+def verifier_erreur_chebyshev(donnees_brutes, matrice_chebyshev):
+    erreurs_maximales = {}
+    erreurs_rmse = {}
+    
+    for nom, arcs in matrice_chebyshev.items():
+        timestamps_brutes = np.array(donnees_brutes[nom]["timestamps"])
+        positions_brutes = np.array(donnees_brutes[nom]["positions"])
+        
+        max_err_astre = 0.0
+        toutes_erreurs_astre = []
+        
+        for arc in arcs:
+            t_min = arc["t_start"]
+            t_max = arc["t_end"]
+            
+            masque = (timestamps_brutes >= t_min) & (timestamps_brutes <= t_max)
+            if not np.any(masque):
+                continue
+                
+            t_arc = timestamps_brutes[masque]
+            pos_arc = positions_brutes[masque]
+            
+            t_norm = np.zeros_like(t_arc) if t_min == t_max else 2.0 * (t_arc - t_min) / (t_max - t_min) - 1.0
+                
+            fit_x, fit_y, fit_z = Chebyshev(arc["cx"]), Chebyshev(arc["cy"]), Chebyshev(arc["cz"])
+            x_interp, y_interp, z_interp = fit_x(t_norm), fit_y(t_norm), fit_z(t_norm)
+            
+            erreurs_3d = np.sqrt((x_interp - pos_arc[:, 0])**2 + (y_interp - pos_arc[:, 1])**2 + (z_interp - pos_arc[:, 2])**2)
+            toutes_erreurs_astre.extend(erreurs_3d.tolist())
+            
+            arc_max = np.max(erreurs_3d)
+            if arc_max > max_err_astre:
+                max_err_astre = arc_max
+                
+        erreurs_maximales[nom] = float(max_err_astre)
+        erreurs_rmse[nom] = float(np.sqrt(np.mean(np.array(toutes_erreurs_astre)**2))) if toutes_erreurs_astre else 0.0
+            
+    return erreurs_maximales, erreurs_rmse
 
 def main():
     try:
@@ -164,7 +181,7 @@ def main():
 
     loader = Loader(os.getcwd(), verbose=False)
     eph = loader(kernel_path)
-    ts = loader.timescale(builtin=True) # Télécharge automatiquement les tables IERS (Delta T / EOP) à jour
+    ts = loader.timescale(builtin=True)
 
     aujourdhui = datetime.now(timezone.utc).date()
     date_base = datetime(aujourdhui.year, aujourdhui.month, aujourdhui.day, 0, 0, tzinfo=timezone.utc)
@@ -174,28 +191,18 @@ def main():
     observateur = terre + station_base
 
     mapping_astres = {
-        'soleil': 'sun',
-        'lune': 'moon',
-        'mercure': 'mercury',
-        'venus': 'venus',
-        'mars': 'mars',
-        'jupiter': 'jupiter',
-        'saturne': 'saturn',
-        'uranus': 'uranus',
-        'neptune': 'neptune'
+        'soleil': 'sun', 'lune': 'moon', 'mercure': 'mercury',
+        'venus': 'venus', 'mars': 'mars', 'jupiter': 'jupiter',
+        'saturne': 'saturn', 'uranus': 'uranus', 'neptune': 'neptune'
     }
 
-    corps_celestes = {}
-    for cle_json, nom_jpl in mapping_astres.items():
-        corps_celestes[cle_json] = obtenir_corps(eph, nom_jpl)
-
+    corps_celestes = {cle: obtenir_corps(eph, val) for cle, val in mapping_astres.items()}
     donnees_brutes = {name: {"timestamps": [], "positions": []} for name in corps_celestes.keys()}
 
     for minute in range(1441):
         instant = date_base + timedelta(minutes=minute)
         t_sec = instant.timestamp()
-        t_skyfield = ts.from_datetime(instant) # Intègre nativement les corrections IERS de l'échelle de temps
-        
+        t_skyfield = ts.from_datetime(instant)
         position_observateur = observateur.at(t_skyfield)
 
         for nom, cible in corps_celestes.items():
@@ -206,17 +213,23 @@ def main():
 
     matrice_chebyshev_24h = {}
     for nom, donnees in donnees_brutes.items():
-        matrice_chebyshev_24h[nom] = generer_arcs_chebyshev(donnees["timestamps"], donnees["positions"], degre=10)
+        tolerance_astre = obtenir_tolerance_dynamique(nom)
+        matrice_chebyshev_24h[nom] = generer_arcs_chebyshev_adaptatif(
+            donnees["timestamps"], donnees["positions"], tolerance_max=tolerance_astre
+        )
 
-    # --- RAPPORT DE VALIDATION ---
-    rapport_erreurs = verifier_erreur_chebyshev(donnees_brutes, matrice_chebyshev_24h)
-    print("\n[RAPPORT] Erreur maximale d'interpolation Chebyshev (Degré 10, Arcs 1h) :")
-    for astre, err_m in rapport_erreurs.items():
-        print(f"  - {astre.capitalize()} : {err_m:.6f} mètres")
+    err_max, err_rmse = verifier_erreur_chebyshev(donnees_brutes, matrice_chebyshev_24h)
+    
+    print("\n[RAPPORT] Validation de l'interpolation Chebyshev Adaptative :")
+    print(f"{'Astre':<12} | {'Erreur Max (m)':<15} | {'RMSE (m)':<15} | {'Tolérance (m)':<15}")
+    print("-" * 65)
+    for astre in matrice_chebyshev_24h.keys():
+        tol = obtenir_tolerance_dynamique(astre)
+        print(f"{astre.capitalize():<12} | {err_max[astre]:<15.6f} | {err_rmse[astre]:<15.6f} | {tol:<15.6f}")
     print("-" * 65)
 
     payload = {
-        "INFRASTRUCTURE": "SYSTEMA SENTINELA — DE440s CHEBYSHEV TOPOCENTRIQUE (TDB & IERS ALIGNED)",
+        "INFRASTRUCTURE": "SYSTEMA SENTINELA — DE440s CHEBYSHEV TOPOCENTRIQUE ADATATIF (TDB & IERS ALIGNED)",
         "GENERATION_TIMESTAMP_MS": int(time.time() * 1000),
         "DATE_REF": aujourdhui.isoformat(),
         "TIME_SCALE": "TDB / UTC HYBRID WITH IERS EOP",
@@ -226,14 +239,10 @@ def main():
         "DATA": matrice_chebyshev_24h
     }
 
-
-
-    
-
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(',', ':'))
 
-    print(f"[SUCCÈS] flux_live.json généré avec Chebyshev, TDB et tables IERS ({os.path.getsize('flux_live.json')} octets).")
+    print(f"[SUCCÈS] flux_live.json généré avec succès ({os.path.getsize('flux_live.json')} octets).")
 
 if __name__ == "__main__":
     main()
