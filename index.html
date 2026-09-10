@@ -505,32 +505,40 @@
     }
 
     function traiterMessageWorker(e) {
-        const data = e.data;
-        if (!data) return;
-        if (data.type === 'READY') {
-            workerPret = true;
-            const statutEl = document.getElementById('lbl-worker-status');
-            if (statutEl) statutEl.innerText = "ACTIF";
-            while (fileDAttenteWorker.length > 0) {
-                const msg = fileDAttenteWorker.shift();
-                astroWorker.postMessage(msg);
-            }
-            ecrireLog("Web Worker initialisé.");
-            return;
+    const data = e.data;
+    if (!data) return;
+
+    if (data.type === 'READY') {
+        workerPret = true;
+        const statutEl = document.getElementById('lbl-worker-status');
+        if (statutEl) statutEl.innerText = "ACTIF";
+        while (fileDAttenteWorker.length > 0) {
+            astroWorker.postMessage(fileDAttenteWorker.shift());
         }
-        if (data.type === 'WMM_RESULTS') {
-            const payload = data.payload;
-            if (payload) {
-                resultatWmmCourant = payload;
-                document.getElementById('val-dec-wmm').innerText = `${payload.declination >= 0 ? '+' : ''}${payload.declination.toFixed(6)}°`;
-                document.getElementById('val-inc-wmm').innerText = `${payload.inclination.toFixed(6)}°`;
-                document.getElementById('val-intensity-wmm').innerText = `${payload.totalIntensity.toFixed(4)} nT`;
-            }
-            return;
+        ecrireLog("Web Worker initialisé.");
+        return;
+    }
+
+    if (data.type === 'WMM_RESULTS') {
+        const payload = data.payload;
+        if (payload) {
+            resultatWmmCourant = payload;
+            document.getElementById('val-dec-wmm').innerText = `${payload.declination >= 0 ? '+' : ''}${payload.declination.toFixed(6)}°`;
+            document.getElementById('val-inc-wmm').innerText = `${payload.inclination.toFixed(6)}°`;
+            document.getElementById('val-intensity-wmm').innerText = `${payload.totalIntensity.toFixed(4)} nT`;
         }
-        if (data.type === 'RESULTS') {
-            mettreAJourInterface(data.payload);
+        return;
+    }
+
+    // CORRECTION : Ajout du gestionnaire pour le flux binaire optimisé
+    if (data.type === 'RESULTS_BINARY') {
+        mettreAJourInterface(data.solarMetrics, data.tempsJpl, data.metaAstres, data.buffer);
+
+        // Sauvegarde locale pour le radar
+        if (data.metaAstres) {
+            // Optionnel : recréer un objet simple pour le radar si nécessaire
         }
+    }
     }
 
     function initialiserWorkerAstronomie() {
