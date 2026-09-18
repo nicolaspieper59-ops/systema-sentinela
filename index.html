@@ -114,6 +114,21 @@
 .badge-nuit {
     color: #94a3b8;
                                         }
+        .sky-container {
+    background: #1e293b;
+    padding: 20px;
+    border-radius: 12px;
+    margin-top: 20px;
+    text-align: center;
+}
+
+#skyCanvas {
+    background: #0f172a;
+    border-radius: 50%;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+    max-width: 100%;
+    height: auto;
+                      }
     </style>
 </head>
 <body class="">
@@ -210,6 +225,11 @@
             <div class="panel-title">4. RADAR D'ORIENTATION VRAIE</div>
             <canvas id="radarCanvas" width="260" height="260"></canvas>
         </div>
+            
+            <div class="sky-container">
+    <h3>🧭 Vue Azimutale de l'Horizon</h3>
+    <canvas id="skyCanvas" width="500" height="500"></canvas>
+            </div>
 
         <div class="panel">
             <div class="panel-title">5. VECTEUR XYZ (ECEF) &amp; GLOBE 3D (HAUTE PRÉCISION)</div>
@@ -287,7 +307,26 @@
             ecrireLog("ATTENTION : Saisie manuelle requise.");
         }
     }
+let tempsEcoulereel = 0;
+let dernierTimestamp = performance.now();
 
+// Détecter quand l'écran s'éteint ou revient
+document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+        // L'application passe en arrière-plan / veille
+        dernierTimestamp = performance.now();
+    } else {
+        // L'application revient au premier plan (réveil)
+        const tempsPasseEnVeille = performance.now() - dernierTimestamp;
+        
+        // Vous savez exactement combien de millisecondes se sont écoulées en veille
+        console.log(`Temps de veille détecté : ${tempsPasseEnVeille.toFixed(2)} ms`);
+        
+        // Mettez à jour votre logique de temps ici
+        tempsEcoulereel += tempsPasseEnVeille;
+        dernierTimestamp = performance.now();
+    }
+});
     function validerTempsManuel(valeurIso) {
         const timestampSaisi = new Date(valeurIso).getTime();
         if (!isNaN(timestampSaisi)) {
@@ -807,6 +846,97 @@
     }
 }
 
+function dessinerCarteCiel(nomsAstres, resultMap) {
+    const canvas = document.getElementById('skyCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const rayonMax = width / 2 - 30; // Marge pour les étiquettes
+
+    // 1. Nettoyage du fond
+    ctx.clearRect(0, 0, width, height);
+
+    // 2. Tracé des cercles concentriques d'élévation (0°, 30°, 60°, Zénith 90°)
+    [0, 30, 60].forEach(elev => {
+        const r = rayonMax * (1 - elev / 90);
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, r, 0, 2 * Math.PI);
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        
+        // Texte de l'élévation
+        ctx.fillStyle = '#64748b';
+        ctx.font = '10px system-ui';
+        ctx.fillText(`${elev}°`, centerX + 5, centerY - r + 12);
+    });
+
+    // 3. Tracé des axes cardinaux (Nord en haut = 0°, Est = 90°, Sud = 180°, Ouest = 270°)
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 1.5;
+    
+    // Axe Nord-Sud
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY - rayonMax);
+    ctx.lineTo(centerX, centerY + rayonMax);
+    ctx.stroke();
+
+    // Axe Est-Ouest
+    ctx.beginPath();
+    ctx.moveTo(centerX - rayonMax, centerY);
+    ctx.lineTo(centerX + rayonMax, centerY);
+    ctx.stroke();
+
+    // Libellés cardinaux
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 14px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('N (0°)', centerX, centerY - rayonMax - 8);
+    ctx.fillText('S (180°)', centerX, centerY + rayonMax + 20);
+    ctx.textAlign = 'left';
+    ctx.fillText('E (90°)', centerX + rayonMax + 10, centerY + 5);
+    ctx.textAlign = 'right';
+    ctx.fillText('W (270°)', centerX - rayonMax - 10, centerY + 5);
+
+    // 4. Positionnement des astres
+    const floatsParAstre = 7;
+    nomsAstres.forEach((nomAstre, index) => {
+        const baseIdx = index * floatsParAstre;
+        const azimut = resultMap[baseIdx + 0];     // 0° à 360°
+        const elevation = resultMap[baseIdx + 1];  // -90° à +90°
+
+        // On ignore les astres profondément sous l'horizon pour ne pas encombrer le graphe
+        if (elevation < -10) return;
+
+        // Conversion Azimut/Élévation en coordonnées polaires (Canvas)
+        // Azimut 0° = Haut (-Y), Azimut 90° = Droite (+X)
+        const azRad = (azimut - 90) * (Math.PI / 180.0);
+        // L'horizon (0°) est sur le cercle extérieur (rayonMax), le zénith (90°) est au centre (0)
+        const r = rayonMax * Math.max(0, Math.min(1, 1 - elevation / 90.0));
+
+        const x = centerX + r * Math.cos(azRad);
+        const y = centerY + r * Math.sin(azRad);
+
+        // Point de l'astre
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = elevation > 0 ? '#4ade80' : '#ef4444'; // Vert si visible, Rouge si sous l'horizon
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        // Nom de l'astre
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = '12px system-ui';
+        ctx.textAlign = 'left';
+        ctx.fillText(nomAstre.toUpperCase(), x + 8, y + 4);
+    });
+                              }    
+
     function convertirLatLonEnVector3(lat, lon, rayon = 1.0) {
         const phi = (90.0 - lat) * (Math.PI / 180.0), theta = lon * (Math.PI / 180.0);
         return new THREE.Vector3(-(rayon * Math.sin(phi) * Math.cos(theta)), rayon * Math.cos(phi), rayon * Math.sin(phi) * Math.sin(theta));
@@ -968,7 +1098,8 @@ async function initialiserSystemeSentinela() {
                 visibiliteCode: resultMap[baseIdx + 6],
                 ...metaAstres[nomAstre] // Récupération des chaînes (Lever, Culmination, Coucher TSV)
             };
-
+// À la fin du bloc RESULTS_BINARY :
+dessinerCarteCiel(Object.keys(metaAstres), resultMap);
             // Mise à jour de votre interface graphique (DOM / Canvas)
             mettreAJourAffichageAstre(nomAstre, astreData);
         });
@@ -981,10 +1112,42 @@ async function initialiserSystemeSentinela() {
     }
 };
 
-function mettreAJourAffichageAstre(nom, donnees) {
-    // Logique de mise à jour du tableau HTML ou de la vue 3D
-    // console.log(nom, donnees.elevationRefractee, donnees.azimuth);
-}
+function mettreAJourAffichageAstre(nomAstre, donnees) {
+    const tbody = document.getElementById('corps-table-body');
+    let ligne = document.getElementById(`row-${nomAstre}`);
+
+    // Détermination de l'état visuel (Ex: visible si élévation > 0)
+    const estVisible = donnees.elevationRefractee > 0;
+    const classeEtat = estVisible ? 'badge-visible' : 'badge-nuit';
+    const texteEtat = estVisible ? '✅ Visible' : '💤 Sous l\'horizon';
+
+    // Formatage des nombres
+    const elevFormatted = donnees.elevationRefractee.toFixed(2);
+    const azimFormatted = donnees.azimuth.toFixed(2);
+    const distFormatted = Math.round(donnees.distanceKm).toLocaleString('fr-FR');
+
+    const contenuHtml = `
+        <td><strong>${nomAstre.toUpperCase()}</strong></td>
+        <td>${elevFormatted}°</td>
+        <td>${azimFormatted}°</td>
+        <td>${distFormatted} km</td>
+        <td>${donnees.leverTsv}</td>
+        <td>${donnees.culminationTsv}</td>
+        <td>${donnees.coucherTsv}</td>
+        <td><span class="${classeEtat}">${texteEtat}</span></td>
+    `;
+
+    if (!ligne) {
+        // Création de la ligne si elle n'existe pas encore
+        ligne = document.createElement('tr');
+        ligne.id = `row-${nomAstre}`;
+        ligne.innerHTML = contenuHtml;
+        tbody.appendChild(ligne);
+    } else {
+        // Mise à jour rapide sans recréer l'élément DOM
+        ligne.innerHTML = contenuHtml;
+    }
+    }
 
 function mettreAJourPanneauSolaire(metrics) {
     // Affichage de l'équation du temps, GAST, LST, etc.
