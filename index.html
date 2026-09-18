@@ -65,6 +65,55 @@
         
         .time-utc { color: var(--sky); font-weight: bold; }
         .time-tsm { color: var(--tsm-color); font-weight: bold; }
+
+        .sentinela-dashboard {
+    background: #0f172a;
+    color: #f8fafc;
+    padding: 20px;
+    border-radius: 12px;
+    font-family: system-ui, -apple-system, sans-serif;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+}
+
+.astronomy-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+    background: #1e293b;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.astronomy-table th, .astronomy-table td {
+    padding: 12px 15px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.astronomy-table th {
+    background: #334155;
+    color: #38bdf8;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+}
+
+.astronomy-table tr:nth-child(even) {
+    background: #1e293b;
+}
+
+.astronomy-table tr:nth-child(odd) {
+    background: #1e293b99;
+}
+
+.badge-visible {
+    color: #4ade80;
+    font-weight: bold;
+}
+
+.badge-nuit {
+    color: #94a3b8;
+                                        }
     </style>
 </head>
 <body class="">
@@ -92,24 +141,28 @@
                 <div class="metric-card"><div>TEMPS SOLAIRE VRAI</div><div class="metric-val" id="val-tsv" style="color:var(--neon-green);">--</div></div>
             </div>
 
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>CORPS CÉLESTE</th>
-                            <th>ÉLÉVATION (°) </th>
-                            <th>AZIMUT (°)</th>
-                            <th>DISTANCE (km)</th>
-                            <th>LEVER (TSV)</th>
-                            <th>CULMINATION (TSV)</th>
-                            <th>COUCHER (TSV)</th>
-                            <th>ÉTAT CALCUL</th>
-                        </tr>
-                    </thead>
-                    <tbody id="table-body"></tbody>
-                </table>
+            <div class="sentinela-dashboard">
+    <h2>🌌 SYSTEMA SENTINELA — Éphémérides en Temps Réel</h2>
+    <div id="infos-solaires" class="badge-solair">Calcul en cours...</div>
+    
+    <table class="astronomy-table">
+        <thead>
+            <tr>
+                <th>Corps Céleste</th>
+                <th>Élévation App. (°)</th>
+                <th>Azimut (°)</th>
+                <th>Distance (km)</th>
+                <th>Lever (TSV)</th>
+                <th>Culmination (TSV)</th>
+                <th>Coucher (TSV)</th>
+                <th>État</th>
+            </tr>
+        </thead>
+        <tbody id="corps-table-body">
+            <!-- Les lignes seront injectées dynamiquement ici -->
+        </tbody>
+    </table>
             </div>
-        </div>
 
         <div class="panel">
             <div class="panel-title">2. GÉODÉSIE &amp; LST / SAISIE &amp; ECEF</div>
@@ -844,6 +897,112 @@
         envoyerDemandeCalculWorker();
         setTimeout(lancerBoucleCalculSecurisee, 1000);
     }
+
+    // Script principal (UI)
+let workerAstronomie = new Worker('worker.js');
+
+async function initialiserSystemeSentinela() {
+    try {
+        console.log("[UI] Chargement du flux éphéméride optimisé...");
+        const reponse = await fetch('flux_live.json');
+        
+        if (!reponse.ok) {
+            throw new Error(`Erreur HTTP : ${reponse.status}`);
+        }
+        
+        const payloadJpl = await reponse.json();
+        console.log(`[UI] Données chargées : ${payloadJpl.INFRASTRUCTURE}`);
+
+        // 1. Transmission de la matrice globale au Web Worker
+        workerAstronomie.postMessage({
+            type: 'UPDATE_JPL_MATRIX',
+            matrix: payloadJpl
+        });
+
+        // 2. Initialisation du module géomagnétique WMM-2025 avec la station GPS de référence
+        workerAstronomie.postMessage({
+            type: 'INIT_WMM',
+            coords: payloadJpl.STATION_BASE_GPS
+        });
+
+        console.log("[UI] Initialisation terminée. Lancement de la boucle de calcul.");
+        
+        // Démarrer la boucle de rafraîchissement (ex: toutes les secondes)
+        setInterval(() => {
+            demanderCalculTemps Reel(payloadJpl.STATION_BASE_GPS);
+        }, 1000);
+
+    } catch (err) {
+        console.error("[UI] Échec critique de l'initialisation :", err);
+    }
+}
+
+    workerAstronomie.onmessage = function(e) {
+    const msg = e.data;
+    if (!msg) return;
+
+    if (msg.type === 'READY') {
+        console.log("[UI] Worker prêt.");
+    } 
+    else if (msg.type === 'WMM_RESULTS') {
+        console.log("[UI] Données magnétiques WMM reçues :", msg.payload);
+        // Mettre à jour l'affichage de la déclinaison magnétique dans l'UI
+    }
+    else if (msg.type === 'RESULTS_BINARY') {
+        const { timestamp, solarMetrics, tempsJpl, metaAstres, buffer } = msg;
+        const resultMap = new Float64Array(buffer);
+
+        // Décodage des données par astre (7 valeurs par astre selon le Worker)
+        const nomsAstres = Object.keys(metaAstres);
+        const floatsParAstre = 7;
+
+        nomsAstres.forEach((nomAstre, index) => {
+            const baseIdx = index * floatsParAstre;
+            const astreData = {
+                azimuth: resultMap[baseIdx + 0],
+                elevationGeometrique: resultMap[baseIdx + 1],
+                elevationRefractee: resultMap[baseIdx + 2],
+                raDeg: resultMap[baseIdx + 3],
+                decDeg: resultMap[baseIdx + 4],
+                distanceKm: resultMap[baseIdx + 5],
+                visibiliteCode: resultMap[baseIdx + 6],
+                ...metaAstres[nomAstre] // Récupération des chaînes (Lever, Culmination, Coucher TSV)
+            };
+
+            // Mise à jour de votre interface graphique (DOM / Canvas)
+            mettreAJourAffichageAstre(nomAstre, astreData);
+        });
+
+        // Mise à jour des métriques solaires et sidérales globales
+        mettreAJourPanneauSolaire(solarMetrics);
+    }
+    else if (msg.type === 'ERROR') {
+        console.error("[Worker Error] :", msg.message);
+    }
+};
+
+function mettreAJourAffichageAstre(nom, donnees) {
+    // Logique de mise à jour du tableau HTML ou de la vue 3D
+    // console.log(nom, donnees.elevationRefractee, donnees.azimuth);
+}
+
+function mettreAJourPanneauSolaire(metrics) {
+    // Affichage de l'équation du temps, GAST, LST, etc.
+}
+
+// Lancement de l'application
+initialiserSystemeSentinela();
+
+function demanderCalculTempsReel(coordsGPS) {
+    const maintenantUtc = Date.now(); // Timestamp UTC en millisecondes
+    
+    workerAstronomie.postMessage({
+        type: 'COMPUTE',
+        timestampUtc: maintenantUtc,
+        coords: coordsGPS,
+        meteo: { tempC: 15.0, presHpa: 1013.25 }
+    });
+                                     }
 
     window.addEventListener('load', async () => {
         document.getElementById('html-root').classList.add('day-mode');
