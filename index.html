@@ -67,71 +67,62 @@
         .time-tsm { color: var(--tsm-color); font-weight: bold; }
 
         .sentinela-dashboard {
-    background: #0f172a;
-    color: #f8fafc;
-    padding: 20px;
-    border-radius: 12px;
-    font-family: system-ui, -apple-system, sans-serif;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-}
+            background: #0f172a;
+            color: #f8fafc;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-family: system-ui, -apple-system, sans-serif;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
 
-.astronomy-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 15px;
-    background: #1e293b;
-    border-radius: 8px;
-    overflow: hidden;
-}
+        .astronomy-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            background: #1e293b;
+            border-radius: 6px;
+            overflow: hidden;
+        }
 
-.astronomy-table th, .astronomy-table td {
-    padding: 12px 15px;
-    text-align: center;
-    font-size: 14px;
-}
+        .astronomy-table th, .astronomy-table td {
+            padding: 8px 10px;
+            text-align: center;
+            font-size: 11px;
+        }
 
-.astronomy-table th {
-    background: #334155;
-    color: #38bdf8;
-    text-transform: uppercase;
-    font-size: 12px;
-    letter-spacing: 0.05em;
-}
+        .astronomy-table th {
+            background: #334155;
+            color: #38bdf8;
+            text-transform: uppercase;
+            font-size: 10px;
+            letter-spacing: 0.05em;
+        }
 
-.astronomy-table tr:nth-child(even) {
-    background: #1e293b;
-}
+        .astronomy-table tr:nth-child(even) { background: #1e293b; }
+        .astronomy-table tr:nth-child(odd) { background: #1e293b99; }
 
-.astronomy-table tr:nth-child(odd) {
-    background: #1e293b99;
-}
-
-.badge-visible {
-    color: #4ade80;
-    font-weight: bold;
-}
-
-.badge-nuit {
-    color: #94a3b8;
-                                        }
+        .badge-visible { color: #4ade80; font-weight: bold; }
+        .badge-nuit { color: #94a3b8; }
+        
         .sky-container {
-    background: #1e293b;
-    padding: 20px;
-    border-radius: 12px;
-    margin-top: 20px;
-    text-align: center;
-}
+            background: #1e293b;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            text-align: center;
+        }
 
-#skyCanvas {
-    background: #0f172a;
-    border-radius: 50%;
-    box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
-    max-width: 100%;
-    height: auto;
-                      }
+        #skyCanvas {
+            background: #0f172a;
+            border-radius: 50%;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+            max-width: 100%;
+            height: auto;
+        }
     </style>
 </head>
-<body class="">
+<body class="day-mode">
 <div class="container">
     <header class="master-header">
         <div class="brand">SYSTEMA SENTINELA v18.9 — KERNEL RIGOROUS REPOSITORY</div>
@@ -144,6 +135,7 @@
     </header>
 
     <div class="grid-layout">
+        <!-- SECTION 1 -->
         <div class="panel" style="grid-column: 1 / -1;">
             <h3 class="panel-title">1. COORDONNÉES TOPOCENTRIQUES &amp; VISIBILITÉ (MOTEUR JPL DE440s - HAUTE PRÉCISION)</h3>
             
@@ -157,35 +149,39 @@
             </div>
 
             <div class="sentinela-dashboard">
-    <h2>🌌 SYSTEMA SENTINELA — Éphémérides en Temps Réel</h2>
-    <div id="infos-solaires" class="badge-solair">Calcul en cours...</div>
-    
-    <table class="astronomy-table">
-        <thead>
-            <tr>
-                <th>Corps Céleste</th>
-                <th>Élévation App. (°)</th>
-                <th>Azimut (°)</th>
-                <th>Distance (km)</th>
-                <th>Lever (TSV)</th>
-                <th>Culmination (TSV)</th>
-                <th>Coucher (TSV)</th>
-                <th>État</th>
-            </tr>
-        </thead>
-        <tbody id="corps-table-body">
-            <!-- Les lignes seront injectées dynamiquement ici -->
-        </tbody>
-    </table>
+                <h2>🌌 SYSTEMA SENTINELA — Éphémérides en Temps Réel</h2>
+                <div id="infos-solaires" class="badge-solair">Calcul en cours...</div>
+                
+                <div class="table-container">
+                    <table class="astronomy-table">
+                        <thead>
+                            <tr>
+                                <th>Corps Céleste</th>
+                                <th>Élévation App. (°)</th>
+                                <th>Azimut (°)</th>
+                                <th>Distance (km)</th>
+                                <th>Lever (TSV)</th>
+                                <th>Culmination (TSV)</th>
+                                <th>Coucher (TSV)</th>
+                                <th>État</th>
+                            </tr>
+                        </thead>
+                        <tbody id="corps-table-body">
+                            <!-- Inscription dynamique des données -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
+        </div>
 
+        <!-- SECTION 2 -->
         <div class="panel">
             <div class="panel-title">2. GÉODÉSIE &amp; LST / SAISIE &amp; ECEF</div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                 <div class="astro-grid">
                     <div class="metric-card"><div>STATION ACTIVE</div><div class="metric-val" id="val-station-nom" style="color:var(--sky)">ACQUISITION...</div></div>
                     <div class="metric-card"><div>LAT / LON / ALT</div><div class="metric-val" id="val-station-coords">--° / --° / --m</div></div>
-                    <div class="metric-card"><div>GAST (GREENWICH) / LST</div><div class="metric-val" id="val-gast" style="color:var(--amber)">--°</div></div>
+                    <div class="metric-card"><div>GAST / LST</div><div class="metric-val" id="val-gast" style="color:var(--amber)">--° / --°</div></div>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 4px; font-size: 10px;">
                     <div>
@@ -208,6 +204,7 @@
             </div>
         </div>
 
+        <!-- SECTION 3 -->
         <div class="panel">
             <h3 class="panel-title">3. CHAMP GÉOMAGNÉTIQUE WMM-2025 &amp; VARIATIONS</h3>
             <div class="metrics-grid" style="margin-bottom: 8px;">
@@ -221,16 +218,17 @@
             <button id="btn-toggle-capteurs" class="btn-action" style="width: 100%;" onclick="basculerTousLesCapteurs()">ACTIVER GPS &amp; CAPTEURS</button>
         </div>
 
+        <!-- SECTION 4 -->
         <div class="panel">
-            <div class="panel-title">4. RADAR D'ORIENTATION VRAIE</div>
+            <div class="panel-title">4. RADAR D'ORIENTATION VRAIE &amp; VUE AZIMUTALE</div>
             <canvas id="radarCanvas" width="260" height="260"></canvas>
-        </div>
-            
             <div class="sky-container">
-    <h3>🧭 Vue Azimutale de l'Horizon</h3>
-    <canvas id="skyCanvas" width="500" height="500"></canvas>
+                <h3 style="margin: 0 0 10px 0; font-size: 12px; color: #38bdf8;">🧭 Horizon Céleste</h3>
+                <canvas id="skyCanvas" width="400" height="400"></canvas>
             </div>
+        </div>
 
+        <!-- SECTION 5 -->
         <div class="panel">
             <div class="panel-title">5. VECTEUR XYZ (ECEF) &amp; GLOBE 3D (HAUTE PRÉCISION)</div>
             <div style="font-size: 9.5px; background: rgba(0,0,0,0.03); padding: 5px; border-radius: 4px; border: 1px solid var(--border-dim); margin-bottom: 6px;">
@@ -243,6 +241,7 @@
             </div>
         </div>
 
+        <!-- SECTION 6 -->
         <div class="panel" style="grid-column: 1 / -1; margin-bottom: 0;">
             <div class="panel-title" style="margin-bottom: 5px;">6. CONSOLE KERNEL EXÉCUTION</div>
             <div class="log-console" id="logConsole"></div>
@@ -253,6 +252,7 @@
 <script src="three.min.js"></script>
 
 <script>
+    // --- ÉTAT GLOBAL & ANCRAGE TEMPOREL ---
     let currentEqTempsMin = 0;
     let modeJourActif = true;
     let baseTempsAtomiqueMs = null;
@@ -264,15 +264,58 @@
 
     let workerPret = false;
     let fileDAttenteWorker = [];
+    let astroWorker = null;
 
-    function envoyerMessageWorkerSecurise(message) {
-        if (astroWorker && workerPret) {
-            astroWorker.postMessage(message);
+    let tempsEcoulereel = 0;
+    let dernierTimestamp = performance.now();
+
+    let stationActive = { lat: 43.284300, lon: 5.358500, altMeters: 10.0000, nom: 'STATION INITIALE' };
+    let meteoActive = { temperatureC: 15.0, humiditePct: 50.0, pressionBaro: 1013.25 };
+    let horodatageDernierFetchMeteo = 0;
+    
+    let capteursActifs = false;
+    let watchPositionId = null;
+    let sensorIMU = null;
+    let listenerIMU = null;
+    let eventNameIMU = null;
+    let instanceBarometre = null;
+
+    let matriceJplLive = null;
+    let resultatWmmCourant = { declination: 2.45, inclination: 61.15, totalIntensity: 45000 };
+    let capVraiActuel = 0;
+    let derniersResultatsAstres = {};
+
+    let globeScene, globeCamera, globeRenderer, curseurPositionMesh;
+    let isDragging = false, lastX = 0, lastY = 0;
+
+    // --- GESTION DE LA MISE EN VEILLE DU NAVIGATEUR ---
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+            dernierTimestamp = performance.now();
         } else {
-            fileDAttenteWorker.push(message);
+            const tempsPasseEnVeille = performance.now() - dernierTimestamp;
+            tempsEcoulereel += tempsPasseEnVeille;
+            dernierTimestamp = performance.now();
+            ecrireLog(`Réveil détecté. Arrière-plan : ${tempsPasseEnVeille.toFixed(0)} ms`);
         }
+    });
+
+    // --- LOGS CONSOLE UI ---
+    function ecrireLog(msg) {
+        const consoleEl = document.getElementById('logConsole');
+        if (!consoleEl) return;
+        let timeStr = "--:--:--";
+        const ts = obtenirTimestampUTCExact();
+        if (ts !== null) timeStr = new Date(ts).toISOString().substring(11, 19);
+        
+        const line = document.createElement('div');
+        line.textContent = `[${timeStr}] ${msg}`;
+        consoleEl.appendChild(line);
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+        while (consoleEl.children.length > 100) consoleEl.removeChild(consoleEl.firstChild);
     }
 
+    // --- ANCRAGE ET SYNCHRONISATION HORAIRE ---
     const savedAtomTime = parseFloat(localStorage.getItem('sentinela_atom_time') || '0');
     const savedPerfTime = parseFloat(localStorage.getItem('sentinela_perf_time') || '0');
     if (savedAtomTime > 0 && savedPerfTime > 0) {
@@ -307,26 +350,7 @@
             ecrireLog("ATTENTION : Saisie manuelle requise.");
         }
     }
-let tempsEcoulereel = 0;
-let dernierTimestamp = performance.now();
 
-// Détecter quand l'écran s'éteint ou revient
-document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-        // L'application passe en arrière-plan / veille
-        dernierTimestamp = performance.now();
-    } else {
-        // L'application revient au premier plan (réveil)
-        const tempsPasseEnVeille = performance.now() - dernierTimestamp;
-        
-        // Vous savez exactement combien de millisecondes se sont écoulées en veille
-        console.log(`Temps de veille détecté : ${tempsPasseEnVeille.toFixed(2)} ms`);
-        
-        // Mettez à jour votre logique de temps ici
-        tempsEcoulereel += tempsPasseEnVeille;
-        dernierTimestamp = performance.now();
-    }
-});
     function validerTempsManuel(valeurIso) {
         const timestampSaisi = new Date(valeurIso).getTime();
         if (!isNaN(timestampSaisi)) {
@@ -345,13 +369,12 @@ document.addEventListener("visibilitychange", () => {
         return seuilDeriveActuelMs;
     }
 
-    // Nouvelle fonction de synchronisation anti-gigue réseau intégrée
     async function synchroniserHeureAtomique() {
         let echantillonsValides = [];
         const nombreEssais = 5;
         const plafondRttMs = 180.0;
 
-        ecrireLog("Évaluation de la gigue réseau (multi-échantillonnage)...");
+        ecrireLog("Évaluation gigue réseau...");
 
         for (let i = 0; i < nombreEssais; i++) {
             try {
@@ -386,7 +409,7 @@ document.addEventListener("visibilitychange", () => {
             localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
             
             document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
-            ecrireLog(`Synchro atomique validée (RTT min: ${meilleurEchantillon.rtt.toFixed(2)}ms | Validés: ${echantillonsValides.length}/${nombreEssais}).`);
+            ecrireLog(`Synchro atomique validée (RTT: ${meilleurEchantillon.rtt.toFixed(1)}ms).`);
             return true;
         }
 
@@ -396,12 +419,12 @@ document.addEventListener("visibilitychange", () => {
             baseTempsAtomiqueMs = cachedAtomTime + (performance.now() - cachedPerfTime);
             basePerformanceNow = performance.now();
             document.getElementById('lbl-epoch').style.color = "var(--amber)";
-            ecrireLog("Gigue réseau excessive : Utilisation du cache d'ancrage.");
+            ecrireLog("Réseau instable : Utilisation du cache d'ancrage.");
             return true;
         }
 
         document.getElementById('lbl-epoch').style.color = "var(--rose)";
-        ecrireLog("ERREUR : Échec de synchro temporelle. Saisie manuelle requise.");
+        ecrireLog("ERREUR : Échec synchro horaire.");
         activerSaisieTemporelleManuelle();
         return false;
     }
@@ -409,7 +432,7 @@ document.addEventListener("visibilitychange", () => {
     async function actualiserIndiceKpRapide() {
         try {
             const reponse = await fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
-            if (!reponse.ok) throw new Error("Erreur réseau NOAA");
+            if (!reponse.ok) throw new Error();
             const donnees = await reponse.json();
             for (let i = donnees.length - 1; i >= 1; i--) {
                 const val = parseFloat(donnees[i][1]);
@@ -423,42 +446,166 @@ document.addEventListener("visibilitychange", () => {
                 }
             }
         } catch (err) {
-            document.getElementById('val-kp-index').innerText = "Kp N/A";
+            const elKp = document.getElementById('val-kp-index');
+            if(elKp) elKp.innerText = "Kp N/A";
         }
     }
 
-    let stationActive = { lat: 43.284300, lon: 5.358500, altMeters: 10.0000, nom: 'STATION INITIALE' };
-    let meteoActive = { temperatureC: 15.0, humiditePct: 50.0, pressionBaro: 1013.25 };
-    let horodatageDernierFetchMeteo = 0;
-    
-    let capteursActifs = false;
-    let watchPositionId = null;
-    let sensorIMU = null;
-    let listenerIMU = null;
-    let eventNameIMU = null;
-    let instanceBarometre = null;
+    // --- INTERACTION WORKER UNIFIÉE ---
+    function envoyerMessageWorkerSecurise(message) {
+        if (astroWorker && workerPret) {
+            astroWorker.postMessage(message);
+        } else {
+            fileDAttenteWorker.push(message);
+        }
+    }
 
-    let matriceJplLive = null;
-    let resultatWmmCourant = { declination: 2.45, inclination: 61.15, totalIntensity: 45000 };
-    let capVraiActuel = 0;
-    let astroWorker = null;
-    let derniersResultatsAstres = {};
-
-    let globeScene, globeCamera, globeRenderer, curseurPositionMesh;
-    let isDragging = false, lastX = 0, lastY = 0;
-
-    function ecrireLog(msg) {
-        const consoleEl = document.getElementById('logConsole');
-        if (!consoleEl) return;
-        let timeStr = "--:--:--";
-        const ts = obtenirTimestampUTCExact();
-        if (ts !== null) timeStr = new Date(ts).toISOString().substring(11, 19);
+    function initialiserWorkerAstronomie() {
+        if (typeof Worker === 'undefined') return;
         
-        const line = document.createElement('div');
-        line.textContent = `[${timeStr}] ${msg}`;
-        consoleEl.appendChild(line);
-        consoleEl.scrollTop = consoleEl.scrollHeight;
-        while (consoleEl.children.length > 100) consoleEl.removeChild(consoleEl.firstChild);
+        // Fichier unifié du worker
+        astroWorker = new Worker('worker_astronomie.js');
+        
+        astroWorker.onmessage = (e) => {
+            const data = e.data;
+            if (!data) return;
+
+            if (data.type === 'READY') {
+                workerPret = true;
+                const statutEl = document.getElementById('lbl-worker-status');
+                if (statutEl) statutEl.innerText = "ACTIF";
+                while (fileDAttenteWorker.length > 0) {
+                    astroWorker.postMessage(fileDAttenteWorker.shift());
+                }
+                ecrireLog("Worker Astronomie prêt.");
+                return;
+            }
+
+            if (data.type === 'WMM_RESULTS') {
+                const payload = data.payload;
+                if (payload) {
+                    resultatWmmCourant = payload;
+                    document.getElementById('val-dec-wmm').innerText = `${payload.declination >= 0 ? '+' : ''}${payload.declination.toFixed(4)}°`;
+                    document.getElementById('val-inc-wmm').innerText = `${payload.inclination.toFixed(4)}°`;
+                    document.getElementById('val-intensity-wmm').innerText = `${payload.totalIntensity.toFixed(1)} nT`;
+                }
+                return;
+            }
+
+            if (data.type === 'RESULTS_BINARY') {
+                mettreAJourInterface(data.solarMetrics, data.tempsJpl, data.metaAstres, data.buffer);
+            }
+
+            if (data.type === 'ERROR') {
+                ecrireLog(`[Worker Erreur] ${data.message}`);
+            }
+        };
+
+        if (matriceJplLive) {
+            envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+        }
+    }
+
+    // --- RECEPTION ET AFFICHE DE LA DONNEE BINAIRE ---
+    function mettreAJourInterface(solarMetrics, tempsJpl, metaAstres, buffer) {
+        if (solarMetrics) {
+            currentEqTempsMin = solarMetrics.eqTempsMin ?? 0;
+            document.getElementById('val-eq-temps').textContent = `${currentEqTempsMin >= 0 ? '+' : ''}${currentEqTempsMin.toFixed(2)} min`;
+            document.getElementById('val-excentricite').textContent = solarMetrics.excentricite !== undefined ? solarMetrics.excentricite.toFixed(6) : "--";
+            document.getElementById('val-obliquite').textContent = solarMetrics.obliquiteDeg !== undefined ? `${solarMetrics.obliquiteDeg.toFixed(4)}°` : "--°";
+            document.getElementById('val-long-solaire').textContent = solarMetrics.longSolaireDeg !== undefined ? `${solarMetrics.longSolaireDeg.toFixed(4)}°` : "--°";
+            document.getElementById('val-tsm').textContent = solarMetrics.tsm || "--";
+            document.getElementById('val-tsv').textContent = solarMetrics.tsv || "--";
+            
+            const elInfo = document.getElementById('infos-solaires');
+            if (elInfo) elInfo.innerText = `Éq. Temps: ${currentEqTempsMin.toFixed(2)}m | Obliquité: ${(solarMetrics.obliquiteDeg || 0).toFixed(2)}°`;
+        }
+
+        if (tempsJpl) {
+            const gastEl = document.getElementById('val-gast');
+            if (gastEl) gastEl.textContent = `${tempsJpl.gastDeg.toFixed(3)}° / ${(tempsJpl.lstDeg || 0).toFixed(3)}°`;
+        }
+
+        if (metaAstres && buffer) {
+            const tbody = document.getElementById('corps-table-body');
+            const resultMap = new Float64Array(buffer);
+            const nomsAstres = Object.keys(metaAstres);
+            const floatsParAstre = 7;
+
+            derniersResultatsAstres = {}; // Reset cache local pour radar
+
+            nomsAstres.forEach((nomAstre, index) => {
+                const baseIdx = index * floatsParAstre;
+                const azimuth = resultMap[baseIdx + 0];
+                const elevationGeom = resultMap[baseIdx + 1];
+                const elevationRefractee = resultMap[baseIdx + 2];
+                const raDeg = resultMap[baseIdx + 3];
+                const decDeg = resultMap[baseIdx + 4];
+                const distanceKm = resultMap[baseIdx + 5];
+                const visibiliteCode = resultMap[baseIdx + 6];
+
+                const meta = metaAstres[nomAstre] || {};
+
+                derniersResultatsAstres[nomAstre] = {
+                    azimuth, elevationGeometrique: elevationGeom, elevationRefractee,
+                    distanceKm, visibiliteCode
+                };
+
+                // Mise à jour ou création dynamique de la ligne
+                let ligne = document.getElementById(`row-${nomAstre}`);
+                const estVisible = elevationRefractee > 0;
+                const classeEtat = estVisible ? 'badge-visible' : 'badge-nuit';
+                const texteEtat = estVisible ? '✅ Visible' : '💤 Sous l\'horizon';
+
+                const contenuHtml = `
+                    <td><strong>${nomAstre.toUpperCase()}</strong></td>
+                    <td>${elevationRefractee.toFixed(2)}°</td>
+                    <td>${azimuth.toFixed(2)}°</td>
+                    <td>${Math.round(distanceKm).toLocaleString('fr-FR')} km</td>
+                    <td>${meta.leverTsv || '--'}</td>
+                    <td>${meta.culminationTsv || '--'}</td>
+                    <td>${meta.coucherTsv || '--'}</td>
+                    <td><span class="${classeEtat}">${texteEtat}</span></td>
+                `;
+
+                if (!ligne) {
+                    ligne = document.createElement('tr');
+                    ligne.id = `row-${nomAstre}`;
+                    ligne.innerHTML = contenuHtml;
+                    if(tbody) tbody.appendChild(ligne);
+                } else {
+                    ligne.innerHTML = contenuHtml;
+                }
+            });
+
+            // Rendu Canvas
+            dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
+            dessinerCarteCiel(nomsAstres, resultMap);
+        }
+    }
+
+    // --- GEODESIE ET CAPTEURS ---
+    function appliquerCoordonneesManuelles(silencieux = false) {
+        const lat = parseFloat(document.getElementById('input-lat').value.replace(',', '.'));
+        const lon = parseFloat(document.getElementById('input-lon').value.replace(',', '.'));
+        const altM = parseFloat(document.getElementById('input-alt').value.replace(',', '.'));
+        if (isNaN(lat) || isNaN(lon) || isNaN(altM)) return;
+
+        const a = 6378137.0, f = 1.0 / 298.257223563, e2 = f * (2.0 - f);
+        const phi = lat * (Math.PI / 180.0), lambda = lon * (Math.PI / 180.0);
+        const N = a / Math.sqrt(1.0 - e2 * Math.sin(phi) ** 2);
+        const X_km = ((N + altM) * Math.cos(phi) * Math.cos(lambda)) / 1000.0;
+        const Y_km = ((N + altM) * Math.cos(phi) * Math.sin(lambda)) / 1000.0;
+        const Z_km = ((N * (1.0 - e2) + altM) * Math.sin(phi)) / 1000.0;
+
+        document.getElementById('val-xyz-x').innerText = X_km.toFixed(4);
+        document.getElementById('val-xyz-y').innerText = Y_km.toFixed(4);
+        document.getElementById('val-xyz-z').innerText = Z_km.toFixed(4);
+
+        stationActive = { lat: lat, lon: lon, altMeters: altM, nom: silencieux ? stationActive.nom : 'SAISIE MANUELLE' };
+        document.getElementById('val-station-nom').innerText = stationActive.nom;
+        document.getElementById('val-station-coords').innerText = `${lat.toFixed(4)}° / ${lon.toFixed(4)}° / ${altM.toFixed(1)}m`;
+        actualiserPositionCurseurGlobe(lat, lon);
     }
 
     async function basculerTousLesCapteurs() {
@@ -477,64 +624,33 @@ document.addEventListener("visibilitychange", () => {
         } else {
             capteursActifs = true;
             if (btn) { btn.innerText = "DÉSACTIVER GPS & CAPTEURS"; btn.style.borderColor = "var(--rose)"; btn.style.color = "var(--rose)"; }
-            ecrireLog("Activation GPS, IMU et Baromètre...");
-            acquerirPositionGPS();
+            ecrireLog("Activation GPS, IMU, Baromètre...");
+            
+            if ('geolocation' in navigator) {
+                watchPositionId = navigator.geolocation.watchPosition((pos) => {
+                    if (!capteursActifs) return;
+                    const lat = pos.coords.latitude, lon = pos.coords.longitude, alt = pos.coords.altitude ?? 10.0;
+                    document.getElementById('input-lat').value = lat.toFixed(6);
+                    document.getElementById('input-lon').value = lon.toFixed(6);
+                    document.getElementById('input-alt').value = alt.toFixed(4);
+                    appliquerCoordonneesManuelles(true);
+
+                    const maintenant = obtenirTimestampUTCExact();
+                    if (horodatageDernierFetchMeteo === 0 || (maintenant !== null && maintenant - horodatageDernierFetchMeteo >= 600000)) {
+                        fetchMeteoReelle(lat, lon);
+                    }
+                }, null, { enableHighAccuracy: true, timeout: 10000 });
+            }
+
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
                     const res = await DeviceOrientationEvent.requestPermission();
                     if (res === 'granted') activerIMU();
                 } catch (err) {}
             } else { activerIMU(); }
+            
             activerBarometre();
         }
-    }
-
-    function determinerIntervalleActualisation(vitesseMs) {
-        const vitesseKmh = (vitesseMs || 0) * 3.6;
-        if (vitesseKmh < 2.0) return 30 * 60 * 1000;
-        return 10 * 60 * 1000;
-    }
-
-    async function fetchMeteoReelle(lat, lon) {
-        try {
-            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(6)}&longitude=${lon.toFixed(6)}&current=temperature_2m,relative_humidity_2m,surface_pressure`;
-            const reponse = await fetch(url);
-            if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
-            const data = await reponse.json();
-            meteoActive.pressionBaro = data.current.surface_pressure;
-            meteoActive.temperatureC = data.current.temperature_2m;
-            meteoActive.humiditePct = data.current.relative_humidity_2m;
-
-            const elBaro = document.getElementById('val-baro-statut');
-            if (elBaro && capteursActifs) {
-                elBaro.innerText = `${data.current.surface_pressure.toFixed(2)} hPa (${data.current.temperature_2m.toFixed(2)}°C)`;
-                elBaro.style.color = "var(--neon-green)";
-            }
-            horodatageDernierFetchMeteo = obtenirTimestampUTCExact() || Date.now();
-        } catch (err) {}
-    }
-
-    function demarrerSuiviMeteoDynamique() {
-        if (!('geolocation' in navigator)) return;
-        watchPositionId = navigator.geolocation.watchPosition((pos) => {
-            if (!capteursActifs) return;
-            const lat = pos.coords.latitude, lon = pos.coords.longitude, alt = pos.coords.altitude ?? 10.0;
-            document.getElementById('input-lat').value = lat.toFixed(6);
-            document.getElementById('input-lon').value = lon.toFixed(6);
-            document.getElementById('input-alt').value = alt.toFixed(4);
-            appliquerCoordonneesManuelles(true);
-
-            const intervalleRequis = determinerIntervalleActualisation(pos.coords.speed);
-            const maintenant = obtenirTimestampUTCExact();
-            if (horodatageDernierFetchMeteo === 0 || (maintenant !== null && maintenant - horodatageDernierFetchMeteo >= intervalleRequis)) {
-                fetchMeteoReelle(lat, lon);
-            }
-        }, null, { enableHighAccuracy: true, timeout: 10000 });
-    }
-
-    function acquerirPositionGPS() {
-        if (watchPositionId !== null) navigator.geolocation.clearWatch(watchPositionId);
-        demarrerSuiviMeteoDynamique();
     }
 
     function activerIMU() {
@@ -560,8 +676,8 @@ document.addEventListener("visibilitychange", () => {
 
     function mettreAJourCapBrut(capVal, estNordVrai = false) {
         capVraiActuel = estNordVrai ? (capVal + 360.0) % 360.0 : (capVal + resultatWmmCourant.declination + 360.0) % 360.0;
-        document.getElementById('val-cap-brut').innerText = `${capVal.toFixed(6)}°`;
-        document.getElementById('val-cap-net').innerText = `${capVraiActuel.toFixed(6)}°`;
+        document.getElementById('val-cap-brut').innerText = `${capVal.toFixed(2)}°`;
+        document.getElementById('val-cap-net').innerText = `${capVraiActuel.toFixed(2)}°`;
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
@@ -578,10 +694,30 @@ document.addEventListener("visibilitychange", () => {
                     meteoActive.pressionBaro = p;
                 });
                 instanceBarometre.observe({ sampleInterval: 1000 });
-            } catch (e) { elBaro.innerText = "1013.2500 hPa (STD)"; }
-        } else { elBaro.innerText = "1013.2500 hPa (STD)"; }
+            } catch (e) { elBaro.innerText = "1013.25 hPa (STD)"; }
+        } else { elBaro.innerText = "1013.25 hPa (STD)"; }
     }
 
+    async function fetchMeteoReelle(lat, lon) {
+        try {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(6)}&longitude=${lon.toFixed(6)}&current=temperature_2m,relative_humidity_2m,surface_pressure`;
+            const reponse = await fetch(url);
+            if (!reponse.ok) throw new Error();
+            const data = await reponse.json();
+            meteoActive.pressionBaro = data.current.surface_pressure;
+            meteoActive.temperatureC = data.current.temperature_2m;
+            meteoActive.humiditePct = data.current.relative_humidity_2m;
+
+            const elBaro = document.getElementById('val-baro-statut');
+            if (elBaro && capteursActifs) {
+                elBaro.innerText = `${data.current.surface_pressure.toFixed(1)} hPa (${data.current.temperature_2m.toFixed(1)}°C)`;
+                elBaro.style.color = "var(--neon-green)";
+            }
+            horodatageDernierFetchMeteo = obtenirTimestampUTCExact() || Date.now();
+        } catch (err) {}
+    }
+
+    // --- CHARGEMENT DES FICHIERS EXTERNES ---
     async function chargerFluxLiveJPL() {
         try {
             const reponse = await fetch('flux_live.json');
@@ -596,346 +732,123 @@ document.addEventListener("visibilitychange", () => {
         }
     }
 
-    function traiterMessageWorker(e) {
-    const data = e.data;
-    if (!data) return;
-
-    if (data.type === 'READY') {
-        workerPret = true;
-        const statutEl = document.getElementById('lbl-worker-status');
-        if (statutEl) statutEl.innerText = "ACTIF";
-        while (fileDAttenteWorker.length > 0) {
-            astroWorker.postMessage(fileDAttenteWorker.shift());
-        }
-        ecrireLog("Web Worker initialisé.");
-        return;
-    }
-
-    if (data.type === 'WMM_RESULTS') {
-        const payload = data.payload;
-        if (payload) {
-            resultatWmmCourant = payload;
-            document.getElementById('val-dec-wmm').innerText = `${payload.declination >= 0 ? '+' : ''}${payload.declination.toFixed(6)}°`;
-            document.getElementById('val-inc-wmm').innerText = `${payload.inclination.toFixed(6)}°`;
-            document.getElementById('val-intensity-wmm').innerText = `${payload.totalIntensity.toFixed(4)} nT`;
-        }
-        return;
-    }
-
-    // CORRECTION : Ajout du gestionnaire pour le flux binaire optimisé
-    if (data.type === 'RESULTS_BINARY') {
-        mettreAJourInterface(data.solarMetrics, data.tempsJpl, data.metaAstres, data.buffer);
-
-        // Sauvegarde locale pour le radar
-        if (data.metaAstres) {
-            // Optionnel : recréer un objet simple pour le radar si nécessaire
-        }
-    }
-    }
-
-    function initialiserWorkerAstronomie() {
-        if (typeof Worker === 'undefined') return;
-        astroWorker = new Worker('worker_astronomie.js');
-        astroWorker.onmessage = traiterMessageWorker;
-        if (matriceJplLive) envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
-    }
-
-    function mettreAJourMetricsSolaires(m) {
-        if (!m) return;
-        currentEqTempsMin = m.eqTempsMin ?? 0;
-        document.getElementById('val-eq-temps').innerText = `${currentEqTempsMin >= 0 ? '+' : ''}${currentEqTempsMin.toFixed(4)} min`;
-        document.getElementById('val-excentricite').innerText = (m.excentricite ?? 0.01671022).toFixed(8);
-        document.getElementById('val-obliquite').innerText = `${(m.obliquiteDeg ?? 0).toFixed(4)}°`;
-        document.getElementById('val-long-solaire').innerText = `${(m.longSolaireDeg ?? 0).toFixed(4)}°`;
-        if (m.tsm) document.getElementById('val-tsm').innerText = m.tsm;
-        if (m.tsv) document.getElementById('val-tsv').innerText = m.tsv;
-    }
-
-    function mettreAJourInterface(solarMetrics, tempsJpl, metaAstres, buffer) {
-    // 1. Mise à jour des métriques solaires et temporelles
-    document.getElementById('val-eq-temps').textContent = 
-        solarMetrics.eqTempsMin !== undefined ? `${solarMetrics.eqTempsMin.toFixed(2)} min` : "-- min";
-    
-    document.getElementById('val-excentricite').textContent = 
-        solarMetrics.excentricite !== undefined ? solarMetrics.excentricite.toFixed(6) : "--";
-    
-    document.getElementById('val-obliquite').textContent = 
-        solarMetrics.obliquiteDeg !== undefined ? `${solarMetrics.obliquiteDeg.toFixed(4)}°` : "--°";
-    
-    document.getElementById('val-long-solaire').textContent = 
-        solarMetrics.longSolaireDeg !== undefined ? `${solarMetrics.longSolaireDeg.toFixed(4)}°` : "--°";
-    
-    document.getElementById('val-tsm').textContent = solarMetrics.tsm || "--";
-    document.getElementById('val-tsv').textContent = solarMetrics.tsv || "--";
-
-    // 2. Mise à jour du Temps Sidéral (GAST / LST)
-    if (tempsJpl) {
-        const gastEl = document.getElementById('val-gast');
-        if (gastEl) gastEl.textContent = `${tempsJpl.gastDeg.toFixed(4)}°`;
-        
-        const lstEl = document.getElementById('val-lst');
-        if (lstEl) lstEl.textContent = `${tempsJpl.lstDeg.toFixed(4)}°`;
-    }
-
-    // 3. Remplissage dynamique du tableau des astres
-    const tbody = document.getElementById('table-body');
-    if (tbody && buffer) {
-        tbody.innerHTML = ''; // Nettoyage des anciennes lignes
-        const resultMap = new Float64Array(buffer);
-        let index = 0;
-
-        Object.entries(metaAstres).forEach(([nomAstre, meta]) => {
-            const azimuth = resultMap[index++];
-            const elevationGeom = resultMap[index++];
-            const elevationRefractee = resultMap[index++];
-            const raDeg = resultMap[index++];
-            const decDeg = resultMap[index++];
-            const distanceKm = resultMap[index++];
-            const visibiliteCode = resultMap[index++];
-
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td><strong>${nomAstre}</strong></td>
-                <td>${elevationRefractee.toFixed(2)}°</td>
-                <td>${azimuth.toFixed(2)}°</td>
-                <td>${distanceKm.toLocaleString('fr-FR', { maximumFractionDigits: 0 })}</td>
-                <td>${meta.leverTsv}</td>
-                <td>${meta.culminationTsv}</td>
-                <td>${meta.coucherTsv}</td>
-                <td>${visibiliteCode ? '✅ Visible' : '❌ Souterrain'}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-    }
-    }
-
-    function mettreAJourTableauAstres(bodiesData) {
-        const tbody = document.getElementById('table-body');
-        if (!tbody) return;
-        tbody.innerHTML = '';
-        for (const [nomAstre, data] of Object.entries(bodiesData)) {
-            const tr = document.createElement('tr');
-            const statutsVisibilite = ["Invisible", "Œil nu", "Jumelles", "Télescope"];
-            const etatTexte = statutsVisibilite[data.visibiliteCode] ?? "Inconnu";
-            tr.innerHTML = `
-                <td><strong>${nomAstre.toUpperCase()}</strong></td>
-                <td>${data.elevationGeometrique !== undefined ? data.elevationGeometrique.toFixed(6) + '°' : '--'}</td>
-                <td>${data.azimuth !== undefined ? data.azimuth.toFixed(6) + '°' : '--'}</td>
-                <td>${data.distanceKm !== undefined ? Number(data.distanceKm).toLocaleString(undefined, {minimumFractionDigits: 4, maximumFractionDigits: 4}) + ' km' : '--'}</td>
-                <td>${data.leverTsv || '--'}</td>
-                <td>${data.culminationTsv || '--'}</td>
-                <td>${data.coucherTsv || '--'}</td>
-                <td><span data-code="${data.visibiliteCode}">${etatTexte}</span></td>
-            `;
-            tbody.appendChild(tr);
-        }
-    }
-
-    function appliquerCoordonneesManuelles(silencieux = false) {
-        const lat = parseFloat(document.getElementById('input-lat').value.replace(',', '.'));
-        const lon = parseFloat(document.getElementById('input-lon').value.replace(',', '.'));
-        const altM = parseFloat(document.getElementById('input-alt').value.replace(',', '.'));
-        if (isNaN(lat) || isNaN(lon) || isNaN(altM)) return;
-
-        const a = 6378137.0, f = 1.0 / 298.257223563, e2 = f * (2.0 - f);
-        const phi = lat * (Math.PI / 180.0), lambda = lon * (Math.PI / 180.0);
-        const N = a / Math.sqrt(1.0 - e2 * Math.sin(phi) ** 2);
-        const X_km = ((N + altM) * Math.cos(phi) * Math.cos(lambda)) / 1000.0;
-        const Y_km = ((N + altM) * Math.cos(phi) * Math.sin(lambda)) / 1000.0;
-        const Z_km = ((N * (1.0 - e2) + altM) * Math.sin(phi)) / 1000.0;
-
-        document.getElementById('val-xyz-x').innerText = X_km.toFixed(6);
-        document.getElementById('val-xyz-y').innerText = Y_km.toFixed(6);
-        document.getElementById('val-xyz-z').innerText = Z_km.toFixed(6);
-
-        stationActive = { lat: lat, lon: lon, altMeters: altM, nom: silencieux ? stationActive.nom : 'SAISIE MANUELLE' };
-        document.getElementById('val-station-nom').innerText = stationActive.nom;
-        document.getElementById('val-station-coords').innerText = `${lat.toFixed(6)}° / ${lon.toFixed(6)}° / ${altM.toFixed(4)}m`;
-        actualiserPositionCurseurGlobe(lat, lon);
-    }
-
     async function chargerEtParserWMM() {
         try {
             const reponse = await fetch('./WMM2025.COF');
-            if (!reponse.ok) throw new Error(`Fichier WMM2025.COF introuvable`);
+            if (!reponse.ok) throw new Error();
             const texte = await reponse.text();
             envoyerMessageWorkerSecurise({ type: 'INIT_WMM', cofText: texte });
-        } catch (e) { ecrireLog("WMM : Utilisation des coefficients par défaut."); }
-    }
-
-    function dessinerRadarAstres(astresData) {
-    const canvas = document.getElementById('radarCanvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    
-    const width = canvas.width;
-    const height = canvas.height;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const radius = Math.min(width, height) / 2 - 30;
-
-    // 1. Nettoyage du canvas
-    ctx.clearRect(0, 0, width, height);
-
-    // 2. Dessin de la grille du radar (cercles d'élévation : 0°, 30°, 60°, 90°)
-    ctx.lineWidth = 1;
-    [0, 30, 60, 90].forEach(elevation => {
-        const r = radius * (1 - elevation / 90);
-        ctx.strokeStyle = elevation === 0 ? 'rgba(0, 255, 204, 0.6)' : 'rgba(0, 255, 204, 0.2)';
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, r, 0, 2 * Math.PI);
-        ctx.stroke();
-
-        // Texte indicatif de l'élévation
-        if (elevation < 90) {
-            ctx.fillStyle = 'rgba(0, 255, 204, 0.5)';
-            ctx.font = '9px monospace';
-            ctx.fillText(`${elevation}°`, centerX + 4, centerY - r);
+        } catch (e) { 
+            ecrireLog("WMM : Utilisation des coefficients internes."); 
+            envoyerMessageWorkerSecurise({ type: 'INIT_WMM', coords: { lat: stationActive.lat, lon: stationActive.lon } });
         }
-    });
-
-    // 3. Dessin des axes cardinaux (Nord, Est, Sud, Ouest)
-    ctx.strokeStyle = 'rgba(0, 255, 204, 0.3)';
-    ctx.beginPath();
-    // Axe Nord-Sud
-    ctx.moveTo(centerX, centerY - radius);
-    ctx.lineTo(centerX, centerY + radius);
-    // Axe Est-Ouest
-    ctx.moveTo(centerX - radius, centerY);
-    ctx.lineTo(centerX + radius, centerY);
-    ctx.stroke();
-
-    // Libellés des points cardinaux
-    ctx.fillStyle = '#00ffcc';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('N', centerX, centerY - radius - 8);
-    ctx.fillText('S', centerX, centerY + radius + 15);
-    ctx.textAlign = 'left';
-    ctx.fillText('E', centerX + radius + 5, centerY + 4);
-    ctx.textAlign = 'right';
-    ctx.fillText('W', centerX - radius - 5, centerY + 4);
-
-    // 4. Traçage des astres sur le radar
-    for (const [nomAstre, data] of Object.entries(astresData)) {
-        // On ignore les astres situés sous l'horizon (élévation négative)
-        if (data.elevationRefractee < 0) continue;
-
-        const azimuthDeg = data.azimuth; // 0° = Nord, 90° = Est, etc.
-        const elevationDeg = data.elevationRefractee; // 0° à 90°
-
-        // Conversion azimut/élévation en coordonnées polaires sur le canvas
-        // - 90° pour orienter le 0° (Nord) vers le haut du canvas
-        const azRad = (azimuthDeg - 90) * (Math.PI / 180);
-        const r = radius * (1 - elevationDeg / 90);
-
-        const x = centerX + r * Math.cos(azRad);
-        const y = centerY + r * Math.sin(azRad);
-
-        // Point lumineux représentant l'astre
-        ctx.fillStyle = '#ffcc00';
-        ctx.beginPath();
-        ctx.arc(x, y, 4, 0, 2 * Math.PI);
-        ctx.fill();
-
-        // Nom de l'astre à côté du point
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '10px sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(nomAstre, x + 6, y + 3);
     }
-}
 
-function dessinerCarteCiel(nomsAstres, resultMap) {
-    const canvas = document.getElementById('skyCanvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const rayonMax = width / 2 - 30; // Marge pour les étiquettes
+    // --- COMPOSANTS VISUELS CANVAS & 3D ---
+    function dessinerRadarAstres(astresData, capOrientation) {
+        const canvas = document.getElementById('radarCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width, height = canvas.height;
+        const centerX = width / 2, centerY = height / 2;
+        const radius = Math.min(width, height) / 2 - 25;
 
-    // 1. Nettoyage du fond
-    ctx.clearRect(0, 0, width, height);
+        ctx.clearRect(0, 0, width, height);
 
-    // 2. Tracé des cercles concentriques d'élévation (0°, 30°, 60°, Zénith 90°)
-    [0, 30, 60].forEach(elev => {
-        const r = rayonMax * (1 - elev / 90);
+        // Cercles d'élévation
+        [0, 30, 60].forEach(elevation => {
+            const r = radius * (1 - elevation / 90);
+            ctx.strokeStyle = elevation === 0 ? 'rgba(88, 166, 255, 0.5)' : 'rgba(88, 166, 255, 0.15)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, r, 0, 2 * Math.PI);
+            ctx.stroke();
+        });
+
+        // Axes Cardinaux
+        ctx.strokeStyle = 'rgba(88, 166, 255, 0.2)';
         ctx.beginPath();
-        ctx.arc(centerX, centerY, r, 0, 2 * Math.PI);
-        ctx.strokeStyle = '#334155';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        
-        // Texte de l'élévation
-        ctx.fillStyle = '#64748b';
-        ctx.font = '10px system-ui';
-        ctx.fillText(`${elev}°`, centerX + 5, centerY - r + 12);
-    });
-
-    // 3. Tracé des axes cardinaux (Nord en haut = 0°, Est = 90°, Sud = 180°, Ouest = 270°)
-    ctx.strokeStyle = '#475569';
-    ctx.lineWidth = 1.5;
-    
-    // Axe Nord-Sud
-    ctx.beginPath();
-    ctx.moveTo(centerX, centerY - rayonMax);
-    ctx.lineTo(centerX, centerY + rayonMax);
-    ctx.stroke();
-
-    // Axe Est-Ouest
-    ctx.beginPath();
-    ctx.moveTo(centerX - rayonMax, centerY);
-    ctx.lineTo(centerX + rayonMax, centerY);
-    ctx.stroke();
-
-    // Libellés cardinaux
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = 'bold 14px system-ui';
-    ctx.textAlign = 'center';
-    ctx.fillText('N (0°)', centerX, centerY - rayonMax - 8);
-    ctx.fillText('S (180°)', centerX, centerY + rayonMax + 20);
-    ctx.textAlign = 'left';
-    ctx.fillText('E (90°)', centerX + rayonMax + 10, centerY + 5);
-    ctx.textAlign = 'right';
-    ctx.fillText('W (270°)', centerX - rayonMax - 10, centerY + 5);
-
-    // 4. Positionnement des astres
-    const floatsParAstre = 7;
-    nomsAstres.forEach((nomAstre, index) => {
-        const baseIdx = index * floatsParAstre;
-        const azimut = resultMap[baseIdx + 0];     // 0° à 360°
-        const elevation = resultMap[baseIdx + 1];  // -90° à +90°
-
-        // On ignore les astres profondément sous l'horizon pour ne pas encombrer le graphe
-        if (elevation < -10) return;
-
-        // Conversion Azimut/Élévation en coordonnées polaires (Canvas)
-        // Azimut 0° = Haut (-Y), Azimut 90° = Droite (+X)
-        const azRad = (azimut - 90) * (Math.PI / 180.0);
-        // L'horizon (0°) est sur le cercle extérieur (rayonMax), le zénith (90°) est au centre (0)
-        const r = rayonMax * Math.max(0, Math.min(1, 1 - elevation / 90.0));
-
-        const x = centerX + r * Math.cos(azRad);
-        const y = centerY + r * Math.sin(azRad);
-
-        // Point de l'astre
-        ctx.beginPath();
-        ctx.arc(x, y, 5, 0, 2 * Math.PI);
-        ctx.fillStyle = elevation > 0 ? '#4ade80' : '#ef4444'; // Vert si visible, Rouge si sous l'horizon
-        ctx.fill();
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = '#ffffff';
+        ctx.moveTo(centerX, centerY - radius); ctx.lineTo(centerX, centerY + radius);
+        ctx.moveTo(centerX - radius, centerY); ctx.lineTo(centerX + radius, centerY);
         ctx.stroke();
 
-        // Nom de l'astre
-        ctx.fillStyle = '#f8fafc';
-        ctx.font = '12px system-ui';
-        ctx.textAlign = 'left';
-        ctx.fillText(nomAstre.toUpperCase(), x + 8, y + 4);
-    });
-                              }    
+        // Affichage des Astres
+        for (const [nomAstre, data] of Object.entries(astresData)) {
+            if (data.elevationRefractee < 0) continue;
+
+            const azRad = (data.azimuth - 90) * (Math.PI / 180);
+            const r = radius * (1 - data.elevationRefractee / 90);
+            const x = centerX + r * Math.cos(azRad);
+            const y = centerY + r * Math.sin(azRad);
+
+            ctx.fillStyle = '#3fb950';
+            ctx.beginPath();
+            ctx.arc(x, y, 3.5, 0, 2 * Math.PI);
+            ctx.fill();
+
+            ctx.fillStyle = modeJourActif ? '#24292e' : '#c9d1d9';
+            ctx.font = '8px monospace';
+            ctx.fillText(nomAstre.substring(0, 4).toUpperCase(), x + 5, y + 3);
+        }
+    }
+
+    function dessinerCarteCiel(nomsAstres, resultMap) {
+        const canvas = document.getElementById('skyCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width, height = canvas.height;
+        const centerX = width / 2, centerY = height / 2;
+        const rayonMax = width / 2 - 25;
+
+        ctx.clearRect(0, 0, width, height);
+
+        [0, 30, 60].forEach(elev => {
+            const r = rayonMax * (1 - elev / 90);
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, r, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#334155';
+            ctx.stroke();
+        });
+
+        ctx.strokeStyle = '#475569';
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY - rayonMax); ctx.lineTo(centerX, centerY + rayonMax);
+        ctx.moveTo(centerX - rayonMax, centerY); ctx.lineTo(centerX + rayonMax, centerY);
+        ctx.stroke();
+
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('N', centerX, centerY - rayonMax - 5);
+        ctx.fillText('S', centerX, centerY + rayonMax + 12);
+        ctx.fillText('E', centerX + rayonMax + 10, centerY + 3);
+        ctx.fillText('W', centerX - rayonMax - 10, centerY + 3);
+
+        const floatsParAstre = 7;
+        nomsAstres.forEach((nomAstre, index) => {
+            const baseIdx = index * floatsParAstre;
+            const azimut = resultMap[baseIdx + 0];
+            const elevation = resultMap[baseIdx + 2];
+
+            if (elevation < -5) return;
+
+            const azRad = (azimut - 90) * (Math.PI / 180.0);
+            const r = rayonMax * Math.max(0, Math.min(1, 1 - elevation / 90.0));
+
+            const x = centerX + r * Math.cos(azRad);
+            const y = centerY + r * Math.sin(azRad);
+
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = elevation > 0 ? '#4ade80' : '#ef4444';
+            ctx.fill();
+
+            ctx.fillStyle = '#f8fafc';
+            ctx.font = '9px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(nomAstre.toUpperCase(), x + 6, y + 3);
+        });
+    }
 
     function convertirLatLonEnVector3(lat, lon, rayon = 1.0) {
         const phi = (90.0 - lat) * (Math.PI / 180.0), theta = lon * (Math.PI / 180.0);
@@ -958,7 +871,7 @@ function dessinerCarteCiel(nomsAstres, resultMap) {
 
         const globe = new THREE.Mesh(
             new THREE.SphereGeometry(1, 32, 32),
-            new THREE.MeshBasicMaterial({ color: 0x1f6feb, wireframe: true, transparent: true, opacity: 0.6 })
+            new THREE.MeshBasicMaterial({ color: 0x0969da, wireframe: true, transparent: true, opacity: 0.5 })
         );
         globeScene.add(globe);
         curseurPositionMesh = new THREE.Mesh(
@@ -1003,8 +916,9 @@ function dessinerCarteCiel(nomsAstres, resultMap) {
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
+    // --- BOUCLE DE CALCUL ET D'EXECUTION ---
     function envoyerDemandeCalculWorker() {
-        if (!astroWorker) return;
+        if (!astroWorker || !workerPret) return;
         const timestampExact = obtenirTimestampUTCExact();
         if (timestampExact === null) return;
 
@@ -1028,159 +942,24 @@ function dessinerCarteCiel(nomsAstres, resultMap) {
         setTimeout(lancerBoucleCalculSecurisee, 1000);
     }
 
-    // Script principal (UI)
-let workerAstronomie = new Worker('worker.js');
-
-async function initialiserSystemeSentinela() {
-    try {
-        console.log("[UI] Chargement du flux éphéméride optimisé...");
-        const reponse = await fetch('flux_live.json');
-        
-        if (!reponse.ok) {
-            throw new Error(`Erreur HTTP : ${reponse.status}`);
-        }
-        
-        const payloadJpl = await reponse.json();
-        console.log(`[UI] Données chargées : ${payloadJpl.INFRASTRUCTURE}`);
-
-        // 1. Transmission de la matrice globale au Web Worker
-        workerAstronomie.postMessage({
-            type: 'UPDATE_JPL_MATRIX',
-            matrix: payloadJpl
-        });
-
-        // 2. Initialisation du module géomagnétique WMM-2025 avec la station GPS de référence
-        workerAstronomie.postMessage({
-            type: 'INIT_WMM',
-            coords: payloadJpl.STATION_BASE_GPS
-        });
-
-        console.log("[UI] Initialisation terminée. Lancement de la boucle de calcul.");
-        
-        // Démarrer la boucle de rafraîchissement (ex: toutes les secondes)
-        setInterval(() => {
-            demanderCalculTemps Reel(payloadJpl.STATION_BASE_GPS);
-        }, 1000);
-
-    } catch (err) {
-        console.error("[UI] Échec critique de l'initialisation :", err);
-    }
-}
-
-    workerAstronomie.onmessage = function(e) {
-    const msg = e.data;
-    if (!msg) return;
-
-    if (msg.type === 'READY') {
-        console.log("[UI] Worker prêt.");
-    } 
-    else if (msg.type === 'WMM_RESULTS') {
-        console.log("[UI] Données magnétiques WMM reçues :", msg.payload);
-        // Mettre à jour l'affichage de la déclinaison magnétique dans l'UI
-    }
-    else if (msg.type === 'RESULTS_BINARY') {
-        const { timestamp, solarMetrics, tempsJpl, metaAstres, buffer } = msg;
-        const resultMap = new Float64Array(buffer);
-
-        // Décodage des données par astre (7 valeurs par astre selon le Worker)
-        const nomsAstres = Object.keys(metaAstres);
-        const floatsParAstre = 7;
-
-        nomsAstres.forEach((nomAstre, index) => {
-            const baseIdx = index * floatsParAstre;
-            const astreData = {
-                azimuth: resultMap[baseIdx + 0],
-                elevationGeometrique: resultMap[baseIdx + 1],
-                elevationRefractee: resultMap[baseIdx + 2],
-                raDeg: resultMap[baseIdx + 3],
-                decDeg: resultMap[baseIdx + 4],
-                distanceKm: resultMap[baseIdx + 5],
-                visibiliteCode: resultMap[baseIdx + 6],
-                ...metaAstres[nomAstre] // Récupération des chaînes (Lever, Culmination, Coucher TSV)
-            };
-// À la fin du bloc RESULTS_BINARY :
-dessinerCarteCiel(Object.keys(metaAstres), resultMap);
-            // Mise à jour de votre interface graphique (DOM / Canvas)
-            mettreAJourAffichageAstre(nomAstre, astreData);
-        });
-
-        // Mise à jour des métriques solaires et sidérales globales
-        mettreAJourPanneauSolaire(solarMetrics);
-    }
-    else if (msg.type === 'ERROR') {
-        console.error("[Worker Error] :", msg.message);
-    }
-};
-
-function mettreAJourAffichageAstre(nomAstre, donnees) {
-    const tbody = document.getElementById('corps-table-body');
-    let ligne = document.getElementById(`row-${nomAstre}`);
-
-    // Détermination de l'état visuel (Ex: visible si élévation > 0)
-    const estVisible = donnees.elevationRefractee > 0;
-    const classeEtat = estVisible ? 'badge-visible' : 'badge-nuit';
-    const texteEtat = estVisible ? '✅ Visible' : '💤 Sous l\'horizon';
-
-    // Formatage des nombres
-    const elevFormatted = donnees.elevationRefractee.toFixed(2);
-    const azimFormatted = donnees.azimuth.toFixed(2);
-    const distFormatted = Math.round(donnees.distanceKm).toLocaleString('fr-FR');
-
-    const contenuHtml = `
-        <td><strong>${nomAstre.toUpperCase()}</strong></td>
-        <td>${elevFormatted}°</td>
-        <td>${azimFormatted}°</td>
-        <td>${distFormatted} km</td>
-        <td>${donnees.leverTsv}</td>
-        <td>${donnees.culminationTsv}</td>
-        <td>${donnees.coucherTsv}</td>
-        <td><span class="${classeEtat}">${texteEtat}</span></td>
-    `;
-
-    if (!ligne) {
-        // Création de la ligne si elle n'existe pas encore
-        ligne = document.createElement('tr');
-        ligne.id = `row-${nomAstre}`;
-        ligne.innerHTML = contenuHtml;
-        tbody.appendChild(ligne);
-    } else {
-        // Mise à jour rapide sans recréer l'élément DOM
-        ligne.innerHTML = contenuHtml;
-    }
-    }
-
-function mettreAJourPanneauSolaire(metrics) {
-    // Affichage de l'équation du temps, GAST, LST, etc.
-}
-
-// Lancement de l'application
-initialiserSystemeSentinela();
-
-function demanderCalculTempsReel(coordsGPS) {
-    const maintenantUtc = Date.now(); // Timestamp UTC en millisecondes
-    
-    workerAstronomie.postMessage({
-        type: 'COMPUTE',
-        timestampUtc: maintenantUtc,
-        coords: coordsGPS,
-        meteo: { tempC: 15.0, presHpa: 1013.25 }
-    });
-                                     }
-
+    // --- INITIALISATION SYSTEME ---
     window.addEventListener('load', async () => {
         document.getElementById('html-root').classList.add('day-mode');
         dessinerRadarAstres({}, 0);
         initGlobe3D();
+        
         initialiserWorkerAstronomie();
 
         await actualiserIndiceKpRapide();
-        setInterval(actualiserIndiceKpRapide, 60 * 60 * 1000);
+        setInterval(actualiserIndiceKpRapide, 3600000);
+        
         await chargerFluxLiveJPL();
         await chargerEtParserWMM();
-        
         await synchroniserHeureAtomique();
+        
         appliquerCoordonneesManuelles(true);
         lancerBoucleCalculSecurisee();
+        
         ecrireLog("SYSTEMA SENTINELA v18.9 opérationnel.");
     });
 </script>
