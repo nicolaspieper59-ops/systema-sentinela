@@ -140,17 +140,22 @@
             <h3 class="panel-title">1. COORDONNÉES TOPOCENTRIQUES &amp; VISIBILITÉ (MOTEUR JPL DE440s - HAUTE PRÉCISION)</h3>
             
             <div class="metrics-grid" style="margin-bottom: 10px;">
+                <div class="metric-card"><div>TEMPS SOLAIRE MOYEN</div><div class="metric-val time-tsm" id="val-tsm">--</div></div>
+                <div class="metric-card"><div>TEMPS SOLAIRE VRAI</div><div class="metric-val" id="val-tsv" style="color:var(--neon-green);">--</div></div>
                 <div class="metric-card"><div>ÉQ. DU TEMPS (CALC)</div><div class="metric-val" id="val-eq-temps" style="color:var(--amber);">-- min</div></div>
                 <div class="metric-card"><div>EXCENTRICITÉ TERR.</div><div class="metric-val" id="val-excentricite" style="color:var(--sky);">--</div></div>
                 <div class="metric-card"><div>OBLIQUITÉ ÉCLIPTIQUE</div><div class="metric-val" id="val-obliquite" style="color:var(--sky);">--°</div></div>
                 <div class="metric-card"><div>LONGITUDE SOLAIRE</div><div class="metric-val" id="val-long-solaire" style="color:var(--amber);">--°</div></div>
-                <div class="metric-card"><div>TEMPS SOLAIRE MOYEN</div><div class="metric-val time-tsm" id="val-tsm">--</div></div>
-                <div class="metric-card"><div>TEMPS SOLAIRE VRAI</div><div class="metric-val" id="val-tsv" style="color:var(--neon-green);">--</div></div>
+                <div class="metric-card"><div>JULIAN DATE (JD / JDE)</div><div class="metric-val" id="val-jd">--</div></div>
+                <div class="metric-card"><div>DELTA T (ΔT)</div><div class="metric-val" id="val-deltat">-- s</div></div>
+                <div class="metric-card"><div>TEMPS PROPRE (τ)</div><div class="metric-val" id="val-temps-propre">-- s</div></div>
+                <div class="metric-card"><div>DIST. HORIZON</div><div class="metric-val" id="val-dist-horizon">-- km</div></div>
+                <div class="metric-card"><div>FLUX SOLAIRE</div><div class="metric-val" id="val-flux-solaire">-- W/m²</div></div>
+                <div class="metric-card"><div>ILLUMINATION LUNE</div><div class="metric-val" id="val-lune-illum">-- %</div></div>
+                <div class="metric-card"><div>LMT LUNAIRE</div><div class="metric-val" id="val-lmt-lune">--:--:--</div></div>
+            </div>
             </div>
 
-            <div class="sentinela-dashboard">
-                <h2>🌌 SYSTEMA SENTINELA — Éphémérides en Temps Réel</h2>
-                <div id="infos-solaires" class="badge-solair">Calcul en cours...</div>
                 
                 <div class="table-container">
                     <table class="astronomy-table">
