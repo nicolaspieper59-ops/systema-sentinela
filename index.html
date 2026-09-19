@@ -56,36 +56,39 @@
         .metric-card { background: rgba(88,166,255,0.03); border: 1px solid var(--border-dim); padding: 4px 6px; border-radius: 3px; font-size: 9.5px; }
         .metric-val { font-weight: bold; color: var(--neon-green); font-size: 10.5px; margin-top: 2px; }
 
-        /* Suppression des styles lourds du dashboard et optimisation du tableau */
-        .sentinela-dashboard {
-            background: transparent;
-            padding: 0;
-            margin-top: 5px;
-            box-shadow: none;
+        /* Ajustement du conteneur pour serrer au plus près du tableau */
+        .sentinela-dashboard .table-container {
+            display: inline-block;
+            width: auto;
+            max-width: 100%;
+            overflow-x: auto;
         }
 
+        /* Tableau compact : largeur ajustée au contenu et cellules resserrées */
         .astronomy-table {
-            width: 100%;
+            width: auto;
             border-collapse: collapse;
             margin-top: 5px;
             background: var(--bg-surface);
             border-radius: 4px;
             overflow: hidden;
+            white-space: nowrap;
         }
 
-        /* Réduction de l'espace entre les colonnes (padding resserré) */
+        /* Espacement minimal entre les colonnes (padding latéral à 3px) */
         .astronomy-table th, .astronomy-table td {
-            padding: 4px 5px; 
+            padding: 3px 4px;
             text-align: center;
-            font-size: 9.5px;
+            font-size: 9px;
+            line-height: 1.1;
         }
 
         .astronomy-table th {
             background: var(--border-dim);
             color: var(--sky);
             text-transform: uppercase;
-            font-size: 9px;
-            letter-spacing: 0.03em;
+            font-size: 8.5px;
+            letter-spacing: 0.02em;
         }
 
         .astronomy-table tr:nth-child(even) { background: rgba(255, 255, 255, 0.01); }
