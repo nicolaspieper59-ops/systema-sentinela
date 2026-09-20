@@ -1,7 +1,7 @@
 /**
  * ============================================================================
- * SYSTEMA SENTINELA — KERNEL C++ WEBMASSEMBLY (ASTROMÉTRIE & CHEBYSHEV)
- * Version rigoureuse optimisée v18.8
+ * SYSTEMA SENTINELA — KERNEL C++ WEBMASSEMBLY (ASTROMÉTRIE & MULTIPHYSIQUE)
+ * Version rigoureuse optimisée v18.9
  * ============================================================================
  */
 
@@ -16,6 +16,7 @@
 #define DEG2RAD (M_PI / 180.0)
 #define RAD2DEG (180.0 / M_PI)
 
+// Structure mémoire alignée pour un transfert binaire sans copie (Zero-Copy) vers JS
 struct AstroResult {
     double azim;          
     double elevGeom;      
@@ -25,7 +26,11 @@ struct AstroResult {
     double distUA;        
     double leverUT;       
     double coucherUT;     
+    double airMass;       
+    double irradiance;    
+    double deltaT;        
     int visibiliteCode;   
+    int padding; // Alignement mémoire 64-bit
 };
 
 struct SystemMetrics {
@@ -44,7 +49,6 @@ inline double normaliserDegres(double deg) {
     return res < 0.0 ? res + 360.0 : res;
 }
 
-// Évaluation d'une série de Chebyshev par l'algorithme de Clenshaw
 double evaluerChebyshev(const double* coeffs, int degre, double xNorm) {
     double b2 = 0.0;
     double b1 = 0.0;
@@ -123,7 +127,7 @@ EMSCRIPTEN_KEEPALIVE
 void calculerDepuisECEF(
     double xECEF, double yECEF, double zECEF,
     double latDeg, double lonDeg, double altM,
-    double eraRad,
+    double eraRad, double timestampUtc,
     double tempC, double presHpa,
     double magApparente,
     bool estVecteurTopocentrique,
@@ -164,7 +168,6 @@ void calculerDepuisECEF(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
-    // Modèle de réfraction de Bennett
     if (result->elevGeom > -2.0) {
         double h = std::max(result->elevGeom, -1.0);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
@@ -179,25 +182,39 @@ void calculerDepuisECEF(
     
     double normR = std::sqrt(xECEF*xECEF + yECEF*yECEF + zECEF*zECEF);
     result->decDeg = (normR > 0.0) ? std::asin(zECEF / normR) * RAD2DEG : 0.0;
-    
+
+    // --- NOUVEAUX CALCULS MULTIPHYSIQUES --- //
+
+    // 1. Delta T (Polynôme d'Espenak-Meeus pour post-2005)
+    double jd = (timestampUtc / 86400.0) + 2440587.5;
+    double anneeExacte = 2000.0 + (jd - 2451545.0) / 365.25;
+    double t = anneeExacte - 2000.0;
+    result->deltaT = 62.92 + 0.32217 * t + 0.005589 * (t * t);
+
+    // 2. Air Mass (Formule de Rozenberg) & Irradiance (Beer-Lambert)
+    result->airMass = 0.0;
+    result->irradiance = 0.0;
+    if (result->elevRefractee > 0.0) {
+        double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
+        result->airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
+        
+        double constanteSolaire = 1361.0; 
+        double transmittance = 0.7; // Ciel clair standard
+        result->irradiance = (constanteSolaire / (result->distUA * result->distUA)) * std::pow(transmittance, result->airMass);
+    }
+
+    // 3. Magnitude & Visibilité (Ajusté avec Air Mass réel)
     result->leverUT = 0.0;
     result->coucherUT = 0.0;
 
     if (result->elevRefractee < 0.0) {
         result->visibiliteCode = 0;
     } else {
-        double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
-        double airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
-        double magEff = magApparente + (0.2 * airMass);
-
+        double magEff = magApparente + (0.2 * result->airMass);
         if (magEff <= 5.5) result->visibiliteCode = 1;
         else if (magEff <= 9.5) result->visibiliteCode = 2;
         else result->visibiliteCode = 3;
     }
 }
 
-}
-
-int main() {
-    return 0;
 }
