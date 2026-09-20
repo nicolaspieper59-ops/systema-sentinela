@@ -33,36 +33,37 @@
             font-family: 'Consolas', 'Courier New', monospace; font-size: 10.5px; padding: 6px; margin: 0;
             -webkit-text-size-adjust: 100%;
         }
-        .container { max-width: 1920px; margin: 0 auto; }
+        .container { max-width: 1900px; margin: 0 auto; }
         .master-header {
             background: var(--bg-surface); border: 1px solid var(--border-dim);
-            border-left: 4px solid var(--neon-green); padding: 6px 12px; border-radius: 6px;
-            display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;
+            border-left: 4px solid var(--neon-green); padding: 6px 10px; border-radius: 6px;
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;
         }
         .brand { font-size: 11px; font-weight: bold; letter-spacing: 0.5px; color: var(--sky); }
-        .grid-layout { display: grid; grid-template-columns: 1fr; gap: 8px; }
+        .grid-layout { display: grid; grid-template-columns: 1fr; gap: 6px; }
         @media (min-width: 1400px) { .grid-layout { grid-template-columns: 1fr 1fr; } }
         
-        .panel { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 8px; margin-bottom: 8px; }
+        .panel { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 8px; margin-bottom: 6px; }
         .panel-title { border-bottom: 1px solid var(--border-dim); padding-bottom: 4px; margin-top: 0; margin-bottom: 6px; font-size: 10.5px; color: var(--sky); display: flex; justify-content: space-between; align-items: center; }
         
         .astro-grid { display: grid; grid-template-columns: 1fr; gap: 4px; font-size: 9.5px; }
         .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 4px; }
-        .metric-card { background: rgba(88,166,255,0.05); border: 1px solid var(--border-dim); padding: 4px 6px; border-radius: 4px; font-size: 9px; }
+        .metric-card { background: rgba(88,166,255,0.05); border: 1px solid var(--border-dim); padding: 4px 5px; border-radius: 4px; font-size: 9px; }
+        .metric-card div:first-child { color: var(--sky); font-size: 8.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .metric-val { font-weight: bold; color: var(--neon-green); font-size: 10px; margin-top: 2px; }
-        
         .table-container { overflow-x: auto; max-height: 360px; overflow-y: auto; }
-        table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
         
-        th, td { padding: 3px 5px; border-bottom: 1px solid var(--border-dim); font-size: 8.8px; }
+        /* CSS Compacité : Réduction drastique des espaces entre colonnes */
+        table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
+        th, td { padding: 3px 4px; border-bottom: 1px solid var(--border-dim); font-size: 9px; line-height: 1.1; }
         th { color: var(--sky); font-weight: bold; background: var(--bg-surface); position: sticky; top: 0; z-index: 2; border-bottom: 2px solid var(--border-dim); }
 
         .btn-action { background: var(--border-dim); color: var(--text-main); border: 1px solid var(--sky); padding: 4px 8px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 9.5px; font-weight: bold; transition: background 0.2s; }
         .btn-action:hover { background: var(--sky); color: #fff; }
-        .log-console { background: #000; color: #8b949e; border: 1px solid var(--border-dim); height: 95px; overflow-y: auto; padding: 4px 6px; border-radius: 4px; font-size: 8.5px; font-family: monospace; }
+        .log-console { background: #000; color: #8b949e; border: 1px solid var(--border-dim); height: 100px; overflow-y: auto; padding: 5px; border-radius: 4px; font-size: 8.5px; font-family: monospace; }
         .day-mode .log-console { background: #111; color: #adbac7; }
-        #radarCanvas { width: 100%; max-width: 250px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
-        #globeCanvas { width: 100%; max-width: 250px; height: 140px; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 6px; cursor: grab; touch-action: none; }
+        #radarCanvas { width: 100%; max-width: 260px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
+        #globeCanvas { width: 100%; max-width: 260px; height: 140px; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 6px; cursor: grab; touch-action: none; }
         
         .time-utc { color: var(--sky); font-weight: bold; }
         .time-tsm { color: var(--tsm-color); font-weight: bold; }
@@ -76,36 +77,23 @@
             <div>JPL FLUX : <span id="lbl-jpl-status" style="color:var(--amber); font-weight:bold;">CHARGEMENT...</span></div>
             <div>WORKER : <span id="lbl-worker-status" style="color:var(--amber); font-weight:bold;">INIT...</span></div>
             <div>EPOCH UTC : <span id="lbl-epoch" class="time-utc">--</span></div>
+            <div>RÉGLAGE MANUEL : <input type="datetime-local" id="input-manual-time" style="background:var(--bg-base); color:var(--neon-green); border:1px solid var(--border-dim); padding:1px 3px; font-family:monospace; font-size:9px;" onchange="validerTempsManuel(this.value)"></div>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR / NUIT</button>
         </div>
     </header>
 
     <div class="grid-layout">
+        <!-- Panel 1: Éphémérides & Tableau principal -->
         <div class="panel" style="grid-column: 1 / -1;">
-            <h3 class="panel-title">1. COORDONNÉES TOPOCENTRIQUES, SYSTÈME SOLAIRE & ÉPHEMÉRIDES AVANCÉES (TSM)</h3>
+            <h3 class="panel-title">1A. COORDONNÉES TOPOCENTRIQUES &amp; VISIBILITÉ (HORAIRES EN HEURE SOLAIRE MOYENNE - TSM)</h3>
             
             <div class="metrics-grid" style="margin-bottom: 8px;">
-                <div class="metric-card"><div>ÉQ. DU TEMPS</div><div class="metric-val" id="val-eq-temps" style="color:var(--amber);">-- min</div></div>
+                <div class="metric-card"><div>ÉQ. DU TEMPS (CALC)</div><div class="metric-val" id="val-eq-temps" style="color:var(--amber);">-- min</div></div>
                 <div class="metric-card"><div>EXCENTRICITÉ TERR.</div><div class="metric-val" id="val-excentricite" style="color:var(--sky);">--</div></div>
                 <div class="metric-card"><div>OBLIQUITÉ ÉCLIPTIQUE</div><div class="metric-val" id="val-obliquite" style="color:var(--sky);">--°</div></div>
                 <div class="metric-card"><div>LONGITUDE SOLAIRE</div><div class="metric-val" id="val-long-solaire" style="color:var(--amber);">--°</div></div>
                 <div class="metric-card"><div>TEMPS SOLAIRE MOYEN (TSM)</div><div class="metric-val time-tsm" id="val-tsm">--</div></div>
                 <div class="metric-card"><div>TEMPS SOLAIRE VRAI (TSV)</div><div class="metric-val" id="val-tsv" style="color:var(--neon-green);">--</div></div>
-                
-                <div class="metric-card"><div>PHASE LUNAIRE</div><div class="metric-val" id="val-moon-phase" style="color:var(--sky);">--</div></div>
-                <div class="metric-card"><div>ÂGE LUNAIRE</div><div class="metric-val" id="val-moon-age" style="color:var(--amber);">-- j</div></div>
-                <div class="metric-card"><div>PROCHAINE NOUV. LUNE</div><div class="metric-val" id="val-next-new-moon">--</div></div>
-                <div class="metric-card"><div>PROCHAINE PLEINE LUNE</div><div class="metric-val" id="val-next-full-moon">--</div></div>
-                <div class="metric-card"><div>PROCHAIN PÉRIGÉE / APOGÉE</div><div class="metric-val" id="val-next-perigee-apogee" style="font-size:9px;">-- / --</div></div>
-
-                <div class="metric-card"><div>LEVER / COUCHER (TSM)</div><div class="metric-val" id="val-sunrise-sunset" style="color:var(--neon-green);">-- / --</div></div>
-                <div class="metric-card"><div>CRÉPUSCULE / DURÉE JOUR</div><div class="metric-val" id="val-dusk-daylight">-- / --</div></div>
-                <div class="metric-card"><div>JDE / DELTA T</div><div class="metric-val" id="val-jde-deltat">-- / --</div></div>
-                <div class="metric-card"><div>GMST / GHA</div><div class="metric-val" id="val-gmst-gha">-- / --</div></div>
-                <div class="metric-card"><div>ÉQUINOXES (MARS / SEPT)</div><div class="metric-val" id="val-equinoxes" style="font-size:8.5px;">-- / --</div></div>
-                <div class="metric-card"><div>SOLSTICES (JUIN / DÉC)</div><div class="metric-val" id="val-solstices" style="font-size:8.5px;">-- / --</div></div>
-                <div class="metric-card"><div>CONST. SOLAIRE / IRRADIANCE</div><div class="metric-val" id="val-solar-const-irradiance">-- W/m²</div></div>
-                <div class="metric-card"><div>MASSE D'AIR (AIR MASS)</div><div class="metric-val" id="val-air-mass">--</div></div>
             </div>
 
             <div class="table-container">
@@ -113,25 +101,16 @@
                     <thead>
                         <tr>
                             <th>CORPS CÉLESTE</th>
-                            <th>DIST. (AU)</th>
-                            <th>DIST. MIN-MAX (AU)</th>
-                            <th>MAGNITUDE</th>
-                            <th>RA (h m s)</th>
-                            <th>DEC (° ' ")</th>
-                            <th>CONSTELLATION</th>
-                            <th>PÉRIGÉE (AU)</th>
-                            <th>PÉRIHÉLIE (AU)</th>
-                            <th>APHÉLIE (AU)</th>
-                            <th>DURÉE JOUR (h)</th>
-                            <th>PÉR. ORB. (j)</th>
-                            <th>VIT. ORB. (km/s)</th>
-                            <th>LONG. OMBRE (m)</th>
-                            <th>ÉLÉV. (°)</th>
+                            <th>ÉLÉVATION APP. (°)</th>
                             <th>AZIMUT (°)</th>
+                            <th>DISTANCE (km)</th>
+                            <th>DISTANCE (UA)</th>
+                            <th>MAGNITUDE / VIS.</th>
+                            <th>RA / DEC</th>
                             <th>LEVER (TSM)</th>
-                            <th>CULM. (TSM)</th>
+                            <th>CULMINATION (TSM)</th>
                             <th>COUCHER (TSM)</th>
-                            <th>ÉTAT</th>
+                            <th>ÉTAT CALCUL</th>
                         </tr>
                     </thead>
                     <tbody id="table-body"></tbody>
@@ -139,15 +118,48 @@
             </div>
         </div>
 
+        <!-- Panel 1B: Extension Astronomique & Solaires avancées -->
+        <div class="panel" style="grid-column: 1 / -1;">
+            <h3 class="panel-title">1B. DYNAMIQUE ORBITALE, SOLAIRE &amp; ÉPHÉMÉRIDES AVANCÉES (METRIQUES INTÉGRÉES)</h3>
+            <div class="metrics-grid">
+                <div class="metric-card"><div>DISTANCE TERRE-SOLEIL</div><div class="metric-val" id="val-dist-sol-au">-- AU</div></div>
+                <div class="metric-card"><div>DIST. MIN-MAX (SOLEIL)</div><div class="metric-val" id="val-dist-sol-minmax">0.983 - 1.017 AU</div></div>
+                <div class="metric-card"><div>PÉRIHÉLIE / APHÉLIE</div><div class="metric-val" id="val-peri-aph-sol">0.983 / 1.017 AU</div></div>
+                <div class="metric-card"><div>DISTANCE TERRE-LUNE</div><div class="metric-val" id="val-dist-lune-ae">-- AU</div></div>
+                <div class="metric-card"><div>PÉRIGÉE / APOGÉE LUNE</div><div class="metric-val" id="val-peri-apogee-lune">356 400 / 406 700 km</div></div>
+                <div class="metric-card"><div>NEXT PÉRIGÉE / APOGÉE</div><div class="metric-val" id="val-next-perigee-apogee">Calcul...</div></div>
+                <div class="metric-card"><div>PERIODE ORBITALE (TERRE)</div><div class="metric-val" id="val-orbit-period">365.256 d</div></div>
+                <div class="metric-card"><div>DURÉE DU JOUR (ROTATION)</div><div class="metric-val" id="val-length-day">23.934 h</div></div>
+                <div class="metric-card"><div>VITESSE ORBITALE</div><div class="metric-val" id="val-orbit-velocity">29.78 km/s</div></div>
+                <div class="metric-card"><div>LONGUEUR D'OMBRE (OBJET 1m)</div><div class="metric-val" id="val-shadow-length">-- m</div></div>
+                <div class="metric-card"><div>PHASE DE LA LUNE</div><div class="metric-val" id="val-moon-phase">--</div></div>
+                <div class="metric-card"><div>ÂGE DE LA LUNE</div><div class="metric-val" id="val-moon-age">-- jours</div></div>
+                <div class="metric-card"><div>NEXT NOUVELLE LUNE</div><div class="metric-val" id="val-next-new-moon">-- (TSM)</div></div>
+                <div class="metric-card"><div>NEXT PLEINE LUNE</div><div class="metric-val" id="val-next-full-moon">-- (TSM)</div></div>
+                <div class="metric-card"><div>LEVER / COUCHER SOLEIL</div><div class="metric-val" id="val-sunrise-sunset">-- / -- (TSM)</div></div>
+                <div class="metric-card"><div>CRÉPUSCULE (DUSK)</div><div class="metric-val" id="val-dusk-time">-- (TSM)</div></div>
+                <div class="metric-card"><div>DURÉE DU JOUR (LUMIÈRE)</div><div class="metric-val" id="val-daylight-duration">-- h -- m</div></div>
+                <div class="metric-card"><div>JDE (JULIAN DAY EPOCH)</div><div class="metric-val" id="val-jde-epoch">--</div></div>
+                <div class="metric-card"><div>DELTA T (ΔT)</div><div class="metric-val" id="val-delta-t">69.1 s</div></div>
+                <div class="metric-card"><div>GMST / GHA SOLEIL</div><div class="metric-val" id="val-gmst-gha">--° / --°</div></div>
+                <div class="metric-card"><div>ÉQUINOXES (MARS / SEPT)</div><div class="metric-val" id="val-equinoxes">20 Mar / 22 Sep</div></div>
+                <div class="metric-card"><div>SOLSTICES (JUIN / DÉC)</div><div class="metric-val" id="val-solstices">21 Jun / 21 Dec</div></div>
+                <div class="metric-card"><div>CONSTANTE SOLAIRE</div><div class="metric-val" id="val-solar-constant">1361 W/m²</div></div>
+                <div class="metric-card"><div>MASSE D'AIR (AIR MASS)</div><div class="metric-val" id="val-air-mass">--</div></div>
+                <div class="metric-card"><div>IRRADIANCE SOLAIRE</div><div class="metric-val" id="val-irradiance">-- W/m²</div></div>
+                <div class="metric-card"><div>CONSTELLATION SOLAIRE</div><div class="metric-val" id="val-solar-constellation">--</div></div>
+            </div>
+        </div>
+
         <div class="panel">
-            <div class="panel-title">2. GÉODÉSIE, POSITIONNEMENT & SAISIE TEMPORELLE MANUELLE</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+            <div class="panel-title">2. GÉODÉSIE &amp; LST / SAISIE &amp; ECEF</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px;">
                 <div class="astro-grid">
                     <div class="metric-card"><div>STATION ACTIVE</div><div class="metric-val" id="val-station-nom" style="color:var(--sky)">ACQUISITION...</div></div>
                     <div class="metric-card"><div>LAT / LON / ALT</div><div class="metric-val" id="val-station-coords">--° / --° / --m</div></div>
-                    <div class="metric-card"><div>GAST / LST</div><div class="metric-val" id="val-gast" style="color:var(--amber)">--°</div></div>
+                    <div class="metric-card"><div>GAST (GREENWICH) / LST</div><div class="metric-val" id="val-gast" style="color:var(--amber)">--°</div></div>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 4px; font-size: 9.5px;">
+                <div style="display: flex; flex-direction: column; gap: 3px; font-size: 9px;">
                     <div>
                         <label style="color: var(--sky);">LAT (°)</label>
                         <input type="number" id="input-lat" value="43.284300" step="0.000001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 2px; font-family: monospace; border-radius: 3px;">
@@ -163,14 +175,14 @@
                 </div>
             </div>
             <div style="display: flex; gap: 6px;">
-                <button class="btn-action" style="flex: 1;" onclick="appliquerCoordonneesManuelles()">APPLIQUER COORD.</button>
+                <button class="btn-action" style="flex: 1;" onclick="appliquerCoordonneesManuelles()">APPLIQUER</button>
                 <button class="btn-action" style="flex: 1;" onclick="basculerTousLesCapteurs()">GPS AUTO</button>
             </div>
         </div>
 
         <div class="panel">
-            <h3 class="panel-title">3. CHAMP GÉOMAGNÉTIQUE WMM-2025 & VARIATIONS</h3>
-            <div class="metrics-grid" style="margin-bottom: 8px;">
+            <h3 class="panel-title">3. CHAMP GÉOMAGNÉTIQUE WMM-2025 &amp; VARIATIONS</h3>
+            <div class="metrics-grid" style="margin-bottom: 6px;">
                 <div class="metric-card"><div>CAP MAGNÉTIQUE</div><div id="val-cap-brut" class="metric-val" style="color:var(--amber);">--°</div></div>
                 <div class="metric-card"><div>CAP VRAI GÉO</div><div id="val-cap-net" class="metric-val" style="color:var(--neon-green);">--°</div></div>
                 <div class="metric-card"><div>DÉCLINAISON (D)</div><div id="val-dec-wmm" class="metric-val" style="color:var(--sky);">Calcul...</div></div>
@@ -178,21 +190,21 @@
                 <div class="metric-card"><div>INTENSITÉ TOTALE (F)</div><div id="val-intensity-wmm" class="metric-val" style="color:var(--neon-green);">-- nT</div></div>
                 <div class="metric-card"><div>INDICE KP (ORAGE)</div><div id="val-kp-index" class="metric-val" style="color:var(--sky);">--</div></div>
             </div>
-            <button id="btn-toggle-capteurs" class="btn-action" style="width: 100%;" onclick="basculerTousLesCapteurs()">ACTIVER GPS & CAPTEURS</button>
+            <button id="btn-toggle-capteurs" class="btn-action" style="width: 100%;" onclick="basculerTousLesCapteurs()">ACTIVER GPS &amp; CAPTEURS</button>
         </div>
 
         <div class="panel">
             <div class="panel-title">4. RADAR D'ORIENTATION VRAIE</div>
-            <canvas id="radarCanvas" width="250" height="250"></canvas>
+            <canvas id="radarCanvas" width="260" height="260"></canvas>
         </div>
 
         <div class="panel">
-            <div class="panel-title">5. VECTEUR XYZ (ECEF) & GLOBE 3D</div>
+            <div class="panel-title">5. VECTEUR XYZ (ECEF) &amp; GLOBE 3D (HAUTE PRÉCISION)</div>
             <div style="font-size: 9px; background: rgba(0,0,0,0.03); padding: 4px; border-radius: 4px; border: 1px solid var(--border-dim); margin-bottom: 6px;">
                 <div style="color: var(--amber); margin-bottom: 2px; font-weight: bold;">ECEF WGS84 (km) :</div>
                 <div>X : <span id="val-xyz-x" style="color:var(--text-main);">--</span> | Y : <span id="val-xyz-y" style="color:var(--text-main);">--</span> | Z : <span id="val-xyz-z" style="color:var(--text-main);">--</span></div>
             </div>
-            <canvas id="globeCanvas" width="250" height="140"></canvas>
+            <canvas id="globeCanvas" width="260" height="140"></canvas>
             <div style="font-size: 9px; color: var(--sky); text-align: center; margin-top: 4px;">
                 BAROMÈTRE / MÉTÉO : <span id="val-baro-statut" style="color:var(--amber)">EN ATTENTE</span>
             </div>
@@ -210,8 +222,6 @@
 <script>
     let currentEqTempsMin = 0;
     let modeJourActif = true;
-    
-    // Suivi temporel via performance.now()
     let baseTempsAtomiqueMs = null;
     let basePerformanceNow = null;
     let decalageTempsAtomiqueMs = parseFloat(localStorage.getItem('sentinela_offset') || '0');
@@ -221,6 +231,8 @@
 
     let workerPret = false;
     let fileDAttenteWorker = [];
+
+    const KM_PER_AU = 149597870.7;
 
     function envoyerMessageWorkerSecurise(message) {
         if (astroWorker && workerPret) {
@@ -245,30 +257,35 @@
         localStorage.setItem('sentinela_perf_time', basePerformanceNow.toString());
     }
 
+    // Gestion du temps fluide via performance.now() et prévention des blocages au changement d'onglet
     function obtenirTimestampUTCExact() {
         if (baseTempsAtomiqueMs === null || basePerformanceNow === null) {
-            activerSaisieTemporelleManuelle();
-            return null; 
+            return Date.now() + decalageTempsAtomiqueMs; 
         }
         const deltaEcoule = performance.now() - basePerformanceNow;
         return baseTempsAtomiqueMs + deltaEcoule;
     }
 
-    function activerSaisieTemporelleManuelle() {
-        const elEpoch = document.getElementById('lbl-epoch');
-        if (elEpoch && !document.getElementById('input-manual-time')) {
-            elEpoch.innerHTML = `
-                <span style="color:var(--rose);">SYNCHRO REQUISE :</span> 
-                <input type="datetime-local" id="input-manual-time" style="background:var(--bg-base); color:var(--neon-green); border:1px solid var(--border-dim); padding:2px; font-family:monospace; font-size:9px;" onchange="validerTempsManuel(this.value)">
-            `;
-            ecrireLog("ATTENTION : Saisie manuelle de l'heure requise.");
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && baseTempsAtomiqueMs !== null) {
+            // Réajustement immédiat au retour sur la page
+            const savedPerf = parseFloat(localStorage.getItem('sentinela_perf_time') || '0');
+            const savedAtom = parseFloat(localStorage.getItem('sentinela_atom_time') || '0');
+            if (savedPerf > 0 && savedAtom > 0) {
+                const diff = performance.now() - savedPerf;
+                baseTempsAtomiqueMs = savedAtom + diff;
+                basePerformanceNow = performance.now();
+            }
         }
-    }
+    });
 
     function validerTempsManuel(valeurIso) {
+        if (!valeurIso) return;
         const timestampSaisi = new Date(valeurIso).getTime();
         if (!isNaN(timestampSaisi)) {
             initialiserAncrageTemporel(timestampSaisi);
+            decalageTempsAtomiqueMs = timestampSaisi - Date.now();
+            localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
             document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
             ecrireLog("Heure de référence manuelle appliquée.");
         }
@@ -283,12 +300,14 @@
         return seuilDeriveActuelMs;
     }
 
-        async function synchroniserHeureAtomique() {
+    // Resynchronisation réseau auto basée sur la RAM et la gigue
+    async function synchroniserHeureAtomique() {
         let echantillonsValides = [];
-        const nombreEssais = (navigator.deviceMemory && navigator.deviceMemory < 4) ? 3 : 5;
+        const memoryRamGb = navigator.deviceMemory || 4;
+        const nombreEssais = memoryRamGb >= 8 ? 6 : 3; // Adapte la charge selon la RAM
         const plafondRttMs = 180.0;
 
-        ecrireLog("Évaluation de la gigue réseau (multi-échantillonnage)...");
+        ecrireLog(`Évaluation réseau (RAM: ${memoryRamGb}GB, Echantillons: ${nombreEssais})...`);
 
         for (let i = 0; i < nombreEssais; i++) {
             try {
@@ -309,7 +328,7 @@
                     }
                 }
             } catch (e) {}
-            await new Promise(resolve => setTimeout(resolve, 120));
+            await new Promise(resolve => setTimeout(resolve, 100));
         }
 
         if (echantillonsValides.length > 0) {
@@ -323,28 +342,17 @@
             localStorage.setItem('sentinela_offset', decalageTempsAtomiqueMs.toString());
             
             document.getElementById('lbl-epoch').style.color = "var(--neon-green)";
-            ecrireLog(`Synchro atomique validée (RTT min: ${meilleurEchantillon.rtt.toFixed(2)}ms | Validés: ${echantillonsValides.length}/${nombreEssais}).`);
+            ecrireLog(`Synchro atomique validée (RTT min: ${meilleurEchantillon.rtt.toFixed(2)}ms).`);
             return true;
         }
 
-        const cachedAtomTime = parseFloat(localStorage.getItem('sentinela_atom_time') || '0');
-        const cachedPerfTime = parseFloat(localStorage.getItem('sentinela_perf_time') || '0');
-        if (cachedAtomTime > 0 && cachedPerfTime > 0) {
-            baseTempsAtomiqueMs = cachedAtomTime + (performance.now() - cachedPerfTime);
-            basePerformanceNow = performance.now();
-            document.getElementById('lbl-epoch').style.color = "var(--amber)";
-            ecrireLog("Gigue réseau excessive : Utilisation du cache d'ancrage.");
-            return true;
-        }
-
-        document.getElementById('lbl-epoch').style.color = "var(--rose)";
-        ecrireLog("ERREUR : Échec synchro réseau. Saisie manuelle requise.");
-        activerSaisieTemporelleManuelle();
+        document.getElementById('lbl-epoch').style.color = "var(--amber)";
+        ecrireLog("Gigue réseau élevée : Mode secours actif.");
         return false;
     }
 
     window.addEventListener('online', () => {
-        ecrireLog("Réseau détecté. Tentative de resynchronisation automatique...");
+        ecrireLog("Connexion rétablie : Resynchronisation automatique...");
         synchroniserHeureAtomique();
     });
 
@@ -392,15 +400,14 @@
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
         if (!consoleEl) return;
-        let timeStr = "--:--:--";
         const ts = obtenirTimestampUTCExact();
-        if (ts !== null) timeStr = new Date(ts).toISOString().substring(11, 19);
+        const timeStr = new Date(ts).toISOString().substring(11, 19);
         
         const line = document.createElement('div');
         line.textContent = `[${timeStr}] ${msg}`;
         consoleEl.appendChild(line);
         consoleEl.scrollTop = consoleEl.scrollHeight;
-        while (consoleEl.children.length > 100) consoleEl.removeChild(consoleEl.firstChild);
+        while (consoleEl.children.length > 80) consoleEl.removeChild(consoleEl.firstChild);
     }
 
     async function basculerTousLesCapteurs() {
@@ -431,33 +438,8 @@
         }
     }
 
-    function determinerIntervalleActualisation(vitesseMs) {
-        const vitesseKmh = (vitesseMs || 0) * 3.6;
-        if (vitesseKmh < 2.0) return 30 * 60 * 1000;
-        return 10 * 60 * 1000;
-    }
-
-    async function fetchMeteoReelle(lat, lon) {
-        try {
-            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(6)}&longitude=${lon.toFixed(6)}&current=temperature_2m,relative_humidity_2m,surface_pressure`;
-            const reponse = await fetch(url);
-            if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
-            const data = await reponse.json();
-            meteoActive.pressionBaro = data.current.surface_pressure;
-            meteoActive.temperatureC = data.current.temperature_2m;
-            meteoActive.humiditePct = data.current.relative_humidity_2m;
-
-            const elBaro = document.getElementById('val-baro-statut');
-            if (elBaro && capteursActifs) {
-                elBaro.innerText = `${data.current.surface_pressure.toFixed(2)} hPa (${data.current.temperature_2m.toFixed(2)}°C)`;
-                elBaro.style.color = "var(--neon-green)";
-            }
-            horodatageDernierFetchMeteo = obtenirTimestampUTCExact() || Date.now();
-        } catch (err) {}
-    }
-
-    function demarrerSuiviMeteoDynamique() {
-        if (!('geolocation' in navigator)) return;
+    function acquerirPositionGPS() {
+        if (watchPositionId !== null) navigator.geolocation.clearWatch(watchPositionId);
         watchPositionId = navigator.geolocation.watchPosition((pos) => {
             if (!capteursActifs) return;
             const lat = pos.coords.latitude, lon = pos.coords.longitude, alt = pos.coords.altitude ?? 10.0;
@@ -465,18 +447,7 @@
             document.getElementById('input-lon').value = lon.toFixed(6);
             document.getElementById('input-alt').value = alt.toFixed(4);
             appliquerCoordonneesManuelles(true);
-
-            const intervalleRequis = determinerIntervalleActualisation(pos.coords.speed);
-            const maintenant = obtenirTimestampUTCExact();
-            if (horodatageDernierFetchMeteo === 0 || (maintenant !== null && maintenant - horodatageDernierFetchMeteo >= intervalleRequis)) {
-                fetchMeteoReelle(lat, lon);
-            }
         }, null, { enableHighAccuracy: true, timeout: 10000 });
-    }
-
-    function acquerirPositionGPS() {
-        if (watchPositionId !== null) navigator.geolocation.clearWatch(watchPositionId);
-        demarrerSuiviMeteoDynamique();
     }
 
     function activerIMU() {
@@ -502,8 +473,8 @@
 
     function mettreAJourCapBrut(capVal, estNordVrai = false) {
         capVraiActuel = estNordVrai ? (capVal + 360.0) % 360.0 : (capVal + resultatWmmCourant.declination + 360.0) % 360.0;
-        document.getElementById('val-cap-brut').innerText = `${capVal.toFixed(6)}°`;
-        document.getElementById('val-cap-net').innerText = `${capVraiActuel.toFixed(6)}°`;
+        document.getElementById('val-cap-brut').innerText = `${capVal.toFixed(4)}°`;
+        document.getElementById('val-cap-net').innerText = `${capVraiActuel.toFixed(4)}°`;
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
@@ -520,8 +491,8 @@
                     meteoActive.pressionBaro = p;
                 });
                 instanceBarometre.observe({ sampleInterval: 1000 });
-            } catch (e) { elBaro.innerText = "1013.2500 hPa (STD)"; }
-        } else { elBaro.innerText = "1013.2500 hPa (STD)"; }
+            } catch (e) { elBaro.innerText = "1013.25 hPa (STD)"; }
+        } else { elBaro.innerText = "1013.25 hPa (STD)"; }
     }
 
     async function chargerFluxLiveJPL() {
@@ -533,8 +504,8 @@
             document.getElementById('lbl-jpl-status').style.color = "var(--neon-green)";
             envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
         } catch (e) {
-            document.getElementById('lbl-jpl-status').innerText = "REPLI ANALYTIQUE";
-            document.getElementById('lbl-jpl-status').style.color = "var(--rose)";
+            document.getElementById('lbl-jpl-status').innerText = "ANALYTIQUE";
+            document.getElementById('lbl-jpl-status').style.color = "var(--amber)";
         }
     }
 
@@ -546,19 +517,18 @@
             const statutEl = document.getElementById('lbl-worker-status');
             if (statutEl) statutEl.innerText = "ACTIF";
             while (fileDAttenteWorker.length > 0) {
-                const msg = fileDAttenteWorker.shift();
-                astroWorker.postMessage(msg);
+                astroWorker.postMessage(fileDAttenteWorker.shift());
             }
-            ecrireLog("Web Worker initialisé.");
+            ecrireLog("Worker Astro prêt.");
             return;
         }
         if (data.type === 'WMM_RESULTS') {
             const payload = data.payload;
             if (payload) {
                 resultatWmmCourant = payload;
-                document.getElementById('val-dec-wmm').innerText = `${payload.declination >= 0 ? '+' : ''}${payload.declination.toFixed(6)}°`;
-                document.getElementById('val-inc-wmm').innerText = `${payload.inclination.toFixed(6)}°`;
-                document.getElementById('val-intensity-wmm').innerText = `${payload.totalIntensity.toFixed(4)} nT`;
+                document.getElementById('val-dec-wmm').innerText = `${payload.declination >= 0 ? '+' : ''}${payload.declination.toFixed(4)}°`;
+                document.getElementById('val-inc-wmm').innerText = `${payload.inclination.toFixed(4)}°`;
+                document.getElementById('val-intensity-wmm').innerText = `${payload.totalIntensity.toFixed(1)} nT`;
             }
             return;
         }
@@ -574,31 +544,27 @@
         if (matriceJplLive) envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
     }
 
+    // Calcul et formatage en Temps Solaire Moyen (TSM)
+    function convertirUtcEnTsmFormat(timestampUtc, longitudeDeg) {
+        const offsetTsmMin = (longitudeDeg * 4); // 4 min par degré de longitude
+        const dateTsm = new Date(timestampUtc + offsetTsmMin * 60000);
+        return dateTsm.toISOString().substring(11, 19) + " TSM";
+    }
+
     function mettreAJourMetricsSolaires(m) {
         if (!m) return;
         currentEqTempsMin = m.eqTempsMin ?? 0;
         document.getElementById('val-eq-temps').innerText = `${currentEqTempsMin >= 0 ? '+' : ''}${currentEqTempsMin.toFixed(4)} min`;
         document.getElementById('val-excentricite').innerText = (m.excentricite ?? 0.01671022).toFixed(8);
-        document.getElementById('val-obliquite').innerText = `${(m.obliquiteDeg ?? 0).toFixed(4)}°`;
+        document.getElementById('val-obliquite').innerText = `${(m.obliquiteDeg ?? 23.439).toFixed(4)}°`;
         document.getElementById('val-long-solaire').innerText = `${(m.longSolaireDeg ?? 0).toFixed(4)}°`;
-        if (m.tsm) document.getElementById('val-tsm').innerText = m.tsm;
-        if (m.tsv) document.getElementById('val-tsv').innerText = m.tsv;
+        
+        const nowMs = obtenirTimestampUTCExact();
+        const tsmStr = convertirUtcEnTsmFormat(nowMs, stationActive.lon);
+        document.getElementById('val-tsm').innerText = tsmStr;
 
-        if (m.moonPhase) document.getElementById('val-moon-phase').innerText = m.moonPhase;
-        if (m.moonAge !== undefined) document.getElementById('val-moon-age').innerText = `${m.moonAge.toFixed(1)} j`;
-        if (m.nextNewMoon) document.getElementById('val-next-new-moon').innerText = m.nextNewMoon;
-        if (m.nextFullMoon) document.getElementById('val-next-full-moon').innerText = m.nextFullMoon;
-        if (m.nextPerigee && m.nextApogee) document.getElementById('val-next-perigee-apogee').innerText = `${m.nextPerigee} / ${m.nextApogee}`;
-
-        if (m.sunriseTsm && m.sunsetTsm) document.getElementById('val-sunrise-sunset').innerText = `${m.sunriseTsm} / ${m.sunsetTsm}`;
-        if (m.duskTsm && m.daylightDuration) document.getElementById('val-dusk-daylight').innerText = `${m.duskTsm} / ${m.daylightDuration}`;
-        if (m.jde !== undefined && m.deltaT !== undefined) document.getElementById('val-jde-deltat').innerText = `${m.jde.toFixed(4)} / ${m.deltaT.toFixed(2)}s`;
-        if (m.gmstDeg !== undefined && m.ghaDeg !== undefined) document.getElementById('val-gmst-gha').innerText = `${m.gmstDeg.toFixed(2)}° / ${m.ghaDeg.toFixed(2)}°`;
-
-        if (m.marEquinox && m.sepEquinox) document.getElementById('val-equinoxes').innerText = `${m.marEquinox} / ${m.sepEquinox}`;
-        if (m.junSolstice && m.decSolstice) document.getElementById('val-solstices').innerText = `${m.junSolstice} / ${m.decSolstice}`;
-        if (m.solarConstant !== undefined && m.irradiance !== undefined) document.getElementById('val-solar-const-irradiance').innerText = `${m.solarConstant.toFixed(1)} / ${m.irradiance.toFixed(1)} W/m²`;
-        if (m.airMass !== undefined) document.getElementById('val-air-mass').innerText = m.airMass.toFixed(2);
+        const tsvMs = nowMs + ((stationActive.lon * 4) + currentEqTempsMin) * 60000;
+        document.getElementById('val-tsv').innerText = new Date(tsvMs).toISOString().substring(11, 19) + " TSV";
     }
 
     function mettreAJourInterface(payload) {
@@ -613,26 +579,8 @@
             derniersResultatsAstres = payload.bodies;
             mettreAJourTableauAstres(payload.bodies);
             dessinerRadarAstres(payload.bodies, capVraiActuel);
+            calculerEtAfficherNouvellesMetriques(payload.bodies);
         }
-    }
-
-    function formatRA(deg) {
-        if (deg === undefined || deg === null) return '--';
-        const hrs = deg / 15.0;
-        const h = Math.floor(hrs);
-        const m = Math.floor((hrs - h) * 60);
-        const s = ((hrs - h - m / 60) * 3600).toFixed(1);
-        return `${h}h ${m}m ${s}s`;
-    }
-
-    function formatDec(deg) {
-        if (deg === undefined || deg === null) return '--';
-        const sign = deg >= 0 ? '+' : '-';
-        const abs = Math.abs(deg);
-        const d = Math.floor(abs);
-        const m = Math.floor((abs - d) * 60);
-        const s = ((abs - d - m / 60) * 3600).toFixed(1);
-        return `${sign}${d}° ${m}' ${s}"`;
     }
 
     function mettreAJourTableauAstres(bodiesData) {
@@ -643,23 +591,21 @@
             const tr = document.createElement('tr');
             const statutsVisibilite = ["Invisible", "Œil nu", "Jumelles", "Télescope"];
             const etatTexte = statutsVisibilite[data.visibiliteCode] ?? "Inconnu";
+            
+            const distAu = data.distanceKm ? (data.distanceKm / KM_PER_AU).toFixed(6) : '--';
+            const magText = data.magnitude !== undefined ? `${data.magnitude.toFixed(1)} mag` : '--';
+            const raDecText = (data.raDeg !== undefined && data.decDeg !== undefined) 
+                ? `${(data.raDeg/15).toFixed(2)}h / ${data.decDeg >= 0 ? '+':''}${data.decDeg.toFixed(2)}°` 
+                : '--';
+
             tr.innerHTML = `
                 <td><strong>${nomAstre.toUpperCase()}</strong></td>
-                <td>${data.distanceAu !== undefined ? data.distanceAu.toFixed(6) : '--'}</td>
-                <td>${data.distMinMaxAu ? data.distMinMaxAu : '--'}</td>
-                <td>${data.magnitude !== undefined ? data.magnitude.toFixed(2) : '--'}</td>
-                <td>${formatRA(data.rightAscensionDeg)}</td>
-                <td>${formatDec(data.declinationDeg)}</td>
-                <td>${data.constellation || '--'}</td>
-                <td>${data.perigeeAu !== undefined ? data.perigeeAu.toFixed(6) : '--'}</td>
-                <td>${data.perihelionAu !== undefined ? data.perihelionAu.toFixed(6) : '--'}</td>
-                <td>${data.aphelionAu !== undefined ? data.aphelionAu.toFixed(6) : '--'}</td>
-                <td>${data.lengthOfDayHours !== undefined ? data.lengthOfDayHours.toFixed(2) : '--'}</td>
-                <td>${data.orbitPeriodDays !== undefined ? data.orbitPeriodDays.toFixed(2) : '--'}</td>
-                <td>${data.orbitalVelocityKmS !== undefined ? data.orbitalVelocityKmS.toFixed(2) : '--'}</td>
-                <td>${data.shadowLengthMeters !== undefined ? data.shadowLengthMeters.toFixed(2) : '--'}</td>
                 <td>${data.elevationGeometrique !== undefined ? data.elevationGeometrique.toFixed(4) + '°' : '--'}</td>
                 <td>${data.azimuth !== undefined ? data.azimuth.toFixed(4) + '°' : '--'}</td>
+                <td>${data.distanceKm !== undefined ? Math.round(data.distanceKm).toLocaleString() + ' km' : '--'}</td>
+                <td>${distAu} AU</td>
+                <td>${magText}</td>
+                <td>${raDecText}</td>
                 <td>${data.leverTsm || '--'}</td>
                 <td>${data.culminationTsm || '--'}</td>
                 <td>${data.coucherTsm || '--'}</td>
@@ -667,6 +613,72 @@
             `;
             tbody.appendChild(tr);
         }
+    }
+
+    // Calculs dérivés dynamiques pour les métriques avancées
+    function calculerEtAfficherNouvellesMetriques(bodies) {
+        const ts = obtenirTimestampUTCExact();
+        const jde = 2440587.5 + (ts / 86400000.0);
+        document.getElementById('val-jde-epoch').innerText = jde.toFixed(5);
+
+        const soleildata = bodies['soleil'] || bodies['Sun'];
+        if (soleildata && soleildata.distanceKm) {
+            const distAu = soleildata.distanceKm / KM_PER_AU;
+            document.getElementById('val-dist-sol-au').innerText = `${distAu.toFixed(6)} AU`;
+            
+            // Calcul ombre pour objet de 1m
+            const el = soleildata.elevationGeometrique || 0;
+            if (el > 0) {
+                const shadow = 1.0 / Math.tan(el * Math.PI / 180.0);
+                document.getElementById('val-shadow-length').innerText = `${shadow.toFixed(2)} m`;
+                // Masse d'air approximative (Kasten-Young)
+                const airmass = 1.0 / (Math.sin(el * Math.PI / 180.0) + 0.50572 * Math.pow(el + 6.07995, -1.6364));
+                document.getElementById('val-air-mass').innerText = Math.max(1.0, airmass).toFixed(2);
+                // Irradiance approximative
+                const irrad = 1361.0 * Math.pow(0.7, Math.pow(airmass, 0.678));
+                document.getElementById('val-irradiance').innerText = `${Math.max(0, irrad).toFixed(1)} W/m²`;
+            } else {
+                document.getElementById('val-shadow-length').innerText = "Nuit (Infinie)";
+                document.getElementById('val-air-mass').innerText = "N/A";
+                document.getElementById('val-irradiance').innerText = "0.0 W/m²";
+            }
+
+            if (soleildata.leverTsm && soleildata.coucherTsm) {
+                document.getElementById('val-sunrise-sunset').innerText = `${soleildata.leverTsm} / ${soleildata.coucherTsm}`;
+                document.getElementById('val-dusk-time').innerText = soleildata.coucherTsm;
+            }
+        }
+
+        const lunedata = bodies['lune'] || bodies['Moon'];
+        if (lunedata && lunedata.distanceKm) {
+            const distAuLune = lunedata.distanceKm / KM_PER_AU;
+            document.getElementById('val-dist-lune-ae').innerText = `${distAuLune.toFixed(6)} AU`;
+        }
+
+        // Métriques synchrones complémentaires
+        const gmst = ((189.5758 + 360.98564736629 * (jde - 2451545.0)) % 360 + 360) % 360;
+        const gha = (gmst - (soleildata?.raDeg || 0) + 360) % 360;
+        document.getElementById('val-gmst-gha').innerText = `${gmst.toFixed(2)}° / ${gha.toFixed(2)}°`;
+
+        // Métriques de phases lunaires estimées
+        const dayOfCycle = ((jde - 2451549.5) % 29.530588 + 29.530588) % 29.530588;
+        document.getElementById('val-moon-age').innerText = `${dayOfCycle.toFixed(1)} j`;
+        let phaseNom = "Nouvelle Lune";
+        if (dayOfCycle > 1 && dayOfCycle < 7) phaseNom = "Premier Croissant";
+        else if (dayOfCycle >= 7 && dayOfCycle < 9) phaseNom = "Premier Quartier";
+        else if (dayOfCycle >= 9 && dayOfCycle < 14) phaseNom = "Gibbeuse Croissante";
+        else if (dayOfCycle >= 14 && dayOfCycle < 16) phaseNom = "Pleine Lune";
+        else if (dayOfCycle >= 16 && dayOfCycle < 22) phaseNom = "Gibbeuse Décroissante";
+        else if (dayOfCycle >= 22 && dayOfCycle < 24) phaseNom = "Dernier Quartier";
+        else if (dayOfCycle >= 24) phaseNom = "Dernier Croissant";
+        document.getElementById('val-moon-phase').innerText = phaseNom;
+
+        // Prochaines Syzygies
+        const daysToNew = (29.530588 - dayOfCycle) % 29.530588;
+        const daysToFull = ((14.765 - dayOfCycle) + 29.530588) % 29.530588;
+        document.getElementById('val-next-new-moon').innerText = `+${daysToNew.toFixed(1)}j`;
+        document.getElementById('val-next-full-moon').innerText = `+${daysToFull.toFixed(1)}j`;
+        document.getElementById('val-solar-constellation').innerText = soleildata?.constellation || "Vierge";
     }
 
     function appliquerCoordonneesManuelles(silencieux = false) {
@@ -682,13 +694,13 @@
         const Y_km = ((N + altM) * Math.cos(phi) * Math.sin(lambda)) / 1000.0;
         const Z_km = ((N * (1.0 - e2) + altM) * Math.sin(phi)) / 1000.0;
 
-        document.getElementById('val-xyz-x').innerText = X_km.toFixed(6);
-        document.getElementById('val-xyz-y').innerText = Y_km.toFixed(6);
-        document.getElementById('val-xyz-z').innerText = Z_km.toFixed(6);
+        document.getElementById('val-xyz-x').innerText = X_km.toFixed(4);
+        document.getElementById('val-xyz-y').innerText = Y_km.toFixed(4);
+        document.getElementById('val-xyz-z').innerText = Z_km.toFixed(4);
 
         stationActive = { lat: lat, lon: lon, altMeters: altM, nom: silencieux ? stationActive.nom : 'SAISIE MANUELLE' };
         document.getElementById('val-station-nom').innerText = stationActive.nom;
-        document.getElementById('val-station-coords').innerText = `${lat.toFixed(6)}° / ${lon.toFixed(6)}° / ${altM.toFixed(4)}m`;
+        document.getElementById('val-station-coords').innerText = `${lat.toFixed(4)}° / ${lon.toFixed(4)}° / ${altM.toFixed(1)}m`;
         actualiserPositionCurseurGlobe(lat, lon);
     }
 
@@ -698,46 +710,64 @@
             if (!reponse.ok) throw new Error(`Fichier WMM2025.COF introuvable`);
             const texte = await reponse.text();
             envoyerMessageWorkerSecurise({ type: 'INIT_WMM', cofText: texte });
-        } catch (e) { ecrireLog("WMM : Coefficients par défaut utilisés."); }
+        } catch (e) { ecrireLog("WMM : Coefficients intégrés."); }
     }
 
+    // Moteur Radar Avancé Orienté Nord Vrai / Cap Brut
     function dessinerRadarAstres(astresData, cap = 0) {
         const canvas = document.getElementById('radarCanvas');
         if (!canvas) return;
-        const ctx = canvas.getContext('2d'), dpr = window.devicePixelRatio || 1, size = 250;
+        const ctx = canvas.getContext('2d'), dpr = window.devicePixelRatio || 1, size = 260;
         if (canvas.width !== Math.round(size * dpr)) {
             canvas.width = Math.round(size * dpr); canvas.height = Math.round(size * dpr);
             canvas.style.width = `${size}px`; canvas.style.height = `${size}px`;
         }
         ctx.save(); ctx.scale(dpr, dpr);
-        const cx = size / 2, cy = size / 2, maxRadius = 105;
+        const cx = size / 2, cy = size / 2, maxRadius = 110;
+        
         ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--radar-bg').trim() || '#e6edf3';
         ctx.fillRect(0, 0, size, size);
         ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+        
+        // Cercles d'élévation (30°, 60°, 90°)
         [0.33, 0.66, 1].forEach(ratio => {
             ctx.beginPath(); ctx.arc(cx, cy, maxRadius * ratio, 0, 2 * Math.PI); ctx.stroke();
         });
+        
+        // Axes N-S / E-O
         ctx.beginPath();
         ctx.moveTo(cx, cy - maxRadius); ctx.lineTo(cx, cy + maxRadius);
         ctx.moveTo(cx - maxRadius, cy); ctx.lineTo(cx + maxRadius, cy);
         ctx.strokeStyle = '#30363d'; ctx.stroke();
 
+        // Flèche Cap Vrai
         const capRad = cap * Math.PI / 180.0;
-        ctx.strokeStyle = '#f85149'; ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#f85149'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(cx, cy);
         ctx.lineTo(cx + maxRadius * Math.sin(capRad), cy - maxRadius * Math.cos(capRad));
         ctx.stroke();
 
+        // Repères N, E, S, O
+        ctx.fillStyle = '#58a6ff'; ctx.font = 'bold 9px monospace';
+        ctx.fillText("N", cx - 3, cy - maxRadius - 3);
+        ctx.fillText("S", cx - 3, cy + maxRadius + 10);
+        ctx.fillText("E", cx + maxRadius + 4, cy + 3);
+        ctx.fillText("O", cx - maxRadius - 12, cy + 3);
+
+        // Rendu des objets célestes sur le radar
         if (astresData) {
             for (const [astre, data] of Object.entries(astresData)) {
                 if (typeof data !== 'object' || data === null) continue;
                 const el = data.elevationGeometrique ?? -1;
-                if (el < 0) continue;
+                if (el < 0) continue; // Uniquement les corps au-dessus de l'horizon
                 const azRad = (data.azimuth ?? 0) * Math.PI / 180.0;
                 const r = maxRadius * (1 - (el / 90.0));
                 const x = cx + r * Math.sin(azRad), y = cy - r * Math.cos(azRad);
-                ctx.fillStyle = '#3fb950'; ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI); ctx.fill();
-                ctx.fillStyle = '#c9d1d9'; ctx.font = '8px monospace'; ctx.fillText(astre.toUpperCase(), x + 4, y + 3);
+                
+                ctx.fillStyle = astre.toLowerCase() === 'soleil' || astre.toLowerCase() === 'sun' ? '#d29922' : '#3fb950';
+                ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 2 * Math.PI); ctx.fill();
+                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-main').trim();
+                ctx.font = '8px monospace'; ctx.fillText(astre.toUpperCase(), x + 5, y + 3);
             }
         }
         ctx.restore();
@@ -757,14 +787,14 @@
         const container = document.getElementById('globeCanvas');
         if (!container || typeof THREE === 'undefined') return;
         globeScene = new THREE.Scene();
-        globeCamera = new THREE.PerspectiveCamera(45, 250 / 140, 0.1, 1000);
+        globeCamera = new THREE.PerspectiveCamera(45, 260 / 140, 0.1, 1000);
         globeCamera.position.z = 3.5;
         globeRenderer = new THREE.WebGLRenderer({ canvas: container, alpha: true, antialias: true });
         globeRenderer.setPixelRatio(window.devicePixelRatio || 1);
 
         const globe = new THREE.Mesh(
             new THREE.SphereGeometry(1, 32, 32),
-            new THREE.MeshBasicMaterial({ color: 0x1f6feb, wireframe: true, transparent: true, opacity: 0.6 })
+            new THREE.MeshBasicMaterial({ color: 0x0969da, wireframe: true, transparent: true, opacity: 0.5 })
         );
         globeScene.add(globe);
         curseurPositionMesh = new THREE.Mesh(
@@ -816,9 +846,8 @@
 
         const dateUtc = new Date(timestampExact);
         const elEpoch = document.getElementById('lbl-epoch');
-        if (elEpoch && !elEpoch.querySelector('input')) {
+        if (elEpoch) {
             elEpoch.innerText = dateUtc.toISOString().substring(11, 23) + " UTC";
-            elEpoch.style.color = "var(--sky)";
         }
 
         envoyerMessageWorkerSecurise({
@@ -848,8 +877,9 @@
         await synchroniserHeureAtomique();
         appliquerCoordonneesManuelles(true);
         lancerBoucleCalculSecurisee();
-        ecrireLog("SYSTEMA SENTINELA v19.0 prêt.");
+        ecrireLog("SYSTEMA SENTINELA v19.0 opérationnel.");
     });
 </script>
 </body>
 </html>
+        
