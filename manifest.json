@@ -1,23 +1,21 @@
 {
-  "name": "SYSTEMA SENTINELA — Astro Engine PWA",
   "short_name": "Sentinela",
-  "description": "Calculs astronomiques topocentriques WGS84 et rendu 3D hors ligne",
-  "start_url": "./index.html",
-  "display": "standalone",
-  "background_color": "#02040a",
-  "theme_color": "#02040a",
-  "orientation": "any",
+  "name": "SYSTEMA SENTINELA v18.9",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/3237/3237472.png",
-      "sizes": "192x192",
+      "src": "icon-192.png",
       "type": "image/png",
-      "purpose": "any maskable"
+      "sizes": "192x192"
     },
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/3237/3237472.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
     }
-  ]
+  ],
+  "start_url": "./index.html",
+  "background_color": "#02040a",
+  "theme_color": "#f0f2f5",
+  "display": "standalone",
+  "orientation": "any"
 }
