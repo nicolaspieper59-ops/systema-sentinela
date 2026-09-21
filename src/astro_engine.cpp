@@ -9,7 +9,7 @@
 #define DEG2RAD (M_PI / 180.0)
 #define RAD2DEG (180.0 / M_PI)
 
-// Structure mémoire 64-bit alignée pour transfert Zero-Copy (104 octets)
+// Structure mémoire alignée à 8 octets (104 octets au total)
 struct AstroResult {
     double azim;          
     double elevGeom;      
@@ -24,7 +24,7 @@ struct AstroResult {
     double deltaT;        
     double ghaDeg;        
     int visibiliteCode;   
-    int padding;          
+    int padding;          // Alignement pour forcer 104 octets propres
 };
 
 struct SystemMetrics {
@@ -43,7 +43,6 @@ inline double normaliserDegres(double deg) {
     return res < 0.0 ? res + 360.0 : res;
 }
 
-// Evaluation rigoureuse de Clenshaw pour séries Chebyshev NumPy (sans division parasite de c0)
 double evaluerChebyshev(const double* coeffs, int degre, double xNorm) {
     double b2 = 0.0;
     double b1 = 0.0;
@@ -133,7 +132,6 @@ void calculerDepuisECEF(
     double dy = yECEF;
     double dz = zECEF;
 
-    // Si le vecteur d'entrée est Géocentrique ITRS pur, on soustrait la position de l'observateur
     if (!estVecteurTopocentrique) {
         double N = a / std::sqrt(1.0 - e2 * std::sin(phi) * std::sin(phi));
         double xObs = (N + altM) * std::cos(phi) * std::cos(lambda);
@@ -171,38 +169,34 @@ void calculerDepuisECEF(
     double normR = std::sqrt(xECEF*xECEF + yECEF*yECEF + zECEF*zECEF);
     result->decDeg = (normR > 0.0) ? std::asin(zECEF / normR) * RAD2DEG : 0.0;
 
-    // Angle Horaire de Greenwich (GHA)
     result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
 
-    // Delta T (Espenak-Meeus)
     double jd = (timestampUtc / 86400.0) + 2440587.5;
     double t = (2000.0 + (jd - 2451545.0) / 365.25) - 2000.0;
     result->deltaT = 62.92 + 0.32217 * t + 0.005589 * (t * t);
 
-    // Air Mass & Irradiance adaptative (Soleil vs Corps réfléchissants)
     result->airMass = 0.0;
     result->irradiance = 0.0;
     if (result->elevRefractee > 0.0) {
         double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
         result->airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
         
-        if (magApparente < -20.0) { // Flux solaire direct
+        if (magApparente < -20.0) { 
             result->irradiance = (1361.0 / (result->distUA * result->distUA)) * std::pow(0.7, result->airMass);
-        } else { // Photons réfléchis (Lune / Planètes)
+        } else { 
             result->irradiance = 2.54e-8 * std::pow(10.0, -0.4 * (magApparente + 0.2 * result->airMass));
         }
     }
 
-    // Lever / Coucher analytique local
     double h0 = -0.8333 * DEG2RAD;
     double cosH0 = (std::sin(h0) - std::sin(phi) * std::sin(result->decDeg * DEG2RAD)) / 
                    (std::cos(phi) * std::cos(result->decDeg * DEG2RAD));
 
     if (cosH0 >= 1.0) {
-        result->leverUT = -1.0;  // Nuit polaire
+        result->leverUT = -1.0;  
         result->coucherUT = -1.0;
     } else if (cosH0 <= -1.0) {
-        result->leverUT = -2.0;  // Jour polaire
+        result->leverUT = -2.0;  
         result->coucherUT = -2.0;
     } else {
         double H0Deg = std::acos(cosH0) * RAD2DEG;
