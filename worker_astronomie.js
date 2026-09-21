@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * SYSTEMA SENTINELA — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
- * Version rigoureuse optimisée & fiabilisée v18.9 (avec Transferable Objects)
+ * Version rigoureuse optimisée & fiabilisée v19.0 (Alignée C++ AstroResult)
  * ============================================================================
  */
 
@@ -247,12 +247,13 @@ onmessage = async function(e) {
                 }
             }
 
-            resultPtr = Module._malloc(72);
+            // Allocation de 96 octets (correspondant exactement à la struct AstroResult C++)
+            resultPtr = Module._malloc(96);
             for (const [nomAstre, coordsEcl] of Object.entries(corpsACalculer)) {
                 try {
                     Module._calculerDepuisECEF(
                         coordsEcl.x, coordsEcl.y, coordsEcl.z,
-                        lat, lon, alt, eraRad, tempC, presHpa, coordsEcl.mag, true, resultPtr
+                        lat, lon, alt, eraRad, timestampUtc, tempC, presHpa, coordsEcl.mag, true, resultPtr
                     );
 
                     const resOffset = resultPtr / 8;
@@ -275,9 +276,13 @@ onmessage = async function(e) {
                         azimuth: Module.HEAPF64[resOffset + 0],
                         elevationGeometrique: Module.HEAPF64[resOffset + 1],
                         elevationRefractee: Module.HEAPF64[resOffset + 2],
-                        raDeg, decDeg,
+                        raDeg, 
+                        decDeg,
                         distanceKm: Module.HEAPF64[resOffset + 5] * 149597870700.0 / 1000.0,
-                        visibiliteCode: Module.HEAP32[(resultPtr + 64) / 4],
+                        airMass: Module.HEAPF64[resOffset + 8],
+                        irradiance: Module.HEAPF64[resOffset + 9],
+                        deltaT: Module.HEAPF64[resOffset + 10],
+                        visibiliteCode: Module.HEAP32[(resultPtr + 88) / 4], // Offset aligné sur 88 octets
                         leverTsv: tsvLeverStr,
                         culminationTsv: tsvCulminationStr,
                         coucherTsv: tsvCoucherStr
@@ -288,7 +293,7 @@ onmessage = async function(e) {
             }
 
             const nbAstres = Object.keys(bodiesResults).length;
-            const floatsParAstre = 7; 
+            const floatsParAstre = 10; // Étendu à 10 pour inclure airMass, irradiance et deltaT
             const bufferSize = nbAstres * floatsParAstre * Float64Array.BYTES_PER_ELEMENT;
             const resultArrayBuffer = new ArrayBuffer(bufferSize);
             const resultMap = new Float64Array(resultArrayBuffer);
@@ -301,7 +306,10 @@ onmessage = async function(e) {
                     visibiliteCode: data.visibiliteCode,
                     leverTsv: data.leverTsv,
                     culminationTsv: data.culminationTsv,
-                    coucherTsv: data.coucherTsv
+                    coucherTsv: data.coucherTsv,
+                    airMass: data.airMass,
+                    irradiance: data.irradiance,
+                    deltaT: data.deltaT
                 };
 
                 resultMap[index++] = data.azimuth;
@@ -310,6 +318,9 @@ onmessage = async function(e) {
                 resultMap[index++] = data.raDeg;
                 resultMap[index++] = data.decDeg;
                 resultMap[index++] = data.distanceKm;
+                resultMap[index++] = data.airMass;
+                resultMap[index++] = data.irradiance;
+                resultMap[index++] = data.deltaT;
                 resultMap[index++] = data.visibiliteCode;
             }
 
