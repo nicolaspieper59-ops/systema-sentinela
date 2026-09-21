@@ -106,6 +106,12 @@ jobs:
             echo "Aucun changement détecté dans les éphémérides ou le code, pas de commit."
             exit 0
           fi
+
+          - name: 🔄 Mettre à jour le cache du Service Worker
+  run: |
+    DATE_CACHE=$(date +'%Y%m%d')
+    sed -i "s/const CACHE_NAME = .*/const CACHE_NAME = 'sentinela-cache-$DATE_CACHE';/" sw.js
+    git add sw.js
           
           git commit -m "Auto-update DE440s flux & compile Wasm [skip ci]"
           git push
