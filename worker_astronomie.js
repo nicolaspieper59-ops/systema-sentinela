@@ -1,222 +1,145 @@
 /**
- * ============================================================================
- * SYSTEMA SENTINELA — KERNEL C++ WEBMASSEMBLY (ASTROMÉTRIE & MULTIPHYSIQUE)
- * Version rigoureuse optimisée v18.9
- * ============================================================================
+ * SYSTEMA SENTINELA — WEB WORKER (v19.4 FIXED)
  */
 
-#include <emscripten/emscripten.h>
-#include <cmath>
-#include <algorithm>
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
-#define DEG2RAD (M_PI / 180.0)
-#define RAD2DEG (180.0 / M_PI)
-
-// Structure mémoire alignée pour un transfert binaire sans copie (Zero-Copy) vers JS
-struct AstroResult {
-    double azim;          
-    double elevGeom;      
-    double elevRefractee; 
-    double raDeg;         
-    double decDeg;        
-    double distUA;        
-    double leverUT;       
-    double coucherUT;     
-    double airMass;       
-    double irradiance;    
-    double deltaT;        
-    int visibiliteCode;   
-    int padding; // Alignement mémoire 64-bit
+var Module = {
+    onRuntimeInitialized: function() {
+        wasmReady = true;
+        initialiserMemoireWasm();
+        postMessage({ type: 'WORKER_READY' });
+    }
 };
 
-struct SystemMetrics {
-    double eqTempsMin;     
-    double obliquiteDeg;   
-    double longSolaireDeg; 
-    double gastDeg;        
-    double lstDeg;         
+let wasmReady = false;
+let matriceJplGlobal = null;
+let wmmCoefficients = null;
+let metricsPtr = 0;
+let resultPtr = 0;
+
+importScripts('wasm_astronomie.js');
+
+function initialiserMemoireWasm() {
+    if (wasmReady && !metricsPtr) {
+        metricsPtr = Module._malloc(40); // 5 x double
+        resultPtr = Module._malloc(104); // AstroResult (104 octets alignés)
+    }
+}
+
+function evaluerClenshawChebyshev(coeffs, x) {
+    if (!coeffs || coeffs.length === 0) return 0.0;
+    let bK2 = 0.0, bK1 = 0.0, bK = 0.0;
+    for (let i = coeffs.length - 1; i >= 1; i--) {
+        bK = coeffs[i] + 2.0 * x * bK1 - bK2;
+        bK2 = bK1;
+        bK1 = bK;
+    }
+    return coeffs[0] + x * bK1 - bK2;
+}
+
+function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
+    if (!arcsAstre || arcsAstre.length === 0) return null;
+    let arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end) || arcsAstre[0];
+    const tNorm = (arc.t_start === arc.t_end) ? 0.0 : (2.0 * (timestampSec - arc.t_start) / (arc.t_end - arc.t_start) - 1.0);
+
+    return {
+        x: evaluerClenshawChebyshev(arc.cx, tNorm),
+        y: evaluerClenshawChebyshev(arc.cy, tNorm),
+        z: evaluerClenshawChebyshev(arc.cz, tNorm),
+        mag: arc.mag ?? 0.0
+    };
+}
+
+function estimerPhaseLune(soleilRA, soleilDec, luneRA, luneDec) {
+    const sRA = soleilRA * Math.PI / 180, sDec = soleilDec * Math.PI / 180;
+    const lRA = luneRA * Math.PI / 180, lDec = luneDec * Math.PI / 180;
+    const cosElong = Math.sin(sDec) * Math.sin(lDec) + Math.cos(sDec) * Math.cos(lDec) * Math.cos(sRA - lRA);
+    const elong = Math.acos(Math.max(-1.0, Math.min(1.0, cosElong)));
+    const fraction = (1.0 + Math.cos(Math.PI - elong)) / 2.0;
+    return { fraction, ageJours: (elong / (2 * Math.PI)) * 29.53059 };
+}
+
+onmessage = async function(e) {
+    const data = e.data;
+    if (!data) return;
+
+    if (data.type === 'UPDATE_JPL_MATRIX') {
+        matriceJplGlobal = data.matrix;
+        return;
+    }
+
+    if (data.type === 'COMPUTE') {
+        if (!wasmReady) return;
+        initialiserMemoireWasm();
+
+        try {
+            const { timestampUtc, coords, meteo } = data;
+            const { lat, lon, alt } = coords;
+            const timestampSec = timestampUtc / 1000.0;
+
+            Module._calculerParametresSiderauxEtSolaires(timestampSec, lon, metricsPtr);
+
+            const offsetMetrics = metricsPtr / 8;
+            const eqTempsMin = Module.HEAPF64[offsetMetrics + 0];
+            const obliquiteDeg = Module.HEAPF64[offsetMetrics + 1];
+            const longSolaireDeg = Module.HEAPF64[offsetMetrics + 2];
+            const gastDeg = Module.HEAPF64[offsetMetrics + 3];
+            const lstDeg = Module.HEAPF64[offsetMetrics + 4];
+
+            const eraRad = (gastDeg % 360.0) * (Math.PI / 180.0);
+            const bodiesResults = {};
+            const sourceDonnees = matriceJplGlobal?.DATA || null;
+
+            if (sourceDonnees) {
+                for (const [nomAstre, arcsAstre] of Object.entries(sourceDonnees)) {
+                    const posECEF = obtenirPositionParChebyshev(arcsAstre, timestampSec);
+                    if (!posECEF) continue;
+
+                    // Exécution WASM avec réconciliation géocentrique ECEF
+                    Module._calculerDepuisECEF(
+                        posECEF.x, posECEF.y, posECEF.z,
+                        lat, lon, alt, eraRad, timestampSec,
+                        meteo?.tempC ?? 15.0, meteo?.presHpa ?? 1013.25,
+                        posECEF.mag, false, resultPtr
+                    );
+
+                    const off = resultPtr / 8;
+                    bodiesResults[nomAstre] = {
+                        azimuth: Module.HEAPF64[off + 0],
+                        elevationGeometrique: Module.HEAPF64[off + 1],
+                        elevationRefractee: Module.HEAPF64[off + 2],
+                        raDeg: Module.HEAPF64[off + 3],
+                        decDeg: Module.HEAPF64[off + 4],
+                        distanceAu: Module.HEAPF64[off + 5],
+                        leverUT: Module.HEAPF64[off + 6],
+                        coucherUT: Module.HEAPF64[off + 7],
+                        airMass: Module.HEAPF64[off + 8],
+                        irradiance: Module.HEAPF64[off + 9],
+                        deltaT: Module.HEAPF64[off + 10],
+                        ghaDeg: Module.HEAPF64[off + 11],
+                        visibiliteCode: Module.HEAP32[(resultPtr + 96) / 4]
+                    };
+                }
+            }
+
+            // Phase de la Lune dérivée
+            let phaseLune = null;
+            if (bodiesResults.soleil && bodiesResults.lune) {
+                phaseLune = estimerPhaseLune(
+                    bodiesResults.soleil.raDeg, bodiesResults.soleil.decDeg,
+                    bodiesResults.lune.raDeg, bodiesResults.lune.decDeg
+                );
+            }
+
+            postMessage({
+                type: 'RESULTS_COMPUTE',
+                timestamp: timestampUtc,
+                solarMetrics: { eqTempsMin, obliquiteDeg, longSolaireDeg, gastDeg, lstDeg, excentricite: 0.01671022 },
+                phaseLune,
+                bodies: bodiesResults
+            });
+
+        } catch (err) {
+            postMessage({ type: 'ERROR', message: err.toString() });
+        }
+    }
 };
-
-extern "C" {
-
-EMSCRIPTEN_KEEPALIVE
-inline double normaliserDegres(double deg) {
-    double res = std::fmod(deg, 360.0);
-    return res < 0.0 ? res + 360.0 : res;
-}
-
-double evaluerChebyshev(const double* coeffs, int degre, double xNorm) {
-    double b2 = 0.0;
-    double b1 = 0.0;
-    double b0 = 0.0;
-    
-    for (int i = degre; i >= 1; --i) {
-        b0 = 2.0 * xNorm * b1 - b2 + coeffs[i];
-        b2 = b1;
-        b1 = b0;
-    }
-    return xNorm * b1 - b2 + (coeffs[0] * 0.5);
-}
-
-EMSCRIPTEN_KEEPALIVE
-void obtenirPositionAstreChebyshev(
-    double timestamp,
-    const double* coeffsX, const double* coeffsY, const double* coeffsZ,
-    int degre, double tStart, double tEnd,
-    double* outCoords
-) {
-    if (!outCoords || timestamp < tStart || timestamp > tEnd) return;
-    
-    double tMin = tStart;
-    double tMax = tEnd;
-    double xNorm = (tMin == tMax) ? 0.0 : (2.0 * (timestamp - tMin) / (tMax - tMin) - 1.0);
-    
-    outCoords[0] = evaluerChebyshev(coeffsX, degre, xNorm);
-    outCoords[1] = evaluerChebyshev(coeffsY, degre, xNorm);
-    outCoords[2] = evaluerChebyshev(coeffsZ, degre, xNorm);
-}
-
-// --- Dans wasm_astronomie.cpp ---
-
-EMSCRIPTEN_KEEPALIVE
-void calculerParametresSiderauxEtSolaires(
-    double timestampSec, // Renommé pour clarté (reçoit bien les secondes)
-    double lonDeg,
-    SystemMetrics* metrics
-) {
-    if (!metrics) return;
-
-    double jd = (timestampSec / 86400.0) + 2440587.5;
-    double d = jd - 2451545.0; 
-    double T = d / 36525.0;    
-
-    double L0 = std::fmod(280.46646 + 36000.76983 * T, 360.0);
-    if (L0 < 0.0) L0 += 360.0;
-
-    double M = std::fmod(357.52911 + 35999.05029 * T, 360.0);
-    if (M < 0.0) M += 360.0;
-    double MRad = M * DEG2RAD;
-
-    double C = (1.914602 - 0.004817 * T) * std::sin(MRad) + (0.019993 - 0.000101 * T) * std::sin(2.0 * MRad);
-    double sunLong = L0 + C;
-    metrics->longSolaireDeg = normaliserDegres(sunLong);
-
-    double eps = 23.4392911 - 0.0130042 * T;
-    metrics->obliquiteDeg = eps;
-
-    double sunLongRad = metrics->longSolaireDeg * DEG2RAD;
-    double epsRad = eps * DEG2RAD;
-    double y = std::cos(epsRad) * std::sin(sunLongRad);
-    double x = std::cos(sunLongRad);
-    double alpha = std::atan2(y, x) * RAD2DEG;
-    alpha = normaliserDegres(alpha);
-
-    double eqTempsDeg = L0 - alpha;
-    if (eqTempsDeg > 180.0) eqTempsDeg -= 360.0;
-    if (eqTempsDeg < -180.0) eqTempsDeg += 360.0;
-    metrics->eqTempsMin = eqTempsDeg * 4.0;
-
-    double gmst = 280.46061837 + 360.98564736629 * d + 0.000387933 * T * T - (T * T * T) / 38710000.0;
-    metrics->gastDeg = normaliserDegres(gmst);
-    metrics->lstDeg = normaliserDegres(metrics->gastDeg + lonDeg);
-}
-
-EMSCRIPTEN_KEEPALIVE
-void calculerDepuisECEF(
-    double xECEF, double yECEF, double zECEF,
-    double latDeg, double lonDeg, double altM,
-    double eraRad, double timestampUtc,
-    double tempC, double presHpa,
-    double magApparente,
-    bool estVecteurTopocentrique,
-    AstroResult* result
-) {
-    if (!result) return;
-
-    double phi = latDeg * DEG2RAD;
-    double lambda = lonDeg * DEG2RAD;
-    
-    double a = 6378137.0;
-    double f = 1.0 / 298.257223563;
-    double e2 = f * (2.0 - f);
-
-    double dx = xECEF;
-    double dy = yECEF;
-    double dz = zECEF;
-
-    if (!estVecteurTopocentrique) {
-        double N = a / std::sqrt(1.0 - e2 * std::sin(phi) * std::sin(phi));
-        double xObs = (N + altM) * std::cos(phi) * std::cos(lambda);
-        double yObs = (N + altM) * std::cos(phi) * std::sin(lambda);
-        double zObs = (N * (1.0 - e2) + altM) * std::sin(phi);
-
-        dx -= xObs;
-        dy -= yObs;
-        dz -= zObs;
-    }
-
-    double E = -std::sin(lambda) * dx + std::cos(lambda) * dy;
-    double N_top = -std::sin(phi) * std::cos(lambda) * dx - std::sin(phi) * std::sin(lambda) * dy + std::cos(phi) * dz;
-    double U =  std::cos(phi) * std::cos(lambda) * dx + std::cos(phi) * std::sin(lambda) * dy + std::sin(phi) * dz;
-
-    double distM = std::sqrt(dx*dx + dy*dy + dz*dz);
-    result->distUA = distM / 149597870700.0;
-
-    result->azim = normaliserDegres(std::atan2(E, N_top) * RAD2DEG);
-    double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
-    result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
-
-    if (result->elevGeom > -2.0) {
-        double h = std::max(result->elevGeom, -1.0);
-        double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
-        double corMeteo = (presHpa / 1013.25) * (288.15 / (273.15 + tempC));
-        result->elevRefractee = result->elevGeom + (refArcMin * corMeteo) / 60.0;
-    } else {
-        result->elevRefractee = result->elevGeom;
-    }
-
-    double lonTerrestreDeg = std::atan2(yECEF, xECEF) * RAD2DEG;
-    result->raDeg = normaliserDegres(lonTerrestreDeg + (eraRad * RAD2DEG));
-    
-    double normR = std::sqrt(xECEF*xECEF + yECEF*yECEF + zECEF*zECEF);
-    result->decDeg = (normR > 0.0) ? std::asin(zECEF / normR) * RAD2DEG : 0.0;
-
-    // --- NOUVEAUX CALCULS MULTIPHYSIQUES --- //
-
-    // 1. Delta T (Polynôme d'Espenak-Meeus pour post-2005)
-    double jd = (timestampUtc / 86400.0) + 2440587.5;
-    double anneeExacte = 2000.0 + (jd - 2451545.0) / 365.25;
-    double t = anneeExacte - 2000.0;
-    result->deltaT = 62.92 + 0.32217 * t + 0.005589 * (t * t);
-
-    // 2. Air Mass (Formule de Rozenberg) & Irradiance (Beer-Lambert)
-    result->airMass = 0.0;
-    result->irradiance = 0.0;
-    if (result->elevRefractee > 0.0) {
-        double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
-        result->airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
-        
-        double constanteSolaire = 1361.0; 
-        double transmittance = 0.7; // Ciel clair standard
-        result->irradiance = (constanteSolaire / (result->distUA * result->distUA)) * std::pow(transmittance, result->airMass);
-    }
-
-    // 3. Magnitude & Visibilité (Ajusté avec Air Mass réel)
-    result->leverUT = 0.0;
-    result->coucherUT = 0.0;
-
-    if (result->elevRefractee < 0.0) {
-        result->visibiliteCode = 0;
-    } else {
-        double magEff = magApparente + (0.2 * result->airMass);
-        if (magEff <= 5.5) result->visibiliteCode = 1;
-        else if (magEff <= 9.5) result->visibiliteCode = 2;
-        else result->visibiliteCode = 3;
-    }
-}
-
-                 }
