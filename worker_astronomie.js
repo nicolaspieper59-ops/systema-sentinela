@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v19.4 FIXED)
+ * SYSTEMA SENTINELA — WEB WORKER (v19.4)
  */
 
 var Module = {
@@ -94,7 +94,6 @@ onmessage = async function(e) {
                     const posECEF = obtenirPositionParChebyshev(arcsAstre, timestampSec);
                     if (!posECEF) continue;
 
-                    // Exécution WASM avec réconciliation géocentrique ECEF
                     Module._calculerDepuisECEF(
                         posECEF.x, posECEF.y, posECEF.z,
                         lat, lon, alt, eraRad, timestampSec,
@@ -121,7 +120,6 @@ onmessage = async function(e) {
                 }
             }
 
-            // Phase de la Lune dérivée
             let phaseLune = null;
             if (bodiesResults.soleil && bodiesResults.lune) {
                 phaseLune = estimerPhaseLune(
