@@ -9,7 +9,7 @@
 #define DEG2RAD (M_PI / 180.0)
 #define RAD2DEG (180.0 / M_PI)
 
-// Structure mémoire 64-bit alignée pour transfert Zero-Copy (104 octets)
+// Structure alignée sur 64 bits (104 octets)
 struct AstroResult {
     double azim;          
     double elevGeom;      
@@ -43,7 +43,7 @@ inline double normaliserDegres(double deg) {
     return res < 0.0 ? res + 360.0 : res;
 }
 
-// Evaluation rigoureuse de Clenshaw pour séries Chebyshev NumPy
+// Algorithme de Clenshaw corrigé (NumPy Chebyshev standard)
 double evaluerChebyshev(const double* coeffs, int degre, double xNorm) {
     double b2 = 0.0;
     double b1 = 0.0;
@@ -170,10 +170,9 @@ void calculerDepuisECEF(
     double normR = std::sqrt(xECEF*xECEF + yECEF*yECEF + zECEF*zECEF);
     result->decDeg = (normR > 0.0) ? std::asin(zECEF / normR) * RAD2DEG : 0.0;
 
-    // Angle Horaire de Greenwich (GHA)
     result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
 
-    // Delta T (Polynome Espenak-Meeus)
+    // Delta T (Espenak-Meeus)
     double jd = (timestampUtc / 86400.0) + 2440587.5;
     double t = (2000.0 + (jd - 2451545.0) / 365.25) - 2000.0;
     result->deltaT = 62.92 + 0.32217 * t + 0.005589 * (t * t);
@@ -185,14 +184,14 @@ void calculerDepuisECEF(
         double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
         result->airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
         
-        if (magApparente < -20.0) { // Flux solaire direct
+        if (magApparente < -20.0) { // Soleil
             result->irradiance = (1361.0 / (result->distUA * result->distUA)) * std::pow(0.7, result->airMass);
-        } else { // Photons réfléchis (Lune/Planètes)
+        } else { // Lune & Planètes (Flux réfléchi)
             result->irradiance = 2.54e-8 * std::pow(10.0, -0.4 * (magApparente + 0.2 * result->airMass));
         }
     }
 
-    // Lever / Coucher analytique local
+    // Lever et coucher analytiques
     double h0 = -0.8333 * DEG2RAD;
     double cosH0 = (std::sin(h0) - std::sin(phi) * std::sin(result->decDeg * DEG2RAD)) / 
                    (std::cos(phi) * std::cos(result->decDeg * DEG2RAD));
