@@ -80,15 +80,17 @@ void obtenirPositionAstreChebyshev(
     outCoords[2] = evaluerChebyshev(coeffsZ, degre, xNorm);
 }
 
+// --- Dans wasm_astronomie.cpp ---
+
 EMSCRIPTEN_KEEPALIVE
 void calculerParametresSiderauxEtSolaires(
-    double timestampUtc,
+    double timestampSec, // Renommé pour clarté (reçoit bien les secondes)
     double lonDeg,
     SystemMetrics* metrics
 ) {
     if (!metrics) return;
 
-    double jd = (timestampUtc / 86400.0) + 2440587.5;
+    double jd = (timestampSec / 86400.0) + 2440587.5;
     double d = jd - 2451545.0; 
     double T = d / 36525.0;    
 
