@@ -551,60 +551,69 @@
         }
     }
 
-    function mettreAJourTableauAstres(bodiesData) {
-        const tbody = document.getElementById('table-body');
-        if (!tbody) return;
+    let lignesTableauCache = {};
+
+function mettreAJourTableauAstres(bodiesData) {
+    const tbody = document.getElementById('table-body');
+    if (!tbody) return;
+    
+    // Création initiale des lignes si elles n'existent pas encore
+    if (Object.keys(lignesTableauCache).length === 0) {
         tbody.innerHTML = '';
-        
-        for (const [nomAstre, data] of Object.entries(bodiesData)) {
+        for (const nomAstre of Object.keys(bodiesData)) {
             const tr = document.createElement('tr');
-            const statutsVisibilite = ["Invisible", "Œil nu", "Jumelles", "Télescope"];
-            const etatTexte = statutsVisibilite[data.visibiliteCode] ?? "Inconnu";
-            
+            tr.id = `row-astre-${nomAstre}`;
             tr.innerHTML = `
                 <td><strong>${nomAstre.toUpperCase()}</strong></td>
-                <td>${data.elevationGeometrique !== undefined ? data.elevationGeometrique.toFixed(6) + '°' : '--'}</td>
-                <td>${data.azimuth !== undefined ? data.azimuth.toFixed(6) + '°' : '--'}</td>
-                <td>${data.distanceAu !== undefined ? data.distanceAu.toFixed(8) : '--'}</td>
-                <td>${data.distMinMaxAu || '--'}</td>
-                <td>${data.magnitude !== undefined ? data.magnitude.toFixed(2) : '--'}</td>
-                <td>${data.raDeg !== undefined ? data.raDeg.toFixed(6) + '°' : '--'}</td>
-                <td>${data.decDeg !== undefined ? data.decDeg.toFixed(6) + '°' : '--'}</td>
-                <td>${data.constellation || '--'}</td>
-                <td>${data.perigeeAe !== undefined ? data.perigeeAe.toFixed(6) : '--'}</td>
-                <td>${data.perihelionAe !== undefined ? data.perihelionAe.toFixed(6) : '--'}</td>
-                <td>${data.aphelionAe !== undefined ? data.aphelionAe.toFixed(6) : '--'}</td>
-                <td>${data.disAe !== undefined ? data.disAe.toFixed(6) : '--'}</td>
-                <td>${data.orbitPeriodD !== undefined ? data.orbitPeriodD.toFixed(2) : '--'}</td>
-                <td>${data.lengthOfDayH !== undefined ? data.lengthOfDayH.toFixed(2) : '--'}</td>
-                <td>${data.orbitalVelocityKmS !== undefined ? data.orbitalVelocityKmS.toFixed(2) : '--'}</td>
-                <td>${data.shadowLengthM !== undefined ? data.shadowLengthM.toFixed(2) + ' m' : '--'}</td>
-                <td>${data.atObjectLevelM !== undefined ? data.atObjectLevelM.toFixed(2) + ' m' : '--'}</td>
-                <td>${data.moonPhase || '--'}</td>
-                <td>${data.moonAge !== undefined ? data.moonAge.toFixed(2) + ' d' : '--'}</td>
-                <td>${data.nextNewMoon || '--'}</td>
-                <td>${data.nextFullMoon || '--'}</td>
-                <td>${data.nextPerigee || '--'}</td>
-                <td>${data.nextApogee || '--'}</td>
-                <td>${data.sunrise || '--'}</td>
-                <td>${data.sunset || '--'}</td>
-                <td>${data.dusk || '--'}</td>
-                <td>${data.daylightDuration || '--'}</td>
-                <td>${data.jde !== undefined ? data.jde.toFixed(5) : '--'}</td>
-                <td>${data.deltaT !== undefined ? data.deltaT.toFixed(2) + ' s' : '--'}</td>
-                <td>${data.gmst !== undefined ? data.gmst.toFixed(4) + '°' : '--'}</td>
-                <td>${data.gha !== undefined ? data.gha.toFixed(4) + '°' : '--'}</td>
-                <td>${data.marEquinox || '--'}</td>
-                <td>${data.junSolstice || '--'}</td>
-                <td>${data.sepEquinox || '--'}</td>
-                <td>${data.decSolstice || '--'}</td>
-                <td>${data.solarConstant !== undefined ? data.solarConstant.toFixed(2) : '1361.00'}</td>
-                <td>${data.airMass !== undefined ? data.airMass.toFixed(3) : '--'}</td>
-                <td>${data.irradiance !== undefined ? data.irradiance.toFixed(2) : '--'}</td>
-                <td><span data-code="${data.visibiliteCode}">${etatTexte}</span></td>
+                <td id="cell-${nomAstre}-el">--</td>
+                <td id="cell-${nomAstre}-az">--</td>
+                <td id="cell-${nomAstre}-dist">--</td>
+                <td>--</td>
+                <td id="cell-${nomAstre}-mag">--</td>
+                <td id="cell-${nomAstre}-ra">--</td>
+                <td id="cell-${nomAstre}-dec">--</td>
+                <td>--</td>
+                <td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td>
+                <td id="cell-${nomAstre}-sc">1361.00</td>
+                <td id="cell-${nomAstre}-am">--</td>
+                <td id="cell-${nomAstre}-irr">--</td>
+                <td><span id="cell-${nomAstre}-etat">Inconnu</span></td>
             `;
             tbody.appendChild(tr);
+            lignesTableauCache[nomAstre] = {
+                el: document.getElementById(`cell-${nomAstre}-el`),
+                az: document.getElementById(`cell-${nomAstre}-az`),
+                dist: document.getElementById(`cell-${nomAstre}-dist`),
+                mag: document.getElementById(`cell-${nomAstre}-mag`),
+                ra: document.getElementById(`cell-${nomAstre}-ra`),
+                dec: document.getElementById(`cell-${nomAstre}-dec`),
+                am: document.getElementById(`cell-${nomAstre}-am`),
+                irr: document.getElementById(`cell-${nomAstre}-irr`),
+                etat: document.getElementById(`cell-${nomAstre}-etat`)
+            };
         }
+    }
+
+    const statutsVisibilite = ["Invisible", "Œil nu", "Jumelles", "Télescope"];
+
+    // Mise à jour ciblée des valeurs sans toucher à la structure du DOM
+    for (const [nomAstre, data] of Object.entries(bodiesData)) {
+        const cache = lignesTableauCache[nomAstre];
+        if (!cache) continue;
+
+        if (cache.el) cache.el.textContent = data.elevationGeometrique !== undefined ? data.elevationGeometrique.toFixed(6) + '°' : '--';
+        if (cache.az) cache.az.textContent = data.azimuth !== undefined ? data.azimuth.toFixed(6) + '°' : '--';
+        if (cache.dist) cache.dist.textContent = data.distanceAu !== undefined ? data.distanceAu.toFixed(8) : '--';
+        if (cache.mag) cache.mag.textContent = data.magnitude !== undefined ? data.magnitude.toFixed(2) : '--';
+        if (cache.ra) cache.ra.textContent = data.raDeg !== undefined ? data.raDeg.toFixed(6) + '°' : '--';
+        if (cache.dec) cache.dec.textContent = data.decDeg !== undefined ? data.decDeg.toFixed(6) + '°' : '--';
+        if (cache.am) cache.am.textContent = data.airMass !== undefined ? data.airMass.toFixed(3) : '--';
+        if (cache.irr) cache.irr.textContent = data.irradiance !== undefined ? data.irradiance.toFixed(2) : '--';
+        if (cache.etat) {
+            cache.etat.textContent = statutsVisibilite[data.visibiliteCode] ?? "Inconnu";
+            cache.etat.setAttribute('data-code', data.visibiliteCode);
+        }
+    }
     }
 
     function appliquerCoordonneesManuelles(silencieux = false) {
