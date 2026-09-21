@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * SYSTEMA SENTINELA — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
- * Version rigoureuse optimisée & fiabilisée v19.0 (Alignée C++ AstroResult)
+ * Version rigoureuse optimisée & fiabilisée v19.1 (Corrigée & Alignée)
  * ============================================================================
  */
 
@@ -26,7 +26,8 @@ function evaluerClenshawChebyshev(coeffs, x) {
         bK2 = bK1;
         bK1 = bK;
     }
-    return coeffs[0] + x * bK1 - bK2;
+    // CORRECTION : Multiplication du premier coefficient par 0.5 (Clenshaw standard)
+    return (coeffs[0] * 0.5) + x * bK1 - bK2;
 }
 
 function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
@@ -78,8 +79,8 @@ function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
         throw new Error("Erreur WMM : Coefficients non chargés.");
     }
 
-    const a = 6378.137;          // Rayon équatorial WGS84 en km
-    const b = 6356.7523142;      // Rayon polaire WGS84 en km
+    const a = 6378.137;          
+    const b = 6356.7523142;      
     const alt = Math.max(0, altKm);
     
     const latRad = latDeg * (Math.PI / 180.0);
@@ -96,7 +97,7 @@ function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
     const colat = (Math.PI / 2.0) - theta;
 
     const dt = anneeDecimale - 2025.0;
-    const a_r = 6371.2; // Rayon de référence WMM
+    const a_r = 6371.2; 
 
     let Br = 0.0, Btheta = 0.0, Bphi = 0.0;
     const maxN = 12;
@@ -222,6 +223,7 @@ onmessage = async function(e) {
             const dateUtc = new Date(timestampUtc);
             const utcHours = dateUtc.getUTCHours() + dateUtc.getUTCMinutes() / 60.0 + dateUtc.getUTCSeconds() / 3600.0;
             let tsmHours = ((utcHours + (lon / 15.0)) % 24 + 24) % 24;
+            // CORRECTION : Division par 4.0 pour l'équation du temps (minutes -> degrés)
             let tsvHours = ((tsmHours + (eqTempsMin / 60.0)) % 24 + 24) % 24;
 
             const solarMetrics = {
@@ -247,13 +249,13 @@ onmessage = async function(e) {
                 }
             }
 
-            // Allocation de 96 octets (correspondant exactement à la struct AstroResult C++)
             resultPtr = Module._malloc(96);
             for (const [nomAstre, coordsEcl] of Object.entries(corpsACalculer)) {
                 try {
+                    // CORRECTION : Passage de timestampSec (secondes) et non timestampUtc (millisecondes)
                     Module._calculerDepuisECEF(
                         coordsEcl.x, coordsEcl.y, coordsEcl.z,
-                        lat, lon, alt, eraRad, timestampUtc, tempC, presHpa, coordsEcl.mag, true, resultPtr
+                        lat, lon, alt, eraRad, timestampSec, tempC, presHpa, coordsEcl.mag, true, resultPtr
                     );
 
                     const resOffset = resultPtr / 8;
@@ -266,7 +268,8 @@ onmessage = async function(e) {
 
                     if (cosH0 >= -1.0 && cosH0 <= 1.0) {
                         const H0 = Math.acos(cosH0) * (180.0 / Math.PI);
-                        let culminationHours = ((raDeg - lon - (eqTempsMin * 4.0)) / 15.0 % 24 + 24) % 24;
+                        // CORRECTION : Division de eqTempsMin par 4.0 au lieu d'une multiplication
+                        let culminationHours = ((raDeg - lon - (eqTempsMin / 4.0)) / 15.0 % 24 + 24) % 24;
                         tsvLeverStr = formaterHeureDecimale(((culminationHours - (H0 / 15.0)) % 24 + 24) % 24);
                         tsvCulminationStr = formaterHeureDecimale(culminationHours);
                         tsvCoucherStr = formaterHeureDecimale(((culminationHours + (H0 / 15.0)) % 24 + 24) % 24);
@@ -282,7 +285,7 @@ onmessage = async function(e) {
                         airMass: Module.HEAPF64[resOffset + 8],
                         irradiance: Module.HEAPF64[resOffset + 9],
                         deltaT: Module.HEAPF64[resOffset + 10],
-                        visibiliteCode: Module.HEAP32[(resultPtr + 88) / 4], // Offset aligné sur 88 octets
+                        visibiliteCode: Module.HEAP32[(resultPtr + 88) / 4],
                         leverTsv: tsvLeverStr,
                         culminationTsv: tsvCulminationStr,
                         coucherTsv: tsvCoucherStr
@@ -293,7 +296,7 @@ onmessage = async function(e) {
             }
 
             const nbAstres = Object.keys(bodiesResults).length;
-            const floatsParAstre = 10; // Étendu à 10 pour inclure airMass, irradiance et deltaT
+            const floatsParAstre = 10;
             const bufferSize = nbAstres * floatsParAstre * Float64Array.BYTES_PER_ELEMENT;
             const resultArrayBuffer = new ArrayBuffer(bufferSize);
             const resultMap = new Float64Array(resultArrayBuffer);
