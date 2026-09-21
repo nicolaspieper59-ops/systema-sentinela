@@ -1,10 +1,3 @@
-/**
- * ============================================================================
- * SYSTEMA SENTINELA — KERNEL C++ WEBMASSEMBLY (ASTROMÉTRIE & MULTIPHYSIQUE)
- * Version rigoureuse optimisée v18.9
- * ============================================================================
- */
-
 #include <emscripten/emscripten.h>
 #include <cmath>
 #include <algorithm>
@@ -16,7 +9,7 @@
 #define DEG2RAD (M_PI / 180.0)
 #define RAD2DEG (180.0 / M_PI)
 
-// Structure mémoire alignée pour un transfert binaire sans copie (Zero-Copy) vers JS
+// Structure mémoire 64-bit alignée pour transfert Zero-Copy (104 octets)
 struct AstroResult {
     double azim;          
     double elevGeom;      
@@ -29,8 +22,9 @@ struct AstroResult {
     double airMass;       
     double irradiance;    
     double deltaT;        
+    double ghaDeg;        
     int visibiliteCode;   
-    int padding; // Alignement mémoire 64-bit
+    int padding;          
 };
 
 struct SystemMetrics {
@@ -49,17 +43,18 @@ inline double normaliserDegres(double deg) {
     return res < 0.0 ? res + 360.0 : res;
 }
 
+// Evaluation rigoureuse de Clenshaw pour séries Chebyshev NumPy
 double evaluerChebyshev(const double* coeffs, int degre, double xNorm) {
     double b2 = 0.0;
     double b1 = 0.0;
     double b0 = 0.0;
     
     for (int i = degre; i >= 1; --i) {
-        b0 = 2.0 * xNorm * b1 - b2 + coeffs[i];
+        b0 = coeffs[i] + 2.0 * xNorm * b1 - b2;
         b2 = b1;
         b1 = b0;
     }
-    return xNorm * b1 - b2 + (coeffs[0] * 0.5);
+    return coeffs[0] + xNorm * b1 - b2;
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -70,21 +65,16 @@ void obtenirPositionAstreChebyshev(
     double* outCoords
 ) {
     if (!outCoords || timestamp < tStart || timestamp > tEnd) return;
-    
-    double tMin = tStart;
-    double tMax = tEnd;
-    double xNorm = (tMin == tMax) ? 0.0 : (2.0 * (timestamp - tMin) / (tMax - tMin) - 1.0);
+    double xNorm = (tStart == tEnd) ? 0.0 : (2.0 * (timestamp - tStart) / (tEnd - tStart) - 1.0);
     
     outCoords[0] = evaluerChebyshev(coeffsX, degre, xNorm);
     outCoords[1] = evaluerChebyshev(coeffsY, degre, xNorm);
     outCoords[2] = evaluerChebyshev(coeffsZ, degre, xNorm);
 }
 
-// --- Dans wasm_astronomie.cpp ---
-
 EMSCRIPTEN_KEEPALIVE
 void calculerParametresSiderauxEtSolaires(
-    double timestampSec, // Renommé pour clarté (reçoit bien les secondes)
+    double timestampSec,
     double lonDeg,
     SystemMetrics* metrics
 ) {
@@ -94,11 +84,8 @@ void calculerParametresSiderauxEtSolaires(
     double d = jd - 2451545.0; 
     double T = d / 36525.0;    
 
-    double L0 = std::fmod(280.46646 + 36000.76983 * T, 360.0);
-    if (L0 < 0.0) L0 += 360.0;
-
-    double M = std::fmod(357.52911 + 35999.05029 * T, 360.0);
-    if (M < 0.0) M += 360.0;
+    double L0 = normaliserDegres(280.46646 + 36000.76983 * T);
+    double M = normaliserDegres(357.52911 + 35999.05029 * T);
     double MRad = M * DEG2RAD;
 
     double C = (1.914602 - 0.004817 * T) * std::sin(MRad) + (0.019993 - 0.000101 * T) * std::sin(2.0 * MRad);
@@ -108,20 +95,18 @@ void calculerParametresSiderauxEtSolaires(
     double eps = 23.4392911 - 0.0130042 * T;
     metrics->obliquiteDeg = eps;
 
-    double sunLongRad = metrics->longSolaireDeg * DEG2RAD;
-    double epsRad = eps * DEG2RAD;
-    double y = std::cos(epsRad) * std::sin(sunLongRad);
-    double x = std::cos(sunLongRad);
-    double alpha = std::atan2(y, x) * RAD2DEG;
-    alpha = normaliserDegres(alpha);
+    double alpha = normaliserDegres(std::atan2(std::cos(eps * DEG2RAD) * std::sin(sunLong * DEG2RAD), std::cos(sunLong * DEG2RAD)) * RAD2DEG);
 
     double eqTempsDeg = L0 - alpha;
     if (eqTempsDeg > 180.0) eqTempsDeg -= 360.0;
     if (eqTempsDeg < -180.0) eqTempsDeg += 360.0;
     metrics->eqTempsMin = eqTempsDeg * 4.0;
 
-    double gmst = 280.46061837 + 360.98564736629 * d + 0.000387933 * T * T - (T * T * T) / 38710000.0;
-    metrics->gastDeg = normaliserDegres(gmst);
+    double gmst = 280.46061837 + 360.98564736629 * d + 0.000387933 * T * T;
+    double omega = (125.04 - 1934.136 * T) * DEG2RAD;
+    double dPsi = -0.0048 * std::sin(omega); 
+    
+    metrics->gastDeg = normaliserDegres(gmst + dPsi * std::cos(eps * DEG2RAD));
     metrics->lstDeg = normaliserDegres(metrics->gastDeg + lonDeg);
 }
 
@@ -185,29 +170,44 @@ void calculerDepuisECEF(
     double normR = std::sqrt(xECEF*xECEF + yECEF*yECEF + zECEF*zECEF);
     result->decDeg = (normR > 0.0) ? std::asin(zECEF / normR) * RAD2DEG : 0.0;
 
-    // --- NOUVEAUX CALCULS MULTIPHYSIQUES --- //
+    // Angle Horaire de Greenwich (GHA)
+    result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
 
-    // 1. Delta T (Polynôme d'Espenak-Meeus pour post-2005)
+    // Delta T (Polynome Espenak-Meeus)
     double jd = (timestampUtc / 86400.0) + 2440587.5;
-    double anneeExacte = 2000.0 + (jd - 2451545.0) / 365.25;
-    double t = anneeExacte - 2000.0;
+    double t = (2000.0 + (jd - 2451545.0) / 365.25) - 2000.0;
     result->deltaT = 62.92 + 0.32217 * t + 0.005589 * (t * t);
 
-    // 2. Air Mass (Formule de Rozenberg) & Irradiance (Beer-Lambert)
+    // Air Mass & Irradiance adaptative
     result->airMass = 0.0;
     result->irradiance = 0.0;
     if (result->elevRefractee > 0.0) {
         double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
         result->airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
         
-        double constanteSolaire = 1361.0; 
-        double transmittance = 0.7; // Ciel clair standard
-        result->irradiance = (constanteSolaire / (result->distUA * result->distUA)) * std::pow(transmittance, result->airMass);
+        if (magApparente < -20.0) { // Flux solaire direct
+            result->irradiance = (1361.0 / (result->distUA * result->distUA)) * std::pow(0.7, result->airMass);
+        } else { // Photons réfléchis (Lune/Planètes)
+            result->irradiance = 2.54e-8 * std::pow(10.0, -0.4 * (magApparente + 0.2 * result->airMass));
+        }
     }
 
-    // 3. Magnitude & Visibilité (Ajusté avec Air Mass réel)
-    result->leverUT = 0.0;
-    result->coucherUT = 0.0;
+    // Lever / Coucher analytique local
+    double h0 = -0.8333 * DEG2RAD;
+    double cosH0 = (std::sin(h0) - std::sin(phi) * std::sin(result->decDeg * DEG2RAD)) / 
+                   (std::cos(phi) * std::cos(result->decDeg * DEG2RAD));
+
+    if (cosH0 >= 1.0) {
+        result->leverUT = -1.0;  // Nuit polaire
+        result->coucherUT = -1.0;
+    } else if (cosH0 <= -1.0) {
+        result->leverUT = -2.0;  // Jour polaire
+        result->coucherUT = -2.0;
+    } else {
+        double H0Deg = std::acos(cosH0) * RAD2DEG;
+        result->leverUT = normaliserDegres(360.0 - H0Deg - (lonDeg + (eraRad * RAD2DEG) - result->raDeg)) / 15.0;
+        result->coucherUT = normaliserDegres(H0Deg - (lonDeg + (eraRad * RAD2DEG) - result->raDeg)) / 15.0;
+    }
 
     if (result->elevRefractee < 0.0) {
         result->visibiliteCode = 0;
