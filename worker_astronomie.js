@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v19.4 FIXED)
+ * SYSTEMA SENTINELA — WEB WORKER (v19.5 RIGOROUS FIXED)
  */
 
 var Module = {
@@ -12,7 +12,6 @@ var Module = {
 
 let wasmReady = false;
 let matriceJplGlobal = null;
-let wmmCoefficients = null;
 let metricsPtr = 0;
 let resultPtr = 0;
 
@@ -20,7 +19,7 @@ importScripts('wasm_astronomie.js');
 
 function initialiserMemoireWasm() {
     if (wasmReady && !metricsPtr) {
-        metricsPtr = Module._malloc(40); // 5 x double
+        metricsPtr = Module._malloc(40); // 5 x double (SystemMetrics)
         resultPtr = Module._malloc(104); // AstroResult aligné (104 octets)
     }
 }
@@ -37,8 +36,15 @@ function evaluerClenshawChebyshev(coeffs, x) {
 }
 
 function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
-    if (!arcsAstre || arcsAstre.length === 0) return null;
-    let arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end) || arcsAstre[0];
+    if (!arcsAstre || !Array.isArray(arcsAstre) || arcsAstre.length === 0) return null;
+    
+    // Recherche sécurisée de l'arc temporel actif
+    let arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end);
+    if (!arc) {
+        // Fallback sur le premier ou dernier arc disponible si hors borne stricte
+        arc = timestampSec < arcsAstre[0].t_start ? arcsAstre[0] : arcsAstre[arcsAstre.length - 1];
+    }
+
     const tNorm = (arc.t_start === arc.t_end) ? 0.0 : (2.0 * (timestampSec - arc.t_start) / (arc.t_end - arc.t_start) - 1.0);
 
     return {
@@ -49,13 +55,19 @@ function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
     };
 }
 
-function estimerPhaseLune(soleilRA, soleilDec, luneRA, luneDec) {
-    const sRA = soleilRA * Math.PI / 180, sDec = soleilDec * Math.PI / 180;
-    const lRA = luneRA * Math.PI / 180, lDec = luneDec * Math.PI / 180;
-    const cosElong = Math.sin(sDec) * Math.sin(lDec) + Math.cos(sDec) * Math.cos(lDec) * Math.cos(sRA - lRA);
+function estimerPhaseLuneTopocentrique(luneResult, soleilResult) {
+    // Calcul rigoureux basé sur les vecteurs topocentriques résolus par le WASM
+    const diffRA = (luneResult.raDeg - soleilResult.raDeg) * (Math.PI / 180.0);
+    const decL = luneResult.decDeg * (Math.PI / 180.0);
+    const decS = soleilResult.decDeg * (Math.PI / 180.0);
+
+    const cosElong = Math.sin(decS) * Math.sin(decL) + Math.cos(decS) * Math.cos(decL) * Math.cos(diffRA);
     const elong = Math.acos(Math.max(-1.0, Math.min(1.0, cosElong)));
+    
     const fraction = (1.0 + Math.cos(Math.PI - elong)) / 2.0;
-    return { fraction, ageJours: (elong / (2 * Math.PI)) * 29.53059 };
+    const ageJours = (elong / (2.0 * Math.PI)) * 29.53059;
+
+    return { fraction, ageJours, elongationDeg: elong * (180.0 / Math.PI) };
 }
 
 onmessage = async function(e) {
@@ -64,18 +76,25 @@ onmessage = async function(e) {
 
     if (data.type === 'UPDATE_JPL_MATRIX') {
         matriceJplGlobal = data.matrix;
+        postMessage({ type: 'MATRIX_ACK', status: 'LOADED' });
         return;
     }
 
     if (data.type === 'COMPUTE') {
-        if (!wasmReady) return;
+        if (!wasmReady) {
+            postMessage({ type: 'ERROR', message: 'Noyau WASM non initialisé.' });
+            return;
+        }
         initialiserMemoireWasm();
 
         try {
             const { timestampUtc, coords, meteo } = data;
+            if (!coords) throw.Error('Coordonnées de station manquantes.');
+
             const { lat, lon, alt } = coords;
             const timestampSec = timestampUtc / 1000.0;
 
+            // 1. Calcul des paramètres sidéraux et solaires via WASM
             Module._calculerParametresSiderauxEtSolaires(timestampSec, lon, metricsPtr);
 
             const offsetMetrics = metricsPtr / 8;
@@ -94,7 +113,7 @@ onmessage = async function(e) {
                     const posECEF = obtenirPositionParChebyshev(arcsAstre, timestampSec);
                     if (!posECEF) continue;
 
-                    // Appel WASM avec indicateur de vecteur Géocentrique pur (false)
+                    // 2. Appel WASM sécurisé (Vecteur géocentrique ITRS pur -> conversion topocentrique interne)
                     Module._calculerDepuisECEF(
                         posECEF.x, posECEF.y, posECEF.z,
                         lat, lon, alt, eraRad, timestampSec,
@@ -121,12 +140,10 @@ onmessage = async function(e) {
                 }
             }
 
+            // 3. Phase lunaire hautement rigoureuse basée sur les résultats topocentriques résolus
             let phaseLune = null;
             if (bodiesResults.soleil && bodiesResults.lune) {
-                phaseLune = estimerPhaseLune(
-                    bodiesResults.soleil.raDeg, bodiesResults.soleil.decDeg,
-                    bodiesResults.lune.raDeg, bodiesResults.lune.decDeg
-                );
+                phaseLune = estimerPhaseLuneTopocentrique(bodiesResults.lune, bodiesResults.soleil);
             }
 
             postMessage({
