@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * SYSTEMA SENTINELA — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
- * Version rigoureuse optimisée & fiabilisée v19.1 (Corrigée & Alignée)
+ * Version rigoureuse optimisée & fiabilisée v19.2 (Mémoire Persistante & Zéro-Copy)
  * ============================================================================
  */
 
@@ -9,6 +9,7 @@ var Module = {
     onRuntimeInitialized: function() {
         wasmReady = true;
         console.log("[Worker] Module WebAssembly chargé et prêt.");
+        initialiserMemoireWasm();
         postMessage({ type: 'READY' });
     }
 };
@@ -17,7 +18,18 @@ let wasmReady = false;
 let matriceJplGlobal = null;
 let wmmCoefficients = null;
 
+// Pointeurs persistants pour éviter les allocations/libérations (malloc/free) à chaque tick
+let metricsPtr = 0;
+let resultPtr = 0;
+
 importScripts('wasm_astronomie.js');
+
+function initialiserMemoireWasm() {
+    if (wasmReady && !metricsPtr) {
+        metricsPtr = Module._malloc(40); // Allocation unique (5 doubles pour SystemMetrics)
+        resultPtr = Module._malloc(96);  // Allocation unique (Espace tampon pour AstroResult)
+    }
+}
 
 function evaluerClenshawChebyshev(coeffs, x) {
     let bK2 = 0.0, bK1 = 0.0, bK = 0.0;
@@ -26,7 +38,6 @@ function evaluerClenshawChebyshev(coeffs, x) {
         bK2 = bK1;
         bK1 = bK;
     }
-    // CORRECTION : Multiplication du premier coefficient par 0.5 (Clenshaw standard)
     return (coeffs[0] * 0.5) + x * bK1 - bK2;
 }
 
@@ -71,9 +82,6 @@ async function chargerCoefficientsWMM() {
     wmmCoefficients = parserFichierWMM(await reponse.text());
 }
 
-/**
- * MODULE WMM-2025 CORRIGÉ (HAUTE PRÉCISION GÉOMAGNÉTIQUE)
- */
 function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
     if (!wmmCoefficients || wmmCoefficients.length === 0) {
         throw new Error("Erreur WMM : Coefficients non chargés.");
@@ -201,7 +209,8 @@ onmessage = async function(e) {
             return;
         }
 
-        let metricsPtr = 0, resultPtr = 0;
+        initialiserMemoireWasm();
+
         try {
             const { timestampUtc, coords, meteo } = data;
             const { lat, lon, alt } = coords;
@@ -210,7 +219,7 @@ onmessage = async function(e) {
             const presHpa = meteo?.presHpa ?? meteoDefaut.presHpa;
             const timestampSec = timestampUtc / 1000.0;
 
-            metricsPtr = Module._malloc(40);
+            // Appel C++ direct avec la mémoire persistante (metricsPtr)
             Module._calculerParametresSiderauxEtSolaires(timestampSec, lon, metricsPtr);
 
             const offset = metricsPtr / 8;
@@ -223,7 +232,6 @@ onmessage = async function(e) {
             const dateUtc = new Date(timestampUtc);
             const utcHours = dateUtc.getUTCHours() + dateUtc.getUTCMinutes() / 60.0 + dateUtc.getUTCSeconds() / 3600.0;
             let tsmHours = ((utcHours + (lon / 15.0)) % 24 + 24) % 24;
-            // CORRECTION : Division par 4.0 pour l'équation du temps (minutes -> degrés)
             let tsvHours = ((tsmHours + (eqTempsMin / 60.0)) % 24 + 24) % 24;
 
             const solarMetrics = {
@@ -249,10 +257,9 @@ onmessage = async function(e) {
                 }
             }
 
-            resultPtr = Module._malloc(96);
             for (const [nomAstre, coordsEcl] of Object.entries(corpsACalculer)) {
                 try {
-                    // CORRECTION : Passage de timestampSec (secondes) et non timestampUtc (millisecondes)
+                    // Utilisation du buffer persistant resultPtr sans malloc/free répétés
                     Module._calculerDepuisECEF(
                         coordsEcl.x, coordsEcl.y, coordsEcl.z,
                         lat, lon, alt, eraRad, timestampSec, tempC, presHpa, coordsEcl.mag, true, resultPtr
@@ -268,7 +275,6 @@ onmessage = async function(e) {
 
                     if (cosH0 >= -1.0 && cosH0 <= 1.0) {
                         const H0 = Math.acos(cosH0) * (180.0 / Math.PI);
-                        // CORRECTION : Division de eqTempsMin par 4.0 au lieu d'une multiplication
                         let culminationHours = ((raDeg - lon - (eqTempsMin / 4.0)) / 15.0 % 24 + 24) % 24;
                         tsvLeverStr = formaterHeureDecimale(((culminationHours - (H0 / 15.0)) % 24 + 24) % 24);
                         tsvCulminationStr = formaterHeureDecimale(culminationHours);
@@ -338,9 +344,6 @@ onmessage = async function(e) {
 
         } catch (err) {
             postMessage({ type: 'ERROR', message: err.toString() });
-        } finally {
-            if (metricsPtr) Module._free(metricsPtr);
-            if (resultPtr) Module._free(resultPtr);
         }
     }
 };
