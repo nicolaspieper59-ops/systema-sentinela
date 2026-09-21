@@ -85,7 +85,8 @@ jobs:
             -s WASM=1 \
             -s FORCE_FILESYSTEM=1 \
             -s ALLOW_MEMORY_GROWTH=1 \
-            -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_malloc','_free']" \
+            -s INITIAL_MEMORY=33554432 \
+            -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_obtenirPositionAstreChebyshev','_malloc','_free']" \
             -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32']" \
             -o wasm_astronomie.js
 
@@ -96,22 +97,23 @@ jobs:
           test -s wasm_astronomie.js || (echo "[ERREUR] wasm_astronomie.js manquant ou vide" && exit 1)
           echo "[SUCCÈS] Tous les artefacts sont validés."
 
-      - name: 🚀 Publication automatique intelligente
+      - name: 🚀 Publication automatique intelligente & Cache PWA
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
-          git add -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm
+          
+          # Mise à jour dynamique du nom de cache dans le Service Worker (sw.js)
+          DATE_CACHE=$(date +'%Y%m%d')
+          if [ -f "sw.js" ]; then
+            sed -i "s/const CACHE_NAME = .*/const CACHE_NAME = 'sentinela-cache-$DATE_CACHE';/" sw.js
+          fi
+
+          git add -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm sw.js
           
           if git diff --staged --quiet; then
             echo "Aucun changement détecté dans les éphémérides ou le code, pas de commit."
             exit 0
           fi
-
-          - name: 🔄 Mettre à jour le cache du Service Worker
-  run: |
-    DATE_CACHE=$(date +'%Y%m%d')
-    sed -i "s/const CACHE_NAME = .*/const CACHE_NAME = 'sentinela-cache-$DATE_CACHE';/" sw.js
-    git add sw.js
           
-          git commit -m "Auto-update DE440s flux & compile Wasm [skip ci]"
+          git commit -m "Auto-update DE440s flux, Wasm & PWA cache [skip ci]"
           git push
