@@ -10,12 +10,10 @@ from numpy.polynomial import Chebyshev
 from skyfield.api import Loader
 from skyfield.framelib import itrs
 
-def obtenir_ondulation_egm2008_approchee(lat, lon):
-    """ Modèle géoïdal analytique EGM2008 à harmoniques simplifiées """
-    rad_lat = np.radians(lat)
-    rad_lon = np.radians(lon)
-    N = 17.0 * np.sin(rad_lat) - 11.0 * np.cos(2.0 * rad_lon) + 3.0 * np.sin(3.0 * rad_lat)
-    return N
+def calculer_ondulation_egm2008(lat, lon):
+    """ Modèle d'ondulation géoïdale analytique WGS84 -> EGM2008 """
+    r_lat, r_lon = np.radians(lat), np.radians(lon)
+    return 17.0 * np.sin(r_lat) - 11.0 * np.cos(2.0 * r_lon) + 3.0 * np.sin(3.0 * r_lat)
 
 def generer_arcs_chebyshev_adaptatif(temps_secondes, positions_xyz, tolerance_max, pas_arc):
     t = np.array(temps_secondes, dtype=float)
@@ -24,8 +22,7 @@ def generer_arcs_chebyshev_adaptatif(temps_secondes, positions_xyz, tolerance_ma
     z_coords = np.array([p[2] for p in positions_xyz], dtype=float)
 
     arcs = []
-    t_courant = t[0]
-    t_fin = t[-1]
+    t_courant, t_fin = t[0], t[-1]
 
     while t_courant < t_fin:
         t_suiv = min(t_courant + pas_arc, t_fin)
@@ -71,11 +68,11 @@ def main():
     except ValueError:
         lat_target, lon_target, alt_brute = 43.284356, 5.358507, 49.81
 
-    alt_ortho = alt_brute - obtenir_ondulation_egm2008_approchee(lat_target, lon_target)
+    alt_ortho = alt_brute - calculer_ondulation_egm2008(lat_target, lon_target)
 
     kernel_path = 'de440s.bsp'
     if not os.path.exists(kernel_path):
-        print("[ERREUR CRITIQUE] Fichier de440s.bsp introuvable.")
+        print("[ERREUR CRITIQUE] Noyau DE440s introuvable.")
         sys.exit(1)
 
     loader = Loader(os.getcwd(), verbose=False)
@@ -96,7 +93,7 @@ def main():
 
     donnees_brutes = {name: {"timestamps": [], "positions": [], "mag": mag} for name, (_, mag) in mapping_astres.items()}
 
-    # Acquisition des positions GÉOCENTRIQUES pures (Center-of-Earth ITRS)
+    # Calcul des coordonnées GÉOCENTRIQUES ITRS pures
     for minute in range(1441):
         instant = date_base + timedelta(minutes=minute)
         t_sec = instant.timestamp()
@@ -118,7 +115,7 @@ def main():
         matrice_chebyshev[nom] = arcs
 
     payload = {
-        "INFRASTRUCTURE": "SYSTEMA SENTINELA — DE440s GEOCENTRIC ITRS",
+        "INFRASTRUCTURE": "SYSTEMA SENTINELA — DE440s ITRS GEOCENTRIC ENGINE",
         "GENERATION_TIMESTAMP_MS": int(time.time() * 1000),
         "DATE_REF": aujourdhui.isoformat(),
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_ortho},
