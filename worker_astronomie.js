@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v19.4)
+ * SYSTEMA SENTINELA — WEB WORKER (v19.4 FIXED)
  */
 
 var Module = {
@@ -21,7 +21,7 @@ importScripts('wasm_astronomie.js');
 function initialiserMemoireWasm() {
     if (wasmReady && !metricsPtr) {
         metricsPtr = Module._malloc(40); // 5 x double
-        resultPtr = Module._malloc(104); // AstroResult (104 octets alignés)
+        resultPtr = Module._malloc(104); // AstroResult aligné (104 octets)
     }
 }
 
@@ -94,6 +94,7 @@ onmessage = async function(e) {
                     const posECEF = obtenirPositionParChebyshev(arcsAstre, timestampSec);
                     if (!posECEF) continue;
 
+                    // Appel WASM avec indicateur de vecteur Géocentrique pur (false)
                     Module._calculerDepuisECEF(
                         posECEF.x, posECEF.y, posECEF.z,
                         lat, lon, alt, eraRad, timestampSec,
