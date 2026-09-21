@@ -1,16 +1,16 @@
 /**
  * ============================================================================
  * SYSTEMA SENTINELA — WEB WORKER ASTRONOMIE & GÉOMAGNÉTISME (WASM)
- * Version rigoureuse optimisée & fiabilisée v19.2 (Mémoire Persistante & Zéro-Copy)
+ * Version v19.3 — Alignement strict avec l'interface HTML
  * ============================================================================
  */
 
 var Module = {
     onRuntimeInitialized: function() {
         wasmReady = true;
-        console.log("[Worker] Module WebAssembly chargé et prêt.");
         initialiserMemoireWasm();
-        postMessage({ type: 'READY' });
+        // Notification conforme à la fonction traiterMessageWorker() du HTML
+        postMessage({ type: 'WORKER_READY' });
     }
 };
 
@@ -18,7 +18,6 @@ let wasmReady = false;
 let matriceJplGlobal = null;
 let wmmCoefficients = null;
 
-// Pointeurs persistants pour éviter les allocations/libérations (malloc/free) à chaque tick
 let metricsPtr = 0;
 let resultPtr = 0;
 
@@ -26,12 +25,13 @@ importScripts('wasm_astronomie.js');
 
 function initialiserMemoireWasm() {
     if (wasmReady && !metricsPtr) {
-        metricsPtr = Module._malloc(40); // Allocation unique (5 doubles pour SystemMetrics)
-        resultPtr = Module._malloc(96);  // Allocation unique (Espace tampon pour AstroResult)
+        metricsPtr = Module._malloc(40); // 5 x double (64-bit)
+        resultPtr = Module._malloc(96);  // Tampon de structure AstroResult
     }
 }
 
 function evaluerClenshawChebyshev(coeffs, x) {
+    if (!coeffs || coeffs.length === 0) return 0.0;
     let bK2 = 0.0, bK1 = 0.0, bK = 0.0;
     for (let i = coeffs.length - 1; i >= 1; i--) {
         bK = coeffs[i] + 2.0 * x * bK1 - bK2;
@@ -75,16 +75,9 @@ function parserFichierWMM(texte) {
     return coeffs;
 }
 
-async function chargerCoefficientsWMM() {
-    if (wmmCoefficients) return;
-    const reponse = await fetch('WMM2025.COF');
-    if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable.");
-    wmmCoefficients = parserFichierWMM(await reponse.text());
-}
-
 function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
     if (!wmmCoefficients || wmmCoefficients.length === 0) {
-        throw new Error("Erreur WMM : Coefficients non chargés.");
+        throw new Error("Coefficients WMM non chargés.");
     }
 
     const a = 6378.137;          
@@ -148,11 +141,10 @@ function calculerWmmDynamique(latDeg, lonDeg, altKm, anneeDecimale) {
         const sinM = Math.sin(m * lonRad);
 
         const term = ratio * (g * cosM + h * sinM);
-        const termDeriv = ratio * (g * cosM + h * sinM);
 
         Br += (n + 1) * term * P[n][m];
         if (sinColat > 1e-15) {
-            Btheta -= termDeriv * dP[n][m];
+            Btheta -= term * dP[n][m];
         }
         if (m > 0) {
             const termPhi = ratio * m * (-g * sinM + h * cosM);
@@ -193,19 +185,18 @@ onmessage = async function(e) {
     if (data.type === 'INIT_WMM') {
         try {
             if (data.cofText) wmmCoefficients = parserFichierWMM(data.cofText);
-            else await chargerCoefficientsWMM();
             const coords = data.coords || { lat: 43.2843, lon: 5.3585, alt: 10 };
             const resultat = calculerWmmDynamique(coords.lat, coords.lon, coords.alt / 1000.0, 2026.2);
             postMessage({ type: 'WMM_RESULTS', payload: resultat });
         } catch (err) {
-            postMessage({ type: 'ERROR', message: "Erreur WMM critique : " + err.toString() });
+            postMessage({ type: 'ERROR', message: "Erreur WMM : " + err.toString() });
         }
         return;
     }
 
     if (data.type === 'COMPUTE') {
         if (!wasmReady) {
-            postMessage({ type: 'ERROR', message: "Module WASM non initialisé." });
+            postMessage({ type: 'ERROR', message: "Module WASM non prêt." });
             return;
         }
 
@@ -219,7 +210,7 @@ onmessage = async function(e) {
             const presHpa = meteo?.presHpa ?? meteoDefaut.presHpa;
             const timestampSec = timestampUtc / 1000.0;
 
-            // Appel C++ direct avec la mémoire persistante (metricsPtr)
+            // Execution WASM des paramètres solaires et sidéraux
             Module._calculerParametresSiderauxEtSolaires(timestampSec, lon, metricsPtr);
 
             const offset = metricsPtr / 8;
@@ -229,20 +220,13 @@ onmessage = async function(e) {
             const gastDeg = Module.HEAPF64[offset + 3];
             const lstDeg = Module.HEAPF64[offset + 4];
 
-            const dateUtc = new Date(timestampUtc);
-            const utcHours = dateUtc.getUTCHours() + dateUtc.getUTCMinutes() / 60.0 + dateUtc.getUTCSeconds() / 3600.0;
-            let tsmHours = ((utcHours + (lon / 15.0)) % 24 + 24) % 24;
-            let tsvHours = ((tsmHours + (eqTempsMin / 60.0)) % 24 + 24) % 24;
-
             const solarMetrics = {
                 eqTempsMin,
                 obliquiteDeg,
                 longSolaireDeg,
                 gastDeg,
                 lstDeg,
-                excentricite: 0.01671022,
-                tsm: formaterHeureDecimale(tsmHours),
-                tsv: formaterHeureDecimale(tsvHours)
+                excentricite: 0.01671022
             };
 
             const eraRad = (gastDeg % 360.0) * (Math.PI / 180.0);
@@ -259,7 +243,6 @@ onmessage = async function(e) {
 
             for (const [nomAstre, coordsEcl] of Object.entries(corpsACalculer)) {
                 try {
-                    // Utilisation du buffer persistant resultPtr sans malloc/free répétés
                     Module._calculerDepuisECEF(
                         coordsEcl.x, coordsEcl.y, coordsEcl.z,
                         lat, lon, alt, eraRad, timestampSec, tempC, presHpa, coordsEcl.mag, true, resultPtr
@@ -268,79 +251,34 @@ onmessage = async function(e) {
                     const resOffset = resultPtr / 8;
                     const decDeg = Module.HEAPF64[resOffset + 4];
                     const raDeg = Module.HEAPF64[resOffset + 3];
-
-                    let tsvLeverStr = "--", tsvCulminationStr = "--", tsvCoucherStr = "--";
-                    const latRad = lat * (Math.PI / 180.0), decRad = decDeg * (Math.PI / 180.0);
-                    const cosH0 = -Math.tan(latRad) * Math.tan(decRad);
-
-                    if (cosH0 >= -1.0 && cosH0 <= 1.0) {
-                        const H0 = Math.acos(cosH0) * (180.0 / Math.PI);
-                        let culminationHours = ((raDeg - lon - (eqTempsMin / 4.0)) / 15.0 % 24 + 24) % 24;
-                        tsvLeverStr = formaterHeureDecimale(((culminationHours - (H0 / 15.0)) % 24 + 24) % 24);
-                        tsvCulminationStr = formaterHeureDecimale(culminationHours);
-                        tsvCoucherStr = formaterHeureDecimale(((culminationHours + (H0 / 15.0)) % 24 + 24) % 24);
-                    }
+                    const distanceAU = Module.HEAPF64[resOffset + 5]; // Valeur native en Unités Astronomiques
 
                     bodiesResults[nomAstre] = {
                         azimuth: Module.HEAPF64[resOffset + 0],
                         elevationGeometrique: Module.HEAPF64[resOffset + 1],
                         elevationRefractee: Module.HEAPF64[resOffset + 2],
-                        raDeg, 
-                        decDeg,
-                        distanceKm: Module.HEAPF64[resOffset + 5] * 149597870700.0 / 1000.0,
+                        raDeg: raDeg,
+                        decDeg: decDeg,
+                        distanceAu: distanceAU,
+                        magnitude: coordsEcl.mag,
                         airMass: Module.HEAPF64[resOffset + 8],
                         irradiance: Module.HEAPF64[resOffset + 9],
                         deltaT: Module.HEAPF64[resOffset + 10],
-                        visibiliteCode: Module.HEAP32[(resultPtr + 88) / 4],
-                        leverTsv: tsvLeverStr,
-                        culminationTsv: tsvCulminationStr,
-                        coucherTsv: tsvCoucherStr
+                        visibiliteCode: Module.HEAP32[(resultPtr + 88) / 4]
                     };
                 } catch (errAstre) {
-                    console.warn(`[Worker] Erreur de calcul ignorée pour l'astre ${nomAstre}:`, errAstre);
+                    console.warn(`[Worker] Erreur calcul ${nomAstre}:`, errAstre);
                 }
             }
 
-            const nbAstres = Object.keys(bodiesResults).length;
-            const floatsParAstre = 10;
-            const bufferSize = nbAstres * floatsParAstre * Float64Array.BYTES_PER_ELEMENT;
-            const resultArrayBuffer = new ArrayBuffer(bufferSize);
-            const resultMap = new Float64Array(resultArrayBuffer);
-
-            let index = 0;
-            const metaAstres = {};
-
-            for (const [nomAstre, data] of Object.entries(bodiesResults)) {
-                metaAstres[nomAstre] = {
-                    visibiliteCode: data.visibiliteCode,
-                    leverTsv: data.leverTsv,
-                    culminationTsv: data.culminationTsv,
-                    coucherTsv: data.coucherTsv,
-                    airMass: data.airMass,
-                    irradiance: data.irradiance,
-                    deltaT: data.deltaT
-                };
-
-                resultMap[index++] = data.azimuth;
-                resultMap[index++] = data.elevationGeometrique;
-                resultMap[index++] = data.elevationRefractee;
-                resultMap[index++] = data.raDeg;
-                resultMap[index++] = data.decDeg;
-                resultMap[index++] = data.distanceKm;
-                resultMap[index++] = data.airMass;
-                resultMap[index++] = data.irradiance;
-                resultMap[index++] = data.deltaT;
-                resultMap[index++] = data.visibiliteCode;
-            }
-
+            // Retour structuré conforme aux attentes directes de l'interface HTML
             postMessage({
-                type: 'RESULTS_BINARY',
+                type: 'RESULTS_COMPUTE',
                 timestamp: timestampUtc,
                 solarMetrics,
                 tempsJpl: { gastDeg, lstDeg },
-                metaAstres,
-                buffer: resultArrayBuffer
-            }, [resultArrayBuffer]);
+                bodies: bodiesResults
+            });
 
         } catch (err) {
             postMessage({ type: 'ERROR', message: err.toString() });
