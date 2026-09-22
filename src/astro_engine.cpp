@@ -81,9 +81,9 @@ void calculerParametresSiderauxEtSolaires(
     if (!metrics) return;
 
     double jd = (timestampSec / 86400.0) + 2440587.5;
+    result->jde = jd;
     double d = jd - 2451545.0; 
     double T = d / 36525.0; 
-    result->jde = jd;
 
     double L0 = normaliserDegres(280.46646 + 36000.76983 * T);
     double M = normaliserDegres(357.52911 + 35999.05029 * T);
