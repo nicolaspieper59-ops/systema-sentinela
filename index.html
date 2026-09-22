@@ -24,38 +24,40 @@
             --radar-bg: #01040a;
         }
         .day-mode {
-            --bg-base: #f0f2f5; --bg-surface: #ffffff; --border-dim: #d1d5db;
-            --sky: #0969da; --neon-green: #1a7f37; --amber: #9a6700; --rose: #cf222e; --text-main: #24292e;
-            --tsm-color: #8250df;
-            --radar-bg: #e6edf3;
+            --bg-base: #f0f2f5; --bg-surface: #ffffff; --border-dim: #cbd5e1;
+            --sky: #0366d6; --neon-green: #116329; --amber: #9a6700; --rose: #d73a49; --text-main: #1f2328;
+            --tsm-color: #6f42c1;
+            --radar-bg: #ffffff;
         }
         * { box-sizing: border-box; }
         body {
             background: var(--bg-base); color: var(--text-main);
-            font-family: 'Consolas', 'Courier New', monospace; font-size: 10.5px; padding: 6px; margin: 0;
+            font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; padding: 8px; margin: 0;
             -webkit-text-size-adjust: 100%;
         }
         .container { max-width: 1920px; margin: 0 auto; }
         .master-header {
             background: var(--bg-surface); border: 1px solid var(--border-dim);
-            border-left: 4px solid var(--neon-green); padding: 6px 10px; border-radius: 6px;
-            display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;
+            border-left: 4px solid var(--neon-green); padding: 8px 12px; border-radius: 6px;
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
-        .brand { font-size: 11px; font-weight: bold; letter-spacing: 0.5px; color: var(--sky); }
-        .grid-layout { display: grid; grid-template-columns: 1fr; gap: 6px; }
+        .brand { font-size: 12px; font-weight: bold; letter-spacing: 0.5px; color: var(--sky); }
+        .grid-layout { display: grid; grid-template-columns: 1fr; gap: 8px; }
         @media (min-width: 1400px) { .grid-layout { grid-template-columns: 1fr 1fr; } }
         
-        .panel { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 6px; margin-bottom: 6px; }
-        .panel-title { border-bottom: 1px solid var(--border-dim); padding-bottom: 4px; margin-top: 0; margin-bottom: 6px; font-size: 10.5px; color: var(--sky); display: flex; justify-content: space-between; align-items: center; }
+        .panel { background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 8px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .panel-title { border-bottom: 1px solid var(--border-dim); padding-bottom: 6px; margin-top: 0; margin-bottom: 8px; font-size: 11px; color: var(--sky); display: flex; justify-content: space-between; align-items: center; font-weight: bold; }
         
-        .astro-grid { display: grid; grid-template-columns: 1fr; gap: 4px; font-size: 9.5px; }
-        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 4px; }
-        .metric-card { background: rgba(88,166,255,0.05); border: 1px solid var(--border-dim); padding: 4px 6px; border-radius: 4px; font-size: 9px; }
-        .metric-val { font-weight: bold; color: var(--neon-green); font-size: 10px; margin-top: 2px; }
+        .astro-grid { display: grid; grid-template-columns: 1fr; gap: 6px; font-size: 10px; }
+        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 6px; }
+        .metric-card { background: rgba(88,166,255,0.04); border: 1px solid var(--border-dim); padding: 6px 8px; border-radius: 4px; font-size: 9.5px; }
+        .metric-val { font-weight: bold; color: var(--neon-green); font-size: 10.5px; margin-top: 3px; }
         
+        /* Conteneur optimisé pour le terrain (tableaux larges) */
         .table-scientific-container {
             width: 100%;
-            max-height: 450px;
+            max-height: 480px;
             overflow-x: auto;
             overflow-y: auto;
             white-space: nowrap;
@@ -66,24 +68,32 @@
             border-radius: 4px;
         }
         table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
-        th, td { padding: 3px 6px; border-bottom: 1px solid var(--border-dim); font-size: 8.8px; }
-        th { color: var(--sky); font-weight: bold; background: var(--bg-surface); position: sticky; top: 0; z-index: 2; border-bottom: 2px solid var(--border-dim); }
+        th, td { padding: 5px 8px; border-bottom: 1px solid var(--border-dim); font-size: 9.5px; }
+        th { color: var(--sky); font-weight: bold; background: var(--bg-surface); position: sticky; top: 0; z-index: 5; border-bottom: 2px solid var(--sky); }
 
-        .btn-action { background: var(--border-dim); color: var(--text-main); border: 1px solid var(--sky); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 9.5px; font-weight: bold; transition: background 0.2s; }
+        .btn-action { background: var(--border-dim); color: var(--text-main); border: 1px solid var(--sky); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 10px; font-weight: bold; transition: background 0.2s, color 0.2s; }
         .btn-action:hover { background: var(--sky); color: #fff; }
-        .log-console { background: #000; color: #8b949e; border: 1px solid var(--border-dim); height: 90px; overflow-y: auto; padding: 4px; border-radius: 4px; font-size: 8.5px; font-family: monospace; }
-        .day-mode .log-console { background: #111; color: #adbac7; }
-        #radarCanvas { width: 100%; max-width: 260px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
-        #globeCanvas { width: 100%; max-width: 260px; height: 140px; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 6px; cursor: grab; touch-action: none; }
+        
+        .log-console { background: #01040a; color: #8b949e; border: 1px solid var(--border-dim); height: 100px; overflow-y: auto; padding: 6px; border-radius: 4px; font-size: 9px; font-family: monospace; }
+        .day-mode .log-console { background: #f6f8fa; color: #24292e; border-color: #d1d5db; }
+        
+        #radarCanvas { width: 100%; max-width: 280px; height: auto; aspect-ratio: 1; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 1px solid var(--border-dim); }
+        #globeCanvas { width: 100%; max-width: 280px; height: 150px; display: block; margin: 0 auto; background: var(--radar-bg); border-radius: 6px; cursor: grab; touch-action: none; border: 1px solid var(--border-dim); }
         
         .time-utc { color: var(--sky); font-weight: bold; }
         .time-tsm { color: var(--tsm-color); font-weight: bold; }
 
+        /* Décimales arc-en-ciel optimisées lisibilité terrain */
         .rainbow-decimal {
-            background: linear-gradient(90deg, #ff007f, #ff7f00, #ffff00, #00ff7f, #00ffff, #7f00ff);
+            background: linear-gradient(90deg, #d73a49, #e36209, #b08800, #22863a, #0366d6, #6f42c1);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             font-weight: 700;
+        }
+        .day-mode .rainbow-decimal {
+            background: linear-gradient(90deg, #b31d28, #b08800, #22863a, #005cc5, #6f42c1, #e36209);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
     </style>
 </head>
@@ -91,7 +101,7 @@
 <div class="container">
     <header class="master-header">
         <div class="brand">SYSTEMA SENTINELA v18.9 — KERNEL RIGOROUS REPOSITORY</div>
-        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <div>JPL FLUX : <span id="lbl-jpl-status" style="color:var(--amber); font-weight:bold;">CHARGEMENT...</span></div>
             <div>WORKER : <span id="lbl-worker-status" style="color:var(--amber); font-weight:bold;">INIT...</span></div>
             <div>EPOCH UTC : <span id="lbl-epoch" class="time-utc">--</span></div>
@@ -103,7 +113,7 @@
         <div class="panel" style="grid-column: 1 / -1;">
             <h3 class="panel-title">1. COORDONNÉES TOPOCENTRIQUES &amp; VISIBILITÉ DES CORPS CÉLESTES (JPL DE440s)</h3>
             
-            <div class="metrics-grid" style="margin-bottom: 6px;">
+            <div class="metrics-grid" style="margin-bottom: 8px;">
                 <div class="metric-card"><div>ÉQ. DU TEMPS (CALC)</div><div class="metric-val rainbow-decimal" id="val-eq-temps">-- min</div></div>
                 <div class="metric-card"><div>EXCENTRICITÉ TERR.</div><div class="metric-val rainbow-decimal" id="val-excentricite">--</div></div>
                 <div class="metric-card"><div>OBLIQUITÉ ÉCLIPTIQUE</div><div class="metric-val rainbow-decimal" id="val-obliquite">--°</div></div>
@@ -113,7 +123,7 @@
                 <div class="metric-card"><div>RÉGLAGE HEURE PRIMAIRE</div>
                     <div class="metric-val">
                         <label for="input-time-picker" style="display:none;">Ajustement heure</label>
-                        <input type="time" id="input-time-picker" step="1" style="background:var(--bg-base); color:var(--neon-green); border:1px solid var(--border-dim); font-size:9px;" onchange="ajusterHeurePrincipaleManuelle(this.value)">
+                        <input type="time" id="input-time-picker" step="1" style="background:var(--bg-base); color:var(--neon-green); border:1px solid var(--border-dim); font-size:10px; padding:2px;" onchange="ajusterHeurePrincipaleManuelle(this.value)">
                     </div>
                 </div>
             </div>
@@ -171,28 +181,28 @@
 
         <div class="panel">
             <div class="panel-title">2. GÉODÉSIE &amp; LST / SAISIE &amp; ECEF</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                 <div class="astro-grid">
                     <div class="metric-card"><div>STATION ACTIVE</div><div class="metric-val" id="val-station-nom" style="color:var(--sky)">ACQUISITION...</div></div>
                     <div class="metric-card"><div>LAT / LON / ALT</div><div class="metric-val" id="val-station-coords">--° / --° / --m</div></div>
                     <div class="metric-card"><div>GAST / LST</div><div class="metric-val" id="val-gast" style="color:var(--amber)">--°</div></div>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 3px; font-size: 9.5px;">
+                <div style="display: flex; flex-direction: column; gap: 4px; font-size: 10px;">
                     <div>
                         <label for="input-lat" style="color: var(--sky);">LAT (°)</label>
-                        <input type="number" id="input-lat" value="43.284300" step="0.000001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 2px; font-family: monospace; border-radius: 3px;">
+                        <input type="number" id="input-lat" value="43.284300" step="0.000001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
                     </div>
                     <div>
                         <label for="input-lon" style="color: var(--sky);">LON (°)</label>
-                        <input type="number" id="input-lon" value="5.358500" step="0.000001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 2px; font-family: monospace; border-radius: 3px;">
+                        <input type="number" id="input-lon" value="5.358500" step="0.000001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
                     </div>
                     <div>
                         <label for="input-alt" style="color: var(--sky);">ALT (mètres)</label>
-                        <input type="number" id="input-alt" value="10.0000" step="0.0001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 2px; font-family: monospace; border-radius: 3px;">
+                        <input type="number" id="input-alt" value="10.0000" step="0.0001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
                     </div>
                 </div>
             </div>
-            <div style="display: flex; gap: 4px;">
+            <div style="display: flex; gap: 6px;">
                 <button class="btn-action" style="flex: 1;" onclick="appliquerCoordonneesManuelles()">APPLIQUER</button>
                 <button class="btn-action" style="flex: 1;" onclick="basculerTousLesCapteurs()">GPS AUTO</button>
             </div>
@@ -200,7 +210,7 @@
 
         <div class="panel">
             <h3 class="panel-title">3. CHAMP GÉOMAGNÉTIQUE WMM-2025 &amp; VARIATIONS</h3>
-            <div class="metrics-grid" style="margin-bottom: 6px;">
+            <div class="metrics-grid" style="margin-bottom: 8px;">
                 <div class="metric-card"><div>CAP MAGNÉTIQUE</div><div id="val-cap-brut" class="metric-val" style="color:var(--amber);">--°</div></div>
                 <div class="metric-card"><div>CAP VRAI GÉO</div><div id="val-cap-net" class="metric-val" style="color:var(--neon-green);">--°</div></div>
                 <div class="metric-card"><div>DÉCLINAISON (D)</div><div id="val-dec-wmm" class="metric-val" style="color:var(--sky);">Calcul...</div></div>
@@ -213,23 +223,23 @@
 
         <div class="panel">
             <div class="panel-title">4. RADAR D'ORIENTATION VRAIE</div>
-            <canvas id="radarCanvas" width="260" height="260" aria-label="Radar orientation des astres"></canvas>
+            <canvas id="radarCanvas" width="280" height="280" aria-label="Radar orientation des astres"></canvas>
         </div>
 
         <div class="panel">
             <div class="panel-title">5. VECTEUR XYZ (ECEF) &amp; GLOBE 3D (HAUTE PRÉCISION)</div>
-            <div style="font-size: 9px; background: rgba(0,0,0,0.03); padding: 4px; border-radius: 4px; border: 1px solid var(--border-dim); margin-bottom: 4px;">
-                <div style="color: var(--amber); margin-bottom: 2px; font-weight: bold;">ECEF WGS84 (km) :</div>
+            <div style="font-size: 9.5px; background: rgba(0,0,0,0.03); padding: 6px; border-radius: 4px; border: 1px solid var(--border-dim); margin-bottom: 6px;">
+                <div style="color: var(--amber); margin-bottom: 3px; font-weight: bold;">ECEF WGS84 (km) :</div>
                 <div>X : <span id="val-xyz-x" class="rainbow-decimal">--</span> | Y : <span id="val-xyz-y" class="rainbow-decimal">--</span> | Z : <span id="val-xyz-z" class="rainbow-decimal">--</span></div>
             </div>
-            <canvas id="globeCanvas" width="260" height="140" aria-label="Globe terrestre 3D"></canvas>
-            <div style="font-size: 9px; color: var(--sky); text-align: center; margin-top: 3px;">
+            <canvas id="globeCanvas" width="280" height="150" aria-label="Globe terrestre 3D"></canvas>
+            <div style="font-size: 9.5px; color: var(--sky); text-align: center; margin-top: 4px;">
                 BAROMÈTRE / MÉTÉO : <span id="val-baro-statut" style="color:var(--amber)">EN ATTENTE</span>
             </div>
         </div>
 
         <div class="panel" style="grid-column: 1 / -1; margin-bottom: 0;">
-            <div class="panel-title" style="margin-bottom: 4px;">6. CONSOLE KERNEL EXÉCUTION</div>
+            <div class="panel-title" style="margin-bottom: 6px;">6. CONSOLE KERNEL EXÉCUTION</div>
             <div class="log-console" id="logConsole"></div>
         </div>
     </div>
@@ -617,7 +627,7 @@
             const cache = lignesTableauCache[nomAstre];
             if (!cache) continue;
 
-            if (cache.el) cache.textContent = data.elevationGeometrique !== undefined ? data.elevationGeometrique.toFixed(6) + '°' : '--';
+            if (cache.el) cache.el.textContent = data.elevationGeometrique !== undefined ? data.elevationGeometrique.toFixed(6) + '°' : '--';
             if (cache.az) cache.az.textContent = data.azimuth !== undefined ? data.azimuth.toFixed(6) + '°' : '--';
             if (cache.dist) cache.dist.textContent = data.distanceAu !== undefined ? data.distanceAu.toFixed(8) : '--';
             if (cache.mag) cache.mag.textContent = data.magnitude !== undefined ? data.magnitude.toFixed(2) : '--';
@@ -675,38 +685,29 @@
         } catch (e) { ecrireLog("WMM : Coefficients intégrés par défaut."); }
     }
 
-    async function chargerEtParserWMM() {
-        try {
-            const reponse = await fetch('./WMM2025.COF');
-            if (!reponse.ok) throw new Error(`Fichier WMM2025.COF introuvable`);
-            const texte = await reponse.text();
-            envoyerMessageWorkerSecurise({ type: 'INIT_WMM', cofText: texte });
-        } catch (e) { ecrireLog("WMM : Coefficients intégrés par défaut."); }
-    }
-
-    function dessinerRadarAstres(astresData, cap = 0) {
+        function dessinerRadarAstres(astresData, cap = 0) {
         const canvas = document.getElementById('radarCanvas');
         if (!canvas) return;
-        const ctx = canvas.getContext('2d'), dpr = window.devicePixelRatio || 1, size = 260;
+        const ctx = canvas.getContext('2d'), dpr = window.devicePixelRatio || 1, size = 280;
         if (canvas.width !== Math.round(size * dpr)) {
             canvas.width = Math.round(size * dpr); canvas.height = Math.round(size * dpr);
             canvas.style.width = `${size}px`; canvas.style.height = `${size}px`;
         }
         ctx.save(); ctx.scale(dpr, dpr);
-        const cx = size / 2, cy = size / 2, maxRadius = 110;
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--radar-bg').trim() || '#e6edf3';
+        const cx = size / 2, cy = size / 2, maxRadius = 120;
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--radar-bg').trim() || '#ffffff';
         ctx.fillRect(0, 0, size, size);
-        ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+        ctx.strokeStyle = modeJourActif ? '#cbd5e1' : '#21262d'; ctx.lineWidth = 1;
         [0.33, 0.66, 1].forEach(ratio => {
             ctx.beginPath(); ctx.arc(cx, cy, maxRadius * ratio, 0, 2 * Math.PI); ctx.stroke();
         });
         ctx.beginPath();
         ctx.moveTo(cx, cy - maxRadius); ctx.lineTo(cx, cy + maxRadius);
         ctx.moveTo(cx - maxRadius, cy); ctx.lineTo(cx + maxRadius, cy);
-        ctx.strokeStyle = '#30363d'; ctx.stroke();
+        ctx.strokeStyle = modeJourActif ? '#94a3b8' : '#30363d'; ctx.stroke();
 
         const capRad = cap * Math.PI / 180.0;
-        ctx.strokeStyle = '#f85149'; ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#d73a49'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(cx, cy);
         ctx.lineTo(cx + maxRadius * Math.sin(capRad), cy - maxRadius * Math.cos(capRad));
         ctx.stroke();
@@ -719,8 +720,8 @@
                 const azRad = (data.azimuth ?? 0) * Math.PI / 180.0;
                 const r = maxRadius * (1 - (el / 90.0));
                 const x = cx + r * Math.sin(azRad), y = cy - r * Math.cos(azRad);
-                ctx.fillStyle = '#3fb950'; ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI); ctx.fill();
-                ctx.fillStyle = '#c9d1d9'; ctx.font = '8px monospace'; ctx.fillText(astre.toUpperCase(), x + 5, y + 3);
+                ctx.fillStyle = '#22863a'; ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 2 * Math.PI); ctx.fill();
+                ctx.fillStyle = modeJourActif ? '#1f2328' : '#c9d1d9'; ctx.font = 'bold 8.5px monospace'; ctx.fillText(astre.toUpperCase(), x + 6, y + 3);
             }
         }
         ctx.restore();
@@ -740,19 +741,19 @@
         const container = document.getElementById('globeCanvas');
         if (!container || typeof THREE === 'undefined') return;
         globeScene = new THREE.Scene();
-        globeCamera = new THREE.PerspectiveCamera(45, 260 / 140, 0.1, 1000);
+        globeCamera = new THREE.PerspectiveCamera(45, 280 / 150, 0.1, 1000);
         globeCamera.position.z = 3.5;
         globeRenderer = new THREE.WebGLRenderer({ canvas: container, alpha: true, antialias: true });
         globeRenderer.setPixelRatio(window.devicePixelRatio || 1);
 
         const globe = new THREE.Mesh(
             new THREE.SphereGeometry(1, 32, 32),
-            new THREE.MeshBasicMaterial({ color: 0x1f6feb, wireframe: true, transparent: true, opacity: 0.6 })
+            new THREE.MeshBasicMaterial({ color: 0x0366d6, wireframe: true, transparent: true, opacity: 0.6 })
         );
         globeScene.add(globe);
         curseurPositionMesh = new THREE.Mesh(
             new THREE.SphereGeometry(0.04, 16, 16),
-            new THREE.MeshBasicMaterial({ color: 0x3fb950 })
+            new THREE.MeshBasicMaterial({ color: 0x22863a })
         );
         globe.add(curseurPositionMesh);
 
