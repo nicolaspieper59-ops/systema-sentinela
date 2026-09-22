@@ -81,7 +81,8 @@ void calculerParametresSiderauxEtSolaires(
     if (!metrics) return;
 
     double jd = (timestampSec / 86400.0) + 2440587.5;
-    result->jde = jd;
+    // Ligne 'result->jde = jd;' supprimée ici car 'result' n'est pas accessible dans cette portée
+
     double d = jd - 2451545.0; 
     double T = d / 36525.0; 
 
