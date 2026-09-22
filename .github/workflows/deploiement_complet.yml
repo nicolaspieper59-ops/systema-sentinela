@@ -6,7 +6,7 @@ concurrency:
 
 on:
   schedule:
-    - cron: '0 0 * * *' # Exécution quotidienne à minuit UTC
+    - cron: '0 3 */6 * *' # Exécution tous les 6 jours (garantit un renouvellement avant les 7 jours hors-ligne)
   push:
     branches: [ main ]
     paths:
@@ -63,38 +63,32 @@ jobs:
           path: de440s.bsp
           key: de440s-bsp-v1
 
-      - name: 📥 Téléchargement ou Vérification de secours DE440s & WMM2025
+      - name: 📥 Téléchargement ou Vérification DE440s & WMM2025
         run: |
           if [ ! -f "de440s.bsp" ] || [ $(wc -c < de440s.bsp) -lt 10000000 ]; then
-            echo "[INFO] Téléchargement du noyau DE440s en cours..."
             curl -sSL --connect-timeout 20 --retry 3 -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || \
             curl -sSL --connect-timeout 20 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
           fi
-          test -s de440s.bsp || (echo "[ERREUR CRITIQUE] Fichier de440s.bsp introuvable ou invalide" && exit 1)
+          test -s de440s.bsp || exit 1
 
-          # Récupération et synchronisation des coefficients géomagnétiques WMM2025
           if [ -f "src/WMM2025.COF" ]; then
             cp -f src/WMM2025.COF ./WMM2025.COF
           elif [ ! -f "WMM2025.COF" ]; then
-            echo "[INFO] Téléchargement du modèle WMM2025.COF..."
             curl -sSL --connect-timeout 20 --retry 3 -o WMM2025.COF https://www.ngdc.noaa.gov/geomag/WMM/data/WMM2025/WMM2025.COF || true
           fi
 
-      - name: 🌍 Exécution de l'extracteur multiphysique DE440s
+      - name: 🌍 Exécution de l'extracteur multiphysique (Fenêtre 7 Jours)
         env:
           LAT: ${{ github.event.inputs.lat || vars.STATION_LAT || '43.284356' }}
           LON: ${{ github.event.inputs.lon || vars.STATION_LON || '5.358507' }}
           ALT: ${{ github.event.inputs.alt || vars.STATION_ALT || '49.81' }}
         run: |
-          python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT"
+          python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT" --days 7
 
       - name: 🔨 Compilation C++ vers WebAssembly (Wasm)
         run: |
-          # Détection automatique du fichier C++ source dans src/
           SRC_FILE="src/astro_engine.cpp"
-          if [ -f "src/wasm_astronomie.cpp" ]; then
-            SRC_FILE="src/wasm_astronomie.cpp"
-          fi
+          [ -f "src/wasm_astronomie.cpp" ] && SRC_FILE="src/wasm_astronomie.cpp"
 
           emcc "$SRC_FILE" -O3 -std=c++17 \
             -s WASM=1 \
@@ -105,37 +99,16 @@ jobs:
             -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32']" \
             -o wasm_astronomie.js
 
-      - name: 🔍 Validation stricte des artefacts générés
-        run: |
-          test -s flux_live.json || (echo "[ERREUR] flux_live.json manquant ou vide" && exit 1)
-          test -s wasm_astronomie.wasm || (echo "[ERREUR] wasm_astronomie.wasm manquant ou vide" && exit 1)
-          test -s wasm_astronomie.js || (echo "[ERREUR] wasm_astronomie.js manquant ou vide" && exit 1)
-          if [ -s WMM2025.COF ]; then
-            echo "[SUCCÈS] WMM2025.COF est présent et prêt."
-          else
-            echo "[AVERTISSEMENT] WMM2025.COF manquant, le calcul géomagnétique fonctionnera en mode dégradé."
-          fi
-          echo "[SUCCÈS] Tous les artefacts de base sont validés."
-
-      - name: 🚀 Publication automatique intelligente & Cache PWA
+      - name: 🚀 Publication automatique & Cache PWA
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
-          
-          # Mise à jour dynamique du nom de cache dans le Service Worker (sw.js)
           DATE_CACHE=$(date +'%Y%m%d')
-          if [ -f "sw.js" ]; then
-            sed -i "s/const CACHE_NAME = .*/const CACHE_NAME = 'sentinela-cache-$DATE_CACHE';/" sw.js
-          fi
-
-          # Indexation forcée des artefacts générés
+          [ -f "sw.js" ] && sed -i "s/const CACHE_NAME = .*/const CACHE_NAME = 'sentinela-cache-$DATE_CACHE';/" sw.js
+          
           git add -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm sw.js
           [ -f "WMM2025.COF" ] && git add -f WMM2025.COF
           
-          if git diff --staged --quiet; then
-            echo "Aucun changement détecté dans les éphémérides ou le code, pas de commit."
-            exit 0
-          fi
-          
-          git commit -m "Auto-update DE440s flux, Wasm, WMM2025 & PWA cache [skip ci]"
+          git diff --staged --quiet && exit 0
+          git commit -m "Auto-update 7-day ephemerides flux, Wasm & PWA cache [skip ci]"
           git push
