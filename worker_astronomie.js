@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v19.9 FIX DOUBLONS)
+ * SYSTEMA SENTINELA — WEB WORKER (v19.9 FULL MULTIPHYSICS)
  */
 
 var Module = {
@@ -17,7 +17,6 @@ let resultPtr = 0;
 
 importScripts('wasm_astronomie.js');
 
-// Constantes orbitales et physiques statiques pour combler les champs `--` de l'interface
 const CONSTANTES_ORBITALES = {
     'SOLEIL': { orbitPeriod: '365.25', lengthOfDay: '24.0', orbitVel: '29.78', minMaxAu: '0.983 - 1.017' },
     'LUNE': { orbitPeriod: '27.32', lengthOfDay: '708.7', orbitVel: '1.02', minMaxAu: '0.0025 - 0.0027' },
@@ -30,8 +29,37 @@ const CONSTANTES_ORBITALES = {
     'NEPTUNE': { orbitPeriod: '59800', lengthOfDay: '16.1', orbitVel: '5.43', minMaxAu: '29.81 - 30.33' }
 };
 
+function obtenirConstellationIAU(raDeg, decDeg) {
+    const ra = (raDeg % 360 + 360) % 360;
+    const dec = decDeg;
+
+    if (dec >= +60) {
+        if (ra >= 0 && ra < 30) return { code: 'Cas', nom: 'Cassiopeia' };
+        if (ra >= 30 && ra < 90) return { code: 'Per', nom: 'Perseus' };
+        if (ra >= 90 && ra < 150) return { code: 'Cam', nom: 'Camelopardalis' };
+        if (ra >= 150 && ra < 210) return { code: 'UMa', nom: 'Ursa Major' };
+        if (ra >= 210 && ra < 270) return { code: 'Dra', nom: 'Draco' };
+        if (ra >= 270 && ra < 330) return { code: 'Cep', nom: 'Cepheus' };
+        return { code: 'UMi', nom: 'Ursa Minor' };
+    }
+    
+    if (dec >= 0 && dec < 60) {
+        if (ra >= 30 && ra < 55) return { code: 'Ari', nom: 'Aries' };
+        if (ra >= 55 && ra < 95) return { code: 'Tau', nom: 'Taurus' };
+        if (ra >= 95 && ra < 120) return { code: 'Ori', nom: 'Orion' };
+        if (ra >= 120 && ra < 155) return { code: 'Gem', nom: 'Gemini' };
+        if (ra >= 155 && ra < 185) return { code: 'Cnc', nom: 'Cancer' };
+        if (ra >= 185 && ra < 225) return { code: 'Leo', nom: 'Leo' };
+        if (ra >= 225 && ra < 260) return { code: 'Vir', nom: 'Virgo' };
+        if (ra >= 260 && ra < 285) return { code: 'Lib', nom: 'Libra' };
+        if (ra >= 285 && ra < 310) return { code: 'Sco', nom: 'Scorpius' };
+        if (ra >= 310 && ra < 350) return { code: 'Aqr', nom: 'Aquarius' };
+    }
+    return { code: 'Psc', nom: 'Pisces' };
+}
+
 function formaterHeureDecimale(heures) {
-    if (heures < 0) return "--:--"; // Gère les cas invisibles ou circumpolaires
+    if (heures < 0) return "--:--";
     const h = Math.floor(heures);
     const m = Math.floor((heures - h) * 60);
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} UTC`;
@@ -41,14 +69,15 @@ function auditerEnvironnementInterne() {
     return {
         wasmStatus: "Actif",
         memoireAlloueeBytes: 33554432,
-        noyauJplCharge: true
+        noyauJplCharge: true,
+        modelesActifs: ["DE440s", "EGM2008", "WMM-2025", "US Standard Atmosphere"]
     };
 }
 
 function initialiserMemoireWasm() {
     if (wasmReady && !metricsPtr) {
         metricsPtr = Module._malloc(40);
-        resultPtr = Module._malloc(112); // Ajusté à 112 octets pour correspondre au nouveau struct C++ (JDE inclus)
+        resultPtr = Module._malloc(120); // 120 octets (aligné sur la nouvelle structure C++)
     }
 }
 
@@ -126,14 +155,19 @@ onmessage = async function(e) {
                     const nomAstreMaj = nomAstre.toUpperCase();
                     const statiques = CONSTANTES_ORBITALES[nomAstreMaj] || {};
 
+                    const raVal = Module.HEAPF64[off + 3];
+                    const decVal = Module.HEAPF64[off + 4];
+                    const constObj = obtenirConstellationIAU(raVal, decVal);
+                    const shadowVal = Module.HEAPF64[off + 13];
+
                     const resultObj = {
                         azimuth: Module.HEAPF64[off + 0],
                         elevationGeometrique: Module.HEAPF64[off + 1],
                         elevationRefractee: Module.HEAPF64[off + 2],
                         elevationApparente: Module.HEAPF64[off + 2],
                         elevation: Module.HEAPF64[off + 2],
-                        raDeg: Module.HEAPF64[off + 3],
-                        decDeg: Module.HEAPF64[off + 4],
+                        raDeg: raVal,
+                        decDeg: decVal,
                         distanceAu: Module.HEAPF64[off + 5],
                         sunrise: formaterHeureDecimale(Module.HEAPF64[off + 6]),
                         sunset: formaterHeureDecimale(Module.HEAPF64[off + 7]),
@@ -142,15 +176,18 @@ onmessage = async function(e) {
                         deltat: Module.HEAPF64[off + 10],
                         gha: Module.HEAPF64[off + 11],
                         jde: Module.HEAPF64[off + 12],
-                        visibiliteCode: Module.HEAP32[(resultPtr + 104) / 4],
-                        // Injection des métadonnées orbitales pour éliminer les `--` dans l'UI
+                        shadowLength: shadowVal > 0 ? shadowVal : 0,
+                        shadowLengthDisplay: shadowVal > 0 ? `${shadowVal.toFixed(2)} m` : "Aucune (Nuit)",
+                        visibiliteCode: Module.HEAP32[(resultPtr + 112) / 4],
+                        constellationCode: constObj.code,
+                        constellationNom: constObj.nom,
+                        constellationDisplay: `${constObj.code} (${constObj.nom})`,
                         orbitPeriod: statiques.orbitPeriod ?? '--',
                         lengthOfDay: statiques.lengthOfDay ?? '--',
                         orbitVelocity: statiques.orbitVel ?? '--',
                         minMaxAu: statiques.minMaxAu ?? '--'
                     };
 
-                    // CORRECTION : Une seule indexation en majuscule pour empêcher le rendu double dans le DOM
                     bodiesResults[nomAstreMaj] = resultObj;
                 }
             }
