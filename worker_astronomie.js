@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v19.8 FIX COMPLET)
+ * SYSTEMA SENTINELA — WEB WORKER (v19.9 FIX DOUBLONS)
  */
 
 var Module = {
@@ -150,9 +150,8 @@ onmessage = async function(e) {
                         minMaxAu: statiques.minMaxAu ?? '--'
                     };
 
-                    // Double indexation (MAJUSCULE et minuscule) pour compatibilité DOM
+                    // CORRECTION : Une seule indexation en majuscule pour empêcher le rendu double dans le DOM
                     bodiesResults[nomAstreMaj] = resultObj;
-                    bodiesResults[nomAstre.toLowerCase()] = resultObj;
                 }
             }
 
