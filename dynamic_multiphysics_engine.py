@@ -9,6 +9,7 @@ import numpy as np
 from numpy.polynomial import Chebyshev
 from skyfield.api import Loader
 from skyfield.framelib import itrs
+from skyfield import almanac
 
 def obtenir_ondulation_egm2008_approchee(lat, lon):
     rad_lat = np.radians(lat)
@@ -112,12 +113,40 @@ def main():
             arc["mag"] = donnees["mag"]
         matrice_chebyshev[nom] = arcs
 
+    # --- CALCUL DES ÉPHÉMÉRIDES ALMANACH (Phases lunaires & Saisons) ---
+    t0 = ts.utc(aujourdhui.year, aujourdhui.month, aujourdhui.day)
+    t1 = ts.utc(aujourdhui.year + 1, aujourdhui.month, aujourdhui.day)
+
+    try:
+        phases, valeurs_phases = almanac.find_discrete(t0, t1, almanac.moon_phases(eph))
+        next_new_moon = next((t.utc_iso() for t, v in zip(phases, valeurs_phases) if v == 0), "--")
+        next_full_moon = next((t.utc_iso() for t, v in zip(phases, valeurs_phases) if v == 2), "--")
+    except Exception:
+        next_new_moon, next_full_moon = "--", "--"
+
+    try:
+        saisons, valeurs_saisons = almanac.find_discrete(t0, t1, almanac.seasons(eph))
+        eq_mar = next((t.utc_iso() for t, v in zip(saisons, valeurs_saisons) if v == 0), "--")
+        sol_jun = next((t.utc_iso() for t, v in zip(saisons, valeurs_saisons) if v == 1), "--")
+        eq_sep = next((t.utc_iso() for t, v in zip(saisons, valeurs_saisons) if v == 2), "--")
+        sol_dec = next((t.utc_iso() for t, v in zip(saisons, valeurs_saisons) if v == 3), "--")
+    except Exception:
+        eq_mar, sol_jun, eq_sep, sol_dec = "--", "--", "--", "--"
+
     payload = {
         "INFRASTRUCTURE": f"SYSTEMA SENTINELA — DE440s GEOCENTRIC ({jours_total} JOURS HORS-LIGNE)",
         "GENERATION_TIMESTAMP_MS": int(time.time() * 1000),
         "DATE_REF": aujourdhui.isoformat(),
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_ortho},
         "METEO_DEFAUT": {"tempC": 15.0, "presHpa": 1013.25},
+        "ALMANAC": {
+            "NEXT_NEW_MOON": next_new_moon,
+            "NEXT_FULL_MOON": next_full_moon,
+            "MAR_EQUINOX": eq_mar,
+            "JUN_SOLSTICE": sol_jun,
+            "SEP_EQUINOX": eq_sep,
+            "DEC_SOLSTICE": sol_dec
+        },
         "DATA": matrice_chebyshev
     }
 
