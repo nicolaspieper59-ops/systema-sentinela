@@ -11,11 +11,9 @@ from skyfield.api import Loader
 from skyfield.framelib import itrs
 
 def obtenir_ondulation_egm2008_approchee(lat, lon):
-    """ Modèle géoïdal analytique EGM2008 à harmoniques simplifiées """
     rad_lat = np.radians(lat)
     rad_lon = np.radians(lon)
-    N = 17.0 * np.sin(rad_lat) - 11.0 * np.cos(2.0 * rad_lon) + 3.0 * np.sin(3.0 * rad_lat)
-    return N
+    return 17.0 * np.sin(rad_lat) - 11.0 * np.cos(2.0 * rad_lon) + 3.0 * np.sin(3.0 * rad_lat)
 
 def generer_arcs_chebyshev_adaptatif(temps_secondes, positions_xyz, tolerance_max, pas_arc):
     t = np.array(temps_secondes, dtype=float)
@@ -42,40 +40,37 @@ def generer_arcs_chebyshev_adaptatif(temps_secondes, positions_xyz, tolerance_ma
                 fit_x = Chebyshev.fit(t_norm, pos_arc[:, 0], degre)
                 fit_y = Chebyshev.fit(t_norm, pos_arc[:, 1], degre)
                 fit_z = Chebyshev.fit(t_norm, pos_arc[:, 2], degre)
-                
                 err_3d = np.sqrt((fit_x(t_norm) - pos_arc[:, 0])**2 + 
                                  (fit_y(t_norm) - pos_arc[:, 1])**2 + 
                                  (fit_z(t_norm) - pos_arc[:, 2])**2)
-                
                 if np.max(err_3d) <= tolerance_max:
                     break
                 degre += 2
 
             arcs.append({
-                "t_start": float(t_min),
-                "t_end": float(t_max),
+                "t_start": float(t_min), "t_end": float(t_max),
                 "degre_final": int(degre),
-                "cx": fit_x.coef.tolist(),
-                "cy": fit_y.coef.tolist(),
-                "cz": fit_z.coef.tolist()
+                "cx": fit_x.coef.tolist(), "cy": fit_y.coef.tolist(), "cz": fit_z.coef.tolist()
             })
         t_courant = t_suiv
-
     return arcs
 
 def main():
-    try:
-        lat_target = float(sys.argv[1]) if len(sys.argv) > 1 else 43.284356
-        lon_target = float(sys.argv[2]) if len(sys.argv) > 2 else 5.358507
-        alt_brute = float(sys.argv[3]) if len(sys.argv) > 3 else 49.81
-    except ValueError:
-        lat_target, lon_target, alt_brute = 43.284356, 5.358507, 49.81
+    lat_target = float(sys.argv[1]) if len(sys.argv) > 1 else 43.284356
+    lon_target = float(sys.argv[2]) if len(sys.argv) > 2 else 5.358507
+    alt_brute = float(sys.argv[3]) if len(sys.argv) > 3 else 49.81
+    
+    # Gestion de l'argument optionnel --days
+    jours_total = 7
+    if "--days" in sys.argv:
+        try:
+            jours_total = int(sys.argv[sys.argv.index("--days") + 1])
+        except (ValueError, IndexError):
+            pass
 
     alt_ortho = alt_brute - obtenir_ondulation_egm2008_approchee(lat_target, lon_target)
-
     kernel_path = 'de440s.bsp'
     if not os.path.exists(kernel_path):
-        print("[ERREUR CRITIQUE] Fichier de440s.bsp introuvable.")
         sys.exit(1)
 
     loader = Loader(os.getcwd(), verbose=False)
@@ -96,8 +91,8 @@ def main():
 
     donnees_brutes = {name: {"timestamps": [], "positions": [], "mag": mag} for name, (_, mag) in mapping_astres.items()}
 
-    # Acquisition des positions GÉOCENTRIQUES pures (Center-of-Earth ITRS)
-    for minute in range(1441):
+    total_minutes = jours_total * 1440 + 1
+    for minute in range(0, total_minutes, 10): # Échantillonnage optimisé à 10 min pour tenir sur 7 jours
         instant = date_base + timedelta(minutes=minute)
         t_sec = instant.timestamp()
         t_skyfield = ts.from_datetime(instant)
@@ -112,13 +107,13 @@ def main():
 
     matrice_chebyshev = {}
     for nom, donnees in donnees_brutes.items():
-        arcs = generer_arcs_chebyshev_adaptatif(donnees["timestamps"], donnees["positions"], 0.05, 3600)
+        arcs = generer_arcs_chebyshev_adaptatif(donnees["timestamps"], donnees["positions"], 0.05, 14400)
         for arc in arcs:
             arc["mag"] = donnees["mag"]
         matrice_chebyshev[nom] = arcs
 
     payload = {
-        "INFRASTRUCTURE": "SYSTEMA SENTINELA — DE440s GEOCENTRIC ITRS",
+        "INFRASTRUCTURE": f"SYSTEMA SENTINELA — DE440s GEOCENTRIC ({jours_total} JOURS HORS-LIGNE)",
         "GENERATION_TIMESTAMP_MS": int(time.time() * 1000),
         "DATE_REF": aujourdhui.isoformat(),
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_ortho},
@@ -128,8 +123,6 @@ def main():
 
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(',', ':'))
-
-    print("[SUCCÈS] flux_live.json géocentrique généré.")
 
 if __name__ == "__main__":
     main()
