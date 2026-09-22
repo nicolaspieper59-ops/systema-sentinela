@@ -111,4 +111,7 @@ jobs:
           
           git diff --staged --quiet && exit 0
           git commit -m "Auto-update 7-day ephemerides flux, Wasm & PWA cache [skip ci]"
-          git push
+          
+          # Intégration des modifications distantes avant l'envoi
+          git pull origin main --rebase
+          git push origin main
