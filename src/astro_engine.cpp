@@ -211,7 +211,7 @@ void calculerDepuisECEF(
         if (magEff <= 5.5) result->visibiliteCode = 1;
         else if (magEff <= 9.5) result->visibiliteCode = 2;
         else result->visibiliteCode = 3;
-    }
+}
 }
 
 }
