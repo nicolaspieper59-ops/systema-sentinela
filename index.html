@@ -67,6 +67,27 @@
         
         .time-utc { color: var(--sky); font-weight: bold; }
         .time-tsm { color: var(--tsm-color); font-weight: bold; }
+
+        /* Conteneur coulissant horizontal pour le tableau scientifique */
+.table-scientific-container {
+    width: 100%;
+    max-height: 70vh;
+    overflow-x: auto;
+    overflow-y: auto;
+    white-space: nowrap;
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    background: rgba(10, 15, 30, 0.85);
+    scrollbar-width: thin;
+    scrollbar-color: #00ffff rgba(0, 0, 0, 0.5);
+}
+
+/* Style des décimales Arc-en-ciel pour toutes les valeurs numériques */
+.rainbow-decimal {
+    background: linear-gradient(90deg, #ff007f, #ff7f00, #ffff00, #00ff7f, #00ffff, #7f00ff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 700;
+                      }
     </style>
 </head>
 <body>
@@ -635,6 +656,23 @@
         document.getElementById('val-station-nom').innerText = stationActive.nom;
         document.getElementById('val-station-coords').innerText = `${lat.toFixed(6)}° / ${lon.toFixed(6)}° / ${altM.toFixed(4)}m`;
         actualiserPositionCurseurGlobe(lat, lon);
+    }
+
+    function executerDiagnosticSysteme() {
+    const diag = {
+        gps: "geolocation" in navigator ? "ACTIF (GPS Web API)" : "INACTIF (Fallback Station Fixe)",
+        barometre: "Pressure" in window ? "ACTIF (Baro Sensor)" : "DÉGRADÉ (Modèle Altimétrique EGM2008)",
+        orientation: "DeviceOrientationEvent" in window ? "ACTIF (IMU)" : "INACTIF",
+        wasm: typeof Module !== 'undefined' && Module.HEAPF64 ? "OPÉRATIONNEL (32 Mo)" : "EN ATTENTE"
+    };
+
+    console.log(`[KERNEL DIAGNOSTIC] GPS: ${diag.gps} | Météo/Baro: ${diag.barometre} | IMU: ${diag.orientation} | Wasm: ${diag.wasm}`);
+    
+    // Affichage console HTML
+    const consoleBox = document.getElementById('console-kernel');
+    if (consoleBox) {
+        consoleBox.innerHTML += `<br>[${new Date().toLocaleTimeString()}] DIAGNOSTIC -> GPS: ${diag.gps} | Baro: ${diag.barometre}`;
+    }
     }
 
     async function chargerEtParserWMM() {
