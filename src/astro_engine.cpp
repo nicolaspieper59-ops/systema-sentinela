@@ -23,8 +23,9 @@ struct AstroResult {
     double irradiance;    
     double deltaT;        
     double ghaDeg;        
+    double jde;           // <-- AJOUT
     int visibiliteCode;   
-    int padding;          // Alignement pour forcer 104 octets propres
+    int padding;          // Alignement 8 octets conservé (total: 112 bytes)
 };
 
 struct SystemMetrics {
@@ -81,7 +82,8 @@ void calculerParametresSiderauxEtSolaires(
 
     double jd = (timestampSec / 86400.0) + 2440587.5;
     double d = jd - 2451545.0; 
-    double T = d / 36525.0;    
+    double T = d / 36525.0; 
+    result->jde = jd;
 
     double L0 = normaliserDegres(280.46646 + 36000.76983 * T);
     double M = normaliserDegres(357.52911 + 35999.05029 * T);
