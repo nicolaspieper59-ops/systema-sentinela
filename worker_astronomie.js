@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v19.6 STABLE)
+ * SYSTEMA SENTINELA — WEB WORKER (v19.7 FIX)
  */
 
 var Module = {
@@ -103,10 +103,12 @@ onmessage = async function(e) {
                     );
 
                     const off = resultPtr / 8;
-                    bodiesResults[nomAstre] = {
+                    const resultObj = {
                         azimuth: Module.HEAPF64[off + 0],
-                        elevationGeometrice: Module.HEAPF64[off + 1],
+                        elevationGeometrique: Module.HEAPF64[off + 1],
                         elevationRefractee: Module.HEAPF64[off + 2],
+                        elevationApparente: Module.HEAPF64[off + 2],
+                        elevation: Module.HEAPF64[off + 2],
                         raDeg: Module.HEAPF64[off + 3],
                         decDeg: Module.HEAPF64[off + 4],
                         distanceAu: Module.HEAPF64[off + 5],
@@ -118,13 +120,27 @@ onmessage = async function(e) {
                         ghaDeg: Module.HEAPF64[off + 11],
                         visibiliteCode: Module.HEAP32[(resultPtr + 96) / 4]
                     };
+
+                    // Double indexation (MAJUSCULE et minuscule) pour compatibilité DOM
+                    bodiesResults[nomAstre.toUpperCase()] = resultObj;
+                    bodiesResults[nomAstre.toLowerCase()] = resultObj;
                 }
             }
 
             postMessage({
                 type: 'RESULTS_COMPUTE',
                 timestamp: timestampUtc,
-                solarMetrics: { eqTempsMin, obliquiteDeg, longSolaireDeg, gastDeg, lstDeg, excentricite: 0.01671022 },
+                solarMetrics: { 
+                    eqTempsMin, 
+                    obliquiteDeg, 
+                    longSolaireDeg, 
+                    gastDeg, 
+                    lstDeg,
+                    gast: gastDeg,
+                    lst: lstDeg,
+                    gastLst: `${gastDeg.toFixed(4)}° / ${lstDeg.toFixed(4)}°`,
+                    excentricite: 0.01671022 
+                },
                 bodies: bodiesResults
             });
 
