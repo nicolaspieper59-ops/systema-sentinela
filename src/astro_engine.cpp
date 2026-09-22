@@ -9,23 +9,24 @@
 #define DEG2RAD (M_PI / 180.0)
 #define RAD2DEG (180.0 / M_PI)
 
-// Structure mémoire alignée à 8 octets (104 octets au total)
+// Structure mémoire alignée à 8 octets (120 octets au total)
 struct AstroResult {
-    double azim;          
-    double elevGeom;      
-    double elevRefractee; 
-    double raDeg;         
-    double decDeg;        
-    double distUA;        
-    double leverUT;       
-    double coucherUT;     
-    double airMass;       
-    double irradiance;    
-    double deltaT;        
-    double ghaDeg;        
-    double jde;           // <-- AJOUT
-    int visibiliteCode;   
-    int padding;          // Alignement 8 octets conservé (total: 112 bytes)
+    double azim;          // 0
+    double elevGeom;      // 8
+    double elevRefractee; // 16
+    double raDeg;         // 24
+    double decDeg;        // 32
+    double distUA;        // 40
+    double leverUT;       // 48
+    double coucherUT;     // 56
+    double airMass;       // 64
+    double irradiance;    // 72
+    double deltaT;        // 80
+    double ghaDeg;        // 88
+    double jde;           // 96
+    double shadowLength;  // 104
+    int visibiliteCode;   // 112
+    int padding;          // 116 (Total: 120 bytes)
 };
 
 struct SystemMetrics {
@@ -81,8 +82,6 @@ void calculerParametresSiderauxEtSolaires(
     if (!metrics) return;
 
     double jd = (timestampSec / 86400.0) + 2440587.5;
-    // Ligne 'result->jde = jd;' supprimée ici car 'result' n'est pas accessible dans cette portée
-
     double d = jd - 2451545.0; 
     double T = d / 36525.0; 
 
@@ -110,6 +109,17 @@ void calculerParametresSiderauxEtSolaires(
     
     metrics->gastDeg = normaliserDegres(gmst + dPsi * std::cos(eps * DEG2RAD));
     metrics->lstDeg = normaliserDegres(metrics->gastDeg + lonDeg);
+}
+
+// Modèle d'atmosphère standard dynamique selon l'altitude
+void obtenirAtmosphereStandard(double altM, double& tempOut, double& presOut) {
+    if (altM >= -500.0 && altM < 11000.0) {
+        tempOut = 15.0 - (0.0065 * altM);
+        presOut = 1013.25 * std::pow(1.0 - (2.25577e-5 * altM), 5.25588);
+    } else {
+        tempOut = 15.0;
+        presOut = 1013.25;
+    }
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -157,13 +167,29 @@ void calculerDepuisECEF(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
+    // Atmosphère dynamique
+    double tEff = tempC;
+    double pEff = presHpa;
+    if (tempC == 15.0 && presHpa == 1013.25) {
+        obtenirAtmosphereStandard(altM, tEff, pEff);
+    }
+
     if (result->elevGeom > -2.0) {
         double h = std::max(result->elevGeom, -1.0);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
-        double corMeteo = (presHpa / 1013.25) * (288.15 / (273.15 + tempC));
+        double corMeteo = (pEff / 1013.25) * (288.15 / (273.15 + tEff));
         result->elevRefractee = result->elevGeom + (refArcMin * corMeteo) / 60.0;
     } else {
         result->elevRefractee = result->elevGeom;
+    }
+
+    // Calcul de l'ombre portée (objet de référence de 1 mètre)
+    if (result->elevRefractee > 0.0) {
+        double alphaRad = result->elevRefractee * DEG2RAD;
+        double tanAlpha = std::tan(std::max(1e-4, alphaRad));
+        result->shadowLength = 1.0 / tanAlpha;
+    } else {
+        result->shadowLength = -1.0;
     }
 
     double lonTerrestreDeg = std::atan2(yECEF, xECEF) * RAD2DEG;
@@ -175,6 +201,7 @@ void calculerDepuisECEF(
     result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
 
     double jd = (timestampUtc / 86400.0) + 2440587.5;
+    result->jde = jd;
     double t = (2000.0 + (jd - 2451545.0) / 365.25) - 2000.0;
     result->deltaT = 62.92 + 0.32217 * t + 0.005589 * (t * t);
 
@@ -214,7 +241,7 @@ void calculerDepuisECEF(
         if (magEff <= 5.5) result->visibiliteCode = 1;
         else if (magEff <= 9.5) result->visibiliteCode = 2;
         else result->visibiliteCode = 3;
-}
+    }
 }
 
 }
