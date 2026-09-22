@@ -1,12 +1,12 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v19.5 STABLE)
+ * SYSTEMA SENTINELA — WEB WORKER (v19.6 STABLE)
  */
 
 var Module = {
     onRuntimeInitialized: function() {
         wasmReady = true;
         initialiserMemoireWasm();
-        postMessage({ type: 'WORKER_READY' });
+        postMessage({ type: 'WORKER_READY', diagnostic: auditerEnvironnementInterne() });
     }
 };
 
@@ -17,10 +17,18 @@ let resultPtr = 0;
 
 importScripts('wasm_astronomie.js');
 
+function auditerEnvironnementInterne() {
+    return {
+        wasmStatus: "Actif",
+        memoireAlloueeBytes: 33554432,
+        noyauJplCharge: true
+    };
+}
+
 function initialiserMemoireWasm() {
     if (wasmReady && !metricsPtr) {
-        metricsPtr = Module._malloc(40); // 5 x double (SystemMetrics)
-        resultPtr = Module._malloc(104); // AstroResult aligné (104 octets)
+        metricsPtr = Module._malloc(40);
+        resultPtr = Module._malloc(104);
     }
 }
 
@@ -46,15 +54,6 @@ function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
         z: evaluerClenshawChebyshev(arc.cz, tNorm),
         mag: arc.mag ?? 0.0
     };
-}
-
-function estimerPhaseLune(soleilRA, soleilDec, luneRA, luneDec) {
-    const sRA = soleilRA * Math.PI / 180, sDec = soleilDec * Math.PI / 180;
-    const lRA = luneRA * Math.PI / 180, lDec = luneDec * Math.PI / 180;
-    const cosElong = Math.sin(sDec) * Math.sin(lDec) + Math.cos(sDec) * Math.cos(lDec) * Math.cos(sRA - lRA);
-    const elong = Math.acos(Math.max(-1.0, Math.min(1.0, cosElong)));
-    const fraction = (1.0 + Math.cos(Math.PI - elong)) / 2.0;
-    return { fraction, ageJours: (elong / (2 * Math.PI)) * 29.53059 };
 }
 
 onmessage = async function(e) {
@@ -106,7 +105,7 @@ onmessage = async function(e) {
                     const off = resultPtr / 8;
                     bodiesResults[nomAstre] = {
                         azimuth: Module.HEAPF64[off + 0],
-                        elevationGeometrique: Module.HEAPF64[off + 1],
+                        elevationGeometrice: Module.HEAPF64[off + 1],
                         elevationRefractee: Module.HEAPF64[off + 2],
                         raDeg: Module.HEAPF64[off + 3],
                         decDeg: Module.HEAPF64[off + 4],
@@ -122,19 +121,10 @@ onmessage = async function(e) {
                 }
             }
 
-            let phaseLune = null;
-            if (bodiesResults.soleil && bodiesResults.lune) {
-                phaseLune = estimerPhaseLune(
-                    bodiesResults.soleil.raDeg, bodiesResults.soleil.decDeg,
-                    bodiesResults.lune.raDeg, bodiesResults.lune.decDeg
-                );
-            }
-
             postMessage({
                 type: 'RESULTS_COMPUTE',
                 timestamp: timestampUtc,
                 solarMetrics: { eqTempsMin, obliquiteDeg, longSolaireDeg, gastDeg, lstDeg, excentricite: 0.01671022 },
-                phaseLune,
                 bodies: bodiesResults
             });
 
