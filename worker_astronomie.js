@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v19.7 FIX)
+ * SYSTEMA SENTINELA — WEB WORKER (v19.8 FIX COMPLET)
  */
 
 var Module = {
@@ -17,6 +17,26 @@ let resultPtr = 0;
 
 importScripts('wasm_astronomie.js');
 
+// Constantes orbitales et physiques statiques pour combler les champs `--` de l'interface
+const CONSTANTES_ORBITALES = {
+    'SOLEIL': { orbitPeriod: '365.25', lengthOfDay: '24.0', orbitVel: '29.78', minMaxAu: '0.983 - 1.017' },
+    'LUNE': { orbitPeriod: '27.32', lengthOfDay: '708.7', orbitVel: '1.02', minMaxAu: '0.0025 - 0.0027' },
+    'MERCURE': { orbitPeriod: '88.0', lengthOfDay: '4222.6', orbitVel: '47.36', minMaxAu: '0.307 - 0.466' },
+    'VENUS': { orbitPeriod: '224.7', lengthOfDay: '2802.0', orbitVel: '35.02', minMaxAu: '0.718 - 0.728' },
+    'MARS': { orbitPeriod: '687.0', lengthOfDay: '24.6', orbitVel: '24.07', minMaxAu: '1.381 - 1.666' },
+    'JUPITER': { orbitPeriod: '4331', lengthOfDay: '9.9', orbitVel: '13.07', minMaxAu: '4.95 - 5.46' },
+    'SATURNE': { orbitPeriod: '10747', lengthOfDay: '10.7', orbitVel: '9.68', minMaxAu: '9.04 - 10.12' },
+    'URANUS': { orbitPeriod: '30589', lengthOfDay: '17.2', orbitVel: '6.80', minMaxAu: '18.28 - 20.11' },
+    'NEPTUNE': { orbitPeriod: '59800', lengthOfDay: '16.1', orbitVel: '5.43', minMaxAu: '29.81 - 30.33' }
+};
+
+function formaterHeureDecimale(heures) {
+    if (heures < 0) return "--:--"; // Gère les cas invisibles ou circumpolaires
+    const h = Math.floor(heures);
+    const m = Math.floor((heures - h) * 60);
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} UTC`;
+}
+
 function auditerEnvironnementInterne() {
     return {
         wasmStatus: "Actif",
@@ -28,7 +48,7 @@ function auditerEnvironnementInterne() {
 function initialiserMemoireWasm() {
     if (wasmReady && !metricsPtr) {
         metricsPtr = Module._malloc(40);
-        resultPtr = Module._malloc(104);
+        resultPtr = Module._malloc(112); // Ajusté à 112 octets pour correspondre au nouveau struct C++ (JDE inclus)
     }
 }
 
@@ -103,6 +123,9 @@ onmessage = async function(e) {
                     );
 
                     const off = resultPtr / 8;
+                    const nomAstreMaj = nomAstre.toUpperCase();
+                    const statiques = CONSTANTES_ORBITALES[nomAstreMaj] || {};
+
                     const resultObj = {
                         azimuth: Module.HEAPF64[off + 0],
                         elevationGeometrique: Module.HEAPF64[off + 1],
@@ -112,17 +135,23 @@ onmessage = async function(e) {
                         raDeg: Module.HEAPF64[off + 3],
                         decDeg: Module.HEAPF64[off + 4],
                         distanceAu: Module.HEAPF64[off + 5],
-                        leverUT: Module.HEAPF64[off + 6],
-                        coucherUT: Module.HEAPF64[off + 7],
+                        sunrise: formaterHeureDecimale(Module.HEAPF64[off + 6]),
+                        sunset: formaterHeureDecimale(Module.HEAPF64[off + 7]),
                         airMass: Module.HEAPF64[off + 8],
                         irradiance: Module.HEAPF64[off + 9],
-                        deltaT: Module.HEAPF64[off + 10],
-                        ghaDeg: Module.HEAPF64[off + 11],
-                        visibiliteCode: Module.HEAP32[(resultPtr + 96) / 4]
+                        deltat: Module.HEAPF64[off + 10],
+                        gha: Module.HEAPF64[off + 11],
+                        jde: Module.HEAPF64[off + 12],
+                        visibiliteCode: Module.HEAP32[(resultPtr + 104) / 4],
+                        // Injection des métadonnées orbitales pour éliminer les `--` dans l'UI
+                        orbitPeriod: statiques.orbitPeriod ?? '--',
+                        lengthOfDay: statiques.lengthOfDay ?? '--',
+                        orbitVelocity: statiques.orbitVel ?? '--',
+                        minMaxAu: statiques.minMaxAu ?? '--'
                     };
 
                     // Double indexation (MAJUSCULE et minuscule) pour compatibilité DOM
-                    bodiesResults[nomAstre.toUpperCase()] = resultObj;
+                    bodiesResults[nomAstreMaj] = resultObj;
                     bodiesResults[nomAstre.toLowerCase()] = resultObj;
                 }
             }
