@@ -829,13 +829,13 @@ function mettreAJourAlmanachUI(almanac) {
 }
 
     let lignesTableauCache = {};
-
-    let lignesTableauCache = {};
+const statutsVisibilite = ["Invisible", "Œil nu", "Jumelles", "Télescope"];
 
 function mettreAJourTableauAstres(bodiesData) {
     const tbody = document.getElementById('table-body');
     if (!tbody) return;
     
+    // Initialisation unique des lignes du tableau si elles n'existent pas encore
     if (Object.keys(lignesTableauCache).length === 0) {
         tbody.innerHTML = '';
         for (const nomAstre of Object.keys(bodiesData)) {
@@ -896,8 +896,7 @@ function mettreAJourTableauAstres(bodiesData) {
         }
     }
 
-    const statutsVisibilite = ["Invisible", "Œil nu", "Jumelles", "Télescope"];
-
+    // Mise à jour des valeurs pour chaque astre à chaque tick
     for (const [nomAstre, data] of Object.entries(bodiesData)) {
         const cache = lignesTableauCache[nomAstre];
         if (!cache) continue;
@@ -926,28 +925,8 @@ function mettreAJourTableauAstres(bodiesData) {
             cache.etat.setAttribute('data-code', data.visibiliteCode);
         }
     }
-        }
+}
 
-        const statutsVisibilite = ["Invisible", "Œil nu", "Jumelles", "Télescope"];
-
-        for (const [nomAstre, data] of Object.entries(bodiesData)) {
-            const cache = lignesTableauCache[nomAstre];
-            if (!cache) continue;
-
-            if (cache.el) cache.el.textContent = data.elevationGeometrique !== undefined ? data.elevationGeometrique.toFixed(6) + '°' : '--';
-            if (cache.az) cache.az.textContent = data.azimuth !== undefined ? data.azimuth.toFixed(6) + '°' : '--';
-            if (cache.dist) cache.dist.textContent = data.distanceAu !== undefined ? data.distanceAu.toFixed(8) : '--';
-            if (cache.mag) cache.mag.textContent = data.magnitude !== undefined ? data.magnitude.toFixed(2) : '--';
-            if (cache.ra) cache.ra.textContent = data.raDeg !== undefined ? data.raDeg.toFixed(6) + '°' : '--';
-            if (cache.dec) cache.dec.textContent = data.decDeg !== undefined ? data.decDeg.toFixed(6) + '°' : '--';
-            if (cache.am) cache.am.textContent = data.airMass !== undefined ? data.airMass.toFixed(3) : '--';
-            if (cache.irr) cache.irr.textContent = data.irradiance !== undefined ? data.irradiance.toFixed(2) : '--';
-            if (cache.etat) {
-                cache.etat.textContent = statutsVisibilite[data.visibiliteCode] ?? "Inconnu";
-                cache.etat.setAttribute('data-code', data.visibiliteCode);
-            }
-        }
-    }
 
     function appliquerCoordonneesManuelles(silencieux = false) {
         const lat = parseFloat(document.getElementById('input-lat').value.replace(',', '.'));
