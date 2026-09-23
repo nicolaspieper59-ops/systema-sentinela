@@ -176,6 +176,7 @@ onmessage = async function(e) {
                         raDeg: raVal,
                         decDeg: decVal,
                         distanceAu: Module.HEAPF64[off + 5],
+                        magnitude: posECEF.mag ?? 0.0, //
                         sunrise: formaterHeureDecimale(Module.HEAPF64[off + 6]),
                         sunset: formaterHeureDecimale(Module.HEAPF64[off + 7]),
                         airMass: Module.HEAPF64[off + 8],
