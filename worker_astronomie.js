@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v19.10 OPTIMIZED MULTIPHYSICS)
+ * SYSTEMA SENTINELA — WEB WORKER (v19.11 OPTIMIZED MULTIPHYSICS & ALMANACH)
  */
 
 var Module = {
@@ -70,14 +70,14 @@ function auditerEnvironnementInterne() {
         wasmStatus: "Actif",
         memoireAlloueeBytes: 33554432,
         noyauJplCharge: true,
-        modelesActifs: ["DE440s", "EGM2008", "WMM-2025", "US Standard Atmosphere"]
+        modelesActifs: ["DE440s", "EGM2008", "WMM-2025", "US Standard Atmosphere", "Skyfield Almanac"]
     };
 }
 
 function initialiserMemoireWasm() {
     if (wasmReady && !metricsPtr) {
         metricsPtr = Module._malloc(40);
-        resultPtr = Module._malloc(120); // 120 octets (aligné sur la structure C++)
+        resultPtr = Module._malloc(256); // Alloué à 256 octets pour couvrir la structure étendue
     }
 }
 
@@ -95,7 +95,6 @@ function evaluerClenshawChebyshev(coeffs, x) {
 function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
     if (!arcsAstre || arcsAstre.length === 0) return null;
     
-    // Recherche de l'arc temporel correspondant avec repli sécurisé sur le premier/dernier arc
     let arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end);
     if (!arc) {
         if (timestampSec < arcsAstre[0].t_start) arc = arcsAstre[0];
@@ -166,7 +165,7 @@ onmessage = async function(e) {
                     const raVal = Module.HEAPF64[off + 3];
                     const decVal = Module.HEAPF64[off + 4];
                     const constObj = obtenirConstellationIAU(raVal, decVal);
-                    const shadowVal = Module.HEAPF64[off + 13];
+                    const shadowVal = Module.HEAPF64[off + 14];
 
                     bodiesResults[nomAstreMaj] = {
                         azimuth: Module.HEAPF64[off + 0],
@@ -186,7 +185,7 @@ onmessage = async function(e) {
                         jde: Module.HEAPF64[off + 12],
                         shadowLength: shadowVal > 0 ? shadowVal : 0,
                         shadowLengthDisplay: shadowVal > 0 ? `${shadowVal.toFixed(2)} m` : "Aucune (Nuit)",
-                        visibiliteCode: Module.HEAP32[(resultPtr + 112) / 4],
+                        visibiliteCode: Module.HEAP32[(resultPtr + 136) / 4],
                         constellationCode: constObj.code,
                         constellationNom: constObj.nom,
                         constellationDisplay: `${constObj.code} (${constObj.nom})`,
@@ -201,6 +200,7 @@ onmessage = async function(e) {
             postMessage({
                 type: 'RESULTS_COMPUTE',
                 timestamp: timestampUtc,
+                almanac: matriceJplGlobal?.ALMANACH || null,
                 solarMetrics: { 
                     eqTempsMin, 
                     obliquiteDeg, 
