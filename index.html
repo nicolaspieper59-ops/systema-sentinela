@@ -901,7 +901,7 @@ function mettreAJourTableauAstres(bodiesData) {
         const cache = lignesTableauCache[nomAstre];
         if (!cache) continue;
 
-        if (cache.el) cache.el.textContent = data.elevationGeometrique !== undefined ? data.elevationGeometrique.toFixed(6) + '°' : '--';
+        if (cache.el) cache.el.textContent = data.elevationRefractee !== undefined ? data.elevationRefractee.toFixed(6) + '°' : '--';
         if (cache.az) cache.az.textContent = data.azimuth !== undefined ? data.azimuth.toFixed(6) + '°' : '--';
         if (cache.dist) cache.dist.textContent = data.distanceAu !== undefined ? data.distanceAu.toFixed(8) : '--';
         if (cache.minmax) cache.minmax.textContent = data.minMaxAu ?? '--';
