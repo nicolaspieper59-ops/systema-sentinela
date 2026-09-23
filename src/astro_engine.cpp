@@ -20,12 +20,15 @@ struct AstroResult {
     double coucherUT;     
     double airMass;       
     double irradiance;    
-    double magnitudeApparente; // Magnitude affectée par l'extinction atmosphérique
+    double magnitudeApparente; 
     double deltaT;        
     double ghaDeg;        
     double jde;           
     double shadowLength;  
+    double moonPhasePct;  // Pourcentage d'illumination de la Lune (0 à 100)
+    double moonAgeDays;   // Âge de la Lune en jours depuis la dernière Nouvelle Lune
     int visibiliteCode;   
+    int seasonCode;       // -1 par défaut, ou 0-3 pour les équinoxes/solstices
     int padding;          
 };
 
@@ -60,10 +63,9 @@ void obtenirPositionAstreChebyshev(
     
     outCoords[0] = evaluerChebyshev(coeffsX, degre, xNorm);
     outCoords[1] = evaluerChebyshev(coeffsY, degre, xNorm);
-    outCoords[2] = evalyerChebyshev(coeffsZ, degre, xNorm); // Note: correct spelling helper if needed
+    outCoords[2] = evaluerChebyshev(coeffsZ, degre, xNorm);
 }
 
-// Implémentation de type Stellarium pour l'Atmosphère, Réfraction et Extinction
 EMSCRIPTEN_KEEPALIVE
 void calculerDepuisECEFStellarium(
     double xECEF, double yECEF, double zECEF,
@@ -107,47 +109,37 @@ void calculerDepuisECEFStellarium(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
-    // --- 1. REFRACTION ATMOSPHERIQUE (Modèle Stellarium / Bennett pondéré Baromètre/Thermomètre) ---
     if (result->elevGeom > -2.0) {
         double h = std::max(result->elevGeom, -1.0);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
-        
-        // Facteur de correction dynamique basé sur la météo réelle (Baromètre & Thermomètre)
         double facteurMeteoBaro = (presHpa / 1013.25) * (288.15 / (273.15 + tempC));
         result->elevRefractee = result->elevGeom + (refArcMin * facteurMeteoBaro) / 60.0;
     } else {
         result->elevRefractee = result->elevGeom;
     }
 
-    // --- 2. MASSE D'AIR ET EXTINCTION (Modèle de Rozenberg / Stellarium) ---
     result->airMass = 0.0;
     if (result->elevRefractee > 0.0) {
         double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
-        // Formule de Rozenberg précise pour l'air mass incluant les couches denses proches de l'horizon
         result->airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
     } else {
-        result->airMass = 40.0; // Saturation sous l'horizon
+        result->airMass = 40.0;
     }
 
-    // Atténuation de la magnitude apparente par extinction atmosphérique (Loi de Bouguer-Lambert)
-    // Magnitude apparente finale = Magnitude brute + (Coefficient d'extinction * Masse d'air)
     result->magnitudeApparente = magBruteAstre + (extinctionCoeff * result->airMass);
 
-    // Irradiance reçue en tenant compte de l'extinction
     if (result->elevRefractee > 0.0) {
         result->irradiance = 1361.0 * std::pow(0.7, result->airMass) / (result->distUA * result->distUA);
     } else {
         result->irradiance = 0.0;
     }
 
-    // Ombre portée de l'objet de référence (1 mètre)
     if (result->elevRefractee > 0.0) {
         result->shadowLength = 1.0 / std::tan(std::max(1e-4, result->elevRefractee * DEG2RAD));
     } else {
         result->shadowLength = -1.0;
     }
 
-    // Coordonnées équatoriales & Temps Sidéral
     double lonTerrestreDeg = std::atan2(yECEF, xECEF) * RAD2DEG;
     result->raDeg = normaliserDegres(lonTerrestreDeg + (eraRad * RAD2DEG));
     double normR = std::sqrt(xECEF*xECEF + yECEF*yECEF + zECEF*zECEF);
@@ -156,15 +148,19 @@ void calculerDepuisECEFStellarium(
 
     double jd = (timestampUtc / 86400.0) + 2440587.5;
     result->jde = jd;
-    result->deltaT = 69.0; // Secondes d'écart TT-UTC standard
+    result->deltaT = 69.0;
 
-    // Code de visibilité affiné avec la magnitude atténuée réelle
+    // Valeurs par défaut initiales pour l'almanach lunaire spécifique
+    result->moonPhasePct = 50.0;
+    result->moonAgeDays = 14.0;
+    result->seasonCode = -1;
+
     if (result->elevRefractee < 0.0) {
         result->visibiliteCode = 0;
     } else {
-        if (result->magnitudeApparente <= 5.5) result->visibiliteCode = 1; // Œil nu
-        else if (result->magnitudeApparente <= 9.5) result->visibiliteCode = 2; // Jumelles
-        else result->visibiliteCode = 3; // Télescope requis
+        if (result->magnitudeApparente <= 5.5) result->visibiliteCode = 1;
+        else if (result->magnitudeApparente <= 9.5) result->visibiliteCode = 2;
+        else result->visibiliteCode = 3;
     }
 }
 
