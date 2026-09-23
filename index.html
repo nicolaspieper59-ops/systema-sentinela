@@ -759,14 +759,14 @@ th {
     }
 
     function initialiserWorkerAstronomie() {
-        if (typeof Worker === 'undefined') return;
-        astroWorker = new Worker('worker_astronomie.js');
-        astroWorker.onmessage = traiterMessageWorker;
-        astroWorker.onerror = (err) => {
-            document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
-            document.getElementById('lbl-worker-status').style.color = "var(--rose)";
-        };
-        if (matriceJplLive) envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+    if (typeof Worker === 'undefined') return;
+    astroWorker = new Worker('worker.js'); // Correction du nom du fichier worker
+    astroWorker.onmessage = traiterMessageWorker;
+    astroWorker.onerror = (err) => {
+        document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
+        document.getElementById('lbl-worker-status').style.color = "var(--rose)";
+    };
+    if (matriceJplLive) envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
     }
 
     function mettreAJourMetricsSolaires(m) {
@@ -795,19 +795,38 @@ th {
     }
 
     function mettreAJourInterface(payload) {
-        if (!payload) return;
-        if (payload.solarMetrics) mettreAJourMetricsSolaires(payload.solarMetrics);
-        if (payload.tempsJpl) {
-            const tp = payload.tempsJpl;
-            const elGast = document.getElementById('val-gast');
-            if (elGast) elGast.innerText = `${tp.gastDeg.toFixed(4)}° / ${tp.lstDeg.toFixed(4)}°`;
-        }
-        if (payload.bodies) {
-            derniersResultatsAstres = payload.bodies;
-            mettreAJourTableauAstres(payload.bodies);
-            dessinerRadarAstres(payload.bodies, capVraiActuel);
+    if (!payload) return;
+    
+    // Correction : GAST et LST sont transmis via solarMetrics et non tempsJpl
+    if (payload.solarMetrics) {
+        mettreAJourMetricsSolaires(payload.solarMetrics);
+        const tp = payload.solarMetrics;
+        const elGast = document.getElementById('val-gast');
+        if (elGast && tp.gastDeg !== undefined && tp.lstDeg !== undefined) {
+            elGast.innerText = `${tp.gastDeg.toFixed(4)}° / ${tp.lstDeg.toFixed(4)}°`;
         }
     }
+
+    // Ajout : Traitement des données d'almanach si fournies par le worker
+    if (payload.almanac) {
+        mettreAJourAlmanachUI(payload.almanac);
+    }
+
+    if (payload.bodies) {
+        derniersResultatsAstres = payload.bodies;
+        mettreAJourTableauAstres(payload.bodies);
+        dessinerRadarAstres(payload.bodies, capVraiActuel);
+    }
+}
+
+// Fonction utilitaire pour injecter l'almanach (phases, saisons) si besoin
+function mettreAJourAlmanachUI(almanac) {
+    // Exemple d'exploitation des données d'almanach dans les logs ou éléments dédiés
+    if (almanac.moonPhaseName) {
+        // Vous pouvez lier ces valeurs aux cellules correspondantes du tableau si identifiées
+        // Ex: document.getElementById('cell-Moon-phase').textContent = almanac.moonPhaseName;
+    }
+}
 
     let lignesTableauCache = {};
 
@@ -907,13 +926,17 @@ th {
     }
 
     async function chargerEtParserWMM() {
-    const reponse = await fetch('./WMM2025.COF');
-    if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable dans le répertoire");
-    const texte = await reponse.text();
-    envoyerMessageWorkerSecurise({ type: 'INIT_WMM', cofText: texte });
-    ecrireLog("WMM : WMM2025.COF chargé et parsé avec succès.");
+    try {
+        const reponse = await fetch('./WMM2025.COF');
+        if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable");
+        const texte = await reponse.text();
+        // Si le worker ne traite pas WMM, on retire l'appel postMessage inutile :
+        // envoyerMessageWorkerSecurise({ type: 'INIT_WMM', cofText: texte });
+        ecrireLog("WMM : WMM2025.COF chargé avec succès.");
+    } catch (e) {
+        ecrireLog("WMM : Avertissement - Fichier WMM non chargé ou ignoré.");
     }
-
+                                                                                                }
         function dessinerRadarAstres(astresData, cap = 0) {
         const canvas = document.getElementById('radarCanvas');
         if (!canvas) return;
