@@ -732,19 +732,13 @@ th {
     }
 
     async function chargerFluxLiveJPL() {
-    try {
-        const reponse = await fetch('flux_live.json');
-        if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
-        matriceJplLive = await reponse.json();
-        document.getElementById('lbl-jpl-status').innerText = "SYNCHRONISÉ";
-        document.getElementById('lbl-jpl-status').style.color = "var(--neon-green)";
-        envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
-    } catch (e) {
-        document.getElementById('lbl-jpl-status').innerText = "ERREUR : FLUX INTROUVABLE";
-        document.getElementById('lbl-jpl-status').style.color = "var(--rose)";
-        ecrireLog(`CRITIQUE : Impossible de charger flux_live.json -> ${e.message}`);
-        throw e; // Stoppe l'exécution si le fichier est requis
-    }
+    const reponse = await fetch('flux_live.json');
+    if (!reponse.ok) throw new Error(`HTTP ${reponse.status} - flux_live.json introuvable`);
+    matriceJplLive = await reponse.json();
+    document.getElementById('lbl-jpl-status').innerText = "SYNCHRONISÉ";
+    document.getElementById('lbl-jpl-status').style.color = "var(--neon-green)";
+    envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+    ecrireLog("JPL : flux_live.json chargé avec succès.");
     }
 
     function traiterMessageWorker(e) {
@@ -913,17 +907,11 @@ th {
     }
 
     async function chargerEtParserWMM() {
-    try {
-        const reponse = await fetch('./WMM2025.COF');
-        if (!reponse.ok) throw new Error(`Fichier WMM2025.COF introuvable`);
-        const texte = await reponse.text();
-        envoyerMessageWorkerSecurise({ type: 'INIT_WMM', cofText: texte });
-        ecrireLog("WMM : Fichier WMM2025.COF chargé et parsé avec succès.");
-    } catch (e) { 
-        document.getElementById('val-dec-wmm').innerText = "ERREUR FICHIER";
-        ecrireLog(`CRITIQUE WMM : ${e.message}`);
-        throw e;
-    }
+    const reponse = await fetch('./WMM2025.COF');
+    if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable dans le répertoire");
+    const texte = await reponse.text();
+    envoyerMessageWorkerSecurise({ type: 'INIT_WMM', cofText: texte });
+    ecrireLog("WMM : WMM2025.COF chargé et parsé avec succès.");
     }
 
         function dessinerRadarAstres(astresData, cap = 0) {
