@@ -760,7 +760,7 @@ th {
 
     function initialiserWorkerAstronomie() {
     if (typeof Worker === 'undefined') return;
-    astroWorker = new Worker('worker.js'); // Correction du nom du fichier worker
+    astroWorker = new Worker('worker_astronomie.js'); // ✔️ Corrigé
     astroWorker.onmessage = traiterMessageWorker;
     astroWorker.onerror = (err) => {
         document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
