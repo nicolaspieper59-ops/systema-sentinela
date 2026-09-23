@@ -12,12 +12,10 @@ from skyfield.framelib import itrs
 from skyfield import almanac
 
 def obtenir_meteo_reelle():
-    """Récupération depuis un capteur local, une API météo ou valeurs par défaut"""
-    # Exemple connectable à un baromètre I2C/SPI ou une API météo locale
     return {
-        "tempC": 18.5,      # Température réelle relevée
-        "presHpa": 1018.5,  # Pression réelle du baromètre en hPa/mbar
-        "extinctionCoeff": 0.25 # Coefficient d'extinction atmosphérique (clarté du ciel)
+        "tempC": 18.5,
+        "presHpa": 1018.5,
+        "extinctionCoeff": 0.25
     }
 
 def main():
@@ -46,6 +44,34 @@ def main():
     date_base = datetime(aujourdhui.year, aujourdhui.month, aujourdhui.day, 0, 0, tzinfo=timezone.utc)
     terre = eph['earth']
 
+    # --- CALCUL DE L'ALMANACH EXACT (Phases & Saisons) ---
+    t0 = ts.from_datetime(date_base)
+    t1 = ts.from_datetime(date_base + timedelta(days=jours_total))
+
+    # Phases lunaires
+    phases_idx, phases_t = almanac.find_moon_phases(eph, t0, t1)
+    phase_noms = ["Nouvelle Lune", "Premier Quartier", "Pleine Lune", "Dernier Quartier"]
+    lune_phases_events = []
+    for p_idx, p_t in zip(phases_idx, phases_t):
+        lune_phases_events.append({
+            "type": int(p_idx),
+            "nom": phase_noms[p_idx],
+            "utc": p_t.utc_iso(),
+            "timestamp": p_t.utc_datetime().timestamp()
+        })
+
+    # Saisons astronomiques
+    seasons_idx, seasons_t = almanac.find_seasons(eph, t0, t1)
+    season_noms = ["Équinoxe de Printemps", "Solstice d'Été", "Équinoxe d'Automne", "Solstice d'Hiver"]
+    seasons_events = []
+    for s_idx, s_t in zip(seasons_idx, seasons_t):
+        seasons_events.append({
+            "type": int(s_idx),
+            "nom": season_noms[s_idx],
+            "utc": s_t.utc_iso(),
+            "timestamp": s_t.utc_datetime().timestamp()
+        })
+
     mapping_astres = {
         'soleil': ('sun', -26.74), 'lune': ('moon', -12.74),
         'mercure': ('mercury', -0.42), 'venus': ('venus', -4.40),
@@ -72,7 +98,6 @@ def main():
 
     matrice_chebyshev = {}
     for nom, donnees in donnees_brutes.items():
-        # Génération des arcs de Chebyshev (tolérance 0.05m, pas de 4h)
         t_arr = np.array(donnees["timestamps"], dtype=float)
         x_c = np.array([p[0] for p in donnees["positions"]], dtype=float)
         y_c = np.array([p[1] for p in donnees["positions"]], dtype=float)
@@ -118,12 +143,16 @@ def main():
         "GENERATION_TIMESTAMP_MS": int(time.time() * 1000),
         "STATION_BASE_GPS": {"lat": lat_target, "lon": lon_target, "alt": alt_brute},
         "METEO_REELLE": meteo,
+        "ALMANACH": {
+            "phases_lunaires": lune_phases_events,
+            "saisons": seasons_events
+        },
         "DATA": matrice_chebyshev
     }
 
     with open("flux_live.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(',', ':'))
-    print("flux_live.json généré avec les paramètres atmosphériques réels.")
+    print("flux_live.json généré avec les éphémérides DE440s et l'almanach complet.")
 
 if __name__ == "__main__":
     main()
