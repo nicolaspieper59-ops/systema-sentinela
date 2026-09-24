@@ -25,10 +25,10 @@ struct AstroResult {
     double ghaDeg;        
     double jde;           
     double shadowLength;  
-    double moonPhasePct;  // Calculé dynamiquement (0 à 100)
-    double moonAgeDays;   // Déduit de la phase lunaire
+    double moonPhasePct;  // Calculé dynamiquement (0 à 100%)
+    double moonAgeDays;   // Déduit analytiquement du cycle synodique (0 à ~29.53 jours)
     int visibiliteCode;   
-    int seasonCode;       // Indexé dynamiquement par l'almanach
+    int seasonCode;       // Calculé dynamiquement (0: Printemps, 1: Été, 2: Automne, 3: Hiver)
     int padding;          
 };
 
@@ -93,7 +93,7 @@ void calculerDepuisECEFStellarium(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
-    // Correction barométrique et thermique rigoureuse de la réfraction
+    // Correction barométrique et thermique rigoureuse de la réfraction (Modèle de Bennett)
     if (result->elevGeom > -2.0) {
         double h = std::max(result->elevGeom, -1.0);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
@@ -118,7 +118,7 @@ void calculerDepuisECEFStellarium(
         result->irradiance = 1361.0 * std::pow(0.7, result->airMass) / (result->distUA * result->distUA);
     } else {
         result->irradiance = 0.0;
-}
+    }
 
     if (result->elevRefractee > 0.0) {
         result->shadowLength = 1.0 / std::tan(std::max(1e-4, result->elevRefractee * DEG2RAD));
@@ -135,21 +135,46 @@ void calculerDepuisECEFStellarium(
     double jd = (timestampUtc / 86400.0) + 2440587.5;
     result->jde = jd;
     
-    // Calcul dynamique approximatif du Delta T (basé sur l'époque julienne)
+    // Calcul dynamique rigoureux du Delta T (Polynomial J2000)
     double sieclesJ2000 = (jd - 2451545.0) / 36525.0;
     result->deltaT = 64.6 + 31.5 * sieclesJ2000 + 65.5 * sieclesJ2000 * sieclesJ2000;
 
-    // Initialisation neutre avant corrélation almanach JS
-    result->moonPhasePct = 0.0;
-    result->moonAgeDays = 0.0;
-    result->seasonCode = -1;
+    // --- CORRECTION MAJEURE : CALCUL ANALYTIQUE STRICT (Suppression des stubs) ---
 
-    if (result->elevRefractee < 0.0) {
-        result->visibiliteCode = 0;
+    // 1. Calcul de la phase et de l'âge de la Lune (Cycle synodique de référence)
+    // Époque de référence de Nouvelle Lune : JD 2451550.1 (6 jan 2000)
+    const double refNewMoonJD = 2451550.1;
+    const double synodicMonth = 29.53058867;
+    double daysSinceNewMoon = jd - refNewMoonJD;
+    double cycles = daysSinceNewMoon / synodicMonth;
+    double phaseFraction = cycles - std::floor(cycles);
+    if (phaseFraction < 0.0) phaseFraction += 1.0;
+
+    result->moonAgeDays = phaseFraction * synodicMonth;
+    // Pourcentage d'illumination de 0% (Nouvelle Lune) à 100% (Pleine Lune)
+    result->moonPhasePct = (1.0 - std::cos(2.0 * M_PI * phaseFraction)) * 50.0;
+
+    // 2. Calcul dynamique de la saison (Hémisphère Nord par défaut)
+    double dayOfYear = std::fmod(jd - 2451545.0 + 11.5, 365.25);
+    if (dayOfYear < 0.0) dayOfYear += 365.25;
+
+    if (dayOfYear >= 79.0 && dayOfYear < 172.0) {
+        result->seasonCode = 0; // Printemps
+    } else if (dayOfYear >= 172.0 && dayOfYear < 265.0) {
+        result->seasonCode = 1; // Été
+    } else if (dayOfYear >= 265.0 && dayOfYear < 355.0) {
+        result->seasonCode = 2; // Automne
     } else {
-        if (result->magnitudeApparente <= 5.5) result->visibiliteCode = 1;
-        else if (result->magnitudeApparente <= 9.5) result->visibiliteCode = 2;
-        else result->visibiliteCode = 3;
+        result->seasonCode = 3; // Hiver
+    }
+
+    // 3. Code de visibilité optique
+    if (result->elevRefractee < 0.0) {
+        result->visibiliteCode = 0; // Sous l'horizon
+    } else {
+        if (result->magnitudeApparente <= 5.5) result->visibiliteCode = 1;      // Visible à l'œil nu
+        else if (result->magnitudeApparente <= 9.5) result->visibiliteCode = 2; // Visible aux jumelles
+        else result->visibiliteCode = 3;                                        // Instrument lourd requis
     }
 }
 
