@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v19.11 OPTIMIZED MULTIPHYSICS & ALMANACH)
+ * SYSTEMA SENTINELA — WEB WORKER (v19.12 STRICT & DYNAMIC)
  */
 
 var Module = {
@@ -59,7 +59,7 @@ function obtenirConstellationIAU(raDeg, decDeg) {
 }
 
 function formaterHeureDecimale(heures) {
-    if (heures < 0) return "--:--";
+    if (heures < 0) return "00:00 UTC";
     const h = Math.floor(heures) % 24;
     const m = Math.floor((heures - Math.floor(heures)) * 60);
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} UTC`;
@@ -77,7 +77,7 @@ function auditerEnvironnementInterne() {
 function initialiserMemoireWasm() {
     if (wasmReady && !metricsPtr) {
         metricsPtr = Module._malloc(40);
-        resultPtr = Module._malloc(256); // Alloué à 256 octets pour couvrir la structure étendue
+        resultPtr = Module._malloc(256);
     }
 }
 
@@ -109,6 +109,40 @@ function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
         y: evaluerClenshawChebyshev(arc.cy, tNorm),
         z: evaluerClenshawChebyshev(arc.cz, tNorm),
         mag: arc.mag ?? 0.0
+    };
+}
+
+// Résolution dynamique de la saison active via l'almanach
+function determinerSaisonActive(timestampSec, almanach) {
+    if (!almanach || !almanach.saisons || almanach.saisons.length === 0) return 0;
+    let saisonCourante = 0;
+    for (let s of almanach.saisons) {
+        if (timestampSec >= s.timestamp) {
+            saisonCourante = s.type;
+        }
+    }
+    return saisonCourante;
+}
+
+// Calcul dynamique de la phase et de l'âge de la lune par rapport au Soleil
+function calculerParametresLunaires(posLune, posSoleil) {
+    if (!posLune || !posSoleil) return { pct: 0.0, age: 0.0 };
+    
+    // Vecteurs Terre-Soleil et Terre-Lune
+    const dSun = Math.sqrt(posSoleil.x**2 + posSoleil.y**2 + posSoleil.z**2);
+    const dMoon = Math.sqrt(posLune.x**2 + posLune.y**2 + posLune.z**2);
+    
+    const dot = (posSoleil.x * posLune.x + posSoleil.y * posLune.y + posSoleil.z * posLune.z);
+    const cosAngle = dot / (dSun * dMoon);
+    const elongation = Math.acos(Math.max(-1.0, Math.min(1.0, cosAngle)));
+    
+    // Pourcentage d'illumination basé sur l'élongation
+    const phasePct = ((1.0 - Math.cos(elongation)) / 2.0) * 100.0;
+    const ageDays = (elongation / (2.0 * Math.PI)) * 29.530588853;
+
+    return {
+        pct: parseFloat(phasePct.toFixed(2)),
+        age: parseFloat(ageDays.toFixed(1))
     };
 }
 
@@ -145,6 +179,13 @@ onmessage = async function(e) {
             const eraRad = (gastDeg % 360.0) * (Math.PI / 180.0);
             const bodiesResults = {};
             const sourceDonnees = matriceJplGlobal?.DATA || null;
+            const almanachData = matriceJplGlobal?.ALMANACH || null;
+
+            // Extraction préalable pour calculs croisés (Lune/Soleil)
+            const posSoleilECEF = sourceDonnees?.soleil ? obtenirPositionParChebyshev(sourceDonnees.soleil, timestampSec) : null;
+            const posLuneECEF = sourceDonnees?.lune ? obtenirPositionParChebyshev(sourceDonnees.lune, timestampSec) : null;
+            const paramsLune = calculerParametresLunaires(posLuneECEF, posSoleilECEF);
+            const saisonActiveCode = determinerSaisonActive(timestampSec, almanachData);
 
             if (sourceDonnees) {
                 for (const [nomAstre, arcsAstre] of Object.entries(sourceDonnees)) {
@@ -160,7 +201,12 @@ onmessage = async function(e) {
 
                     const off = resultPtr / 8;
                     const nomAstreMaj = nomAstre.toUpperCase();
-                    const statiques = CONSTANTES_ORBITALES[nomAstreMaj] || {};
+                    
+                    // Validation stricte : pas de données orbitales manquantes admises
+                    const statiques = CONSTANTES_ORBITALES[nomAstreMaj];
+                    if (!statiques) {
+                        throw new Error(`Erreur critique : Données orbitales introuvables pour ${nomAstreMaj}`);
+                    }
 
                     const raVal = Module.HEAPF64[off + 3];
                     const decVal = Module.HEAPF64[off + 4];
@@ -176,7 +222,7 @@ onmessage = async function(e) {
                         raDeg: raVal,
                         decDeg: decVal,
                         distanceAu: Module.HEAPF64[off + 5],
-                        magnitude: posECEF.mag ?? 0.0, //
+                        magnitude: posECEF.mag ?? 0.0,
                         sunrise: formaterHeureDecimale(Module.HEAPF64[off + 6]),
                         sunset: formaterHeureDecimale(Module.HEAPF64[off + 7]),
                         airMass: Module.HEAPF64[off + 8],
@@ -190,10 +236,14 @@ onmessage = async function(e) {
                         constellationCode: constObj.code,
                         constellationNom: constObj.nom,
                         constellationDisplay: `${constObj.code} (${constObj.nom})`,
-                        orbitPeriod: statiques.orbitPeriod ?? '--',
-                        lengthOfDay: statiques.lengthOfDay ?? '--',
-                        orbitVelocity: statiques.orbitVel ?? '--',
-                        minMaxAu: statiques.minMaxAu ?? '--'
+                        orbitPeriod: statiques.orbitPeriod,
+                        lengthOfDay: statiques.lengthOfDay,
+                        orbitVelocity: statiques.orbitVel,
+                        minMaxAu: statiques.minMaxAu,
+                        // Injection des métriques dynamiques ciblées
+                        moonPhasePct: nomAstreMaj === 'LUNE' ? paramsLune.pct : 0.0,
+                        moonAgeDays: nomAstreMaj === 'LUNE' ? paramsLune.age : 0.0,
+                        seasonCode: saisonActiveCode
                     };
                 }
             }
@@ -201,7 +251,7 @@ onmessage = async function(e) {
             postMessage({
                 type: 'RESULTS_COMPUTE',
                 timestamp: timestampUtc,
-                almanac: matriceJplGlobal?.ALMANACH || null,
+                almanac: almanachData,
                 solarMetrics: { 
                     eqTempsMin, 
                     obliquiteDeg, 
