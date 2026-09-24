@@ -816,9 +816,7 @@ th {
 
     function mettreAJourAlmanachUI(almanac) {
         // Traitement optionnel de l'almanach
-    }
-
-    let lignesTableauCache = {};
+let lignesTableauCache = {};
 
     function mettreAJourTableauAstres(bodiesData) {
         const tbody = document.getElementById('table-body');
@@ -829,40 +827,51 @@ th {
             for (const nomAstre of Object.keys(bodiesData)) {
                 const tr = document.createElement('tr');
                 tr.id = `row-astre-${nomAstre}`;
-                // Lors de la création des lignes dans mettreAJourTableauAstres :
-tr.innerHTML = `
-    <td><strong>${nomAstre.toUpperCase()}</strong></td>
-    <td id="cell-${nomAstre}-el" class="rainbow-decimal">--</td>
-    <td id="cell-${nomAstre}-az" class="rainbow-decimal">--</td>
-    <td id="cell-${nomAstre}-dist" class="rainbow-decimal">--</td>
-    <td id="cell-${nomAstre}-minmax">--</td>
-    <td id="cell-${nomAstre}-mag" class="rainbow-decimal">--</td>
-    <td id="cell-${nomAstre}-ra" class="rainbow-decimal">--</td>
-    <td id="cell-${nomAstre}-dec" class="rainbow-decimal">--</td>
-    <td id="cell-${nomAstre}-const">--</td>
-    <td>--</td><td>--</td><td>--</td><td>--</td>
-    <td id="cell-${nomAstre}-period">--</td>
-    <td id="cell-${nomAstre}-lod">--</td>
-    <td id="cell-${nomAstre}-vel">--</td>
-    <td id="cell-${nomAstre}-shadow">--</td>
-    <td id="cell-${nomAstre}-obj-level">--</td>
-    <td id="cell-${nomAstre}-moon-phase" class="rainbow-decimal">--</td>
-    <td id="cell-${nomAstre}-moon-age" class="rainbow-decimal">--</td>
-    <td>--</td><td>--</td><td>--</td><td>--</td>
-    <td id="cell-${nomAstre}-rise">--</td>
-    <td id="cell-${nomAstre}-set">--</td>
-    <td>--</td><td>--</td>
-    <td id="cell-${nomAstre}-jde">--</td>
-    <td id="cell-${nomAstre}-deltat">--</td>
-    <td>--</td>
-    <td id="cell-${nomAstre}-gha">--</td>
-    <td>--</td><td>--</td><td>--</td><td>--</td>
-    <td class="rainbow-decimal">1361.00</td>
-    <td id="cell-${nomAstre}-am" class="rainbow-decimal">--</td>
-    <td id="cell-${nomAstre}-irr" class="rainbow-decimal">--</td>
-    <td><span id="cell-${nomAstre}-etat">Inconnu</span></td>
-`;
+                
+                tr.innerHTML = `
+                    <td><strong>${nomAstre.toUpperCase()}</strong></td>
+                    <td id="cell-${nomAstre}-el" class="rainbow-decimal">--</td>
+                    <td id="cell-${nomAstre}-az" class="rainbow-decimal">--</td>
+                    <td id="cell-${nomAstre}-dist" class="rainbow-decimal">--</td>
+                    <td id="cell-${nomAstre}-minmax">--</td>
+                    <td id="cell-${nomAstre}-mag" class="rainbow-decimal">--</td>
+                    <td id="cell-${nomAstre}-ra" class="rainbow-decimal">--</td>
+                    <td id="cell-${nomAstre}-dec" class="rainbow-decimal">--</td>
+                    <td id="cell-${nomAstre}-const">--</td>
+                    <td id="cell-${nomAstre}-perigee">--</td>
+                    <td id="cell-${nomAstre}-perihelion">--</td>
+                    <td id="cell-${nomAstre}-aphelion">--</td>
+                    <td id="cell-${nomAstre}-dis">--</td>
+                    <td id="cell-${nomAstre}-period">--</td>
+                    <td id="cell-${nomAstre}-lod">--</td>
+                    <td id="cell-${nomAstre}-vel">--</td>
+                    <td id="cell-${nomAstre}-shadow">--</td>
+                    <td id="cell-${nomAstre}-obj-level">--</td>
+                    <td id="cell-${nomAstre}-moon-phase" class="rainbow-decimal">--</td>
+                    <td id="cell-${nomAstre}-moon-age" class="rainbow-decimal">--</td>
+                    <td id="cell-${nomAstre}-next-new">--</td>
+                    <td id="cell-${nomAstre}-next-full">--</td>
+                    <td id="cell-${nomAstre}-next-perigee">--</td>
+                    <td id="cell-${nomAstre}-next-apogee">--</td>
+                    <td id="cell-${nomAstre}-rise">--</td>
+                    <td id="cell-${nomAstre}-set">--</td>
+                    <td id="cell-${nomAstre}-dusk">--</td>
+                    <td id="cell-${nomAstre}-daylight">--</td>
+                    <td id="cell-${nomAstre}-jde">--</td>
+                    <td id="cell-${nomAstre}-deltat">--</td>
+                    <td id="cell-${nomAstre}-gmst">--</td>
+                    <td id="cell-${nomAstre}-gha">--</td>
+                    <td id="cell-${nomAstre}-mar-eq">--</td>
+                    <td id="cell-${nomAstre}-jun-sol">--</td>
+                    <td id="cell-${nomAstre}-sep-eq">--</td>
+                    <td id="cell-${nomAstre}-dec-sol">--</td>
+                    <td class="rainbow-decimal">1361.00</td>
+                    <td id="cell-${nomAstre}-am" class="rainbow-decimal">--</td>
+                    <td id="cell-${nomAstre}-irr" class="rainbow-decimal">--</td>
+                    <td><span id="cell-${nomAstre}-etat">Inconnu</span></td>
+                `;
                 tbody.appendChild(tr);
+                
                 lignesTableauCache[nomAstre] = {
                     el: document.getElementById(`cell-${nomAstre}-el`),
                     az: document.getElementById(`cell-${nomAstre}-az`),
@@ -872,15 +881,33 @@ tr.innerHTML = `
                     ra: document.getElementById(`cell-${nomAstre}-ra`),
                     dec: document.getElementById(`cell-${nomAstre}-dec`),
                     const: document.getElementById(`cell-${nomAstre}-const`),
+                    perigee: document.getElementById(`cell-${nomAstre}-perigee`),
+                    perihelion: document.getElementById(`cell-${nomAstre}-perihelion`),
+                    aphelion: document.getElementById(`cell-${nomAstre}-aphelion`),
+                    dis: document.getElementById(`cell-${nomAstre}-dis`),
                     period: document.getElementById(`cell-${nomAstre}-period`),
                     lod: document.getElementById(`cell-${nomAstre}-lod`),
                     vel: document.getElementById(`cell-${nomAstre}-vel`),
                     shadow: document.getElementById(`cell-${nomAstre}-shadow`),
+                    objLevel: document.getElementById(`cell-${nomAstre}-obj-level`),
+                    moonPhase: document.getElementById(`cell-${nomAstre}-moon-phase`),
+                    moonAge: document.getElementById(`cell-${nomAstre}-moon-age`),
+                    nextNew: document.getElementById(`cell-${nomAstre}-next-new`),
+                    nextFull: document.getElementById(`cell-${nomAstre}-next-full`),
+                    nextPerigee: document.getElementById(`cell-${nomAstre}-next-perigee`),
+                    nextApogee: document.getElementById(`cell-${nomAstre}-next-apogee`),
                     rise: document.getElementById(`cell-${nomAstre}-rise`),
                     set: document.getElementById(`cell-${nomAstre}-set`),
+                    dusk: document.getElementById(`cell-${nomAstre}-dusk`),
+                    daylight: document.getElementById(`cell-${nomAstre}-daylight`),
                     jde: document.getElementById(`cell-${nomAstre}-jde`),
                     deltat: document.getElementById(`cell-${nomAstre}-deltat`),
+                    gmst: document.getElementById(`cell-${nomAstre}-gmst`),
                     gha: document.getElementById(`cell-${nomAstre}-gha`),
+                    marEq: document.getElementById(`cell-${nomAstre}-mar-eq`),
+                    junSol: document.getElementById(`cell-${nomAstre}-jun-sol`),
+                    sepEq: document.getElementById(`cell-${nomAstre}-sep-eq`),
+                    decSol: document.getElementById(`cell-${nomAstre}-dec-sol`),
                     am: document.getElementById(`cell-${nomAstre}-am`),
                     irr: document.getElementById(`cell-${nomAstre}-irr`),
                     etat: document.getElementById(`cell-${nomAstre}-etat`)
@@ -902,17 +929,22 @@ tr.innerHTML = `
             if (cache.ra) cache.ra.textContent = data.raDeg !== undefined ? data.raDeg.toFixed(6) + '°' : '--';
             if (cache.dec) cache.dec.textContent = data.decDeg !== undefined ? data.decDeg.toFixed(6) + '°' : '--';
             if (cache.const) cache.const.textContent = data.constellationDisplay ?? '--';
+            if (cache.perigee) cache.perigee.textContent = data.perigee ?? '--';
+            if (cache.perihelion) cache.perihelion.textContent = data.perihelion ?? '--';
+            if (cache.aphelion) cache.aphelion.textContent = data.aphelion ?? '--';
+            if (cache.dis) cache.dis.textContent = data.distanceAu !== undefined ? data.distanceAu.toFixed(4) + ' AE' : '--';
             if (cache.period) cache.period.textContent = data.orbitPeriod ?? '--';
             if (cache.lod) cache.lod.textContent = data.lengthOfDay ?? '--';
             if (cache.vel) cache.vel.textContent = data.orbitVelocity ?? '--';
             if (cache.shadow) cache.shadow.textContent = data.shadowLengthDisplay ?? '--';
             if (cache.rise) cache.rise.textContent = data.sunrise ?? '--';
             if (cache.set) cache.set.textContent = data.sunset ?? '--';
+            if (cache.dusk) cache.dusk.textContent = data.dusk ?? '--';
+            if (cache.daylight) cache.daylight.textContent = data.daylightDuration ?? '--';
             if (cache.jde) cache.jde.textContent = data.jde !== undefined ? data.jde.toFixed(4) : '--';
             if (cache.deltat) cache.deltat.textContent = data.deltat !== undefined ? data.deltat.toFixed(2) : '--';
+            if (cache.gmst) cache.gmst.textContent = data.gha !== undefined ? (data.gha % 360).toFixed(4) + '°' : '--';
             if (cache.gha) cache.gha.textContent = data.gha !== undefined ? data.gha.toFixed(4) + '°' : '--';
-            if (cache.am) cache.am.textContent = data.airMass !== undefined ? data.airMass.toFixed(3) : '--';
-            if (cache.irr) cache.irr.textContent = data.irradiance !== undefined ? data.irradiance.toFixed(2) : '--';
             if (cache.moonPhase) cache.moonPhase.textContent = data.moonPhasePct !== undefined ? `${data.moonPhasePct.toFixed(1)}%` : '--';
             if (cache.moonAge) cache.moonAge.textContent = data.moonAgeDays !== undefined ? `${data.moonAgeDays.toFixed(1)} j` : '--';
             if (cache.etat) {
@@ -921,6 +953,7 @@ tr.innerHTML = `
             }
         }
     }
+        
 
     function appliquerCoordonneesManuelles(silencieux = false) {
         const lat = parseFloat(document.getElementById('input-lat').value.replace(',', '.'));
