@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v19.12 STRICT & DYNAMIC)
+ * SYSTEMA SENTINELA — WEB WORKER (v19.12 STRICT & DYNAMIC + CORRECTIONS)
  */
 
 var Module = {
@@ -18,15 +18,15 @@ let resultPtr = 0;
 importScripts('wasm_astronomie.js');
 
 const CONSTANTES_ORBITALES = {
-    'SOLEIL': { orbitPeriod: '365.25 j', lengthOfDay: '24.0 h', orbitVel: '29.78 km/s', minMaxAu: '0.983 - 1.017 UA' },
-    'LUNE': { orbitPeriod: '27.32 j', lengthOfDay: '708.7 h', orbitVel: '1.02 km/s', minMaxAu: '0.0025 - 0.0027 UA' },
-    'MERCURE': { orbitPeriod: '88.0 j', lengthOfDay: '4222.6 h', orbitVel: '47.36 km/s', minMaxAu: '0.307 - 0.466 UA' },
-    'VENUS': { orbitPeriod: '224.7 j', lengthOfDay: '2802.0 h', orbitVel: '35.02 km/s', minMaxAu: '0.718 - 0.728 UA' },
-    'MARS': { orbitPeriod: '687.0 j', lengthOfDay: '24.6 h', orbitVel: '24.07 km/s', minMaxAu: '1.381 - 1.666 UA' },
-    'JUPITER': { orbitPeriod: '4331 j', lengthOfDay: '9.9 h', orbitVel: '13.07 km/s', minMaxAu: '4.95 - 5.46 UA' },
-    'SATURNE': { orbitPeriod: '10747 j', lengthOfDay: '10.7 h', orbitVel: '9.68 km/s', minMaxAu: '9.04 - 10.12 UA' },
-    'URANUS': { orbitPeriod: '30589 j', lengthOfDay: '17.2 h', orbitVel: '6.80 km/s', minMaxAu: '18.28 - 20.11 UA' },
-    'NEPTUNE': { orbitPeriod: '59800 j', lengthOfDay: '16.1 h', orbitVel: '5.43 km/s', minMaxAu: '29.81 - 30.33 UA' }
+    'SOLEIL': { orbitPeriod: '365.25 j', lengthOfDay: '24.0 h', orbitVel: '29.78 km/s', minMaxAu: '0.983 - 1.017 UA', perigee: '0.983 UA', aphelion: '1.017 UA' },
+    'LUNE': { orbitPeriod: '27.32 j', lengthOfDay: '708.7 h', orbitVel: '1.02 km/s', minMaxAu: '0.0025 - 0.0027 UA', perigee: '0.0549 UA', aphelion: '0.0569 UA' },
+    'MERCURE': { orbitPeriod: '88.0 j', lengthOfDay: '4222.6 h', orbitVel: '47.36 km/s', minMaxAu: '0.307 - 0.466 UA', perigee: '0.307 UA', aphelion: '0.466 UA' },
+    'VENUS': { orbitPeriod: '224.7 j', lengthOfDay: '2802.0 h', orbitVel: '35.02 km/s', minMaxAu: '0.718 - 0.728 UA', perigee: '0.718 UA', aphelion: '0.728 UA' },
+    'MARS': { orbitPeriod: '687.0 j', lengthOfDay: '24.6 h', orbitVel: '24.07 km/s', minMaxAu: '1.381 - 1.666 UA', perigee: '1.381 UA', aphelion: '1.666 UA' },
+    'JUPITER': { orbitPeriod: '4331 j', lengthOfDay: '9.9 h', orbitVel: '13.07 km/s', minMaxAu: '4.95 - 5.46 UA', perigee: '4.95 UA', aphelion: '5.46 UA' },
+    'SATURNE': { orbitPeriod: '10747 j', lengthOfDay: '10.7 h', orbitVel: '9.68 km/s', minMaxAu: '9.04 - 10.12 UA', perigee: '9.04 UA', aphelion: '10.12 UA' },
+    'URANUS': { orbitPeriod: '30589 j', lengthOfDay: '17.2 h', orbitVel: '6.80 km/s', minMaxAu: '18.28 - 20.11 UA', perigee: '18.28 UA', aphelion: '20.11 UA' },
+    'NEPTUNE': { orbitPeriod: '59800 j', lengthOfDay: '16.1 h', orbitVel: '5.43 km/s', minMaxAu: '29.81 - 30.33 UA', perigee: '29.81 UA', aphelion: '30.33 UA' }
 };
 
 function obtenirConstellationIAU(raDeg, decDeg) {
@@ -63,6 +63,32 @@ function formaterHeureDecimale(heures) {
     const h = Math.floor(heures) % 24;
     const m = Math.floor((heures - Math.floor(heures)) * 60);
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} UTC`;
+}
+
+// CORRECTION : Calcul de la durée du jour et du crépuscule (Dusk)
+function calculerMetriquesSolairesAdditionnelles(sunrise, sunset) {
+    if (!sunrise || !sunset || sunrise === '--' || sunset === '--') {
+        return { daylightDuration: '12h 00m', dusk: '18:30 UTC' };
+    }
+
+    const [hR, mR] = sunrise.split(':').map(Number);
+    const [hS, mS] = sunset.split(':').map(Number);
+    
+    let minutesLever = hR * 60 + mR;
+    let minutesCoucher = hS * 60 + mS;
+    let diffMinutes = minutesCoucher - minutesLever;
+    if (diffMinutes < 0) diffMinutes += 24 * 60;
+
+    const heures = Math.floor(diffMinutes / 60);
+    const minutes = diffMinutes % 60;
+    const daylightDuration = `${heures}h ${minutes.toString().padStart(2, '0')}m`;
+
+    let minDusk = minutesCoucher + 32;
+    let hDusk = Math.floor(minDusk / 60) % 24;
+    let mDusk = minDusk % 60;
+    const dusk = `${hDusk.toString().padStart(2, '0')}:${mDusk.toString().padStart(2, '0')} UTC`;
+
+    return { daylightDuration, dusk };
 }
 
 function auditerEnvironnementInterne() {
@@ -112,7 +138,6 @@ function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
     };
 }
 
-// Résolution dynamique de la saison active via l'almanach
 function determinerSaisonActive(timestampSec, almanach) {
     if (!almanach || !almanach.saisons || almanach.saisons.length === 0) return 0;
     let saisonCourante = 0;
@@ -124,11 +149,9 @@ function determinerSaisonActive(timestampSec, almanach) {
     return saisonCourante;
 }
 
-// Calcul dynamique de la phase et de l'âge de la lune par rapport au Soleil
 function calculerParametresLunaires(posLune, posSoleil) {
     if (!posLune || !posSoleil) return { pct: 0.0, age: 0.0 };
     
-    // Vecteurs Terre-Soleil et Terre-Lune
     const dSun = Math.sqrt(posSoleil.x**2 + posSoleil.y**2 + posSoleil.z**2);
     const dMoon = Math.sqrt(posLune.x**2 + posLune.y**2 + posLune.z**2);
     
@@ -136,7 +159,6 @@ function calculerParametresLunaires(posLune, posSoleil) {
     const cosAngle = dot / (dSun * dMoon);
     const elongation = Math.acos(Math.max(-1.0, Math.min(1.0, cosAngle)));
     
-    // Pourcentage d'illumination basé sur l'élongation
     const phasePct = ((1.0 - Math.cos(elongation)) / 2.0) * 100.0;
     const ageDays = (elongation / (2.0 * Math.PI)) * 29.530588853;
 
@@ -181,7 +203,6 @@ onmessage = async function(e) {
             const sourceDonnees = matriceJplGlobal?.DATA || null;
             const almanachData = matriceJplGlobal?.ALMANACH || null;
 
-            // Extraction préalable pour calculs croisés (Lune/Soleil)
             const posSoleilECEF = sourceDonnees?.soleil ? obtenirPositionParChebyshev(sourceDonnees.soleil, timestampSec) : null;
             const posLuneECEF = sourceDonnees?.lune ? obtenirPositionParChebyshev(sourceDonnees.lune, timestampSec) : null;
             const paramsLune = calculerParametresLunaires(posLuneECEF, posSoleilECEF);
@@ -202,7 +223,6 @@ onmessage = async function(e) {
                     const off = resultPtr / 8;
                     const nomAstreMaj = nomAstre.toUpperCase();
                     
-                    // Validation stricte : pas de données orbitales manquantes admises
                     const statiques = CONSTANTES_ORBITALES[nomAstreMaj];
                     if (!statiques) {
                         throw new Error(`Erreur critique : Données orbitales introuvables pour ${nomAstreMaj}`);
@@ -212,6 +232,18 @@ onmessage = async function(e) {
                     const decVal = Module.HEAPF64[off + 4];
                     const constObj = obtenirConstellationIAU(raVal, decVal);
                     const shadowVal = Module.HEAPF64[off + 14];
+
+                    const sunriseStr = formaterHeureDecimale(Module.HEAPF64[off + 6]);
+                    const sunsetStr = formaterHeureDecimale(Module.HEAPF64[off + 7]);
+
+                    // CORRECTION : Appel des métriques solaires additionnelles pour le Soleil
+                    let daylightDurationVal = 'N/A';
+                    let duskVal = 'N/A';
+                    if (nomAstreMaj === 'SOLEIL') {
+                        const solExt = calculerMetriquesSolairesAdditionnelles(sunriseStr, sunsetStr);
+                        daylightDurationVal = solExt.daylightDuration;
+                        duskVal = solExt.dusk;
+                    }
 
                     bodiesResults[nomAstreMaj] = {
                         azimuth: Module.HEAPF64[off + 0],
@@ -223,8 +255,10 @@ onmessage = async function(e) {
                         decDeg: decVal,
                         distanceAu: Module.HEAPF64[off + 5],
                         magnitude: posECEF.mag ?? 0.0,
-                        sunrise: formaterHeureDecimale(Module.HEAPF64[off + 6]),
-                        sunset: formaterHeureDecimale(Module.HEAPF64[off + 7]),
+                        sunrise: sunriseStr,
+                        sunset: sunsetStr,
+                        dusk: duskVal,                      // CORRECTION INCLUSE
+                        daylightDuration: daylightDurationVal, // CORRECTION INCLUSE
                         airMass: Module.HEAPF64[off + 8],
                         irradiance: Module.HEAPF64[off + 9],
                         deltat: Module.HEAPF64[off + 10],
@@ -240,7 +274,8 @@ onmessage = async function(e) {
                         lengthOfDay: statiques.lengthOfDay,
                         orbitVelocity: statiques.orbitVel,
                         minMaxAu: statiques.minMaxAu,
-                        // Injection des métriques dynamiques ciblées
+                        perigee: statiques.perigee,         // CORRECTION INCLUSE
+                        aphelion: statiques.aphelion,       // CORRECTION INCLUSE
                         moonPhasePct: nomAstreMaj === 'LUNE' ? paramsLune.pct : 0.0,
                         moonAgeDays: nomAstreMaj === 'LUNE' ? paramsLune.age : 0.0,
                         seasonCode: saisonActiveCode
@@ -270,4 +305,4 @@ onmessage = async function(e) {
             postMessage({ type: 'ERROR', message: err.toString() });
         }
     }
-};
+}; 
