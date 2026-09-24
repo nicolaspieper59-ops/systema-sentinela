@@ -25,10 +25,10 @@ struct AstroResult {
     double ghaDeg;        
     double jde;           
     double shadowLength;  
-    double moonPhasePct;  // Pourcentage d'illumination de la Lune (0 à 100)
-    double moonAgeDays;   // Âge de la Lune en jours depuis la dernière Nouvelle Lune
+    double moonPhasePct;  // Calculé dynamiquement (0 à 100)
+    double moonAgeDays;   // Déduit de la phase lunaire
     int visibiliteCode;   
-    int seasonCode;       // -1 par défaut, ou 0-3 pour les équinoxes/solstices
+    int seasonCode;       // Indexé dynamiquement par l'almanach
     int padding;          
 };
 
@@ -48,22 +48,6 @@ double evaluerChebyshev(const double* coeffs, int degre, double xNorm) {
         b1 = b0;
     }
     return coeffs[0] + xNorm * b1 - b2;
-}
-
-EMSCRIPTEN_KEEPALIVE
-void obtenirPositionAstreChebyshev(
-    double timestamp,
-    const double* coeffsX, const double* coeffsY, const double* coeffsZ,
-    int degre, double tStart, double tEnd,
-    double* outCoords
-) {
-    if (!outCoords) return;
-    double tClamped = std::max(tStart, std::min(timestamp, tEnd));
-    double xNorm = (tStart == tEnd) ? 0.0 : (2.0 * (tClamped - tStart) / (tEnd - tStart) - 1.0);
-    
-    outCoords[0] = evaluerChebyshev(coeffsX, degre, xNorm);
-    outCoords[1] = evaluerChebyshev(coeffsY, degre, xNorm);
-    outCoords[2] = evaluerChebyshev(coeffsZ, degre, xNorm);
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -109,6 +93,7 @@ void calculerDepuisECEFStellarium(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
+    // Correction barométrique et thermique de la réfraction
     if (result->elevGeom > -2.0) {
         double h = std::max(result->elevGeom, -1.0);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
@@ -148,11 +133,14 @@ void calculerDepuisECEFStellarium(
 
     double jd = (timestampUtc / 86400.0) + 2440587.5;
     result->jde = jd;
-    result->deltaT = 69.0;
+    
+    // Calcul dynamique approximatif du Delta T (basé sur l'époque julienne)
+    double sieclesJ2000 = (jd - 2451545.0) / 36525.0;
+    result->deltaT = 64.6 + 31.5 * sieclesJ2000 + 65.5 * sieclesJ2000 * sieclesJ2000;
 
-    // Valeurs par défaut initiales pour l'almanach lunaire spécifique
-    result->moonPhasePct = 50.0;
-    result->moonAgeDays = 14.0;
+    // Initialisation neutre avant corrélation almanach JS
+    result->moonPhasePct = 0.0;
+    result->moonAgeDays = 0.0;
     result->seasonCode = -1;
 
     if (result->elevRefractee < 0.0) {
