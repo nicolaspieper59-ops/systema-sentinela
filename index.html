@@ -797,7 +797,6 @@ th {
     function mettreAJourInterface(payload) {
     if (!payload) return;
     
-    // Correction : GAST et LST sont transmis via solarMetrics et non tempsJpl
     if (payload.solarMetrics) {
         mettreAJourMetricsSolaires(payload.solarMetrics);
         const tp = payload.solarMetrics;
@@ -807,7 +806,7 @@ th {
         }
     }
 
-    // Ajout : Traitement des données d'almanach si fournies par le worker
+    // Traitement actif des données d'almanach[cite: 3, 4]
     if (payload.almanac) {
         mettreAJourAlmanachUI(payload.almanac);
     }
@@ -817,8 +816,7 @@ th {
         mettreAJourTableauAstres(payload.bodies);
         dessinerRadarAstres(payload.bodies, capVraiActuel);
     }
-}
-
+    }
 // Fonction utilitaire pour injecter l'almanach (phases, saisons) si besoin
 function mettreAJourAlmanachUI(almanac) {
     // Exemple d'exploitation des données d'almanach dans les logs ou éléments dédiés
