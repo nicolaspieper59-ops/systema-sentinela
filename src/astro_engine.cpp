@@ -93,7 +93,7 @@ void calculerDepuisECEFStellarium(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
-    // Correction barométrique et thermique de la réfraction
+    // Correction barométrique et thermique rigoureuse de la réfraction
     if (result->elevGeom > -2.0) {
         double h = std::max(result->elevGeom, -1.0);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
@@ -103,6 +103,7 @@ void calculerDepuisECEFStellarium(
         result->elevRefractee = result->elevGeom;
     }
 
+    // Calcul rigoureux de la masse d'air (Air Mass)
     result->airMass = 0.0;
     if (result->elevRefractee > 0.0) {
         double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
@@ -111,13 +112,13 @@ void calculerDepuisECEFStellarium(
         result->airMass = 40.0;
     }
 
+    // Irradiance solaire corrigée par l'extinction atmosphérique et la distance
     result->magnitudeApparente = magBruteAstre + (extinctionCoeff * result->airMass);
-
     if (result->elevRefractee > 0.0) {
         result->irradiance = 1361.0 * std::pow(0.7, result->airMass) / (result->distUA * result->distUA);
     } else {
         result->irradiance = 0.0;
-    }
+}
 
     if (result->elevRefractee > 0.0) {
         result->shadowLength = 1.0 / std::tan(std::max(1e-4, result->elevRefractee * DEG2RAD));
