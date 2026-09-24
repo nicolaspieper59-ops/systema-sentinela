@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v18.9 — KERNEL RIGOROUS REPOSITORY</title>
+    <title>SYSTEMA SENTINELA v19.12 — KERNEL RIGOROUS REPOSITORY</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#f0f2f5">
@@ -829,35 +829,39 @@ th {
             for (const nomAstre of Object.keys(bodiesData)) {
                 const tr = document.createElement('tr');
                 tr.id = `row-astre-${nomAstre}`;
-                tr.innerHTML = `
-                    <td><strong>${nomAstre.toUpperCase()}</strong></td>
-                    <td id="cell-${nomAstre}-el" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-az" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-dist" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-minmax">--</td>
-                    <td id="cell-${nomAstre}-mag" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-ra" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-dec" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-const">--</td>
-                    <td>--</td><td>--</td><td>--</td><td>--</td>
-                    <td id="cell-${nomAstre}-period">--</td>
-                    <td id="cell-${nomAstre}-lod">--</td>
-                    <td id="cell-${nomAstre}-vel">--</td>
-                    <td id="cell-${nomAstre}-shadow">--</td>
-                    <td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td><td>--</td>
-                    <td id="cell-${nomAstre}-rise">--</td>
-                    <td id="cell-${nomAstre}-set">--</td>
-                    <td>--</td><td>--</td>
-                    <td id="cell-${nomAstre}-jde">--</td>
-                    <td id="cell-${nomAstre}-deltat">--</td>
-                    <td>--</td>
-                    <td id="cell-${nomAstre}-gha">--</td>
-                    <td>--</td><td>--</td><td>--</td><td>--</td>
-                    <td class="rainbow-decimal">1361.00</td>
-                    <td id="cell-${nomAstre}-am" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-irr" class="rainbow-decimal">--</td>
-                    <td><span id="cell-${nomAstre}-etat">Inconnu</span></td>
-                `;
+                // Lors de la création des lignes dans mettreAJourTableauAstres :
+tr.innerHTML = `
+    <td><strong>${nomAstre.toUpperCase()}</strong></td>
+    <td id="cell-${nomAstre}-el" class="rainbow-decimal">--</td>
+    <td id="cell-${nomAstre}-az" class="rainbow-decimal">--</td>
+    <td id="cell-${nomAstre}-dist" class="rainbow-decimal">--</td>
+    <td id="cell-${nomAstre}-minmax">--</td>
+    <td id="cell-${nomAstre}-mag" class="rainbow-decimal">--</td>
+    <td id="cell-${nomAstre}-ra" class="rainbow-decimal">--</td>
+    <td id="cell-${nomAstre}-dec" class="rainbow-decimal">--</td>
+    <td id="cell-${nomAstre}-const">--</td>
+    <td>--</td><td>--</td><td>--</td><td>--</td>
+    <td id="cell-${nomAstre}-period">--</td>
+    <td id="cell-${nomAstre}-lod">--</td>
+    <td id="cell-${nomAstre}-vel">--</td>
+    <td id="cell-${nomAstre}-shadow">--</td>
+    <td id="cell-${nomAstre}-obj-level">--</td>
+    <td id="cell-${nomAstre}-moon-phase" class="rainbow-decimal">--</td>
+    <td id="cell-${nomAstre}-moon-age" class="rainbow-decimal">--</td>
+    <td>--</td><td>--</td><td>--</td><td>--</td>
+    <td id="cell-${nomAstre}-rise">--</td>
+    <td id="cell-${nomAstre}-set">--</td>
+    <td>--</td><td>--</td>
+    <td id="cell-${nomAstre}-jde">--</td>
+    <td id="cell-${nomAstre}-deltat">--</td>
+    <td>--</td>
+    <td id="cell-${nomAstre}-gha">--</td>
+    <td>--</td><td>--</td><td>--</td><td>--</td>
+    <td class="rainbow-decimal">1361.00</td>
+    <td id="cell-${nomAstre}-am" class="rainbow-decimal">--</td>
+    <td id="cell-${nomAstre}-irr" class="rainbow-decimal">--</td>
+    <td><span id="cell-${nomAstre}-etat">Inconnu</span></td>
+`;
                 tbody.appendChild(tr);
                 lignesTableauCache[nomAstre] = {
                     el: document.getElementById(`cell-${nomAstre}-el`),
@@ -909,6 +913,8 @@ th {
             if (cache.gha) cache.gha.textContent = data.gha !== undefined ? data.gha.toFixed(4) + '°' : '--';
             if (cache.am) cache.am.textContent = data.airMass !== undefined ? data.airMass.toFixed(3) : '--';
             if (cache.irr) cache.irr.textContent = data.irradiance !== undefined ? data.irradiance.toFixed(2) : '--';
+            if (cache.moonPhase) cache.moonPhase.textContent = data.moonPhasePct !== undefined ? `${data.moonPhasePct.toFixed(1)}%` : '--';
+            if (cache.moonAge) cache.moonAge.textContent = data.moonAgeDays !== undefined ? `${data.moonAgeDays.toFixed(1)} j` : '--';
             if (cache.etat) {
                 cache.etat.textContent = statutsVisibilite[data.visibiliteCode] ?? "Inconnu";
                 cache.etat.setAttribute('data-code', data.visibiliteCode);
