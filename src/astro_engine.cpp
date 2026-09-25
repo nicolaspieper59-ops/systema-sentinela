@@ -1,7 +1,6 @@
 #include <emscripten/emscripten.h>
 #include <cmath>
 #include <algorithm>
-#include <stdexcept>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -30,7 +29,7 @@ struct AstroResult {
     double moonAgeDays;   
     int visibiliteCode;   
     int seasonCode;       
-    int errorCode;        // 0 = OK, != 0 = Erreur physique détectée
+    int padding;          
 };
 
 extern "C" {
@@ -41,24 +40,28 @@ inline double normaliserDegres(double deg) {
     return res < 0.0 ? res + 360.0 : res;
 }
 
+double evaluerChebyshev(const double* coeffs, int degre, double xNorm) {
+    double b2 = 0.0, b1 = 0.0, b0 = 0.0;
+    for (int i = degre; i >= 1; --i) {
+        b0 = coeffs[i] + 2.0 * xNorm * b1 - b2;
+        b2 = b1;
+        b1 = b0;
+    }
+    return coeffs[0] + xNorm * b1 - b2;
+}
+
 EMSCRIPTEN_KEEPALIVE
-void calculerDepuisECEF(
+void calculerDepuisECEFStellarium(
     double xECEF, double yECEF, double zECEF,
     double latDeg, double lonDeg, double altM,
     double eraRad, double timestampUtc,
-    double tempC, double presHpa, double magBruteAstre,
+    double tempC, double presHpa, double extinctionCoeff,
+    double magBruteAstre,
     bool estVecteurTopocentrique,
     AstroResult* result
 ) {
     if (!result) return;
 
-    // Validation stricte sans valeur de secours silencieuse
-    if (presHpa <= 0.0 || presHpa > 1500.0 || tempC < -100.0 || tempC > 80.0) {
-        result->errorCode = 101; // Erreur : Paramètres météo hors limites physiques strictes
-        return;
-    }
-
-    result->errorCode = 0;
     double phi = latDeg * DEG2RAD;
     double lambda = lonDeg * DEG2RAD;
     
@@ -90,7 +93,7 @@ void calculerDepuisECEF(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
-    // Réfraction atmosphérique rigoureuse basée uniquement sur les mesures réelles transmises
+    // Correction barométrique et thermique rigoureuse de la réfraction
     if (result->elevGeom > -2.0) {
         double h = std::max(result->elevGeom, -1.0);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
@@ -100,6 +103,7 @@ void calculerDepuisECEF(
         result->elevRefractee = result->elevGeom;
     }
 
+   // Calcul rigoureux de la masse d'air (Air Mass)
     result->airMass = 0.0;
     if (result->elevRefractee > 0.0) {
         double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
@@ -108,11 +112,19 @@ void calculerDepuisECEF(
         result->airMass = 40.0;
     }
 
-    // Calcul de la magnitude apparente et de l'irradiance sans coefficient d'extinction arbitraire
-    double extinctionCoeff = 0.15; 
     result->magnitudeApparente = magBruteAstre + (extinctionCoeff * result->airMass);
-    result->irradiance = (result->elevRefractee > 0.0) ? 1361.0 * std::pow(0.7, result->airMass) / (result->distUA * result->distUA) : 0.0;
-    result->shadowLength = (result->elevRefractee > 0.0) ? 1.0 / std::tan(std::max(1e-4, result->elevRefractee * DEG2RAD)) : -1.0;
+
+    if (result->elevRefractee > 0.0) {
+        result->irradiance = 1361.0 * std::pow(0.7, result->airMass) / (result->distUA * result->distUA);
+    } else {
+        result->irradiance = 0.0;
+    }
+
+    if (result->elevRefractee > 0.0) {
+        result->shadowLength = 1.0 / std::tan(std::max(1e-4, result->elevRefractee * DEG2RAD));
+    } else {
+        result->shadowLength = -1.0;
+    }
 
     double lonTerrestreDeg = std::atan2(yECEF, xECEF) * RAD2DEG;
     result->raDeg = normaliserDegres(lonTerrestreDeg + (eraRad * RAD2DEG));
@@ -120,33 +132,23 @@ void calculerDepuisECEF(
     result->decDeg = (normR > 0.0) ? std::asin(zECEF / normR) * RAD2DEG : 0.0;
     result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
 
-    // Calcul rigoureux des heures de lever/coucher sans valeurs par défaut bloquées
-    double decRad = result->decDeg * DEG2RAD;
-    double cosH0 = -std::tan(phi) * std::tan(decRad);
-    double solarNoonUT = normaliserDegres(12.0 - (lonDeg * 4.0)) / 15.0;
-
-    if (cosH0 < -1.0) {
-        result->leverUT = -1.0; // Indicateur strict de jour permanent (pas de valeur magique)
-        result->coucherUT = -1.0;
-    } else if (cosH0 > 1.0) {
-        result->leverUT = -2.0; // Indicateur strict de nuit permanente
-        result->coucherUT = -2.0;
-    } else {
-        double h0Deg = std::acos(cosH0) * RAD2DEG;
-        double demiArcJour = h0Deg / 15.0;
-        result->leverUT = normaliserDegres((solarNoonUT - demiArcJour) * 15.0) / 15.0;
-        result->coucherUT = normaliserDegres((solarNoonUT + demiArcJour) * 15.0) / 15.0;
-    }
-
     double jd = (timestampUtc / 86400.0) + 2440587.5;
     result->jde = jd;
+    
     double sieclesJ2000 = (jd - 2451545.0) / 36525.0;
     result->deltaT = 64.6 + 31.5 * sieclesJ2000 + 65.5 * sieclesJ2000 * sieclesJ2000;
 
     result->moonPhasePct = 0.0;
     result->moonAgeDays = 0.0;
-    result->seasonCode = 0;
-    result->visibiliteCode = (result->elevRefractee < 0.0) ? 0 : (result->magnitudeApparente <= 5.5 ? 1 : 2);
+    result->seasonCode = -1;
+
+    if (result->elevRefractee < 0.0) {
+        result->visibiliteCode = 0;
+    } else {
+        if (result->magnitudeApparente <= 5.5) result->visibiliteCode = 1;
+        else if (result->magnitudeApparente <= 9.5) result->visibiliteCode = 2;
+        else result->visibiliteCode = 3;
+    }
 }
 
-}
+} // extern "C"
