@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v19.12 STRICT & DYNAMIC + CORRECTIONS)
+ * SYSTEMA SENTINELA — WEB WORKER (v19.12 STRICT & DYNAMIC + WMM & ECLIPSE)
  */
 
 var Module = {
@@ -12,6 +12,7 @@ var Module = {
 
 let wasmReady = false;
 let matriceJplGlobal = null;
+let coefficientsWMMGlobal = null;
 let metricsPtr = 0;
 let resultPtr = 0;
 
@@ -65,7 +66,6 @@ function formaterHeureDecimale(heures) {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} UTC`;
 }
 
-// CORRECTION : Calcul de la durée du jour et du crépuscule (Dusk)
 function calculerMetriquesSolairesAdditionnelles(sunrise, sunset) {
     if (!sunrise || !sunset || sunrise === '--' || sunset === '--') {
         return { daylightDuration: '12h 00m', dusk: '18:30 UTC' };
@@ -168,12 +168,37 @@ function calculerParametresLunaires(posLune, posSoleil) {
     };
 }
 
+function parserFichierWMM(texteCof) {
+    if (!texteCof) return null;
+    const lignes = texteCof.split('\n');
+    const coefficients = [];
+    for (let ligne of lignes) {
+        const parties = ligne.trim().split(/\s+/);
+        if (parties.length >= 6) {
+            const n = parseInt(parties[0], 10);
+            const m = parseInt(parties[1], 10);
+            const fn = parseFloat(parties[2]);
+            const fm = parseFloat(parties[3]);
+            if (!isNaN(n) && !isNaN(m)) {
+                coefficients.push({ n, m, g: fn, h: fm });
+            }
+        }
+    }
+    return coefficients;
+}
+
 onmessage = async function(e) {
     const data = e.data;
     if (!data) return;
 
     if (data.type === 'UPDATE_JPL_MATRIX') {
         matriceJplGlobal = data.matrix;
+        return;
+    }
+
+    if (data.type === 'LOAD_WMM_COF') {
+        coefficientsWMMGlobal = parserFichierWMM(data.contenu);
+        postMessage({ type: 'WMM_LOADED', status: 'Succès' });
         return;
     }
 
@@ -236,13 +261,21 @@ onmessage = async function(e) {
                     const sunriseStr = formaterHeureDecimale(Module.HEAPF64[off + 6]);
                     const sunsetStr = formaterHeureDecimale(Module.HEAPF64[off + 7]);
 
-                    // CORRECTION : Appel des métriques solaires additionnelles pour le Soleil
                     let daylightDurationVal = 'N/A';
                     let duskVal = 'N/A';
                     if (nomAstreMaj === 'SOLEIL') {
                         const solExt = calculerMetriquesSolairesAdditionnelles(sunriseStr, sunsetStr);
                         daylightDurationVal = solExt.daylightDuration;
                         duskVal = solExt.dusk;
+                    }
+
+                    let statutEclipseVal = "Normal";
+                    if (nomAstreMaj === 'LUNE' && shadowVal > 1000) {
+                        statutEclipseVal = "Ombre Terrestre (Éclipse possible)";
+                    } else if (nomAstreMaj === 'SOLEIL' && shadowVal > 0) {
+                        statutEclipseVal = "Occultation / Disque masqué";
+                    } else if (shadowVal < 0) {
+                        statutEclipseVal = "Pénombre";
                     }
 
                     bodiesResults[nomAstreMaj] = {
@@ -257,8 +290,8 @@ onmessage = async function(e) {
                         magnitude: posECEF.mag ?? 0.0,
                         sunrise: sunriseStr,
                         sunset: sunsetStr,
-                        dusk: duskVal,                      // CORRECTION INCLUSE
-                        daylightDuration: daylightDurationVal, // CORRECTION INCLUSE
+                        dusk: duskVal,
+                        daylightDuration: daylightDurationVal,
                         airMass: Module.HEAPF64[off + 8],
                         irradiance: Module.HEAPF64[off + 9],
                         deltat: Module.HEAPF64[off + 10],
@@ -266,6 +299,7 @@ onmessage = async function(e) {
                         jde: Module.HEAPF64[off + 12],
                         shadowLength: shadowVal > 0 ? shadowVal : 0,
                         shadowLengthDisplay: shadowVal > 0 ? `${shadowVal.toFixed(2)} m` : "Aucune (Nuit)",
+                        statutEclipse: statutEclipseVal,
                         visibiliteCode: Module.HEAP32[(resultPtr + 136) / 4],
                         constellationCode: constObj.code,
                         constellationNom: constObj.nom,
@@ -274,8 +308,8 @@ onmessage = async function(e) {
                         lengthOfDay: statiques.lengthOfDay,
                         orbitVelocity: statiques.orbitVel,
                         minMaxAu: statiques.minMaxAu,
-                        perigee: statiques.perigee,         // CORRECTION INCLUSE
-                        aphelion: statiques.aphelion,       // CORRECTION INCLUSE
+                        perigee: statiques.perigee,
+                        aphelion: statiques.aphelion,
                         moonPhasePct: nomAstreMaj === 'LUNE' ? paramsLune.pct : 0.0,
                         moonAgeDays: nomAstreMaj === 'LUNE' ? paramsLune.age : 0.0,
                         seasonCode: saisonActiveCode
@@ -305,4 +339,4 @@ onmessage = async function(e) {
             postMessage({ type: 'ERROR', message: err.toString() });
         }
     }
-}; 
+};
