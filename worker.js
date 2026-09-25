@@ -204,22 +204,28 @@ onmessage = async function(e) {
                     const shadowVal = Module.HEAPF64[off + 14];
 
                     bodiesResults[nomAstreMaj] = {
-                        azimuth: Module.HEAPF64[off + 0],
-                        elevationGeometrice: Module.HEAPF64[off + 1],
-                        elevationRefractee: Module.HEAPF64[off + 2],
-                        raDeg: raVal,
-                        decDeg: decVal,
-                        distanceAu: Module.HEAPF64[off + 5],
-                        magnitude: posECEF.mag ?? 0.0,
-                        sunrise: formaterHeureDecimale(Module.HEAPF64[off + 6]),
-                        sunset: formaterHeureDecimale(Module.HEAPF64[off + 7]),
-                        airMass: Module.HEAPF64[off + 8],
-                        irradiance: Module.HEAPF64[off + 9],
-                        constellationCode: constObj.code,
-                        constellationNom: constObj.nom,
-                        constellationDisplay: `${constObj.code} (${constObj.nom})`,
-                        ...statiques
-                    };
+    azimuth: Module.HEAPF64[off + 0],
+    elevationGeometrice: Module.HEAPF64[off + 1],
+    elevationRefractee: Module.HEAPF64[off + 2],
+    raDeg: raVal,
+    decDeg: decVal,
+    distanceAu: Module.HEAPF64[off + 5],
+    magnitude: posECEF.mag ?? 0.0,
+    sunrise: formaterHeureDecimale(Module.HEAPF64[off + 6]),
+    sunset: formaterHeureDecimale(Module.HEAPF64[off + 7]),
+    airMass: Module.HEAPF64[off + 8],
+    irradiance: Module.HEAPF64[off + 9],
+    deltat: Module.HEAPF64[off + 11],
+    gmstDeg: Module.HEAPF64[off + 12], // Correspond au GHA/GMST calculé
+    gha: Module.HEAPF64[off + 12],
+    jde: Module.HEAPF64[off + 13],
+    shadowLengthDisplay: Module.HEAPF64[off + 14].toFixed(2) + ' m',
+    orbitVelocity: statiques.orbitVel, // Harmonisation de la clé
+    constellationCode: constObj.code,
+    constellationNom: constObj.nom,
+    constellationDisplay: `${constObj.code} (${constObj.nom})`,
+    ...statiques
+};
                 }
             }
 
