@@ -5,13 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SYSTEMA SENTINELA v19.12 — KERNEL RIGOROUS REPOSITORY</title>
     
+    <!-- Configuration PWA -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#f0f2f5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Sentinela">
 
     <script>
+        // Enregistrement du Service Worker pour le fonctionnement hors-ligne (PWA)
         if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
-            navigator.serviceWorker.register('coop-coep-sw.js').catch(err => {
-                console.warn('Service Worker non enregistré :', err);
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then((registration) => {
+                        console.log('[SENTINELA PWA] Service Worker enregistré, portée :', registration.scope);
+                    })
+                    .catch((error) => {
+                        console.warn('[SENTINELA PWA] Échec enregistrement Service Worker :', error);
+                    });
             });
         }
     </script>
@@ -371,6 +382,30 @@
 <script src="three.min.js"></script>
 
 <script>
+    // Gestionnaire de cache intelligent pour éviter les tirets "--"
+    class SensorCacheManager {
+        constructor(cacheKey) {
+            this.cacheKey = cacheKey;
+            this.storage = window.localStorage;
+        }
+        enregistrerMesure(cle, valeur, elevation) {
+            try {
+                const payload = { valeur, elevation, timestamp: Date.now() };
+                this.storage.setItem(`${this.cacheKey}_${cle}`, JSON.stringify(payload));
+            } catch (e) {}
+        }
+        obtenirSecours(cle) {
+            try {
+                const item = this.storage.getItem(`${this.cacheKey}_${cle}`);
+                if (!item) return null;
+                return JSON.parse(item);
+            } catch (e) {
+                return null;
+            }
+        }
+    }
+
+    const sentinelaCache = new SensorCacheManager('sentinela_sensor_cache_v2');
     let currentEqTempsMin = 0;
     let modeJourActif = true;
     
@@ -639,20 +674,39 @@
         }
     }
 
+    async function chargerFichierWMMDeSecours() {
+        try {
+            const reponse = await fetch('WMM2025.COF');
+            if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable.");
+            const texteCof = await reponse.text();
+            envoyerMessageWorkerSecurise({ type: 'LOAD_WMM_COF', contenu: texteCof });
+        } catch (e) {
+            ecrireLog("WMM : Avertissement - WMM2025.COF non chargé automatiquement.");
+        }
+    }
+
     function traiterMessageWorker(e) {
         const data = e.data;
         if (!data) return;
-        if (data.type === 'WORKER_READY') {
-            workerPret = true;
-            document.getElementById('lbl-worker-status').innerText = "PRÊT";
-            document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-            while (fileDAttenteWorker.length > 0) {
-                astroWorker.postMessage(fileDAttenteWorker.shift());
-            }
-            return;
-        }
-        if (data.type === 'RESULTS_COMPUTE') {
-            mettreAJourInterface(data);
+        switch (data.type) {
+            case 'WORKER_READY':
+                workerPret = true;
+                document.getElementById('lbl-worker-status').innerText = "PRÊT";
+                document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+                chargerFichierWMMDeSecours();
+                while (fileDAttenteWorker.length > 0) {
+                    astroWorker.postMessage(fileDAttenteWorker.shift());
+                }
+                break;
+            case 'WMM_LOADED':
+                ecrireLog("WMM-2025 : Modèle géomagnétique synchronisé dans le Worker.");
+                break;
+            case 'RESULTS_COMPUTE':
+                mettreAJourInterface(data);
+                break;
+            case 'ERROR':
+                ecrireLog(`Erreur Worker : ${data.message}`);
+                break;
         }
     }
 
@@ -713,6 +767,8 @@
         const tbody = document.getElementById('table-body');
         if (!tbody) return;
         
+        const statutsVisibilite = ["Invisible", "Œil nu", "Jumelles", "Télescope"];
+
         if (Object.keys(lignesTableauCache).length === 0) {
             tbody.innerHTML = '';
             for (const nomAstre of Object.keys(bodiesData)) {
@@ -807,50 +863,69 @@
             }
         }
 
-        const statutsVisibilite = ["Invisible", "Œil nu", "Jumelles", "Télescope"];
+        for (const [nomAstre, dataInput] of Object.entries(bodiesData)) {
+            let donneesAstre = dataInput;
+            const cleCache = `astre_${nomAstre.toUpperCase()}`;
 
-        for (const [nomAstre, data] of Object.entries(bodiesData)) {
+            if (donneesAstre && donneesAstre.elevationGeometrique !== undefined) {
+                sentinelaCache.enregistrerMesure(cleCache, donneesAstre, Math.abs(donneesAstre.elevationGeometrique));
+            } else {
+                const secours = sentinelaCache.obtenirSecours(cleCache);
+                if (secours) {
+                    donneesAstre = secours.valeur;
+                } else {
+                    continue; 
+                }
+            }
+
             const cache = lignesTableauCache[nomAstre];
             if (!cache) continue;
 
-            if (cache.el) cache.el.textContent = data.elevationGeometrique !== undefined ? data.elevationGeometrique.toFixed(6) + '°' : '--';
-            if (cache.az) cache.az.textContent = data.azimuth !== undefined ? data.azimuth.toFixed(6) + '°' : '--';
-            if (cache.dist) cache.dist.textContent = data.distanceAu !== undefined ? data.distanceAu.toFixed(8) : '--';
-            if (cache.minmax) cache.minmax.textContent = data.minMaxAu ?? '--';
-            if (cache.mag) cache.mag.textContent = data.magnitude !== undefined ? data.magnitude.toFixed(2) : '--';
-            if (cache.ra) cache.ra.textContent = data.raDeg !== undefined ? data.raDeg.toFixed(6) + '°' : '--';
-            if (cache.dec) cache.dec.textContent = data.decDeg !== undefined ? data.decDeg.toFixed(6) + '°' : '--';
-            if (cache.const) cache.const.textContent = data.constellationDisplay ?? '--';
-            if (cache.perigee) cache.perigee.textContent = data.perigee ?? '--';
-            if (cache.perihelion) cache.perihelion.textContent = data.perihelion ?? '--';
-            if (cache.aphelion) cache.aphelion.textContent = data.aphelion ?? '--';
-            if (cache.dis) cache.dis.textContent = data.distanceAu !== undefined ? data.distanceAu.toFixed(4) + ' AE' : '--';
-            if (cache.period) cache.period.textContent = data.orbitPeriod ?? '--';
-            if (cache.lod) cache.lod.textContent = data.lengthOfDay ?? '--';
-            if (cache.vel) cache.vel.textContent = data.orbitVelocity ?? '--';
-            if (cache.shadow) cache.shadow.textContent = data.shadowLengthDisplay ?? '--';
-            if (cache.rise) cache.rise.textContent = data.sunrise ?? '--';
-            if (cache.set) cache.set.textContent = data.sunset ?? '--';
-            if (cache.dusk) cache.dusk.textContent = data.dusk ?? '--';
-            if (cache.daylight) cache.daylight.textContent = data.daylightDuration ?? '--';
-            if (cache.jde) cache.jde.textContent = data.jde !== undefined ? data.jde.toFixed(4) : '--';
-            if (cache.deltat) cache.deltat.textContent = data.deltat !== undefined ? data.deltat.toFixed(2) : '--';
-            if (cache.gmst) cache.gmst.textContent = data.gmstDeg !== undefined ? data.gmstDeg.toFixed(4) + '°' : '--';
-            if (cache.gha) cache.gha.textContent = data.gha !== undefined ? data.gha.toFixed(4) + '°' : '--';
-            if (cache.moonPhase) cache.moonPhase.textContent = data.moonPhasePct !== undefined ? `${data.moonPhasePct.toFixed(1)}%` : '--';
-            if (cache.moonAge) cache.moonAge.textContent = data.moonAgeDays !== undefined ? `${data.moonAgeDays.toFixed(1)} j` : '--';
+            if (cache.el) cache.el.textContent = donneesAstre.elevationGeometrique !== undefined ? donneesAstre.elevationGeometrique.toFixed(6) + '°' : '--';
+            if (cache.az) cache.az.textContent = donneesAstre.azimuth !== undefined ? donneesAstre.azimuth.toFixed(6) + '°' : '--';
+            if (cache.dist) cache.dist.textContent = donneesAstre.distanceAu !== undefined ? donneesAstre.distanceAu.toFixed(8) : '--';
+            if (cache.minmax) cache.minmax.textContent = donneesAstre.minMaxAu ?? '--';
+            if (cache.mag) cache.mag.textContent = donneesAstre.magnitude !== undefined ? donneesAstre.magnitude.toFixed(2) : '--';
+            if (cache.ra) cache.ra.textContent = donneesAstre.raDeg !== undefined ? donneesAstre.raDeg.toFixed(6) + '°' : '--';
+            if (cache.dec) cache.dec.textContent = donneesAstre.decDeg !== undefined ? donneesAstre.decDeg.toFixed(6) + '°' : '--';
+            if (cache.const) cache.const.textContent = donneesAstre.constellationDisplay ?? '--';
+            if (cache.perigee) cache.perigee.textContent = donneesAstre.perigee ?? '--';
+            if (cache.perihelion) cache.perihelion.textContent = donneesAstre.perihelion ?? '--';
+            if (cache.aphelion) cache.aphelion.textContent = donneesAstre.aphelion ?? '--';
+            if (cache.dis) cache.dis.textContent = donneesAstre.distanceAu !== undefined ? donneesAstre.distanceAu.toFixed(4) + ' AE' : '--';
+            if (cache.period) cache.period.textContent = donneesAstre.orbitPeriod ?? '--';
+            if (cache.lod) cache.lod.textContent = donneesAstre.lengthOfDay ?? '--';
+            if (cache.vel) cache.vel.textContent = donneesAstre.orbitVelocity ?? '--';
+            if (cache.shadow) cache.shadow.textContent = donneesAstre.shadowLengthDisplay ?? '--';
+            if (cache.rise) cache.rise.textContent = donneesAstre.sunrise ?? '--';
+            if (cache.set) cache.set.textContent = donneesAstre.sunset ?? '--';
+            if (cache.dusk) cache.dusk.textContent = donneesAstre.dusk ?? '--';
+            if (cache.daylight) cache.daylight.textContent = donneesAstre.daylightDuration ?? '--';
+            if (cache.jde) cache.jde.textContent = donneesAstre.jde !== undefined ? donneesAstre.jde.toFixed(4) : '--';
+            if (cache.deltat) cache.deltat.textContent = donneesAstre.deltat !== undefined ? donneesAstre.deltat.toFixed(2) : '--';
+            if (cache.gmst) cache.gmst.textContent = donneesAstre.gmstDeg !== undefined ? donneesAstre.gmstDeg.toFixed(4) + '°' : '--';
+            if (cache.gha) cache.gha.textContent = donneesAstre.gha !== undefined ? donneesAstre.gha.toFixed(4) + '°' : '--';
+            if (cache.moonPhase) cache.moonPhase.textContent = donneesAstre.moonPhasePct !== undefined ? `${donneesAstre.moonPhasePct.toFixed(1)}%` : '--';
+            if (cache.moonAge) cache.moonAge.textContent = donneesAstre.moonAgeDays !== undefined ? `${donneesAstre.moonAgeDays.toFixed(1)} j` : '--';
             
-            if (cache.solConst && data.distanceAu) {
-                const solConstDyn = 1361.0 / (data.distanceAu * data.distanceAu);
+            if (cache.solConst && donneesAstre.distanceAu) {
+                const solConstDyn = 1361.0 / (donneesAstre.distanceAu * donneesAstre.distanceAu);
                 cache.solConst.textContent = solConstDyn.toFixed(2);
             }
 
-            if (cache.am) cache.am.textContent = data.airMass !== undefined ? data.airMass.toFixed(4) : '--';
-            if (cache.irr) cache.irr.textContent = data.irradiance !== undefined ? data.irradiance.toFixed(2) : '--';
+            if (cache.am) cache.am.textContent = donneesAstre.airMass !== undefined ? donneesAstre.airMass.toFixed(4) : '--';
+            if (cache.irr) cache.irr.textContent = donneesAstre.irradiance !== undefined ? donneesAstre.irradiance.toFixed(2) : '--';
 
             if (cache.etat) {
-                cache.etat.textContent = statutsVisibilite[data.visibiliteCode] ?? "Inconnu";
-                cache.etat.setAttribute('data-code', data.visibiliteCode);
+                if (donneesAstre.statutEclipse && donneesAstre.statutEclipse !== "Normal") {
+                    cache.etat.textContent = `⚠️ ${donneesAstre.statutEclipse}`;
+                    cache.etat.style.color = "var(--rose, #ff3366)";
+                    cache.etat.style.fontWeight = "bold";
+                } else {
+                    cache.etat.textContent = statutsVisibilite[donneesAstre.visibiliteCode] ?? "Inconnu";
+                    cache.etat.style.color = "inherit";
+                    cache.etat.style.fontWeight = "normal";
+                }
             }
         }
     }
@@ -887,16 +962,6 @@
             wasm: "OPÉRATIONNEL"
         };
         ecrireLog(`[DIAGNOSTIC NOYAU] GPS: ${diag.gps} | Météo/Baro: ${diag.barometre} | IMU: ${diag.orientation}`);
-    }
-
-    async function chargerEtParserWMM() {
-        try {
-            const reponse = await fetch('./WMM2025.COF');
-            if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable");
-            ecrireLog("WMM : WMM2025.COF chargé avec succès.");
-        } catch (e) {
-            ecrireLog("WMM : Avertissement - Fichier WMM ignoré ou absent.");
-        }
     }
 
     function dessinerRadarAstres(astresData, cap = 0) {
@@ -1117,7 +1182,6 @@
         await actualiserIndiceKpRapide();
         setInterval(actualiserIndiceKpRapide, 60 * 60 * 1000);
         await chargerFluxLiveJPL();
-        await chargerEtParserWMM();
         
         appliquerCoordonneesManuelles(true);
         executerDiagnosticSysteme();
