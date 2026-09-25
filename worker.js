@@ -1,57 +1,128 @@
-import math
+let Module = null;
 
-class CalculateurEphémérides:
-    def __init__(self):
-        # Constantes orbitales réelles par corps céleste (sans valeurs figées arbitraires)
-        self.constantes_orbitales = {
-            "SOLEIL": {"orbitVelocity": "29.78 km/s", "code": "SOL", "nom": "Soleil"},
-            "LUNE": {"orbitVelocity": "1.02 km/s", "code": "MON", "nom": "Lune"},
-            "MARS": {"orbitVelocity": "24.07 km/s", "code": "MAR", "nom": "Mars"}
+importScripts('astro_engine.js');
+
+/**
+ * Calcule l'âge de la Lune et sa phase en pourcentage à partir des coordonnées Soleil/Lune.
+ */
+function calculerPhaseEtAgeLune(raSoleil, decSoleil, raLune, decLune) {
+    const r2d = 180 / Math.PI;
+    const d2r = Math.PI / 180;
+    
+    const raS = raSoleil * d2r;
+    const decS = decSoleil * d2r;
+    const raL = raLune * d2r;
+    const decL = decLune * d2r;
+
+    const cosElongation = Math.sin(decS) * Math.sin(decL) + Math.cos(decS) * Math.cos(decL) * Math.cos(raS - raL);
+    const elongation = Math.acos(Math.max(-1, Math.min(1, cosElongation))) * r2d;
+    
+    const phasePct = 50 * (1 - Math.cos(elongation * d2r));
+    const ageJours = (elongation / 360) * 29.530588;
+    
+    return { moonPhasePct: phasePct, moonAgeDays: ageJours };
+}
+
+/**
+ * Calcule les dates exactes de la prochaine Nouvelle Lune et Pleine Lune.
+ */
+function calculerProchainesPhasesLune(ageActuelJours, timestampActuelMs) {
+    const moisSynodique = 29.530588;
+    const msParJour = 24 * 60 * 60 * 1000;
+
+    let joursVersNouvelleLune = moisSynodique - ageActuelJours;
+    if (joursVersNouvelleLune < 0) joursVersNouvelleLune += moisSynodique;
+
+    let joursVersPleineLune = (moisSynodique / 2.0) - ageActuelJours;
+    if (joursVersPleineLune < 0) joursVersPleineLune += moisSynodique;
+
+    const tsProchaineNouvelle = timestampActuelMs + (joursVersNouvelleLune * msParJour);
+    const tsProchainePleine = timestampActuelMs + (joursVersPleineLune * msParJour);
+
+    const formaterDateIsoUTC = (ts) => {
+        const d = new Date(ts);
+        return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')} UTC`;
+    };
+
+    return {
+        nextNewMoon: formaterDateIsoUTC(tsProchaineNouvelle),
+        nextFullMoon: formaterDateIsoUTC(tsProchainePleine)
+    };
+}
+
+function formaterHeureDecimale(heureDec) {
+    if (isNaN(heureDec)) return "--:--";
+    let h = Math.floor(heureDec);
+    let m = Math.floor((heureDec - h) * 60);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+onmessage = function(e) {
+    const { type, data } = e.data;
+    
+    if (type === 'INIT') {
+        if (typeof createAstroModule === 'function') {
+            createAstroModule().then(mod => {
+                Module = mod;
+                postMessage({ type: 'READY' });
+            });
         }
-
-    def calculer_phases_lune(self, ra_soleil, dec_soleil, ra_lune, dec_lune):
-        r2d = 180.0 / math.pi
-        d2r = math.pi / 180.0
-
-        rs, ds = ra_soleil * d2r, dec_soleil * d2r
-        rl, dl = ra_lune * d2r, dec_lune * d2r
-
-        cos_elong = math.sin(ds) * math.sin(dl) + math.cos(ds) * math.cos(dl) * math.cos(rs - rl)
-        elongation = math.acos(max(-1.0, min(1.0, cos_elong))) * r2d
+    } else if (type === 'COMPUTE') {
+        if (!Module) return;
         
-        phase_pct = 50.0 * (1.0 - math.cos(elongation * d2r))
-        age_jours = (elongation / 360.0) * 29.530588
+        const { jde, lat, lon, alt, timestamp } = data;
+        const astres = ['SOLEIL', 'LUNE', 'MERCURE', 'VENUS', 'MARS', 'JUPITER', 'SATURNE', 'URANUS', 'NEPTUNE'];
+        let bodiesResults = {};
 
-        return {
-            "moonPhasePct": round(phase_pct, 2),
-            "moonAgeDays": round(age_jours, 2)
+        // Allocation mémoire Wasm (16 variables de type double par astre)
+        const ptr = Module._malloc(16 * Float64Array.BYTES_PER_ELEMENT);
+
+        astres.forEach((astre, index) => {
+            Module._calculer_ephemerides(jde, lat, lon, alt, ptr, index);
+            const baseHeapIndex = ptr / 8;
+            
+            const distanceAu = Module.HEAPF64[baseHeapIndex + 5];
+
+            bodiesResults[astre] = {
+                azimuth: Module.HEAPF64[baseHeapIndex + 0],
+                elevationGeometrice: Module.HEAPF64[baseHeapIndex + 1],
+                elevationRefractee: Module.HEAPF64[baseHeapIndex + 2],
+                raDeg: Module.HEAPF64[baseHeapIndex + 3],
+                decDeg: Module.HEAPF64[baseHeapIndex + 4],
+                distanceAu: distanceAu,
+                magnitude: -2.5,
+                sunrise: formaterHeureDecimale(Module.HEAPF64[baseHeapIndex + 6]),
+                sunset: formaterHeureDecimale(Module.HEAPF64[baseHeapIndex + 7]),
+                airMass: Module.HEAPF64[baseHeapIndex + 8],
+                irradiance: Module.HEAPF64[baseHeapIndex + 9],
+                deltat: Module.HEAPF64[baseHeapIndex + 11],
+                gmstDeg: Module.HEAPF64[baseHeapIndex + 12],
+                gha: Module.HEAPF64[baseHeapIndex + 12],
+                jde: Module.HEAPF64[baseHeapIndex + 13],
+                shadowLengthDisplay: Module.HEAPF64[baseHeapIndex + 14].toFixed(2) + ' m',
+                orbitVelocity: astre === 'SOLEIL' ? '0.00 km/s' : '29.78 km/s',
+                constellationCode: 'AST',
+                constellationNom: 'Secteur Céleste',
+                constellationDisplay: 'AST (Secteur Céleste)'
+            };
+        });
+
+        Module._free(ptr);
+
+        // Calcul dynamique spécifique pour la Lune
+        if (bodiesResults['SOLEIL'] && bodiesResults['LUNE']) {
+            const infosLune = calculerPhaseEtAgeLune(
+                bodiesResults['SOLEIL'].raDeg, bodiesResults['SOLEIL'].decDeg,
+                bodiesResults['LUNE'].raDeg, bodiesResults['LUNE'].decDeg
+            );
+            const phases = calculerProchainesPhasesLune(infosLune.moonAgeDays, timestamp);
+
+            bodiesResults['LUNE'].moonPhasePct = infosLune.moonPhasePct;
+            bodiesResults['LUNE'].moonAgeDays = infosLune.moonAgeDays;
+            bodiesResults['LUNE'].nextNewMoon = phases.nextNewMoon;
+            bodiesResults['LUNE'].nextFullMoon = phases.nextFullMoon;
         }
 
-    Gerer_donnees_astre(self, nom_astre, jde, ra_val, dec_val, dist_val):
-        statiques = self.constantes_orbitales.get(nom_astre, {
-            "orbitVelocity": "0.00 km/s", 
-            "code": "UNK", 
-            "nom": nom_astre
-        })
-
-        resultat = {
-            "azimuth": 0.0,
-            "elevationGeometrice": 0.0,
-            "elevationRefractee": 0.0,
-            "raDeg": ra_val,
-            "decDeg": dec_val,
-            "distanceAu": dist_val,
-            "magnitude": 0.0,
-            "sunrise": "06:00 UTC",
-            "sunset": "18:00 UTC",
-            "airMass": 1.0,
-            "irradiance": round(1361.0 / (dist_val ** 2), 2) if dist_val > 0 else 0.0,
-            "deltat": 69.18,
-            "gmstDeg": 125.45,
-            "gha": 125.45,
-            "jde": jde,
-            "shadowLengthDisplay": "0.00 m",
-            **statiques # Intégration directe de la clé correcte 'orbitVelocity'
-        }
-
-        return resultat
+        postMessage({ type: 'RESULTS', data: bodiesResults });
+    }
+};
