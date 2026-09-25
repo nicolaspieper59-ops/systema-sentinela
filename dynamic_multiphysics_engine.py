@@ -103,7 +103,6 @@ void calculerDepuisECEFStellarium(
         result->elevRefractee = result->elevGeom;
     }
 
-    // Calcul rigoureux de la masse d'air (Air Mass)
     result->airMass = 0.0;
     if (result->elevRefractee > 0.0) {
         double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
