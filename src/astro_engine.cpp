@@ -378,5 +378,3 @@ onmessage = async function(e) {
 ```[cite: 1]
 
 ---
-
-Souhaitez-vous que l'on intègre un script de vérification automatique pour valider le chargement des coefficients WMM-2025 au démarrage du noyau ?
