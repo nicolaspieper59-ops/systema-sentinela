@@ -216,9 +216,9 @@ onmessage = async function(e) {
             const paramsLune = calculerParametresLunaires(posLuneECEF, posSoleilECEF);
             const saisonActiveCode = determinerSaisonActive(timestampSec, almanachData);
 
+            // ... (Code précédent identique) ...
             if (sourceDonnees) {
                 for (const [nomAstre, arcsAstre] of Object.entries(sourceDonnees)) {
-                    // ÉTAPE CLÉ : Correction du "Retour Lumière" (Light Travel Time) pour chaque astre
                     const posBrute = obtenirPositionParChebyshev(arcsAstre, timestampSec);
                     if (!posBrute) continue;
 
@@ -226,19 +226,20 @@ onmessage = async function(e) {
                     const tempsPropagationSec = distanceKm / VITESSE_LUMIERE_KM_S;
                     const timestampRetarde = timestampSec - tempsPropagationSec;
 
-                    // Réévaluation de la position à l'instant corrigé du retour lumière
                     const posECEF = obtenirPositionParChebyshev(arcsAstre, timestampRetarde);
                     if (!posECEF) continue;
 
+                    // Suppression stricte des fallbacks météorologiques
                     Module._calculerDepuisECEF(
                         posECEF.x, posECEF.y, posECEF.z,
                         lat, lon, alt, eraRad, timestampSec,
-                        meteo?.tempC ?? 15.0, meteo?.presHpa ?? 1013.25,
+                        meteo.tempC, meteo.presHpa, 
                         posECEF.mag, false, resultPtr
                     );
 
                     const off = resultPtr / 8;
                     const nomAstreMaj = nomAstre.toUpperCase();
+// ... (Reste du code identique) ...
                     
                     const statiques = CONSTANTES_ORBITALES[nomAstreMaj];
                     if (!statiques) {
