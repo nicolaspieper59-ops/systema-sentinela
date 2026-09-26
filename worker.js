@@ -1,11 +1,20 @@
 let Module = null;
 importScripts('astro_engine.js');
 
-// Initialisation immédiate du module Wasm dès le chargement du worker
+// Utilitaire pour convertir une heure décimale UTC (ex: 6.25) en chaîne (ex: "06:15")
+function formatHeureDecimale(heureDecimale) {
+    if (heureDecimale === -2.0) return "Jour Polaire";
+    if (heureDecimale === -3.0) return "Nuit Polaire";
+    if (heureDecimale < 0.0) return "--:--";
+
+    const h = Math.floor(heureDecimale);
+    const m = Math.floor((heureDecimale - h) * 60);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 if (typeof createAstroModule === 'function') {
     createAstroModule().then(mod => {
         Module = mod;
-        // Correspond exactement au test de l'HTML ('WORKER_READY')
         postMessage({ type: 'WORKER_READY' });
     }).catch(err => {
         postMessage({ type: 'ERROR', message: "Échec d'initialisation du module Wasm: " + err.message });
@@ -13,15 +22,10 @@ if (typeof createAstroModule === 'function') {
 }
 
 onmessage = function(e) {
-    const { type, matrix, contenu, timestampUtc, coords, meteo } = e.data;
+    const { type, timestampUtc, coords, meteo } = e.data;
     
-    if (type === 'UPDATE_JPL_MATRIX') {
-        // Traitement de la matrice JPL transmise par l'HTML
-        return;
-    }
-    
+    if (type === 'UPDATE_JPL_MATRIX') return;
     if (type === 'LOAD_WMM_COF') {
-        // Traitement du modèle WMM transmis par l'HTML
         postMessage({ type: 'WMM_LOADED' });
         return;
     }
@@ -29,22 +33,42 @@ onmessage = function(e) {
     if (type === 'COMPUTE') {
         if (!Module) return;
         
-        // Conversion du timestamp UTC en JDE (Jour Julien Éphéméride)
         const jde = (timestampUtc / 86400000.0) + 2440587.5;
-        const lat = coords?.lat ?? 0.0;
-        const lon = coords?.lon ?? 0.0;
-        const alt = coords?.alt ?? 0.0;
+        const lat = coords.lat;
+        const lon = coords.lon;
+        const alt = coords.altMeters ?? coords.alt; 
+        
+        // Extraction stricte de la météo envoyée par l'interface
+        const tempC = meteo.tempC;
+        const presHpa = meteo.presHpa;
 
         const astres = ['SOLEIL', 'LUNE', 'MERCURE', 'VENUS', 'MARS', 'JUPITER', 'SATURNE', 'URANUS', 'NEPTUNE'];
         let bodiesResults = {};
 
         const ptr = Module._malloc(16 * Float64Array.BYTES_PER_ELEMENT);
 
-        astres.forEach((astre, index) => {
-            Module._calculer_ephemerides(jde, lat, lon, alt, ptr, index);
-            const base = ptr / 8;
+        for (let index = 0; index < astres.length; index++) {
+            const astre = astres[index];
             
-            const distAu = Module.HEAPF64[base + 5];
+            // Appel de la fonction C++ avec la nouvelle signature incluant Température et Pression
+            Module._calculer_ephemerides(jde, lat, lon, alt, tempC, presHpa, ptr, index);
+            
+            const base = ptr / 8; // Offset pour Float64Array
+            
+            // Lecture du code d'erreur physique à l'index 13
+            const errorCode = Module.HEAPF64[base + 13];
+            if (errorCode === 101.0) {
+                Module._free(ptr);
+                postMessage({ 
+                    type: 'ERROR', 
+                    message: "Erreur 101: Paramètres météorologiques hors limites physiques."
+                });
+                return; // Interruption stricte
+            }
+
+            // Lecture des données calculées sans aucun hardcoding
+            const heureLeverDec = Module.HEAPF64[base + 6];
+            const heureCoucherDec = Module.HEAPF64[base + 7];
 
             bodiesResults[astre] = {
                 azimuth: Module.HEAPF64[base + 0],
@@ -52,39 +76,28 @@ onmessage = function(e) {
                 elevationRefractee: Module.HEAPF64[base + 2],
                 raDeg: Module.HEAPF64[base + 3],
                 decDeg: Module.HEAPF64[base + 4],
-                distanceAu: distAu,
-                magnitude: -2.0,
-                sunrise: "06:15",
-                sunset: "18:45",
+                distanceAu: Module.HEAPF64[base + 5],
+                sunrise: formatHeureDecimale(heureLeverDec),
+                sunset: formatHeureDecimale(heureCoucherDec),
                 airMass: Module.HEAPF64[base + 8],
                 irradiance: Module.HEAPF64[base + 9],
                 deltat: Module.HEAPF64[base + 11],
                 gmstDeg: Module.HEAPF64[base + 12],
-                gha: Module.HEAPF64[base + 12],
-                jde: Module.HEAPF64[base + 13],
                 shadowLengthDisplay: Module.HEAPF64[base + 14].toFixed(2) + ' m',
-                orbitVelocity: astre === 'SOLEIL' ? '0.00 km/s' : '29.78 km/s',
-                constellationDisplay: 'ORB (Dynamique)'
+                // Données dynamiques déduites physiquement
+                orbitVelocity: astre === 'SOLEIL' ? '0.00 km/s' : (29.78 / Math.sqrt(Module.HEAPF64[base + 5])).toFixed(2) + ' km/s'
             };
-        });
+        }
 
         Module._free(ptr);
 
-        // Métriques solaires et géodésiques globales attendues par l'HTML
-        const solarMetrics = {
-            eqTempsMin: 2.345,
-            excentriciteDeg: 0.0167,
-            obliquiteDeg: 23.439,
-            longSolaireDeg: 180.0,
-            gastDeg: 124.35,
-            lstDeg: 124.35 + lon
-        };
-
-        // Envoi du résultat avec le type exact attendu par l'HTML ('RESULTS_COMPUTE')[cite: 6]
+        // Envoi du signal attendu strictement par le HTML
         postMessage({
             type: 'RESULTS_COMPUTE',
             bodies: bodiesResults,
-            solarMetrics: solarMetrics
+            solarMetrics: {
+                lstDeg: (bodiesResults['SOLEIL'].gmstDeg + lon) % 360.0
+            }
         });
     }
 };
