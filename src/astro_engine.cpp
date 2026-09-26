@@ -40,7 +40,6 @@ inline double normaliserDegres(double deg) {
     return res < 0.0 ? res + 360.0 : res;
 }
 
-// Fonction requise par le Worker pour les paramètres sidéraux et solaires
 EMSCRIPTEN_KEEPALIVE
 void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, double* metricsPtr) {
     if (!metricsPtr) return;
@@ -48,19 +47,15 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
     double jd = (timestampSec / 86400.0) + 2440587.5;
     double T = (jd - 2451545.0) / 36525.0;
 
-    // Calculs approximatifs mais robustes pour alimenter les métriques
     double l0 = normaliserDegres(280.46646 + 36000.76983 * T);
     double m = normaliserDegres(357.52911 + 35999.05029 * T);
     double c = (1.914602 - 0.004817 * T) * std::sin(m * DEG2RAD) + (0.019993 - 0.000101 * T) * std::sin(2.0 * m * DEG2RAD);
     double sunTrueLong = normaliserDegres(l0 + c);
     double obliquite = 23.439291 - 0.0130042 * T;
 
-    // GREENWICH APPARENT SIDEREAL TIME (GAST) approximatif
     double gast = normaliserDegres(280.46061837 + 360.98564736629 * (jd - 2451545.0) + 0.00038793 * T * T);
     double lst = normaliserDegres(gast + lonDeg);
-
-    // Équation du temps en minutes
-    double eqTemps = 4.0 * (l0 - 0.0057183 - sunTrueLong); // en degrés convertis en minutes approx
+    double eqTemps = 4.0 * (l0 - 0.0057183 - sunTrueLong); 
 
     metricsPtr[0] = eqTemps;
     metricsPtr[1] = obliquite;
@@ -69,7 +64,6 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
     metricsPtr[4] = lst;
 }
 
-// Fonction utilitaire pour Chebyshev si appelée directement depuis Wasm
 EMSCRIPTEN_KEEPALIVE
 void obtenirPositionAstreChebyshev(double timestampSec, double* outCoords) {
     if (!outCoords) return;
@@ -121,13 +115,11 @@ void calculerDepuisECEF(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
-    double pSecours = (presHpa > 800.0 && presHpa < 1200.0) ? presHpa : 1013.25;
-    double tSecours = (tempC > -50.0 && tempC < 60.0) ? tempC : 15.0;
-
+    // Suppression des valeurs de secours : utilisation stricte des valeurs injectées
     if (result->elevGeom > -2.0) {
         double h = std::max(result->elevGeom, -1.0);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
-        double facteurMeteoBaro = (pSecours / 1013.25) * (288.15 / (273.15 + tSecours));
+        double facteurMeteoBaro = (presHpa / 1013.25) * (288.15 / (273.15 + tempC));
         result->elevRefractee = result->elevGeom + (refArcMin * facteurMeteoBaro) / 60.0;
     } else {
         result->elevRefractee = result->elevGeom;
@@ -176,11 +168,9 @@ void calculerDepuisECEF(
     result->moonPhasePct = 0.0;
     result->moonAgeDays = 0.0;
     result->seasonCode = -1;
-
     result->visibiliteCode = (result->elevRefractee < 0.0) ? 0 : (result->magnitudeApparente <= 5.5 ? 1 : 2);
 }
 
-// Alias pour compatibilité avec le nom long précédent si nécessaire
 EMSCRIPTEN_KEEPALIVE
 void calculerDepuisECEFStellarium(
     double xECEF, double yECEF, double zECEF,
@@ -193,5 +183,4 @@ void calculerDepuisECEFStellarium(
 ) {
     calculerDepuisECEF(xECEF, yECEF, zECEF, latDeg, lonDeg, altM, eraRad, timestampUtc, tempC, presHpa, extinctionCoeff, magBruteAstre, estVecteurTopocentrique, result);
 }
-
 }
