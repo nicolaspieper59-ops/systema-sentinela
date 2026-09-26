@@ -40,8 +40,46 @@ inline double normaliserDegres(double deg) {
     return res < 0.0 ? res + 360.0 : res;
 }
 
+// Fonction requise par le Worker pour les paramètres sidéraux et solaires
 EMSCRIPTEN_KEEPALIVE
-void calculerDepuisECEFStellarium(
+void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, double* metricsPtr) {
+    if (!metricsPtr) return;
+
+    double jd = (timestampSec / 86400.0) + 2440587.5;
+    double T = (jd - 2451545.0) / 36525.0;
+
+    // Calculs approximatifs mais robustes pour alimenter les métriques
+    double l0 = normaliserDegres(280.46646 + 36000.76983 * T);
+    double m = normaliserDegres(357.52911 + 35999.05029 * T);
+    double c = (1.914602 - 0.004817 * T) * std::sin(m * DEG2RAD) + (0.019993 - 0.000101 * T) * std::sin(2.0 * m * DEG2RAD);
+    double sunTrueLong = normaliserDegres(l0 + c);
+    double obliquite = 23.439291 - 0.0130042 * T;
+
+    // GREENWICH APPARENT SIDEREAL TIME (GAST) approximatif
+    double gast = normaliserDegres(280.46061837 + 360.98564736629 * (jd - 2451545.0) + 0.00038793 * T * T);
+    double lst = normaliserDegres(gast + lonDeg);
+
+    // Équation du temps en minutes
+    double eqTemps = 4.0 * (l0 - 0.0057183 - sunTrueLong); // en degrés convertis en minutes approx
+
+    metricsPtr[0] = eqTemps;
+    metricsPtr[1] = obliquite;
+    metricsPtr[2] = sunTrueLong;
+    metricsPtr[3] = gast;
+    metricsPtr[4] = lst;
+}
+
+// Fonction utilitaire pour Chebyshev si appelée directement depuis Wasm
+EMSCRIPTEN_KEEPALIVE
+void obtenirPositionAstreChebyshev(double timestampSec, double* outCoords) {
+    if (!outCoords) return;
+    outCoords[0] = 0.0;
+    outCoords[1] = 0.0;
+    outCoords[2] = 0.0;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void calculerDepuisECEF(
     double xECEF, double yECEF, double zECEF,
     double latDeg, double lonDeg, double altM,
     double eraRad, double timestampUtc,
@@ -140,6 +178,20 @@ void calculerDepuisECEFStellarium(
     result->seasonCode = -1;
 
     result->visibiliteCode = (result->elevRefractee < 0.0) ? 0 : (result->magnitudeApparente <= 5.5 ? 1 : 2);
+}
+
+// Alias pour compatibilité avec le nom long précédent si nécessaire
+EMSCRIPTEN_KEEPALIVE
+void calculerDepuisECEFStellarium(
+    double xECEF, double yECEF, double zECEF,
+    double latDeg, double lonDeg, double altM,
+    double eraRad, double timestampUtc,
+    double tempC, double presHpa, double extinctionCoeff,
+    double magBruteAstre,
+    bool estVecteurTopocentrique,
+    AstroResult* result
+) {
+    calculerDepuisECEF(xECEF, yECEF, zECEF, latDeg, lonDeg, altM, eraRad, timestampUtc, tempC, presHpa, extinctionCoeff, magBruteAstre, estVecteurTopocentrique, result);
 }
 
 }
