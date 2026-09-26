@@ -145,17 +145,7 @@ void calculerDepuisECEFStellarium(
 }
 
 }
-```[cite: 2]
 
----
-
-### 2. Mise à jour du Web Worker (`worker.js`)
-Ce fichier intègre la sécurisation des flux météo (`tempC` et `presHpa` forcés par défaut) et garantit la transmission propre des métriques orbitales pour éliminer les mentions `--`[cite: 1].
-
-```javascript
-/**
- * SYSTEMA SENTINELA — WEB WORKER (v19.12 CORRIGÉ & SÉCURISÉ)
- */
 
 var Module = {
     onRuntimeInitialized: function() {
@@ -375,6 +365,3 @@ onmessage = async function(e) {
         }
     }
 };
-```[cite: 1]
-
----
