@@ -98,13 +98,26 @@ function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
     if (!arcsAstre || arcsAstre.length === 0) {
         throw new Error("Flux d'éphémérides absent ou invalide.");
     }
-    
+
+    // 1. Recherche du bloc de 4h correspondant
     let arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end);
+
+    // 2. Si hors de la fenêtre de 7 jours, verrouillage sur le premier ou dernier bloc du flux
     if (!arc) {
-        throw new Error(`Timestamp ${timestampSec} hors de portée de la fenêtre de 7 jours du flux.`);
+        if (timestampSec < arcsAstre[0].t_start) {
+            arc = arcsAstre[0];
+        } else {
+            arc = arcsAstre[arcsAstre.length - 1];
+        }
     }
 
-    const tNorm = (arc.t_start === arc.t_end) ? 0.0 : (2.0 * (timestampSec - arc.t_start) / (arc.t_end - arc.t_start) - 1.0);
+    // 3. Restriction stricte de t dans l'intervalle [t_start, t_end] du bloc (anti-divergence)
+    const tClamped = Math.max(arc.t_start, Math.min(timestampSec, arc.t_end));
+    
+    // 4. Normalisation sur l'intervalle [-1, 1]
+    const tNorm = (arc.t_start === arc.t_end) 
+        ? 0.0 
+        : (2.0 * (tClamped - arc.t_start) / (arc.t_end - arc.t_start) - 1.0);
 
     return {
         x: evaluerClenshawChebyshev(arc.cx, tNorm),
