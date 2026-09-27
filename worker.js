@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v20.0 STRICT — SANS FALLBACK)
+ * SYSTEMA SENTINELA — WEB WORKER (v19.12 STRICT & DYNAMIC + LIGHT TRAVEL TIME CORRECTION)
  */
 
 var Module = {
@@ -61,7 +61,7 @@ function obtenirConstellationIAU(raDeg, decDeg) {
 }
 
 function formaterHeureDecimale(heures) {
-    if (heures < 0) return "--:-- UTC";
+    if (heures < 0 || isNaN(heures)) return "--:-- UTC";
     const h = Math.floor(heures) % 24;
     const m = Math.floor((heures - Math.floor(heures)) * 60);
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} UTC`;
@@ -71,16 +71,15 @@ function auditerEnvironnementInterne() {
     return {
         wasmStatus: "Actif",
         memoireAlloueeBytes: 33554432,
-        noyauJplCharge: true,
-        modeStrictSansFallback: true,
+        noyauJplCharge: matriceJplGlobal !== null,
         modelesActifs: ["DE440s", "EGM2008", "WMM-2025", "US Standard Atmosphere"]
     };
 }
 
 function initialiserMemoireWasm() {
     if (wasmReady && !metricsPtr) {
-        metricsPtr = Module._malloc(40);  // 5 * 8 bytes
-        resultPtr = Module._malloc(160); // AstroResult struct size
+        metricsPtr = Module._malloc(40);  // 5 x double (8 octets)
+        resultPtr = Module._malloc(152); // AstroResult struct
     }
 }
 
@@ -95,15 +94,14 @@ function evaluerClenshawChebyshev(coeffs, x) {
     return coeffs[0] + x * bK1 - bK2;
 }
 
-// AUCUN FALLBACK : levée d'erreur directe si hors de la plage du flux
 function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
     if (!arcsAstre || arcsAstre.length === 0) {
-        throw new Error("Flux d'éphémérides absent ou incomplet.");
+        throw new Error("Flux d'éphémérides absent ou invalide.");
     }
     
-    const arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end);
+    let arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end);
     if (!arc) {
-        throw new Error(`PEREMPTION FLUX : Le timestamp ${timestampSec} est hors de la plage valide [${arcsAstre[0].t_start}, ${arcsAstre[arcsAstre.length - 1].t_end}]. Mise à jour requise.`);
+        throw new Error(`Timestamp ${timestampSec} hors de portée de la fenêtre de 7 jours du flux.`);
     }
 
     const tNorm = (arc.t_start === arc.t_end) ? 0.0 : (2.0 * (timestampSec - arc.t_start) / (arc.t_end - arc.t_start) - 1.0);
@@ -113,36 +111,6 @@ function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
         y: evaluerClenshawChebyshev(arc.cy, tNorm),
         z: evaluerClenshawChebyshev(arc.cz, tNorm),
         mag: arc.mag ?? 0.0
-    };
-}
-
-function determinerSaisonActive(timestampSec, almanach) {
-    if (!almanach || !almanach.saisons || almanach.saisons.length === 0) return 0;
-    let saisonCourante = 0;
-    for (let s of almanach.saisons) {
-        if (timestampSec >= s.timestamp) {
-            saisonCourante = s.type;
-        }
-    }
-    return saisonCourante;
-}
-
-function calculerParametresLunaires(posLune, posSoleil) {
-    if (!posLune || !posSoleil) return { pct: 0.0, age: 0.0 };
-    
-    const dSun = Math.sqrt(posSoleil.x**2 + posSoleil.y**2 + posSoleil.z**2);
-    const dMoon = Math.sqrt(posLune.x**2 + posLune.y**2 + posLune.z**2);
-    
-    const dot = (posSoleil.x * posLune.x + posSoleil.y * posLune.y + posSoleil.z * posLune.z);
-    const cosAngle = dot / (dSun * dMoon);
-    const elongation = Math.acos(Math.max(-1.0, Math.min(1.0, cosAngle)));
-    
-    const phasePct = ((1.0 - Math.cos(elongation)) / 2.0) * 100.0;
-    const ageDays = (elongation / (2.0 * Math.PI)) * 29.530588853;
-
-    return {
-        pct: parseFloat(phasePct.toFixed(2)),
-        age: parseFloat(ageDays.toFixed(1))
     };
 }
 
@@ -158,6 +126,10 @@ onmessage = async function(e) {
     if (data.type === 'COMPUTE') {
         if (!wasmReady) {
             postMessage({ type: 'ERROR', message: 'Wasm non initialisé' });
+            return;
+        }
+        if (!matriceJplGlobal || !matriceJplGlobal.DATA) {
+            postMessage({ type: 'ERROR', message: 'Matrice d\'éphémérides non chargée.' });
             return;
         }
         initialiserMemoireWasm();
@@ -178,37 +150,24 @@ onmessage = async function(e) {
 
             const eraRad = (gastDeg % 360.0) * (Math.PI / 180.0);
             const bodiesResults = {};
-            const sourceDonnees = matriceJplGlobal?.DATA || null;
-            const almanachData = matriceJplGlobal?.ALMANACH || null;
-
-            if (!sourceDonnees) {
-                throw new Error("Matrice JPL non chargée ou indisponible.");
-            }
-
-            // Temps de propagation de la lumière strict pour Soleil & Lune
-            const posSoleilBrute = obtenirPositionParChebyshev(sourceDonnees.soleil, timestampSec);
-            const tRetardSoleil = timestampSec - (Math.sqrt(posSoleilBrute.x**2 + posSoleilBrute.y**2 + posSoleilBrute.z**2) / VITESSE_LUMIERE_KM_S);
-            const posSoleilECEF = obtenirPositionParChebyshev(sourceDonnees.soleil, tRetardSoleil);
-
-            const posLuneBrute = obtenirPositionParChebyshev(sourceDonnees.lune, timestampSec);
-            const tRetardLune = timestampSec - (Math.sqrt(posLuneBrute.x**2 + posLuneBrute.y**2 + posLuneBrute.z**2) / VITESSE_LUMIERE_KM_S);
-            const posLuneECEF = obtenirPositionParChebyshev(sourceDonnees.lune, tRetardLune);
-
-            const paramsLune = calculerParametresLunaires(posLuneECEF, posSoleilECEF);
-            const saisonActiveCode = determinerSaisonActive(timestampSec, almanachData);
+            const sourceDonnees = matriceJplGlobal.DATA;
 
             for (const [nomAstre, arcsAstre] of Object.entries(sourceDonnees)) {
+                // 1. Position brute instantanée
                 const posBrute = obtenirPositionParChebyshev(arcsAstre, timestampSec);
-                const distanceKm = Math.sqrt(posBrute.x**2 + posBrute.y**2 + posBrute.z**2);
+                const distanceKm = Math.sqrt(posBrute.x ** 2 + posBrute.y ** 2 + posBrute.z ** 2);
+                
+                // 2. Temps de transit de la lumière (Light Travel Time)
                 const tempsPropagationSec = distanceKm / VITESSE_LUMIERE_KM_S;
                 const timestampRetarde = timestampSec - tempsPropagationSec;
 
+                // 3. Position ECEF réévaluée à l'instant rétracté
                 const posECEF = obtenirPositionParChebyshev(arcsAstre, timestampRetarde);
 
                 Module._calculerDepuisECEF(
                     posECEF.x, posECEF.y, posECEF.z,
                     lat, lon, alt, eraRad, timestampSec,
-                    meteo?.tempC ?? 15.0, meteo?.presHpa ?? 1013.25, 0.12,
+                    meteo?.tempC ?? 15.0, meteo?.presHpa ?? 1013.25, 0.2,
                     posECEF.mag, false, resultPtr
                 );
 
@@ -217,7 +176,7 @@ onmessage = async function(e) {
                 const statiques = CONSTANTES_ORBITALES[nomAstreMaj];
 
                 if (!statiques) {
-                    throw new Error(`Erreur critique : Données orbitales introuvables pour ${nomAstreMaj}`);
+                    throw new Error(`Données orbitales introuvables pour ${nomAstreMaj}`);
                 }
 
                 const raVal = Module.HEAPF64[off + 3];
@@ -225,10 +184,6 @@ onmessage = async function(e) {
                 const constObj = obtenirConstellationIAU(raVal, decVal);
                 const shadowVal = Module.HEAPF64[off + 14];
 
-                const sunriseStr = formaterHeureDecimale(Module.HEAPF64[off + 6]);
-                const sunsetStr = formaterHeureDecimale(Module.HEAPF64[off + 7]);
-
-                // MAPPING STRICT ET CORRIGÉ DES DOUBLES DE STRUCT ASTRORESULT
                 bodiesResults[nomAstreMaj] = {
                     azimuth: Module.HEAPF64[off + 0],
                     elevationGeometrique: Module.HEAPF64[off + 1],
@@ -238,17 +193,17 @@ onmessage = async function(e) {
                     raDeg: raVal,
                     decDeg: decVal,
                     distanceAu: Module.HEAPF64[off + 5],
-                    sunrise: sunriseStr,
-                    sunset: sunsetStr,
+                    magnitude: Module.HEAPF64[off + 13],
+                    sunrise: formaterHeureDecimale(Module.HEAPF64[off + 6]),
+                    sunset: formaterHeureDecimale(Module.HEAPF64[off + 7]),
                     airMass: Module.HEAPF64[off + 8],
                     irradiance: Module.HEAPF64[off + 9],
-                    magnitude: Module.HEAPF64[off + 10],       // Correct : Index 10
-                    deltat: Module.HEAPF64[off + 11],          // Correct : Index 11
-                    gha: Module.HEAPF64[off + 12],             // Correct : Index 12
-                    jde: Module.HEAPF64[off + 13],             // Correct : Index 13
+                    deltat: Module.HEAPF64[off + 10],
+                    gha: Module.HEAPF64[off + 11],
+                    jde: Module.HEAPF64[off + 12],
                     shadowLength: shadowVal > 0 ? shadowVal : 0,
                     shadowLengthDisplay: shadowVal > 0 ? `${shadowVal.toFixed(2)} m` : "Aucune (Nuit)",
-                    visibiliteCode: Module.HEAP32[(resultPtr + 136) / 4], // Offset exact 136 octets
+                    visibiliteCode: Module.HEAP32[(resultPtr + 136) / 4],
                     constellationCode: constObj.code,
                     constellationNom: constObj.nom,
                     constellationDisplay: `${constObj.code} (${constObj.nom})`,
@@ -257,24 +212,20 @@ onmessage = async function(e) {
                     orbitVelocity: statiques.orbitVel,
                     minMaxAu: statiques.minMaxAu,
                     perigee: statiques.perigee,
-                    aphelion: statiques.aphelion,
-                    moonPhasePct: nomAstreMaj === 'LUNE' ? paramsLune.pct : 0.0,
-                    moonAgeDays: nomAstreMaj === 'LUNE' ? paramsLune.age : 0.0,
-                    seasonCode: saisonActiveCode
+                    aphelion: statiques.aphelion
                 };
             }
 
             postMessage({
                 type: 'RESULTS_COMPUTE',
                 timestamp: timestampUtc,
-                almanac: almanachData,
+                almanac: matriceJplGlobal.ALMANACH ?? null,
                 solarMetrics: { 
                     eqTempsMin, 
                     obliquiteDeg, 
                     longSolaireDeg, 
                     gastDeg, 
-                    lstDeg,
-                    gastLst: `${gastDeg.toFixed(4)}° / ${lstDeg.toFixed(4)}°`
+                    lstDeg 
                 },
                 bodies: bodiesResults
             });
