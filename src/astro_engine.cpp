@@ -55,7 +55,8 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
 
     double gast = normaliserDegres(280.46061837 + 360.98564736629 * (jd - 2451545.0) + 0.00038793 * T * T);
     double lst = normaliserDegres(gast + lonDeg);
-    double eqTemps = 4.0 * (l0 - 0.0057183 - sunTrueLong); 
+
+    double eqTemps = 4.0 * (l0 - 0.0057183 - sunTrueLong);
 
     metricsPtr[0] = eqTemps;
     metricsPtr[1] = obliquite;
@@ -115,7 +116,7 @@ void calculerDepuisECEF(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
-    // Suppression des valeurs de secours : utilisation stricte des valeurs injectées
+    // Prise en compte exacte des conditions météo (sans fallback arbitraire)
     if (result->elevGeom > -2.0) {
         double h = std::max(result->elevGeom, -1.0);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
@@ -134,7 +135,10 @@ void calculerDepuisECEF(
     }
 
     result->magnitudeApparente = magBruteAstre + (extinctionCoeff * result->airMass);
-    result->irradiance = (result->elevRefractee > 0.0) ? 1361.0 * std::pow(0.7, result->airMass) / (result->distUA * result->distUA) : 0.0;
+    
+    // Irradiance basée sur la constante solaire à la distance réelle de l'astre
+    double solConstLocale = (result->distUA > 0.0) ? (1361.0 / (result->distUA * result->distUA)) : 1361.0;
+    result->irradiance = (result->elevRefractee > 0.0) ? solConstLocale * std::pow(0.7, result->airMass) : 0.0;
     result->shadowLength = (result->elevRefractee > 0.0) ? 1.0 / std::tan(std::max(1e-4, result->elevRefractee * DEG2RAD)) : -1.0;
 
     double lonTerrestreDeg = std::atan2(yECEF, xECEF) * RAD2DEG;
@@ -168,6 +172,7 @@ void calculerDepuisECEF(
     result->moonPhasePct = 0.0;
     result->moonAgeDays = 0.0;
     result->seasonCode = -1;
+
     result->visibiliteCode = (result->elevRefractee < 0.0) ? 0 : (result->magnitudeApparente <= 5.5 ? 1 : 2);
 }
 
@@ -183,4 +188,5 @@ void calculerDepuisECEFStellarium(
 ) {
     calculerDepuisECEF(xECEF, yECEF, zECEF, latDeg, lonDeg, altM, eraRad, timestampUtc, tempC, presHpa, extinctionCoeff, magBruteAstre, estVecteurTopocentrique, result);
 }
+
 }
