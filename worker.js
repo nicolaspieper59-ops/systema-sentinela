@@ -20,15 +20,15 @@ const VITESSE_LUMIERE_KM_S = 299792.458; // c en km/s
 importScripts('wasm_astronomie.js');
 
 const CONSTANTES_ORBITALES = {
-    'SOLEIL': { orbitPeriod: '365.25 j', lengthOfDay: '24.0 h', orbitVel: '29.78 km/s', minMaxAu: '0.983 - 1.017 UA', perigee: '0.983 UA', aphelion: '1.017 UA' },
-    'LUNE': { orbitPeriod: '27.32 j', lengthOfDay: '708.7 h', orbitVel: '1.02 km/s', minMaxAu: '0.0025 - 0.0027 UA', perigee: '0.0549 UA', aphelion: '0.0569 UA' },
-    'MERCURE': { orbitPeriod: '88.0 j', lengthOfDay: '4222.6 h', orbitVel: '47.36 km/s', minMaxAu: '0.307 - 0.466 UA', perigee: '0.307 UA', aphelion: '0.466 UA' },
-    'VENUS': { orbitPeriod: '224.7 j', lengthOfDay: '2802.0 h', orbitVel: '35.02 km/s', minMaxAu: '0.718 - 0.728 UA', perigee: '0.718 UA', aphelion: '0.728 UA' },
-    'MARS': { orbitPeriod: '687.0 j', lengthOfDay: '24.6 h', orbitVel: '24.07 km/s', minMaxAu: '1.381 - 1.666 UA', perigee: '1.381 UA', aphelion: '1.666 UA' },
-    'JUPITER': { orbitPeriod: '4331 j', lengthOfDay: '9.9 h', orbitVel: '13.07 km/s', minMaxAu: '4.95 - 5.46 UA', perigee: '4.95 UA', aphelion: '5.46 UA' },
-    'SATURNE': { orbitPeriod: '10747 j', lengthOfDay: '10.7 h', orbitVel: '9.68 km/s', minMaxAu: '9.04 - 10.12 UA', perigee: '9.04 UA', aphelion: '10.12 UA' },
-    'URANUS': { orbitPeriod: '30589 j', lengthOfDay: '17.2 h', orbitVel: '6.80 km/s', minMaxAu: '18.28 - 20.11 UA', perigee: '18.28 UA', aphelion: '20.11 UA' },
-    'NEPTUNE': { orbitPeriod: '59800 j', lengthOfDay: '16.1 h', orbitVel: '5.43 km/s', minMaxAu: '29.81 - 30.33 UA', perigee: '29.81 UA', aphelion: '30.33 UA' }
+    'SOLEIL': { orbitPeriod: '365.25 j', lengthOfDay: '25-35 j', orbitVel: '29.78 km/s', minMaxAu: '0.983 - 1.017 UA', perigee: '0.983 UA (périhélie)', aphelion: '1.017 UA (aphélie)', perihelion: 'N/A' },
+    'LUNE': { orbitPeriod: '27.32 j', lengthOfDay: '708.7 h', orbitVel: '1.02 km/s', minMaxAu: '0.0024 - 0.0027 UA', perigee: '0.0024 UA (356 400 km)', aphelion: '0.0027 UA (apogée)', perihelion: 'N/A' },
+    'MERCURE': { orbitPeriod: '88.0 j', lengthOfDay: '4222.6 h', orbitVel: '47.36 km/s', minMaxAu: '0.307 - 0.467 UA', perigee: '0.52 UA (Terre)', aphelion: '0.467 UA', perihelion: '0.307 UA' },
+    'VENUS': { orbitPeriod: '224.7 j', lengthOfDay: '2802.0 h', orbitVel: '35.02 km/s', minMaxAu: '0.718 - 0.728 UA', perigee: '0.26 UA (Terre)', aphelion: '0.728 UA', perihelion: '0.718 UA' },
+    'MARS': { orbitPeriod: '687.0 j', lengthOfDay: '24.6 h', orbitVel: '24.07 km/s', minMaxAu: '1.381 - 1.666 UA', perigee: '0.37 UA (Terre)', aphelion: '1.666 UA', perihelion: '1.381 UA' },
+    'JUPITER': { orbitPeriod: '4331 j', lengthOfDay: '9.9 h', orbitVel: '13.07 km/s', minMaxAu: '4.951 - 5.457 UA', perigee: '3.95 UA (Terre)', aphelion: '5.457 UA', perihelion: '4.951 UA' },
+    'SATURNE': { orbitPeriod: '10747 j', lengthOfDay: '10.7 h', orbitVel: '9.68 km/s', minMaxAu: '9.041 - 10.124 UA', perigee: '8.04 UA (Terre)', aphelion: '10.124 UA', perihelion: '9.041 UA' },
+    'URANUS': { orbitPeriod: '30589 j', lengthOfDay: '17.2 h', orbitVel: '6.80 km/s', minMaxAu: '18.286 - 20.096 UA', perigee: '17.28 UA (Terre)', aphelion: '20.096 UA', perihelion: '18.286 UA' },
+    'NEPTUNE': { orbitPeriod: '59800 j', lengthOfDay: '16.1 h', orbitVel: '5.43 km/s', minMaxAu: '29.81 - 30.33 UA', perigee: '28.81 UA (Terre)', aphelion: '30.33 UA', perihelion: '29.81 UA' }
 };
 
 function obtenirConstellationIAU(raDeg, decDeg) {
@@ -61,7 +61,7 @@ function obtenirConstellationIAU(raDeg, decDeg) {
 }
 
 function formaterHeureDecimale(heures) {
-    if (heures < 0) return "00:00 UTC";
+    if (heures < 0) return "--:-- UTC";
     const h = Math.floor(heures) % 24;
     const m = Math.floor((heures - Math.floor(heures)) * 60);
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} UTC`;
@@ -69,7 +69,7 @@ function formaterHeureDecimale(heures) {
 
 function calculerMetriquesSolairesAdditionnelles(sunrise, sunset) {
     if (!sunrise || !sunset || sunrise === '--' || sunset === '--') {
-        return { daylightDuration: '12h 00m', dusk: '18:30 UTC' };
+        return { daylightDuration: 'N/A', dusk: 'N/A' };
     }
 
     const [hR, mR] = sunrise.split(':').map(Number);
@@ -169,6 +169,22 @@ function calculerParametresLunaires(posLune, posSoleil) {
     };
 }
 
+function calculerPhasePlanetaire(posAstre, posSoleil) {
+    if (!posAstre || !posSoleil) return 100.0;
+    const rTerreAstre = Math.sqrt(posAstre.x**2 + posAstre.y**2 + posAstre.z**2);
+    const rTerreSoleil = Math.sqrt(posSoleil.x**2 + posSoleil.y**2 + posSoleil.z**2);
+    
+    const dx = posAstre.x - posSoleil.x;
+    const dy = posAstre.y - posSoleil.y;
+    const dz = posAstre.z - posSoleil.z;
+    const rSoleilAstre = Math.sqrt(dx**dx + dy**dy + dz**dz);
+
+    const cosPhase = (rSoleilAstre**2 + rTerreAstre**2 - rTerreSoleil**2) / (2.0 * rSoleilAstre * rTerreAstre);
+    const phaseRad = Math.acos(Math.max(-1.0, Math.min(1.0, cosPhase)));
+    const phasePct = ((1.0 + Math.cos(phaseRad)) / 2.0) * 100.0;
+    return parseFloat(phasePct.toFixed(1));
+}
+
 onmessage = async function(e) {
     const data = e.data;
     if (!data) return;
@@ -216,7 +232,6 @@ onmessage = async function(e) {
             const paramsLune = calculerParametresLunaires(posLuneECEF, posSoleilECEF);
             const saisonActiveCode = determinerSaisonActive(timestampSec, almanachData);
 
-            // ... (Code précédent identique) ...
             if (sourceDonnees) {
                 for (const [nomAstre, arcsAstre] of Object.entries(sourceDonnees)) {
                     const posBrute = obtenirPositionParChebyshev(arcsAstre, timestampSec);
@@ -229,17 +244,16 @@ onmessage = async function(e) {
                     const posECEF = obtenirPositionParChebyshev(arcsAstre, timestampRetarde);
                     if (!posECEF) continue;
 
-                    // Suppression stricte des fallbacks météorologiques
+                    // Exécution Wasm avec météo réelle transmise (sans fallback)
                     Module._calculerDepuisECEF(
                         posECEF.x, posECEF.y, posECEF.z,
                         lat, lon, alt, eraRad, timestampSec,
-                        meteo.tempC, meteo.presHpa, 
+                        meteo.tempC, meteo.presHpa,
                         posECEF.mag, false, resultPtr
                     );
 
                     const off = resultPtr / 8;
                     const nomAstreMaj = nomAstre.toUpperCase();
-// ... (Reste du code identique) ...
                     
                     const statiques = CONSTANTES_ORBITALES[nomAstreMaj];
                     if (!statiques) {
@@ -260,6 +274,15 @@ onmessage = async function(e) {
                         const solExt = calculerMetriquesSolairesAdditionnelles(sunriseStr, sunsetStr);
                         daylightDurationVal = solExt.daylightDuration;
                         duskVal = solExt.dusk;
+                    }
+
+                    let moonPhasePct = 0.0;
+                    if (nomAstreMaj === 'LUNE') {
+                        moonPhasePct = paramsLune.pct;
+                    } else if (nomAstreMaj === 'SOLEIL') {
+                        moonPhasePct = 100.0;
+                    } else {
+                        moonPhasePct = calculerPhasePlanetaire(posECEF, posSoleilECEF);
                     }
 
                     bodiesResults[nomAstreMaj] = {
@@ -292,9 +315,10 @@ onmessage = async function(e) {
                         orbitVelocity: statiques.orbitVel,
                         minMaxAu: statiques.minMaxAu,
                         perigee: statiques.perigee,
+                        perihelion: statiques.perihelion,
                         aphelion: statiques.aphelion,
-                        moonPhasePct: nomAstreMaj === 'LUNE' ? paramsLune.pct : 0.0,
-                        moonAgeDays: nomAstreMaj === 'LUNE' ? paramsLune.age : 0.0,
+                        moonPhasePct: moonPhasePct,
+                        moonAgeDays: nomAstreMaj === 'LUNE' ? paramsLune.age : null,
                         seasonCode: saisonActiveCode
                     };
                 }
