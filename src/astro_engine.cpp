@@ -9,27 +9,29 @@
 #define DEG2RAD (M_PI / 180.0)
 #define RAD2DEG (180.0 / M_PI)
 
+// Alignement strict 64-bit pour le transfert mémoire direct vers le Web Worker JS
 struct AstroResult {
-    double azim;          
-    double elevGeom;      
-    double elevRefractee; 
-    double raDeg;         
-    double decDeg;        
-    double distUA;        
-    double leverUT;       
-    double coucherUT;     
-    double airMass;       
-    double irradiance;    
-    double magnitudeApparente; 
-    double deltaT;        
-    double ghaDeg;        
-    double jde;           
-    double shadowLength;  
-    double moonPhasePct;  
-    double moonAgeDays;   
-    int visibiliteCode;   
-    int seasonCode;       
-    int padding;          
+    double azim;               // Offset  0 (HEAPF64[off + 0])
+    double elevGeom;           // Offset  8 (HEAPF64[off + 1])
+    double elevRefractee;      // Offset 16 (HEAPF64[off + 2])
+    double raDeg;              // Offset 24 (HEAPF64[off + 3])
+    double decDeg;             // Offset 32 (HEAPF64[off + 4])
+    double distUA;             // Offset 40 (HEAPF64[off + 5])
+    double leverUT;            // Offset 48 (HEAPF64[off + 6])
+    double coucherUT;          // Offset 56 (HEAPF64[off + 7])
+    double airMass;            // Offset 64 (HEAPF64[off + 8])
+    double irradiance;         // Offset 72 (HEAPF64[off + 9])
+    double extinctionCoeff;    // Offset 80 (HEAPF64[off + 10])
+    double magnitudeApparente; // Offset 88 (HEAPF64[off + 11])
+    double deltaT;             // Offset 96 (HEAPF64[off + 12])
+    double ghaDeg;             // Offset 104 (HEAPF64[off + 13])
+    double jde;                // Offset 112 (HEAPF64[off + 14])
+    double shadowLength;       // Offset 120 (HEAPF64[off + 15])
+    double moonPhasePct;       // Offset 128 (HEAPF64[off + 16])
+    double moonAgeDays;        // Offset 136 (HEAPF64[off + 17])
+    int visibiliteCode;        // Offset 144 (HEAP32[144 / 4])
+    int seasonCode;            // Offset 148 (HEAP32[148 / 4])
+    int padding;               // Offset 152 (Remplissage alignement)
 };
 
 extern "C" {
@@ -55,7 +57,6 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
 
     double gast = normaliserDegres(280.46061837 + 360.98564736629 * (jd - 2451545.0) + 0.00038793 * T * T);
     double lst = normaliserDegres(gast + lonDeg);
-
     double eqTemps = 4.0 * (l0 - 0.0057183 - sunTrueLong);
 
     metricsPtr[0] = eqTemps;
@@ -63,14 +64,6 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
     metricsPtr[2] = sunTrueLong;
     metricsPtr[3] = gast;
     metricsPtr[4] = lst;
-}
-
-EMSCRIPTEN_KEEPALIVE
-void obtenirPositionAstreChebyshev(double timestampSec, double* outCoords) {
-    if (!outCoords) return;
-    outCoords[0] = 0.0;
-    outCoords[1] = 0.0;
-    outCoords[2] = 0.0;
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -116,11 +109,13 @@ void calculerDepuisECEF(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
-    // Prise en compte exacte des conditions météo (sans fallback arbitraire)
+    double pSecours = (presHpa > 800.0 && presHpa < 1200.0) ? presHpa : 1013.25;
+    double tSecours = (tempC > -50.0 && tempC < 60.0) ? tempC : 15.0;
+
     if (result->elevGeom > -2.0) {
         double h = std::max(result->elevGeom, -1.0);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
-        double facteurMeteoBaro = (presHpa / 1013.25) * (288.15 / (273.15 + tempC));
+        double facteurMeteoBaro = (pSecours / 1013.25) * (288.15 / (273.15 + tSecours));
         result->elevRefractee = result->elevGeom + (refArcMin * facteurMeteoBaro) / 60.0;
     } else {
         result->elevRefractee = result->elevGeom;
@@ -134,11 +129,9 @@ void calculerDepuisECEF(
         result->airMass = 40.0;
     }
 
+    result->extinctionCoeff = extinctionCoeff;
     result->magnitudeApparente = magBruteAstre + (extinctionCoeff * result->airMass);
-    
-    // Irradiance basée sur la constante solaire à la distance réelle de l'astre
-    double solConstLocale = (result->distUA > 0.0) ? (1361.0 / (result->distUA * result->distUA)) : 1361.0;
-    result->irradiance = (result->elevRefractee > 0.0) ? solConstLocale * std::pow(0.7, result->airMass) : 0.0;
+    result->irradiance = (result->elevRefractee > 0.0) ? 1361.0 * std::pow(0.7, result->airMass) / (result->distUA * result->distUA) : 0.0;
     result->shadowLength = (result->elevRefractee > 0.0) ? 1.0 / std::tan(std::max(1e-4, result->elevRefractee * DEG2RAD)) : -1.0;
 
     double lonTerrestreDeg = std::atan2(yECEF, xECEF) * RAD2DEG;
@@ -174,19 +167,6 @@ void calculerDepuisECEF(
     result->seasonCode = -1;
 
     result->visibiliteCode = (result->elevRefractee < 0.0) ? 0 : (result->magnitudeApparente <= 5.5 ? 1 : 2);
-}
-
-EMSCRIPTEN_KEEPALIVE
-void calculerDepuisECEFStellarium(
-    double xECEF, double yECEF, double zECEF,
-    double latDeg, double lonDeg, double altM,
-    double eraRad, double timestampUtc,
-    double tempC, double presHpa, double extinctionCoeff,
-    double magBruteAstre,
-    bool estVecteurTopocentrique,
-    AstroResult* result
-) {
-    calculerDepuisECEF(xECEF, yECEF, zECEF, latDeg, lonDeg, altM, eraRad, timestampUtc, tempC, presHpa, extinctionCoeff, magBruteAstre, estVecteurTopocentrique, result);
 }
 
 }
