@@ -1,6 +1,7 @@
 #include <emscripten/emscripten.h>
 #include <cmath>
 #include <algorithm>
+#include <cstdint>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -9,35 +10,34 @@
 #define DEG2RAD (M_PI / 180.0)
 #define RAD2DEG (180.0 / M_PI)
 
-// Alignement strict 64-bit pour le transfert mémoire direct vers le Web Worker JS
-struct AstroResult {
-    double azim;               // Offset  0 (HEAPF64[off + 0])
-    double elevGeom;           // Offset  8 (HEAPF64[off + 1])
-    double elevRefractee;      // Offset 16 (HEAPF64[off + 2])
-    double raDeg;              // Offset 24 (HEAPF64[off + 3])
-    double decDeg;             // Offset 32 (HEAPF64[off + 4])
-    double distUA;             // Offset 40 (HEAPF64[off + 5])
-    double leverUT;            // Offset 48 (HEAPF64[off + 6])
-    double coucherUT;          // Offset 56 (HEAPF64[off + 7])
-    double airMass;            // Offset 64 (HEAPF64[off + 8])
-    double irradiance;         // Offset 72 (HEAPF64[off + 9])
-    double extinctionCoeff;    // Offset 80 (HEAPF64[off + 10])
-    double magnitudeApparente; // Offset 88 (HEAPF64[off + 11])
-    double deltaT;             // Offset 96 (HEAPF64[off + 12])
-    double ghaDeg;             // Offset 104 (HEAPF64[off + 13])
-    double jde;                // Offset 112 (HEAPF64[off + 14])
-    double shadowLength;       // Offset 120 (HEAPF64[off + 15])
-    double moonPhasePct;       // Offset 128 (HEAPF64[off + 16])
-    double moonAgeDays;        // Offset 136 (HEAPF64[off + 17])
-    int visibiliteCode;        // Offset 144 (HEAP32[144 / 4])
-    int seasonCode;            // Offset 148 (HEAP32[148 / 4])
-    int padding;               // Offset 152 (Remplissage alignement)
+// Alignment strict 8-bytes pour correspondance directe avec HEAPF64 / HEAP32 en WebAssembly
+struct alignas(8) AstroResult {
+    double azim;               // off + 0
+    double elevGeom;           // off + 1
+    double elevRefractee;      // off + 2
+    double raDeg;              // off + 3
+    double decDeg;             // off + 4
+    double distUA;             // off + 5
+    double leverUT;            // off + 6
+    double coucherUT;          // off + 7
+    double airMass;            // off + 8
+    double irradiance;         // off + 9
+    double magnitudeApparente; // off + 10
+    double deltaT;             // off + 11
+    double ghaDeg;             // off + 12
+    double jde;                // off + 13
+    double shadowLength;       // off + 14
+    double moonPhasePct;       // off + 15
+    double moonAgeDays;        // off + 16
+    int32_t visibiliteCode;    // Offset 136 octets (index 34 en HEAP32)
+    int32_t seasonCode;        // Offset 140 octets (index 35 en HEAP32)
+    int32_t padding;           // Offset 144 octets (alignement 8 octets)
 };
 
 extern "C" {
 
 EMSCRIPTEN_KEEPALIVE
-inline double normaliserDegres(double deg) {
+double normaliserDegres(double deg) {
     double res = std::fmod(deg, 360.0);
     return res < 0.0 ? res + 360.0 : res;
 }
@@ -112,8 +112,9 @@ void calculerDepuisECEF(
     double pSecours = (presHpa > 800.0 && presHpa < 1200.0) ? presHpa : 1013.25;
     double tSecours = (tempC > -50.0 && tempC < 60.0) ? tempC : 15.0;
 
-    if (result->elevGeom > -2.0) {
-        double h = std::max(result->elevGeom, -1.0);
+    // Correction de réfraction avec borne de sécurité sous l'horizon
+    if (result->elevGeom > -0.57) {
+        double h = std::max(result->elevGeom, -0.55);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
         double facteurMeteoBaro = (pSecours / 1013.25) * (288.15 / (273.15 + tSecours));
         result->elevRefractee = result->elevGeom + (refArcMin * facteurMeteoBaro) / 60.0;
@@ -121,7 +122,6 @@ void calculerDepuisECEF(
         result->elevRefractee = result->elevGeom;
     }
 
-    result->airMass = 0.0;
     if (result->elevRefractee > 0.0) {
         double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
         result->airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
@@ -129,7 +129,6 @@ void calculerDepuisECEF(
         result->airMass = 40.0;
     }
 
-    result->extinctionCoeff = extinctionCoeff;
     result->magnitudeApparente = magBruteAstre + (extinctionCoeff * result->airMass);
     result->irradiance = (result->elevRefractee > 0.0) ? 1361.0 * std::pow(0.7, result->airMass) / (result->distUA * result->distUA) : 0.0;
     result->shadowLength = (result->elevRefractee > 0.0) ? 1.0 / std::tan(std::max(1e-4, result->elevRefractee * DEG2RAD)) : -1.0;
@@ -148,8 +147,8 @@ void calculerDepuisECEF(
         result->leverUT = 0.0;
         result->coucherUT = 24.0;
     } else if (cosH0 > 1.0) {
-        result->leverUT = 6.0;
-        result->coucherUT = 18.0;
+        result->leverUT = -1.0; // Soleil de minuit / Pas de lever
+        result->coucherUT = -1.0;
     } else {
         double h0Deg = std::acos(cosH0) * RAD2DEG;
         double demiArcJour = h0Deg / 15.0;
