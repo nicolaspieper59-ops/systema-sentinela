@@ -23,7 +23,7 @@ CORPS_MAP = {
     "LUNE": "moon",
     "MERCURE": "mercury",
     "VENUS": "venus",
-    "MARS": "mars",
+    "MARS": "mars barycenter",  # Fix: "mars" -> "mars barycenter"
     "JUPITER": "jupiter barycenter",
     "SATURNE": "saturn barycenter",
     "URANUS": "uranus barycenter",
