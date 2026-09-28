@@ -6,7 +6,7 @@ concurrency:
 
 on:
   schedule:
-    - cron: '0 3 */6 * *' # Exécution tous les 6 jours (garantit un renouvellement avant les 7 jours hors-ligne)
+    - cron: '0 2 * * *' # Exécution quotidienne à 02:00 UTC (garantie de la fenêtre glissante)
   push:
     branches: [ main ]
     paths:
@@ -40,6 +40,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: true
+          fetch-depth: 0
 
       - name: 🐍 Configurer Python 3.11
         uses: actions/setup-python@v5
@@ -66,6 +67,7 @@ jobs:
       - name: 📥 Téléchargement ou Vérification DE440s & WMM2025
         run: |
           if [ ! -f "de440s.bsp" ] || [ $(wc -c < de440s.bsp) -lt 10000000 ]; then
+            echo "Téléchargement du noyau de440s.bsp..."
             curl -sSL --connect-timeout 20 --retry 3 -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || \
             curl -sSL --connect-timeout 20 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
           fi
@@ -83,19 +85,39 @@ jobs:
           LON: ${{ github.event.inputs.lon || vars.STATION_LON || '5.358507' }}
           ALT: ${{ github.event.inputs.alt || vars.STATION_ALT || '49.81' }}
         run: |
-          python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT" --days 7
+          python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT" --days 7 > flux_live.json
+
+      - name: 🔍 Audit & Validation de l'intégrité du flux
+        run: |
+          if [ ! -s flux_live.json ]; then
+            echo "ERREUR CRITIQUE : flux_live.json est vide."
+            exit 1
+          fi
+          
+          # Vérification de la présence des blocs de données clés
+          python -c "import json; data=json.load(open('flux_live.json')); assert 'DATA' in data or 'corps' in data, 'Format de flux invalide'"
+          
+          TAILLE_OCTETS=$(wc -c < flux_live.json)
+          echo "Taille du flux généré : $TAILLE_OCTETS octets"
+          
+          if [ $TAILLE_OCTETS -gt 100000000 ]; then
+            echo "ERREUR : flux_live.json dépasse la limite GitHub de 100 Mo."
+            exit 1
+          fi
 
       - name: 🔨 Compilation C++ vers WebAssembly (Wasm)
         run: |
           SRC_FILE="src/astro_engine.cpp"
-          [ -f "src/wasm_astronomie.cpp" ] && SRC_FILE="src/wasm_astronomie.cpp"
+          if [ ! -f "$SRC_FILE" ] && [ -f "src/wasm_astronomie.cpp" ]; then
+            SRC_FILE="src/wasm_astronomie.cpp"
+          fi
 
           emcc "$SRC_FILE" -O3 -std=c++17 \
             -s WASM=1 \
             -s FORCE_FILESYSTEM=1 \
             -s ALLOW_MEMORY_GROWTH=1 \
             -s INITIAL_MEMORY=33554432 \
-            -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_obtenirPositionAstreChebyshev','_malloc','_free']" \
+            -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_normaliserDegres','_malloc','_free']" \
             -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32']" \
             -o wasm_astronomie.js
 
@@ -103,15 +125,21 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
-          DATE_CACHE=$(date +'%Y%m%d')
-          [ -f "sw.js" ] && sed -i "s/const CACHE_NAME = .*/const CACHE_NAME = 'sentinela-cache-$DATE_CACHE';/" sw.js
           
-          git add -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm sw.js
+          DATE_CACHE=$(date +'%Y%m%d%H%M')
+          if [ -f "sw.js" ]; then
+            sed -i "s/const CACHE_NAME = .*/const CACHE_NAME = 'sentinela-cache-$DATE_CACHE';/" sw.js
+          fi
+          
+          git add -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm
+          [ -f "sw.js" ] && git add -f sw.js
           [ -f "WMM2025.COF" ] && git add -f WMM2025.COF
           
-          git diff --staged --quiet && exit 0
-          git commit -m "Auto-update 7-day ephemerides flux, Wasm & PWA cache [skip ci]"
-          
-          # Intégration des modifications distantes avant l'envoi
-          git pull origin main --rebase
+          if git diff --staged --quiet; then
+            echo "Aucune modification détectée."
+            exit 0
+          fi
+
+          git commit -m "Chore(data): Actualisation du flux 7 jours & binaire Wasm [skip ci]"
+          git pull origin main --rebase --autostash
           git push origin main
