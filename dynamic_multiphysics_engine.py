@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR
-Générateur d'éphémérides Tchebychev haute précision depuis JPL DE440s
+SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL Horizons Grade)
+Générateur d'éphémérides Tchebychev position + vitesse depuis JPL DE440s
 """
 
 import argparse
@@ -14,7 +14,7 @@ import numpy as np
 try:
     from skyfield.api import load
 except ImportError:
-    print("[ERREUR] La bibliothèque skyfield est requise. Installez-la via `pip install skyfield`", file=sys.stderr)
+    print("[ERREUR] La bibliothèque skyfield est requise (`pip install skyfield`)", file=sys.stderr)
     sys.exit(1)
 
 CORPS_MAP = {
@@ -41,11 +41,37 @@ PAS_HEURES_MAP = {
     "NEPTUNE": 48
 }
 
+RAYONS_EQUATORIAUX_KM = {
+    "SOLEIL": 696340.0,
+    "LUNE": 1737.4,
+    "MERCURE": 2439.7,
+    "VENUS": 6051.8,
+    "MARS": 3396.2,
+    "JUPITER": 71492.0,
+    "SATURNE": 60268.0,
+    "URANUS": 25559.0,
+    "NEPTUNE": 24764.0
+}
+
 DEGRE_TCHEBYCHEV = 10
 UA_KM = 149597870.7
 
+def calculer_inclinaison_anneaux_saturne(pos_saturne_km):
+    """Calcule la latitude sub-terrestre B des anneaux de Saturne en radians."""
+    # Pôle des anneaux de Saturne en ICRF (J2000)
+    ra_pole = np.radians(40.66)
+    dec_pole = np.radians(83.54)
+    n_pole = np.array([
+        np.cos(dec_pole) * np.cos(ra_pole),
+        np.cos(dec_pole) * np.sin(ra_pole),
+        np.sin(dec_pole)
+    ])
+    v_terre_saturne = pos_saturne_km / np.linalg.norm(pos_saturne_km)
+    sin_B = np.dot(-v_terre_saturne, n_pole)
+    return np.arcsin(np.clip(sin_B, -1.0, 1.0))
+
 def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
-    """Calcule la magnitude apparente (V) selon la géométrie Soleil-Astre-Terre."""
+    """Calcule la magnitude visuelle apparente (V) selon les modèles IAU / Mallama (2018)."""
     if nom_corps == "SOLEIL":
         dist_ua = np.linalg.norm(pos_astre_km) / UA_KM
         return round(-26.74 + 5.0 * np.log10(dist_ua), 2)
@@ -65,12 +91,17 @@ def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
     if nom_corps == "LUNE":
         return round(-12.73 + 0.026 * alpha_deg + 4.0e-9 * (alpha_deg**4), 2)
 
+    if nom_corps == "SATURNE":
+        B = calculer_inclinaison_anneaux_saturne(pos_astre_km)
+        sin_B = np.sin(np.abs(B))
+        mag = -8.88 + 5.0 * np.log10(r_ua * delta_ua) + 0.044 * alpha_deg - 2.6 * sin_B + 1.25 * (sin_B**2)
+        return round(float(mag), 2)
+
     modeles = {
         "MERCURE": (-0.60, 0.0498 * alpha_deg - 0.0001556 * (alpha_deg**2) + 3.39e-9 * (alpha_deg**3)),
         "VENUS":   (-4.40, 0.0009 * alpha_deg + 0.000239 * (alpha_deg**2) - 6.5e-7 * (alpha_deg**3)),
         "MARS":    (-1.52, 0.016 * alpha_deg),
         "JUPITER": (-9.40, 0.005 * alpha_deg),
-        "SATURNE": (-8.88, 0.044 * alpha_deg),
         "URANUS":  (-7.19, 0.001 * alpha_deg),
         "NEPTUNE": (-6.87, 0.001 * alpha_deg)
     }
@@ -84,16 +115,20 @@ def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
 
 def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2_unix, nom_corps, degre=10):
     nodes_std = np.cos(np.pi * np.arange(degre + 1) / degre)
-    
     t_sec_nodes = 0.5 * (t2_unix - t1_unix) * nodes_std + 0.5 * (t2_unix + t1_unix)
     times_nodes = ts.tt_jd((t_sec_nodes / 86400.0) + 2440587.5)
     
     astrometric = earth.at(times_nodes).observe(astre_target)
-    pos_km = astrometric.position.km  # Repère ICRF en km
-    
+    pos_km = astrometric.position.km
+    vel_kms = astrometric.velocity.km_per_s
+
     cx = np.polynomial.chebyshev.chebfit(nodes_std, pos_km[0], degre).tolist()
     cy = np.polynomial.chebyshev.chebfit(nodes_std, pos_km[1], degre).tolist()
     cz = np.polynomial.chebyshev.chebfit(nodes_std, pos_km[2], degre).tolist()
+
+    cvx = np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[0], degre).tolist()
+    cvy = np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[1], degre).tolist()
+    cvz = np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[2], degre).tolist()
 
     t_mid_unix = 0.5 * (t1_unix + t2_unix)
     time_mid = ts.tt_jd((t_mid_unix / 86400.0) + 2440587.5)
@@ -106,15 +141,15 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     return {
         "t_start": t1_unix,
         "t_end": t2_unix,
-        "cx": cx,
-        "cy": cy,
-        "cz": cz,
+        "rayon_km": RAYONS_EQUATORIAUX_KM.get(nom_corps, 0.0),
+        "cx": cx, "cy": cy, "cz": cz,
+        "cvx": cvx, "cvy": cvy, "cvz": cvz,
         "mag": mag_val
     }
 
 def generer_ephemerides(bsp_path, days=7, output_path="flux_live.json"):
     if not os.path.exists(bsp_path):
-        raise FileNotFoundError(f"Fichier de noyau JPL introuvable : {bsp_path}")
+        raise FileNotFoundError(f"Fichier BSP introuvable : {bsp_path}")
 
     ts = load.timescale()
     eph = load(bsp_path)
@@ -145,7 +180,7 @@ def generer_ephemerides(bsp_path, days=7, output_path="flux_live.json"):
 
     resultat_global = {
         "ALMANACH": {
-            "generateur": "Systema Sentinela DE440s Generator",
+            "generateur": "Systema Sentinela DE440s Generator (JPL-Grade)",
             "date_creation_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
             "fenetre_jours": days
         },
@@ -156,22 +191,22 @@ def generer_ephemerides(bsp_path, days=7, output_path="flux_live.json"):
         json.dump(resultat_global, f, indent=2, ensure_ascii=False)
 
 def main():
-    parser = argparse.ArgumentParser(description="Générateur de flux d'éphémérides DE440s")
-    parser.add_argument("lat", type=float, help="Latitude station")
-    parser.add_argument("lon", type=float, help="Longitude station")
-    parser.add_argument("alt", type=float, help="Altitude station")
-    parser.add_argument("--days", type=int, default=7, help="Période couverte en jours")
-    parser.add_argument("--bsp", type=str, default="de440s.bsp", help="Chemin vers le fichier de440s.bsp")
-    parser.add_argument("--out", type=str, default="flux_live.json", help="Fichier JSON de sortie")
+    parser = argparse.ArgumentParser(description="Générateur JPL-Grade")
+    parser.add_argument("lat", type=float)
+    parser.add_argument("lon", type=float)
+    parser.add_argument("alt", type=float)
+    parser.add_argument("--days", type=int, default=7)
+    parser.add_argument("--bsp", type=str, default="de440s.bsp")
+    parser.add_argument("--out", type=str, default="flux_live.json")
 
     args = parser.parse_args()
 
     try:
         generer_ephemerides(args.bsp, days=args.days, output_path=args.out)
-        print(f"[SUCCÈS] Flux éphémérides généré avec succès dans {args.out}")
+        print(f"[SUCCÈS] Génération terminée dans {args.out}")
         sys.exit(0)
     except Exception as e:
-        print(f"[ERREUR CRITIQUE] Échec de génération : {e}", file=sys.stderr)
+        print(f"[ERREUR] {e}", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":
