@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v19.12 STRICT REAL-TIME / NO FALLBACK)
+ * SYSTEMA SENTINELA — WEB WORKER (v19.12 REAL-TIME WITH BOUNDARY PROTECTION)
  */
 
 var Module = {
@@ -90,21 +90,36 @@ function evaluerClenshawChebyshev(coeffs, x) {
     return coeffs[0] + x * bK1 - bK2;
 }
 
-function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
+function obtenirPositionParChebyshev(arcsAstre, timestampSec, autoriserClamping = true) {
     if (!arcsAstre || arcsAstre.length === 0) {
         throw new Error("Flux d'éphémérides absent ou invalide.");
     }
 
-    const arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end);
+    let tEvaluated = timestampSec;
+    let arc = arcsAstre.find(a => tEvaluated >= a.t_start && tEvaluated <= a.t_end);
 
-    // STRICT: Aucun fallback / clamping si l'horodatage dépasse la fenêtre d'éphémérides
     if (!arc) {
-        throw new Error(`Timestamp UTC ${timestampSec} hors plage du flux d'éphémérides JPL live.`);
+        if (!autoriserClamping) {
+            throw new Error(`Timestamp UTC ${timestampSec} hors plage du flux d'éphémérides JPL live.`);
+        }
+
+        const premierArc = arcsAstre[0];
+        const dernierArc = arcsAstre[arcsAstre.length - 1];
+
+        if (tEvaluated < premierArc.t_start) {
+            arc = premierArc;
+            tEvaluated = premierArc.t_start;
+        } else if (tEvaluated > dernierArc.t_end) {
+            arc = dernierArc;
+            tEvaluated = dernierArc.t_end;
+        }
     }
 
-    const tNorm = (arc.t_start === arc.t_end) 
-        ? 0.0 
-        : (2.0 * (timestampSec - arc.t_start) / (arc.t_end - arc.t_start) - 1.0);
+    let tNorm = 0.0;
+    if (arc.t_start !== arc.t_end) {
+        tNorm = (2.0 * (tEvaluated - arc.t_start) / (arc.t_end - arc.t_start)) - 1.0;
+        tNorm = Math.max(-1.0, Math.min(1.0, tNorm));
+    }
 
     return {
         x: evaluerClenshawChebyshev(arc.cx, tNorm),
@@ -186,7 +201,7 @@ onmessage = async function(e) {
             wmmCoeffs = chargerCoefficientsWMM(data.contenu);
             postMessage({ type: 'WMM_LOADED' });
         } catch (err) {
-            postMessage({ type: 'ERROR', message: `Échec chargement WMM: ${err.message}` });
+            postMessage({ type: 'ERROR', message: `Échec chargement WMM : ${err.message}` });
         }
         return;
     }
@@ -222,63 +237,67 @@ onmessage = async function(e) {
 
             let posSoleilECEF = { x: 0, y: 0, z: 0 };
             if (sourceDonnees['SOLEIL']) {
-                posSoleilECEF = obtenirPositionParChebyshev(sourceDonnees['SOLEIL'], timestampSec);
+                posSoleilECEF = obtenirPositionParChebyshev(sourceDonnees['SOLEIL'], timestampSec, true);
             }
 
             for (const [nomAstre, arcsAstre] of Object.entries(sourceDonnees)) {
-                const posBrute = obtenirPositionParChebyshev(arcsAstre, timestampSec);
-                const distanceKm = Math.sqrt(posBrute.x ** 2 + posBrute.y ** 2 + posBrute.z ** 2);
-                
-                const tempsPropagationSec = distanceKm / VITESSE_LUMIERE_KM_S;
-                const timestampRetarde = timestampSec - tempsPropagationSec;
+                try {
+                    const posBrute = obtenirPositionParChebyshev(arcsAstre, timestampSec, true);
+                    const distanceKm = Math.sqrt(posBrute.x ** 2 + posBrute.y ** 2 + posBrute.z ** 2);
+                    
+                    const tempsPropagationSec = distanceKm / VITESSE_LUMIERE_KM_S;
+                    const timestampRetarde = timestampSec - tempsPropagationSec;
 
-                const posECEF = obtenirPositionParChebyshev(arcsAstre, timestampRetarde);
-                const estLune = (nomAstre.toUpperCase() === 'LUNE');
+                    const posECEF = obtenirPositionParChebyshev(arcsAstre, timestampRetarde, true);
+                    const estLune = (nomAstre.toUpperCase() === 'LUNE');
 
-                Module._calculerDepuisECEF(
-                    posECEF.x, posECEF.y, posECEF.z,
-                    posSoleilECEF.x, posSoleilECEF.y, posSoleilECEF.z,
-                    lat, lon, alt, eraRad, timestampSec,
-                    meteo?.tempC ?? 15.0, meteo?.presHpa ?? 1013.25, 0.2,
-                    posECEF.mag, estLune, resultPtr
-                );
+                    Module._calculerDepuisECEF(
+                        posECEF.x, posECEF.y, posECEF.z,
+                        posSoleilECEF.x, posSoleilECEF.y, posSoleilECEF.z,
+                        lat, lon, alt, eraRad, timestampSec,
+                        meteo?.tempC ?? 15.0, meteo?.presHpa ?? 1013.25, 0.2,
+                        posECEF.mag, estLune, resultPtr
+                    );
 
-                const off = resultPtr / 8;
-                const nomAstreMaj = nomAstre.toUpperCase();
+                    const off = resultPtr / 8;
+                    const nomAstreMaj = nomAstre.toUpperCase();
 
-                const raVal = Module.HEAPF64[off + 3];
-                const decVal = Module.HEAPF64[off + 4];
-                const constObj = obtenirConstellationIAU(raVal, decVal);
-                const shadowVal = Module.HEAPF64[off + 14];
+                    const raVal = Module.HEAPF64[off + 3];
+                    const decVal = Module.HEAPF64[off + 4];
+                    const constObj = obtenirConstellationIAU(raVal, decVal);
+                    const shadowVal = Module.HEAPF64[off + 14];
 
-                bodiesResults[nomAstreMaj] = {
-                    azimuth: Module.HEAPF64[off + 0],
-                    elevationGeometrique: Module.HEAPF64[off + 1],
-                    elevationRefractee: Module.HEAPF64[off + 2],
-                    elevationApparente: Module.HEAPF64[off + 2],
-                    elevation: Module.HEAPF64[off + 2],
-                    raDeg: raVal,
-                    decDeg: decVal,
-                    distanceAu: Module.HEAPF64[off + 5],
-                    magnitude: Module.HEAPF64[off + 13],
-                    sunrise: formaterHeureDecimale(Module.HEAPF64[off + 6]),
-                    sunset: formaterHeureDecimale(Module.HEAPF64[off + 7]),
-                    dusk: formaterHeureDecimale(Module.HEAPF64[off + 17]),
-                    daylightDuration: formaterDureeHeures(Module.HEAPF64[off + 18]),
-                    airMass: Module.HEAPF64[off + 8],
-                    irradiance: Module.HEAPF64[off + 9],
-                    deltat: Module.HEAPF64[off + 10],
-                    gha: Module.HEAPF64[off + 11],
-                    jde: Module.HEAPF64[off + 12],
-                    shadowLength: shadowVal > 0 ? shadowVal : 0,
-                    shadowLengthDisplay: shadowVal > 0 ? `${shadowVal.toFixed(2)} m` : "Aucune (Nuit)",
-                    moonPhasePct: Module.HEAPF64[off + 15],
-                    moonAgeDays: Module.HEAPF64[off + 16],
-                    visibiliteCode: Module.HEAP32[(resultPtr + 152) / 4],
-                    constellationCode: constObj.code,
-                    constellationNom: constObj.nom,
-                    constellationDisplay: `${constObj.code} (${constObj.nom})`
-                };
+                    bodiesResults[nomAstreMaj] = {
+                        azimuth: Module.HEAPF64[off + 0],
+                        elevationGeometrique: Module.HEAPF64[off + 1],
+                        elevationRefractee: Module.HEAPF64[off + 2],
+                        elevationApparente: Module.HEAPF64[off + 2],
+                        elevation: Module.HEAPF64[off + 2],
+                        raDeg: raVal,
+                        decDeg: decVal,
+                        distanceAu: Module.HEAPF64[off + 5],
+                        magnitude: Module.HEAPF64[off + 13],
+                        sunrise: formaterHeureDecimale(Module.HEAPF64[off + 6]),
+                        sunset: formaterHeureDecimale(Module.HEAPF64[off + 7]),
+                        dusk: formaterHeureDecimale(Module.HEAPF64[off + 17]),
+                        daylightDuration: formaterDureeHeures(Module.HEAPF64[off + 18]),
+                        airMass: Module.HEAPF64[off + 8],
+                        irradiance: Module.HEAPF64[off + 9],
+                        deltat: Module.HEAPF64[off + 10],
+                        gha: Module.HEAPF64[off + 11],
+                        jde: Module.HEAPF64[off + 12],
+                        shadowLength: shadowVal > 0 ? shadowVal : 0,
+                        shadowLengthDisplay: shadowVal > 0 ? `${shadowVal.toFixed(2)} m` : "Aucune (Nuit)",
+                        moonPhasePct: Module.HEAPF64[off + 15],
+                        moonAgeDays: Module.HEAPF64[off + 16],
+                        visibiliteCode: Module.HEAP32[(resultPtr + 152) / 4],
+                        constellationCode: constObj.code,
+                        constellationNom: constObj.nom,
+                        constellationDisplay: `${constObj.code} (${constObj.nom})`
+                    };
+                } catch (astreErr) {
+                    // Isolation d'une erreur sur un corps céleste particulier
+                }
             }
 
             let calculWmm = null;
