@@ -17,20 +17,18 @@ except ImportError:
     print("[ERREUR] La bibliothèque skyfield est requise. Installez-la via `pip install skyfield`", file=sys.stderr)
     sys.exit(1)
 
-# Cartographie des corps JPL DE440s
 CORPS_MAP = {
     "SOLEIL": "sun",
     "LUNE": "moon",
     "MERCURE": "mercury",
     "VENUS": "venus",
-    "MARS": "mars barycenter",  # Fix: "mars" -> "mars barycenter"
+    "MARS": "mars barycenter",
     "JUPITER": "jupiter barycenter",
     "SATURNE": "saturn barycenter",
     "URANUS": "uranus barycenter",
     "NEPTUNE": "neptune barycenter"
 }
 
-# Découpage temporel adaptatif (heures par bloc de Tchebychev)
 PAS_HEURES_MAP = {
     "LUNE": 4,
     "MERCURE": 6,
@@ -44,23 +42,66 @@ PAS_HEURES_MAP = {
 }
 
 DEGRE_TCHEBYCHEV = 10
+UA_KM = 149597870.7
 
-def calculer_segment_tchebychev(earth, astre_target, ts, t1_unix, t2_unix, degre=10):
-    """Calcule les coefficients de Tchebychev sur les nœuds de Gauss-Lobatto pour un intervalle donné."""
+def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
+    """Calcule la magnitude apparente (V) selon la géométrie Soleil-Astre-Terre."""
+    if nom_corps == "SOLEIL":
+        dist_ua = np.linalg.norm(pos_astre_km) / UA_KM
+        return round(-26.74 + 5.0 * np.log10(dist_ua), 2)
+
+    v_terre_astre = pos_astre_km
+    delta_km = np.linalg.norm(v_terre_astre)
+    delta_ua = delta_km / UA_KM
+
+    v_soleil_astre = pos_astre_km - pos_soleil_km
+    r_km = np.linalg.norm(v_soleil_astre)
+    r_ua = r_km / UA_KM
+
+    cos_alpha = np.dot(-v_soleil_astre, v_terre_astre) / (r_km * delta_km)
+    cos_alpha = np.clip(cos_alpha, -1.0, 1.0)
+    alpha_deg = np.degrees(np.arccos(cos_alpha))
+
+    if nom_corps == "LUNE":
+        return round(-12.73 + 0.026 * alpha_deg + 4.0e-9 * (alpha_deg**4), 2)
+
+    modeles = {
+        "MERCURE": (-0.60, 0.0498 * alpha_deg - 0.0001556 * (alpha_deg**2) + 3.39e-9 * (alpha_deg**3)),
+        "VENUS":   (-4.40, 0.0009 * alpha_deg + 0.000239 * (alpha_deg**2) - 6.5e-7 * (alpha_deg**3)),
+        "MARS":    (-1.52, 0.016 * alpha_deg),
+        "JUPITER": (-9.40, 0.005 * alpha_deg),
+        "SATURNE": (-8.88, 0.044 * alpha_deg),
+        "URANUS":  (-7.19, 0.001 * alpha_deg),
+        "NEPTUNE": (-6.87, 0.001 * alpha_deg)
+    }
+
+    if nom_corps in modeles:
+        v_0, corr_phase = modeles[nom_corps]
+        mag = v_0 + 5.0 * np.log10(r_ua * delta_ua) + corr_phase
+        return round(float(mag), 2)
+
+    return 0.0
+
+def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2_unix, nom_corps, degre=10):
     nodes_std = np.cos(np.pi * np.arange(degre + 1) / degre)
     
-    # Interpolation temporelle des nœuds
     t_sec_nodes = 0.5 * (t2_unix - t1_unix) * nodes_std + 0.5 * (t2_unix + t1_unix)
     times_nodes = ts.tt_jd((t_sec_nodes / 86400.0) + 2440587.5)
     
-    # Calcul des positions géocentriques ECEF/ICRF en km
     astrometric = earth.at(times_nodes).observe(astre_target)
-    pos_km = astrometric.position.km  # Matrice (3, N)
+    pos_km = astrometric.position.km  # Repère ICRF en km
     
-    # Fit des polynômes de Tchebychev sur [-1, 1]
     cx = np.polynomial.chebyshev.chebfit(nodes_std, pos_km[0], degre).tolist()
     cy = np.polynomial.chebyshev.chebfit(nodes_std, pos_km[1], degre).tolist()
     cz = np.polynomial.chebyshev.chebfit(nodes_std, pos_km[2], degre).tolist()
+
+    t_mid_unix = 0.5 * (t1_unix + t2_unix)
+    time_mid = ts.tt_jd((t_mid_unix / 86400.0) + 2440587.5)
+    
+    pos_astre_mid = earth.at(time_mid).observe(astre_target).position.km
+    pos_soleil_mid = earth.at(time_mid).observe(sun_target).position.km
+    
+    mag_val = calculer_magnitude_apparente(nom_corps, pos_astre_mid, pos_soleil_mid)
 
     return {
         "t_start": t1_unix,
@@ -68,7 +109,7 @@ def calculer_segment_tchebychev(earth, astre_target, ts, t1_unix, t2_unix, degre
         "cx": cx,
         "cy": cy,
         "cz": cz,
-        "mag": 0.0
+        "mag": mag_val
     }
 
 def generer_ephemerides(bsp_path, days=7, output_path="flux_live.json"):
@@ -78,6 +119,7 @@ def generer_ephemerides(bsp_path, days=7, output_path="flux_live.json"):
     ts = load.timescale()
     eph = load(bsp_path)
     earth = eph['earth']
+    sun_target = eph['sun']
 
     t_start_unix = time.time()
     t_end_unix = t_start_unix + (days * 86400)
@@ -93,7 +135,9 @@ def generer_ephemerides(bsp_path, days=7, output_path="flux_live.json"):
 
         while curr_t < t_end_unix:
             next_t = min(curr_t + pas_sec, t_end_unix)
-            seg = calculer_segment_tchebychev(earth, astre, ts, curr_t, next_t, DEGRE_TCHEBYCHEV)
+            seg = calculer_segment_tchebychev(
+                earth, astre, sun_target, ts, curr_t, next_t, nom_corps, DEGRE_TCHEBYCHEV
+            )
             segments.append(seg)
             curr_t = next_t
 
