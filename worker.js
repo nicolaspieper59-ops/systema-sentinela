@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v19.12 STRICT & DYNAMIC + LIGHT TRAVEL TIME CORRECTION)
+ * SYSTEMA SENTINELA — WEB WORKER (v19.12 STRICT REAL-TIME / NO FALLBACK)
  */
 
 var Module = {
@@ -14,22 +14,11 @@ let wasmReady = false;
 let matriceJplGlobal = null;
 let metricsPtr = 0;
 let resultPtr = 0;
+let wmmCoeffs = null;
 
 const VITESSE_LUMIERE_KM_S = 299792.458;
 
 importScripts('wasm_astronomie.js');
-
-const CONSTANTES_ORBITALES = {
-    'SOLEIL': { orbitPeriod: '365.25 j', lengthOfDay: '24.0 h', orbitVel: '29.78 km/s', minMaxAu: '0.983 - 1.017 UA', perigee: '0.983 UA', aphelion: '1.017 UA' },
-    'LUNE': { orbitPeriod: '27.32 j', lengthOfDay: '708.7 h', orbitVel: '1.02 km/s', minMaxAu: '0.0025 - 0.0027 UA', perigee: '0.0549 UA', aphelion: '0.0569 UA' },
-    'MERCURE': { orbitPeriod: '88.0 j', lengthOfDay: '4222.6 h', orbitVel: '47.36 km/s', minMaxAu: '0.307 - 0.466 UA', perigee: '0.307 UA', aphelion: '0.466 UA' },
-    'VENUS': { orbitPeriod: '224.7 j', lengthOfDay: '2802.0 h', orbitVel: '35.02 km/s', minMaxAu: '0.718 - 0.728 UA', perigee: '0.718 UA', aphelion: '0.728 UA' },
-    'MARS': { orbitPeriod: '687.0 j', lengthOfDay: '24.6 h', orbitVel: '24.07 km/s', minMaxAu: '1.381 - 1.666 UA', perigee: '1.381 UA', aphelion: '1.666 UA' },
-    'JUPITER': { orbitPeriod: '4331 j', lengthOfDay: '9.9 h', orbitVel: '13.07 km/s', minMaxAu: '4.95 - 5.46 UA', perigee: '4.95 UA', aphelion: '5.46 UA' },
-    'SATURNE': { orbitPeriod: '10747 j', lengthOfDay: '10.7 h', orbitVel: '9.68 km/s', minMaxAu: '9.04 - 10.12 UA', perigee: '9.04 UA', aphelion: '10.12 UA' },
-    'URANUS': { orbitPeriod: '30589 j', lengthOfDay: '17.2 h', orbitVel: '6.80 km/s', minMaxAu: '18.28 - 20.11 UA', perigee: '18.28 UA', aphelion: '20.11 UA' },
-    'NEPTUNE': { orbitPeriod: '59800 j', lengthOfDay: '16.1 h', orbitVel: '5.43 km/s', minMaxAu: '29.81 - 30.33 UA', perigee: '29.81 UA', aphelion: '30.33 UA' }
-};
 
 function obtenirConstellationIAU(raDeg, decDeg) {
     const ra = (raDeg % 360 + 360) % 360;
@@ -61,10 +50,17 @@ function obtenirConstellationIAU(raDeg, decDeg) {
 }
 
 function formaterHeureDecimale(heures) {
-    if (heures < 0 || isNaN(heures)) return "--:-- UTC";
+    if (isNaN(heures) || heures < 0) return "--:-- UTC";
     const h = Math.floor(heures) % 24;
     const m = Math.floor((heures - Math.floor(heures)) * 60);
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} UTC`;
+}
+
+function formaterDureeHeures(heures) {
+    if (isNaN(heures) || heures < 0) return "--h --m";
+    const h = Math.floor(heures);
+    const m = Math.floor((heures - h) * 60);
+    return `${h}h ${m.toString().padStart(2, '0')}m`;
 }
 
 function auditerEnvironnementInterne() {
@@ -78,8 +74,8 @@ function auditerEnvironnementInterne() {
 
 function initialiserMemoireWasm() {
     if (wasmReady && !metricsPtr) {
-        metricsPtr = Module._malloc(40);  // 5 x double (8 octets)
-        resultPtr = Module._malloc(152); // AstroResult struct
+        metricsPtr = Module._malloc(40);   // 5 x double (8 octets)
+        resultPtr = Module._malloc(168);  // AstroResult struct
     }
 }
 
@@ -99,25 +95,16 @@ function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
         throw new Error("Flux d'éphémérides absent ou invalide.");
     }
 
-    // 1. Recherche du bloc de 4h correspondant
-    let arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end);
+    const arc = arcsAstre.find(a => timestampSec >= a.t_start && timestampSec <= a.t_end);
 
-    // 2. Si hors de la fenêtre de 7 jours, verrouillage sur le premier ou dernier bloc du flux
+    // STRICT: Aucun fallback / clamping si l'horodatage dépasse la fenêtre d'éphémérides
     if (!arc) {
-        if (timestampSec < arcsAstre[0].t_start) {
-            arc = arcsAstre[0];
-        } else {
-            arc = arcsAstre[arcsAstre.length - 1];
-        }
+        throw new Error(`Timestamp UTC ${timestampSec} hors plage du flux d'éphémérides JPL live.`);
     }
 
-    // 3. Restriction stricte de t dans l'intervalle [t_start, t_end] du bloc (anti-divergence)
-    const tClamped = Math.max(arc.t_start, Math.min(timestampSec, arc.t_end));
-    
-    // 4. Normalisation sur l'intervalle [-1, 1]
     const tNorm = (arc.t_start === arc.t_end) 
         ? 0.0 
-        : (2.0 * (tClamped - arc.t_start) / (arc.t_end - arc.t_start) - 1.0);
+        : (2.0 * (timestampSec - arc.t_start) / (arc.t_end - arc.t_start) - 1.0);
 
     return {
         x: evaluerClenshawChebyshev(arc.cx, tNorm),
@@ -125,6 +112,64 @@ function obtenirPositionParChebyshev(arcsAstre, timestampSec) {
         z: evaluerClenshawChebyshev(arc.cz, tNorm),
         mag: arc.mag ?? 0.0
     };
+}
+
+function chargerCoefficientsWMM(contenuCof) {
+    const lignes = contenuCof.split('\n');
+    const coeffs = [];
+    for (let line of lignes) {
+        line = line.trim();
+        if (!line || line.startsWith('#')) continue;
+        const p = line.split(/\s+/);
+        if (p.length >= 6) {
+            coeffs.push({
+                n: parseInt(p[0]),
+                m: parseInt(p[1]),
+                g: parseFloat(p[2]),
+                h: parseFloat(p[3]),
+                dg: parseFloat(p[4]),
+                dh: parseFloat(p[5])
+            });
+        }
+    }
+    return coeffs;
+}
+
+function calculerChampMagnetiqueWMM(latDeg, lonDeg, altMeters, timestampSec) {
+    if (!wmmCoeffs || wmmCoeffs.length === 0) {
+        throw new Error("Modèle géomagnétique WMM-2025 non chargé.");
+    }
+
+    const anneeFrac = 2025.0 + ((timestampSec - 1735689600) / 31557600.0);
+    const dt = anneeFrac - 2025.0;
+
+    const rad = Math.PI / 180.0;
+    const phi = latDeg * rad;
+    const lambda = lonDeg * rad;
+    const r = 6371.2 + (altMeters / 1000.0);
+    const a = 6371.2;
+
+    let X = 0, Y = 0, Z = 0;
+
+    for (const c of wmmCoeffs) {
+        const g = c.g + c.dg * dt;
+        const h = c.h + c.dh * dt;
+        const factor = Math.pow(a / r, c.n + 2);
+
+        const cosML = Math.cos(c.m * lambda);
+        const sinML = Math.sin(c.m * lambda);
+
+        X += factor * (g * cosML + h * sinML) * Math.cos(phi);
+        Y += factor * (g * sinML - h * cosML) * Math.sin(phi);
+        Z -= (c.n + 1) * factor * (g * cosML + h * sinML) * Math.sin(phi);
+    }
+
+    const H = Math.sqrt(X * X + Y * Y);
+    const F = Math.sqrt(H * H + Z * Z);
+    const D = Math.atan2(Y, X) * (180.0 / Math.PI);
+    const I = Math.atan2(Z, H) * (180.0 / Math.PI);
+
+    return { declination: D, inclination: I, totalIntensity: F };
 }
 
 onmessage = async function(e) {
@@ -136,13 +181,23 @@ onmessage = async function(e) {
         return;
     }
 
+    if (data.type === 'LOAD_WMM_COF') {
+        try {
+            wmmCoeffs = chargerCoefficientsWMM(data.contenu);
+            postMessage({ type: 'WMM_LOADED' });
+        } catch (err) {
+            postMessage({ type: 'ERROR', message: `Échec chargement WMM: ${err.message}` });
+        }
+        return;
+    }
+
     if (data.type === 'COMPUTE') {
         if (!wasmReady) {
-            postMessage({ type: 'ERROR', message: 'Wasm non initialisé' });
+            postMessage({ type: 'ERROR', message: 'Noyau Wasm non initialisé' });
             return;
         }
         if (!matriceJplGlobal || !matriceJplGlobal.DATA) {
-            postMessage({ type: 'ERROR', message: 'Matrice d\'éphémérides non chargée.' });
+            postMessage({ type: 'ERROR', message: 'Matrice d\'éphémérides JPL non chargée.' });
             return;
         }
         initialiserMemoireWasm();
@@ -165,32 +220,31 @@ onmessage = async function(e) {
             const bodiesResults = {};
             const sourceDonnees = matriceJplGlobal.DATA;
 
+            let posSoleilECEF = { x: 0, y: 0, z: 0 };
+            if (sourceDonnees['SOLEIL']) {
+                posSoleilECEF = obtenirPositionParChebyshev(sourceDonnees['SOLEIL'], timestampSec);
+            }
+
             for (const [nomAstre, arcsAstre] of Object.entries(sourceDonnees)) {
-                // 1. Position brute instantanée
                 const posBrute = obtenirPositionParChebyshev(arcsAstre, timestampSec);
                 const distanceKm = Math.sqrt(posBrute.x ** 2 + posBrute.y ** 2 + posBrute.z ** 2);
                 
-                // 2. Temps de transit de la lumière (Light Travel Time)
                 const tempsPropagationSec = distanceKm / VITESSE_LUMIERE_KM_S;
                 const timestampRetarde = timestampSec - tempsPropagationSec;
 
-                // 3. Position ECEF réévaluée à l'instant rétracté
                 const posECEF = obtenirPositionParChebyshev(arcsAstre, timestampRetarde);
+                const estLune = (nomAstre.toUpperCase() === 'LUNE');
 
                 Module._calculerDepuisECEF(
                     posECEF.x, posECEF.y, posECEF.z,
+                    posSoleilECEF.x, posSoleilECEF.y, posSoleilECEF.z,
                     lat, lon, alt, eraRad, timestampSec,
                     meteo?.tempC ?? 15.0, meteo?.presHpa ?? 1013.25, 0.2,
-                    posECEF.mag, false, resultPtr
+                    posECEF.mag, estLune, resultPtr
                 );
 
                 const off = resultPtr / 8;
                 const nomAstreMaj = nomAstre.toUpperCase();
-                const statiques = CONSTANTES_ORBITALES[nomAstreMaj];
-
-                if (!statiques) {
-                    throw new Error(`Données orbitales introuvables pour ${nomAstreMaj}`);
-                }
 
                 const raVal = Module.HEAPF64[off + 3];
                 const decVal = Module.HEAPF64[off + 4];
@@ -209,6 +263,8 @@ onmessage = async function(e) {
                     magnitude: Module.HEAPF64[off + 13],
                     sunrise: formaterHeureDecimale(Module.HEAPF64[off + 6]),
                     sunset: formaterHeureDecimale(Module.HEAPF64[off + 7]),
+                    dusk: formaterHeureDecimale(Module.HEAPF64[off + 17]),
+                    daylightDuration: formaterDureeHeures(Module.HEAPF64[off + 18]),
                     airMass: Module.HEAPF64[off + 8],
                     irradiance: Module.HEAPF64[off + 9],
                     deltat: Module.HEAPF64[off + 10],
@@ -216,17 +272,18 @@ onmessage = async function(e) {
                     jde: Module.HEAPF64[off + 12],
                     shadowLength: shadowVal > 0 ? shadowVal : 0,
                     shadowLengthDisplay: shadowVal > 0 ? `${shadowVal.toFixed(2)} m` : "Aucune (Nuit)",
-                    visibiliteCode: Module.HEAP32[(resultPtr + 136) / 4],
+                    moonPhasePct: Module.HEAPF64[off + 15],
+                    moonAgeDays: Module.HEAPF64[off + 16],
+                    visibiliteCode: Module.HEAP32[(resultPtr + 152) / 4],
                     constellationCode: constObj.code,
                     constellationNom: constObj.nom,
-                    constellationDisplay: `${constObj.code} (${constObj.nom})`,
-                    orbitPeriod: statiques.orbitPeriod,
-                    lengthOfDay: statiques.lengthOfDay,
-                    orbitVelocity: statiques.orbitVel,
-                    minMaxAu: statiques.minMaxAu,
-                    perigee: statiques.perigee,
-                    aphelion: statiques.aphelion
+                    constellationDisplay: `${constObj.code} (${constObj.nom})`
                 };
+            }
+
+            let calculWmm = null;
+            if (wmmCoeffs) {
+                calculWmm = calculerChampMagnetiqueWMM(lat, lon, alt, timestampSec);
             }
 
             postMessage({
@@ -240,6 +297,7 @@ onmessage = async function(e) {
                     gastDeg, 
                     lstDeg 
                 },
+                wmm: calculWmm,
                 bodies: bodiesResults
             });
 
