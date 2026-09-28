@@ -84,8 +84,8 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
 
 EMSCRIPTEN_KEEPALIVE
 void calculerDepuisECEF(
-    double xECEF, double yECEF, double zECEF,
-    double xSoleilECEF, double ySoleilECEF, double zSoleilECEF,
+    double xICRF_km, double yICRF_km, double zICRF_km,
+    double xSoleilICRF_km, double ySoleilICRF_km, double zSoleilICRF_km,
     double latDeg, double lonDeg, double altM,
     double eraRad, double timestampUtc,
     double tempC, double presHpa, double extinctionCoeff,
@@ -95,9 +95,27 @@ void calculerDepuisECEF(
 ) {
     if (!result) return;
 
+    // 1. Conversion ICRF (km) -> ICRF (mètres)
+    double xI = xICRF_km * 1000.0;
+    double yI = yICRF_km * 1000.0;
+    double zI = zICRF_km * 1000.0;
+
+    // 2. Coordonnées équatoriales célestes (RA/DEC)
+    double normICRF = std::sqrt(xI * xI + yI * yI + zI * zI);
+    result->raDeg = normaliserDegres(std::atan2(yI, xI) * RAD2DEG);
+    result->decDeg = (normICRF > 0.0) ? std::asin(zI / normICRF) * RAD2DEG : 0.0;
+    result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
+
+    // 3. Rotation ICRF -> ECEF via Earth Rotation Angle (ERA)
+    double cosERA = std::cos(eraRad);
+    double sinERA = std::sin(eraRad);
+    double xECEF =  xI * cosERA + yI * sinERA;
+    double yECEF = -xI * sinERA + yI * cosERA;
+    double zECEF =  zI;
+
+    // 4. Position WGS84 de l'observateur en ECEF (mètres)
     double phi = latDeg * DEG2RAD;
     double lambda = lonDeg * DEG2RAD;
-    
     double a = 6378137.0;
     double f = 1.0 / 298.257223563;
     double e2 = f * (2.0 - f);
@@ -107,10 +125,12 @@ void calculerDepuisECEF(
     double yObs = (N_obs + altM) * std::cos(phi) * std::sin(lambda);
     double zObs = (N_obs * (1.0 - e2) + altM) * std::sin(phi);
 
+    // 5. Vecteur topocentrique (mètres)
     double dx = xECEF - xObs;
     double dy = yECEF - yObs;
     double dz = zECEF - zObs;
 
+    // 6. Projection en repère local ENU (East, North, Up)
     double E = -std::sin(lambda) * dx + std::cos(lambda) * dy;
     double N_top = -std::sin(phi) * std::cos(lambda) * dx - std::sin(phi) * std::sin(lambda) * dy + std::cos(phi) * dz;
     double U = std::cos(phi) * std::cos(lambda) * dx + std::cos(phi) * std::sin(lambda) * dy + std::sin(phi) * dz;
@@ -122,6 +142,7 @@ void calculerDepuisECEF(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
+    // 7. Réfraction atmosphérique
     if (result->elevGeom > -2.0) {
         double h = std::max(result->elevGeom, -1.0);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
@@ -131,6 +152,7 @@ void calculerDepuisECEF(
         result->elevRefractee = result->elevGeom;
     }
 
+    // 8. Masse d'air et photométrie
     if (result->elevRefractee > 0.0) {
         double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
         result->airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
@@ -142,13 +164,7 @@ void calculerDepuisECEF(
     result->irradiance = (result->elevRefractee > 0.0) ? 1361.0 * std::pow(0.7, result->airMass) / (result->distUA * result->distUA) : 0.0;
     result->shadowLength = (result->elevRefractee > 0.0) ? 1.0 / std::tan(std::max(1e-4, result->elevRefractee * DEG2RAD)) : -1.0;
 
-    double lonTerrestreDeg = std::atan2(yECEF, xECEF) * RAD2DEG;
-    result->raDeg = normaliserDegres(lonTerrestreDeg + (eraRad * RAD2DEG));
-    double normR = std::sqrt(xECEF * xECEF + yECEF * yECEF + zECEF * zECEF);
-    result->decDeg = (normR > 0.0) ? std::asin(zECEF / normR) * RAD2DEG : 0.0;
-    result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
-
-    // Lever, Coucher, Crépuscule et Durée du jour
+    // 9. Lever, coucher et crépuscule
     double decRad = result->decDeg * DEG2RAD;
     double h0_std = -0.8333 * DEG2RAD; 
     double h0_twilight = -6.0 * DEG2RAD; 
@@ -169,13 +185,17 @@ void calculerDepuisECEF(
     result->crepusculeUT = normaliserDegres(solarNoonUT + (H_twi * RAD2DEG / 15.0));
     result->dureeJourHeures = (2.0 * H_std * RAD2DEG) / 15.0;
 
-    // Phase et Âge de la Lune (Vecteurs Soleil-Terre-Lune instantanés)
+    // 10. Phase et âge de la Lune
     if (estLune) {
-        double rSun = std::sqrt(xSoleilECEF * xSoleilECEF + ySoleilECEF * ySoleilECEF + zSoleilECEF * zSoleilECEF);
-        double rMoon = std::sqrt(xECEF * xECEF + yECEF * yECEF + zECEF * zECEF);
+        double xS = xSoleilICRF_km * 1000.0;
+        double yS = ySoleilICRF_km * 1000.0;
+        double zS = zSoleilICRF_km * 1000.0;
+
+        double rSun = std::sqrt(xS * xS + yS * yS + zS * zS);
+        double rMoon = std::sqrt(xI * xI + yI * yI + zI * zI);
         
         if (rSun > 0.0 && rMoon > 0.0) {
-            double dotProduct = (xSoleilECEF * xECEF + ySoleilECEF * yECEF + zSoleilECEF * zECEF) / (rSun * rMoon);
+            double dotProduct = (xS * xI + yS * yI + zS * zI) / (rSun * rMoon);
             dotProduct = std::max(-1.0, std::min(1.0, dotProduct));
             double elongationRad = std::acos(dotProduct);
             
