@@ -16,8 +16,6 @@ let metricsPtr = 0;
 let resultPtr = 0;
 let wmmCoeffs = null;
 
-const VITESSE_LUMIERE_KM_S = 299792.458;
-
 importScripts('wasm_astronomie.js');
 
 function obtenirConstellationIAU(raDeg, decDeg) {
@@ -74,7 +72,7 @@ function auditerEnvironnementInterne() {
 
 function initialiserMemoireWasm() {
     if (wasmReady && !metricsPtr) {
-        metricsPtr = Module._malloc(40);   // 5 x double (8 octets)
+        metricsPtr = Module._malloc(40);   // 5 x double
         resultPtr = Module._malloc(168);  // AstroResult struct
     }
 }
@@ -235,28 +233,23 @@ onmessage = async function(e) {
             const bodiesResults = {};
             const sourceDonnees = matriceJplGlobal.DATA;
 
-            let posSoleilECEF = { x: 0, y: 0, z: 0 };
+            let posSoleilICRF = { x: 0, y: 0, z: 0 };
             if (sourceDonnees['SOLEIL']) {
-                posSoleilECEF = obtenirPositionParChebyshev(sourceDonnees['SOLEIL'], timestampSec, true);
+                posSoleilICRF = obtenirPositionParChebyshev(sourceDonnees['SOLEIL'], timestampSec, true);
             }
 
             for (const [nomAstre, arcsAstre] of Object.entries(sourceDonnees)) {
                 try {
-                    const posBrute = obtenirPositionParChebyshev(arcsAstre, timestampSec, true);
-                    const distanceKm = Math.sqrt(posBrute.x ** 2 + posBrute.y ** 2 + posBrute.z ** 2);
-                    
-                    const tempsPropagationSec = distanceKm / VITESSE_LUMIERE_KM_S;
-                    const timestampRetarde = timestampSec - tempsPropagationSec;
-
-                    const posECEF = obtenirPositionParChebyshev(arcsAstre, timestampRetarde, true);
+                    // Évaluation directe (temps de trajet déjà géré par Skyfield)
+                    const posICRF = obtenirPositionParChebyshev(arcsAstre, timestampSec, true);
                     const estLune = (nomAstre.toUpperCase() === 'LUNE');
 
                     Module._calculerDepuisECEF(
-                        posECEF.x, posECEF.y, posECEF.z,
-                        posSoleilECEF.x, posSoleilECEF.y, posSoleilECEF.z,
+                        posICRF.x, posICRF.y, posICRF.z,
+                        posSoleilICRF.x, posSoleilICRF.y, posSoleilICRF.z,
                         lat, lon, alt, eraRad, timestampSec,
                         meteo?.tempC ?? 15.0, meteo?.presHpa ?? 1013.25, 0.2,
-                        posECEF.mag, estLune, resultPtr
+                        posICRF.mag, estLune, resultPtr
                     );
 
                     const off = resultPtr / 8;
@@ -296,7 +289,7 @@ onmessage = async function(e) {
                         constellationDisplay: `${constObj.code} (${constObj.nom})`
                     };
                 } catch (astreErr) {
-                    // Isolation d'une erreur sur un corps céleste particulier
+                    // Isolation d'une erreur sur un corps céleste
                 }
             }
 
