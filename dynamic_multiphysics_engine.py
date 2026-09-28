@@ -1,115 +1,133 @@
 #!/usr/bin/env python3
 """
-SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS ENGINE
-Calcul multiphysique exact depuis flux_live.json et WMM2025.COF
+SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR
+Générateur d'éphémérides Tchebychev haute précision depuis JPL DE440s
 """
 
 import argparse
 import sys
 import json
-import math
+import time
 import os
 import numpy as np
 
-VITESSE_LUMIERE_KM_S = 299792.458
-UA_EN_KM = 149597870.7
+try:
+    from skyfield.api import load
+except ImportError:
+    print("[ERREUR] La bibliothèque skyfield est requise. Installez-la via `pip install skyfield`", file=sys.stderr)
+    sys.exit(1)
 
-def evaluer_tchebychev(coeffs, tau):
-    if not coeffs:
-        return 0.0
-    b_k2 = 0.0
-    b_k1 = 0.0
-    for c in reversed(coeffs[1:]):
-        b_k = c + 2.0 * tau * b_k1 - b_k2
-        b_k2 = b_k1
-        b_k1 = b_k
-    return coeffs[0] + tau * b_k1 - b_k2
+# Cartographie des corps JPL DE440s
+CORPS_MAP = {
+    "SOLEIL": "sun",
+    "LUNE": "moon",
+    "MERCURE": "mercury",
+    "VENUS": "venus",
+    "MARS": "mars",
+    "JUPITER": "jupiter barycenter",
+    "SATURNE": "saturn barycenter",
+    "URANUS": "uranus barycenter",
+    "NEPTUNE": "neptune barycenter"
+}
 
-def extraire_position_flux(arcs, timestamp_sec):
-    arc = next((a for a in arcs if a["t_start"] <= timestamp_sec <= a["t_end"]), None)
-    if not arc:
-        arc = arcs[0] if timestamp_sec < arcs[0]["t_start"] else arcs[-1]
+# Découpage temporel adaptatif (heures par bloc de Tchebychev)
+PAS_HEURES_MAP = {
+    "LUNE": 4,
+    "MERCURE": 6,
+    "SOLEIL": 12,
+    "VENUS": 12,
+    "MARS": 12,
+    "JUPITER": 24,
+    "SATURNE": 24,
+    "URANUS": 48,
+    "NEPTUNE": 48
+}
 
-    t_clamped = max(arc["t_start"], min(timestamp_sec, arc["t_end"]))
-    t_norm = 0.0 if arc["t_start"] == arc["t_end"] else (2.0 * (t_clamped - arc["t_start"]) / (arc["t_end"] - arc["t_start"]) - 1.0)
+DEGRE_TCHEBYCHEV = 10
 
-    x = evaluer_tchebychev(arc["cx"], t_norm)
-    y = evaluer_tchebychev(arc["cy"], t_norm)
-    z = evaluer_tchebychev(arc["cz"], t_norm)
-    return np.array([x, y, z]), arc.get("mag", 0.0)
-
-def charger_modeles_locaux():
-    chemin_flux = os.path.join(os.path.dirname(__file__), "flux_live.json")
-    if not os.path.exists(chemin_flux):
-        raise FileNotFoundError(f"Fichier de flux introuvable : {chemin_flux}")
+def calculer_segment_tchebychev(earth, astre_target, ts, t1_unix, t2_unix, degre=10):
+    """Calcule les coefficients de Tchebychev sur les nœuds de Gauss-Lobatto pour un intervalle donné."""
+    nodes_std = np.cos(np.pi * np.arange(degre + 1) / degre)
     
-    with open(chemin_flux, "r", encoding="utf-8") as f:
-        data_flux = json.load(f)
-    return data_flux
-
-def calculer_multiphysique_reelle(lat, lon, alt, days, timestamp_ref=1776000000.0):
-    flux_data = charger_modeles_locaux()
-    ephemerides = flux_data.get("DATA", {})
+    # Interpolation temporelle des nœuds
+    t_sec_nodes = 0.5 * (t2_unix - t1_unix) * nodes_std + 0.5 * (t2_unix + t1_unix)
+    times_nodes = ts.tt_jd((t_sec_nodes / 86400.0) + 2440587.5)
     
-    resultats = {
-        "statut": "SUCCES",
-        "station": {"latitude": lat, "longitude": lon, "altitude_m": alt},
-        "periode_jours": days,
-        "corps": {}
+    # Calcul des positions géocentriques ECEF/ICRF en km
+    astrometric = earth.at(times_nodes).observe(astre_target)
+    pos_km = astrometric.position.km  # Matrice (3, N)
+    
+    # Fit des polynômes de Tchebychev sur [-1, 1]
+    cx = np.polynomial.chebyshev.chebfit(nodes_std, pos_km[0], degre).tolist()
+    cy = np.polynomial.chebyshev.chebfit(nodes_std, pos_km[1], degre).tolist()
+    cz = np.polynomial.chebyshev.chebfit(nodes_std, pos_km[2], degre).tolist()
+
+    return {
+        "t_start": t1_unix,
+        "t_end": t2_unix,
+        "cx": cx,
+        "cy": cy,
+        "cz": cz,
+        "mag": 0.0
     }
 
-    phi = math.radians(lat)
-    lam = math.radians(lon)
-    
-    # Ellipsoïde WGS-84
-    a = 6378137.0
-    f = 1.0 / 298.257223563
-    e2 = f * (2.0 - f)
-    N = a / math.sqrt(1.0 - e2 * (math.sin(phi) ** 2))
-    
-    obs_ecef = np.array([
-        (N + alt) * math.cos(phi) * math.cos(lam),
-        (N + alt) * math.cos(phi) * math.sin(lam),
-        (N * (1.0 - e2) + alt) * math.sin(phi)
-    ])
+def generer_ephemerides(bsp_path, days=7, output_path="flux_live.json"):
+    if not os.path.exists(bsp_path):
+        raise FileNotFoundError(f"Fichier de noyau JPL introuvable : {bsp_path}")
 
-    for corps_nom, arcs in ephemerides.items():
-        pos_brute, mag = extraire_position_flux(arcs, timestamp_ref)
-        dist_km = float(np.linalg.norm(pos_brute))
-        
-        # Correction exacte du temps de propagation de la lumière
-        t_retard = timestamp_ref - (dist_km / VITESSE_LUMIERE_KM_S)
-        pos_retard, _ = extraire_position_flux(arcs, t_retard)
-        
-        # Vecteur Topocentrique (ECEF à Station)
-        vec_topocentrique = pos_retard - (obs_ecef / 1000.0) # conversion km
-        dist_topo_km = float(np.linalg.norm(vec_topocentrique))
+    ts = load.timescale()
+    eph = load(bsp_path)
+    earth = eph['earth']
 
-        resultats["corps"][corps_nom.upper()] = {
-            "position_ecef_retard_km": pos_retard.tolist(),
-            "distance_geocentrique_ua": dist_km / UA_EN_KM,
-            "distance_topocentrique_ua": dist_topo_km / UA_EN_KM,
-            "temps_transit_lumiere_sec": dist_km / VITESSE_LUMIERE_KM_S,
-            "magnitude": mag
-        }
+    t_start_unix = time.time()
+    t_end_unix = t_start_unix + (days * 86400)
 
-    return resultats
+    data_output = {}
+
+    for nom_corps, target_key in CORPS_MAP.items():
+        astre = eph[target_key]
+        pas_sec = PAS_HEURES_MAP.get(nom_corps, 12) * 3600.0
+
+        segments = []
+        curr_t = t_start_unix
+
+        while curr_t < t_end_unix:
+            next_t = min(curr_t + pas_sec, t_end_unix)
+            seg = calculer_segment_tchebychev(earth, astre, ts, curr_t, next_t, DEGRE_TCHEBYCHEV)
+            segments.append(seg)
+            curr_t = next_t
+
+        data_output[nom_corps] = segments
+
+    resultat_global = {
+        "ALMANACH": {
+            "generateur": "Systema Sentinela DE440s Generator",
+            "date_creation_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
+            "fenetre_jours": days
+        },
+        "DATA": data_output
+    }
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(resultat_global, f, indent=2, ensure_ascii=False)
 
 def main():
-    parser = argparse.ArgumentParser(description="Moteur Multiphysique Dynamique - Systema Sentinela")
-    parser.add_argument("lat", type=float, help="Latitude topocentrique (degrés)")
-    parser.add_argument("lon", type=float, help="Longitude topocentrique (degrés)")
-    parser.add_argument("alt", type=float, help="Altitude locale (mètres)")
-    parser.add_argument("--days", type=int, default=7, help="Nombre de jours")
+    parser = argparse.ArgumentParser(description="Générateur de flux d'éphémérides DE440s")
+    parser.add_argument("lat", type=float, help="Latitude station")
+    parser.add_argument("lon", type=float, help="Longitude station")
+    parser.add_argument("alt", type=float, help="Altitude station")
+    parser.add_argument("--days", type=int, default=7, help="Période couverte en jours")
+    parser.add_argument("--bsp", type=str, default="de440s.bsp", help="Chemin vers le fichier de440s.bsp")
+    parser.add_argument("--out", type=str, default="flux_live.json", help="Fichier JSON de sortie")
 
     args = parser.parse_args()
 
     try:
-        data = calculer_multiphysique_reelle(args.lat, args.lon, args.alt, args.days)
-        print(json.dumps(data, indent=4, ensure_ascii=False))
+        generer_ephemerides(args.bsp, days=args.days, output_path=args.out)
+        print(f"[SUCCÈS] Flux éphémérides généré avec succès dans {args.out}")
         sys.exit(0)
     except Exception as e:
-        print(f"[ERREUR CRITIQUE] Échec du calcul multiphysique : {e}", file=sys.stderr)
+        print(f"[ERREUR CRITIQUE] Échec de génération : {e}", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":
