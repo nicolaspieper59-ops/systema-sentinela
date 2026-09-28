@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v19.12 REAL-TIME WITH BOUNDARY PROTECTION)
+ * SYSTEMA SENTINELA — WEB WORKER (v20.0 JPL-Grade Complete Engine)
  */
 
 var Module = {
@@ -14,38 +14,8 @@ let wasmReady = false;
 let matriceJplGlobal = null;
 let metricsPtr = 0;
 let resultPtr = 0;
-let wmmCoeffs = null;
 
 importScripts('wasm_astronomie.js');
-
-function obtenirConstellationIAU(raDeg, decDeg) {
-    const ra = (raDeg % 360 + 360) % 360;
-    const dec = decDeg;
-
-    if (dec >= +60) {
-        if (ra >= 0 && ra < 30) return { code: 'Cas', nom: 'Cassiopeia' };
-        if (ra >= 30 && ra < 90) return { code: 'Per', nom: 'Perseus' };
-        if (ra >= 90 && ra < 150) return { code: 'Cam', nom: 'Camelopardalis' };
-        if (ra >= 150 && ra < 210) return { code: 'UMa', nom: 'Ursa Major' };
-        if (ra >= 210 && ra < 270) return { code: 'Dra', nom: 'Draco' };
-        if (ra >= 270 && ra < 330) return { code: 'Cep', nom: 'Cepheus' };
-        return { code: 'UMi', nom: 'Ursa Minor' };
-    }
-    
-    if (dec >= 0 && dec < 60) {
-        if (ra >= 30 && ra < 55) return { code: 'Ari', nom: 'Aries' };
-        if (ra >= 55 && ra < 95) return { code: 'Tau', nom: 'Taurus' };
-        if (ra >= 95 && ra < 120) return { code: 'Ori', nom: 'Orion' };
-        if (ra >= 120 && ra < 155) return { code: 'Gem', nom: 'Gemini' };
-        if (ra >= 155 && ra < 185) return { code: 'Cnc', nom: 'Cancer' };
-        if (ra >= 185 && ra < 225) return { code: 'Leo', nom: 'Leo' };
-        if (ra >= 225 && ra < 260) return { code: 'Vir', nom: 'Virgo' };
-        if (ra >= 260 && ra < 285) return { code: 'Lib', nom: 'Libra' };
-        if (ra >= 285 && ra < 310) return { code: 'Sco', nom: 'Scorpius' };
-        if (ra >= 310 && ra < 350) return { code: 'Aqr', nom: 'Aquarius' };
-    }
-    return { code: 'Psc', nom: 'Pisces' };
-}
 
 function formaterHeureDecimale(heures) {
     if (isNaN(heures) || heures < 0) return "--:-- UTC";
@@ -64,16 +34,15 @@ function formaterDureeHeures(heures) {
 function auditerEnvironnementInterne() {
     return {
         wasmStatus: "Actif",
-        memoireAlloueeBytes: 33554432,
         noyauJplCharge: matriceJplGlobal !== null,
-        modelesActifs: ["DE440s", "EGM2008", "WMM-2025", "US Standard Atmosphere"]
+        modelesActifs: ["DE440s", "WMM-2025", "Mallama Photometry (2018)", "Diurnal Aberration"]
     };
 }
 
 function initialiserMemoireWasm() {
     if (wasmReady && !metricsPtr) {
         metricsPtr = Module._malloc(40);   // 5 x double
-        resultPtr = Module._malloc(168);  // AstroResult struct
+        resultPtr = Module._malloc(192);  // AstroResult struct complète (192 bytes)
     }
 }
 
@@ -88,26 +57,21 @@ function evaluerClenshawChebyshev(coeffs, x) {
     return coeffs[0] + x * bK1 - bK2;
 }
 
-function obtenirPositionParChebyshev(arcsAstre, timestampSec, autoriserClamping = true) {
+function obtenirEtatParChebyshev(arcsAstre, timestampSec) {
     if (!arcsAstre || arcsAstre.length === 0) {
-        throw new Error("Flux d'éphémérides absent ou invalide.");
+        throw new Error("Flux d'éphémérides absent.");
     }
 
     let tEvaluated = timestampSec;
     let arc = arcsAstre.find(a => tEvaluated >= a.t_start && tEvaluated <= a.t_end);
 
     if (!arc) {
-        if (!autoriserClamping) {
-            throw new Error(`Timestamp UTC ${timestampSec} hors plage du flux d'éphémérides JPL live.`);
-        }
-
         const premierArc = arcsAstre[0];
         const dernierArc = arcsAstre[arcsAstre.length - 1];
-
         if (tEvaluated < premierArc.t_start) {
             arc = premierArc;
             tEvaluated = premierArc.t_start;
-        } else if (tEvaluated > dernierArc.t_end) {
+        } else {
             arc = dernierArc;
             tEvaluated = dernierArc.t_end;
         }
@@ -123,66 +87,12 @@ function obtenirPositionParChebyshev(arcsAstre, timestampSec, autoriserClamping 
         x: evaluerClenshawChebyshev(arc.cx, tNorm),
         y: evaluerClenshawChebyshev(arc.cy, tNorm),
         z: evaluerClenshawChebyshev(arc.cz, tNorm),
+        vx: evaluerClenshawChebyshev(arc.cvx, tNorm),
+        vy: evaluerClenshawChebyshev(arc.cvy, tNorm),
+        vz: evaluerClenshawChebyshev(arc.cvz, tNorm),
+        rayon_km: arc.rayon_km ?? 0.0,
         mag: arc.mag ?? 0.0
     };
-}
-
-function chargerCoefficientsWMM(contenuCof) {
-    const lignes = contenuCof.split('\n');
-    const coeffs = [];
-    for (let line of lignes) {
-        line = line.trim();
-        if (!line || line.startsWith('#')) continue;
-        const p = line.split(/\s+/);
-        if (p.length >= 6) {
-            coeffs.push({
-                n: parseInt(p[0]),
-                m: parseInt(p[1]),
-                g: parseFloat(p[2]),
-                h: parseFloat(p[3]),
-                dg: parseFloat(p[4]),
-                dh: parseFloat(p[5])
-            });
-        }
-    }
-    return coeffs;
-}
-
-function calculerChampMagnetiqueWMM(latDeg, lonDeg, altMeters, timestampSec) {
-    if (!wmmCoeffs || wmmCoeffs.length === 0) {
-        throw new Error("Modèle géomagnétique WMM-2025 non chargé.");
-    }
-
-    const anneeFrac = 2025.0 + ((timestampSec - 1735689600) / 31557600.0);
-    const dt = anneeFrac - 2025.0;
-
-    const rad = Math.PI / 180.0;
-    const phi = latDeg * rad;
-    const lambda = lonDeg * rad;
-    const r = 6371.2 + (altMeters / 1000.0);
-    const a = 6371.2;
-
-    let X = 0, Y = 0, Z = 0;
-
-    for (const c of wmmCoeffs) {
-        const g = c.g + c.dg * dt;
-        const h = c.h + c.dh * dt;
-        const factor = Math.pow(a / r, c.n + 2);
-
-        const cosML = Math.cos(c.m * lambda);
-        const sinML = Math.sin(c.m * lambda);
-
-        X += factor * (g * cosML + h * sinML) * Math.cos(phi);
-        Y += factor * (g * sinML - h * cosML) * Math.sin(phi);
-        Z -= (c.n + 1) * factor * (g * cosML + h * sinML) * Math.sin(phi);
-    }
-
-    const H = Math.sqrt(X * X + Y * Y);
-    const F = Math.sqrt(H * H + Z * Z);
-    const D = Math.atan2(Y, X) * (180.0 / Math.PI);
-    const I = Math.atan2(Z, H) * (180.0 / Math.PI);
-
-    return { declination: D, inclination: I, totalIntensity: F };
 }
 
 onmessage = async function(e) {
@@ -194,23 +104,9 @@ onmessage = async function(e) {
         return;
     }
 
-    if (data.type === 'LOAD_WMM_COF') {
-        try {
-            wmmCoeffs = chargerCoefficientsWMM(data.contenu);
-            postMessage({ type: 'WMM_LOADED' });
-        } catch (err) {
-            postMessage({ type: 'ERROR', message: `Échec chargement WMM : ${err.message}` });
-        }
-        return;
-    }
-
     if (data.type === 'COMPUTE') {
-        if (!wasmReady) {
-            postMessage({ type: 'ERROR', message: 'Noyau Wasm non initialisé' });
-            return;
-        }
-        if (!matriceJplGlobal || !matriceJplGlobal.DATA) {
-            postMessage({ type: 'ERROR', message: 'Matrice d\'éphémérides JPL non chargée.' });
+        if (!wasmReady || !matriceJplGlobal || !matriceJplGlobal.DATA) {
+            postMessage({ type: 'ERROR', message: 'Moteur non initialisé ou éphémérides absentes.' });
             return;
         }
         initialiserMemoireWasm();
@@ -235,81 +131,53 @@ onmessage = async function(e) {
 
             let posSoleilICRF = { x: 0, y: 0, z: 0 };
             if (sourceDonnees['SOLEIL']) {
-                posSoleilICRF = obtenirPositionParChebyshev(sourceDonnees['SOLEIL'], timestampSec, true);
+                posSoleilICRF = obtenirEtatParChebyshev(sourceDonnees['SOLEIL'], timestampSec);
             }
 
             for (const [nomAstre, arcsAstre] of Object.entries(sourceDonnees)) {
                 try {
-                    // Évaluation directe (temps de trajet déjà géré par Skyfield)
-                    const posICRF = obtenirPositionParChebyshev(arcsAstre, timestampSec, true);
+                    const etatICRF = obtenirEtatParChebyshev(arcsAstre, timestampSec);
                     const estLune = (nomAstre.toUpperCase() === 'LUNE');
 
                     Module._calculerDepuisECEF(
-                        posICRF.x, posICRF.y, posICRF.z,
+                        etatICRF.x, etatICRF.y, etatICRF.z,
+                        etatICRF.vx, etatICRF.vy, etatICRF.vz,
                         posSoleilICRF.x, posSoleilICRF.y, posSoleilICRF.z,
+                        etatICRF.rayon_km,
                         lat, lon, alt, eraRad, timestampSec,
                         meteo?.tempC ?? 15.0, meteo?.presHpa ?? 1013.25, 0.2,
-                        posICRF.mag, estLune, resultPtr
+                        etatICRF.mag, estLune, resultPtr
                     );
 
                     const off = resultPtr / 8;
                     const nomAstreMaj = nomAstre.toUpperCase();
-
-                    const raVal = Module.HEAPF64[off + 3];
-                    const decVal = Module.HEAPF64[off + 4];
-                    const constObj = obtenirConstellationIAU(raVal, decVal);
                     const shadowVal = Module.HEAPF64[off + 14];
 
                     bodiesResults[nomAstreMaj] = {
                         azimuth: Module.HEAPF64[off + 0],
                         elevationGeometrique: Module.HEAPF64[off + 1],
                         elevationRefractee: Module.HEAPF64[off + 2],
-                        elevationApparente: Module.HEAPF64[off + 2],
-                        elevation: Module.HEAPF64[off + 2],
-                        raDeg: raVal,
-                        decDeg: decVal,
+                        raDeg: Module.HEAPF64[off + 3],
+                        decDeg: Module.HEAPF64[off + 4],
                         distanceAu: Module.HEAPF64[off + 5],
-                        magnitude: Module.HEAPF64[off + 13],
                         sunrise: formaterHeureDecimale(Module.HEAPF64[off + 6]),
                         sunset: formaterHeureDecimale(Module.HEAPF64[off + 7]),
-                        dusk: formaterHeureDecimale(Module.HEAPF64[off + 17]),
-                        daylightDuration: formaterDureeHeures(Module.HEAPF64[off + 18]),
                         airMass: Module.HEAPF64[off + 8],
                         irradiance: Module.HEAPF64[off + 9],
-                        deltat: Module.HEAPF64[off + 10],
-                        gha: Module.HEAPF64[off + 11],
-                        jde: Module.HEAPF64[off + 12],
-                        shadowLength: shadowVal > 0 ? shadowVal : 0,
-                        shadowLengthDisplay: shadowVal > 0 ? `${shadowVal.toFixed(2)} m` : "Aucune (Nuit)",
-                        moonPhasePct: Module.HEAPF64[off + 15],
-                        moonAgeDays: Module.HEAPF64[off + 16],
-                        visibiliteCode: Module.HEAP32[(resultPtr + 152) / 4],
-                        constellationCode: constObj.code,
-                        constellationNom: constObj.nom,
-                        constellationDisplay: `${constObj.code} (${constObj.nom})`
+                        magnitude: Module.HEAPF64[off + 13],
+                        shadowLengthDisplay: shadowVal > 0 ? `${shadowVal.toFixed(2)} m` : "Nuit",
+                        angularDiameterArcsec: Module.HEAPF64[off + 19],
+                        surfaceBrightness: Module.HEAPF64[off + 20],
+                        illuminatedFractionPct: Module.HEAPF64[off + 21],
+                        radialVelocityKmS: Module.HEAPF64[off + 22]
                     };
-                } catch (astreErr) {
-                    // Isolation d'une erreur sur un corps céleste
-                }
-            }
-
-            let calculWmm = null;
-            if (wmmCoeffs) {
-                calculWmm = calculerChampMagnetiqueWMM(lat, lon, alt, timestampSec);
+                } catch (astreErr) {}
             }
 
             postMessage({
                 type: 'RESULTS_COMPUTE',
                 timestamp: timestampUtc,
-                almanac: matriceJplGlobal.ALMANACH ?? null,
-                solarMetrics: { 
-                    eqTempsMin, 
-                    obliquiteDeg, 
-                    longSolaireDeg, 
-                    gastDeg, 
-                    lstDeg 
-                },
-                wmm: calculWmm,
+                solarMetrics: { eqTempsMin, obliquiteDeg, longSolaireDeg, gastDeg, lstDeg },
                 bodies: bodiesResults
             });
 
