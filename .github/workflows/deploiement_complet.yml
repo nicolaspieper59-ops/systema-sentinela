@@ -85,7 +85,7 @@ jobs:
           LON: ${{ github.event.inputs.lon || vars.STATION_LON || '5.358507' }}
           ALT: ${{ github.event.inputs.alt || vars.STATION_ALT || '49.81' }}
         run: |
-          python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT" --days 7 > flux_live.json
+          python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT" --days 7 --out flux_live.json
 
       - name: 🔍 Audit & Validation de l'intégrité du flux
         run: |
