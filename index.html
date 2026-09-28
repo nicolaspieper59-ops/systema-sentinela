@@ -794,8 +794,47 @@
                     <td id="cell-${nomAstre}-jde">--</td>
                     <td id="cell-${nomAstre}-deltat">--</td>
                     <td id="cell-${nomAstre}-gha">--</td>
+                    <td id="cell-${nomAstre}-sol-const" class="rainbow-decimal">--</td>
+                    <td id="cell-${nomAstre}-am" class="rainbow-decimal">--</td>
+                    <td id="cell-${nomAstre}-irr" class="rainbow-decimal">--</td>
+                    <td><span id="cell-${nomAstre}-etat">Inconnu</span></td>
+                `;
+                tbody.appendChild(tr);
+                
+                lignesTableauCache[nomAstre] = {
+                    el: document.getElementById(`cell-${nomAstre}-el`),
+                    az: document.getElementById(`cell-${nomAstre}-az`),
+                    dist: document.getElementById(`cell-${nomAstre}-dist`),
+                    minmax: document.getElementById(`cell-${nomAstre}-minmax`),
+                    mag: document.getElementById(`cell-${nomAstre}-mag`),
+                    ra: document.getElementById(`cell-${nomAstre}-ra`),
+                    dec: document.getElementById(`cell-${nomAstre}-dec`),
+                    const: document.getElementById(`cell-${nomAstre}-const`),
+                    perigee: document.getElementById(`cell-${nomAstre}-perigee`),
+                    perihelion: document.getElementById(`cell-${nomAstre}-perihelion`),
+                    aphelion: document.getElementById(`cell-${nomAstre}-aphelion`),
+                    period: document.getElementById(`cell-${nomAstre}-period`),
+                    lod: document.getElementById(`cell-${nomAstre}-lod`),
+                    vel: document.getElementById(`cell-${nomAstre}-vel`),
+                    shadow: document.getElementById(`cell-${nomAstre}-shadow`),
+                    moonPhase: document.getElementById(`cell-${nomAstre}-moon-phase`),
+                    moonAge: document.getElementById(`cell-${nomAstre}-moon-age`),
+                    rise: document.getElementById(`cell-${nomAstre}-rise`),
+                    set: document.getElementById(`cell-${nomAstre}-set`),
+                    dusk: document.getElementById(`cell-${nomAstre}-dusk`),
+                    daylight: document.getElementById(`cell-${nomAstre}-daylight`),
+                    jde: document.getElementById(`cell-${nomAstre}-jde`),
+                    deltat: document.getElementById(`cell-${nomAstre}-deltat`),
+                    gha: document.getElementById(`cell-${nomAstre}-gha`),
+                    solConst: document.getElementById(`cell-${nomAstre}-sol-const`),
+                    am: document.getElementById(`cell-${nomAstre}-am`),
+                    irr: document.getElementById(`cell-${nomAstre}-irr`),
+                    etat: document.getElementById(`cell-${nomAstre}-etat`)
+                };
+            }
+        }
 
-         for (const [nomAstre, donneesAstre] of Object.entries(bodiesData)) {
+        for (const [nomAstre, donneesAstre] of Object.entries(bodiesData)) {
             if (!donneesAstre) continue;
             const cache = lignesTableauCache[nomAstre];
             if (!cache) continue;
@@ -1099,5 +1138,4 @@
     });
 </script>
 </body>
-</html>                                
-                            
+</html>
