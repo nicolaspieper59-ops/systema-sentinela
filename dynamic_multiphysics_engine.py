@@ -153,7 +153,7 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
         "mag": mag_val
     }
 
-def generer_ephemerides(bsp_path, days=7, output_path="flux_live.json"):
+def generer_ephemerides(lat=lat, lon=lon, alt=alt, nb_jours=days, fichier_sortie=output_file)
     if not os.path.exists(bsp_path):
         raise FileNotFoundError(f"Fichier BSP introuvable : {bsp_path}")
 
