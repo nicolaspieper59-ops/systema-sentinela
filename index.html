@@ -13,7 +13,6 @@
     <meta name="apple-mobile-web-app-title" content="Sentinela">
 
     <script>
-        // Enregistrement du Service Worker pour le fonctionnement hors-ligne (PWA)
         if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js')
@@ -275,37 +274,26 @@
                             <th>RIGHT ASCENSION</th>
                             <th>DECLINATION</th>
                             <th>CONSTELLATION</th>
-                            <th>PERIGEE [AE]</th>
-                            <th>PERIHELION [AE]</th>
-                            <th>APHELION</th>
-                            <th>DIS [AE]</th>
-                            <th>ORBIT PERIOD [d]</th>
-                            <th>LENGTH OF DAY [h]</th>
+                            <th>PERIGEE [AU]</th>
+                            <th>PERIHELION [AU]</th>
+                            <th>APHELION [AU]</th>
+                            <th>ORBIT PERIOD</th>
+                            <th>LENGTH OF DAY</th>
                             <th>ORBITAL VELOCITY [km/s]</th>
                             <th>SHADOW LENGTH</th>
-                            <th>AT AN OBJECT LEVEL [m]</th>
-                            <th>MOON PHASE</th>
-                            <th>MOON AGE</th>
-                            <th>NEXT NEW MOON</th>
-                            <th>NEXT FULL MOON</th>
-                            <th>NEXT PERIGEE</th>
-                            <th>NEXT APOGEE</th>
+                            <th>PHASE ILLUM. (%)</th>
+                            <th>MOON AGE (j)</th>
                             <th>SUNRISE</th>
                             <th>SUNSET</th>
                             <th>DUSK</th>
                             <th>DAYLIGHT DURATION</th>
                             <th>JDE</th>
-                            <th>DELTAT</th>
-                            <th>GMST</th>
-                            <th>GHA</th>
-                            <th>MAR EQUINOX</th>
-                            <th>JUN SOLSTICE</th>
-                            <th>SEP EQUINOX</th>
-                            <th>DEC SOLSTICE</th>
+                            <th>DELTAT (s)</th>
+                            <th>GHA (°)</th>
                             <th>SOLAR CONSTANT [W/m²]</th>
                             <th>AIR MASS</th>
                             <th>IRRADIANCE [W/m²]</th>
-                            <th>ÉTAT CALCUL</th>
+                            <th>ÉTAT VISIBILITÉ</th>
                         </tr>
                     </thead>
                     <tbody id="table-body"></tbody>
@@ -337,7 +325,7 @@
                 </div>
             </div>
             <div style="display: flex; gap: 6px;">
-                <button class="btn-action" style="flex: 1;" onclick="appliquerCoordonneesManuelles()">APPLIQUER</button>
+                <button class="btn-action" style="flex: 1;" onclick="appliquerCoordonneesSaisie()">APPLIQUER</button>
                 <button class="btn-action" style="flex: 1;" onclick="basculerTousLesCapteurs()">GPS AUTO</button>
             </div>
         </div>
@@ -381,8 +369,13 @@
 
 <script src="three.min.js"></script>
 
+<script type="module">
+  import { meteoManager } from './meteo_manager.js';
+  window.meteoManager = meteoManager;
+  meteoManager.init();
+</script>
+
 <script>
-    // Gestionnaire de cache intelligent pour éviter les tirets "--"
     class SensorCacheManager {
         constructor(cacheKey) {
             this.cacheKey = cacheKey;
@@ -418,6 +411,7 @@
     let seuilDeriveActuelMs = 2.0; 
 
     let workerPret = false;
+    let workerCalculEnCours = false;
     let fileDAttenteWorker = [];
     let lignesTableauCache = {};
 
@@ -450,9 +444,9 @@
         const [h, m, s] = heureString.split(':').map(Number);
         const d = new Date(obtenirTimestampUTCExact());
         const ancienTs = d.getTime();
-        d.setHours(h, m, s || 0);
+        d.setUTCHours(h, m, s || 0); // Corrected: Use UTC Hours
         manuelOffsetMs += (d.getTime() - ancienTs);
-        ecrireLog(`Heure principale ajustée manuellement à : ${heureString}`);
+        ecrireLog(`Heure principale ajustée manuellement (UTC) à : ${heureString}`);
     }
 
     document.addEventListener('visibilitychange', () => {
@@ -600,11 +594,16 @@
         watchPositionId = navigator.geolocation.watchPosition(
             (pos) => {
                 if (!capteursActifs) return;
-                const lat = pos.coords.latitude, lon = pos.coords.longitude, alt = pos.coords.altitude ?? 10.0;
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                const alt = pos.coords.altitude ?? 10.0;
+                
                 document.getElementById('input-lat').value = lat.toFixed(6);
                 document.getElementById('input-lon').value = lon.toFixed(6);
                 document.getElementById('input-alt').value = alt.toFixed(4);
-                appliquerCoordonneesManuelles(true);
+                
+                // Transfert direct sans re-parsing inutile
+                mettreAJourCoordonneesStation(lat, lon, alt, 'GPS TEMPS RÉEL');
             },
             (err) => { ecrireLog(`Erreur GPS (${err.code}): ${err.message}`); },
             { enableHighAccuracy: true, timeout: 10000 }
@@ -670,7 +669,7 @@
             ecrireLog("JPL : flux_live.json chargé avec succès.");
         } catch (e) {
             document.getElementById('lbl-jpl-status').innerText = "MODE DÉGRADÉ";
-            ecrireLog("Avertissement : Impossible de charger flux_live.json (Mode secours actif).");
+            ecrireLog("Avertissement : Impossible de charger flux_live.json (Flux distant indisponible).");
         }
     }
 
@@ -702,9 +701,11 @@
                 ecrireLog("WMM-2025 : Modèle géomagnétique synchronisé dans le Worker.");
                 break;
             case 'RESULTS_COMPUTE':
+                workerCalculEnCours = false; // Autorise le prochain calcul
                 mettreAJourInterface(data);
                 break;
             case 'ERROR':
+                workerCalculEnCours = false;
                 ecrireLog(`Erreur Worker : ${data.message}`);
                 break;
         }
@@ -712,9 +713,10 @@
 
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
-        astroWorker = new Worker('worker.js');
+        astroWorker = new Worker('worker.js', { type: 'module' });
         astroWorker.onmessage = traiterMessageWorker;
-        astroWorker.onerror = () => {
+        astroWorker.onerror = (err) => {
+            console.error("Erreur Worker Astro :", err);
             document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
             document.getElementById('lbl-worker-status').style.color = "var(--rose)";
         };
@@ -729,6 +731,12 @@
         document.getElementById('val-obliquite').innerText = `${(m.obliquiteDeg ?? 0).toFixed(4)}°`;
         document.getElementById('val-long-solaire').innerText = `${(m.longSolaireDeg ?? 0).toFixed(4)}°`;
         
+        if (m.gastDeg !== undefined) {
+            document.getElementById('val-gast').innerText = `${m.gastDeg.toFixed(4)}°`;
+        } else if (m.lstDeg !== undefined) {
+            document.getElementById('val-gast').innerText = `${m.lstDeg.toFixed(4)}°`;
+        }
+
         const timestampUtc = obtenirTimestampUTCExact();
         const dateNow = new Date(timestampUtc);
         const utcHours = dateNow.getUTCHours() + dateNow.getUTCMinutes()/60 + dateNow.getUTCSeconds()/3600;
@@ -744,23 +752,6 @@
 
         document.getElementById('val-tsm').innerText = formatHeure(tsmHours);
         document.getElementById('val-tsv').innerText = formatHeure(tsvHours);
-    }
-
-    function mettreAJourInterface(payload) {
-        if (!payload) return;
-        if (payload.solarMetrics) {
-            mettreAJourMetricsSolaires(payload.solarMetrics);
-            const tp = payload.solarMetrics;
-            const elGast = document.getElementById('val-gast');
-            if (elGast && tp.gastDeg !== undefined && tp.lstDeg !== undefined) {
-                elGast.innerText = `${tp.gastDeg.toFixed(4)}° / ${tp.lstDeg.toFixed(4)}°`;
-            }
-        }
-        if (payload.bodies) {
-            derniersResultatsAstres = payload.bodies;
-            mettreAJourTableauAstres(payload.bodies);
-            dessinerRadarAstres(payload.bodies, capVraiActuel);
-        }
     }
 
     function mettreAJourTableauAstres(bodiesData) {
@@ -788,31 +779,20 @@
                     <td id="cell-${nomAstre}-perigee">--</td>
                     <td id="cell-${nomAstre}-perihelion">--</td>
                     <td id="cell-${nomAstre}-aphelion">--</td>
-                    <td id="cell-${nomAstre}-dis">--</td>
                     <td id="cell-${nomAstre}-period">--</td>
                     <td id="cell-${nomAstre}-lod">--</td>
                     <td id="cell-${nomAstre}-vel">--</td>
                     <td id="cell-${nomAstre}-shadow">--</td>
-                    <td id="cell-${nomAstre}-obj-level">--</td>
                     <td id="cell-${nomAstre}-moon-phase" class="rainbow-decimal">--</td>
                     <td id="cell-${nomAstre}-moon-age" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-next-new">--</td>
-                    <td id="cell-${nomAstre}-next-full">--</td>
-                    <td id="cell-${nomAstre}-next-perigee">--</td>
-                    <td id="cell-${nomAstre}-next-apogee">--</td>
                     <td id="cell-${nomAstre}-rise">--</td>
                     <td id="cell-${nomAstre}-set">--</td>
                     <td id="cell-${nomAstre}-dusk">--</td>
                     <td id="cell-${nomAstre}-daylight">--</td>
                     <td id="cell-${nomAstre}-jde">--</td>
                     <td id="cell-${nomAstre}-deltat">--</td>
-                    <td id="cell-${nomAstre}-gmst">--</td>
                     <td id="cell-${nomAstre}-gha">--</td>
-                    <td id="cell-${nomAstre}-mar-eq">--</td>
-                    <td id="cell-${nomAstre}-jun-sol">--</td>
-                    <td id="cell-${nomAstre}-sep-eq">--</td>
-                    <td id="cell-${nomAstre}-dec-sol">--</td>
-                    <td id="cell-${nomAstre}-sol-const" class="rainbow-decimal">1361.00</td>
+                    <td id="cell-${nomAstre}-sol-const" class="rainbow-decimal">--</td>
                     <td id="cell-${nomAstre}-am" class="rainbow-decimal">--</td>
                     <td id="cell-${nomAstre}-irr" class="rainbow-decimal">--</td>
                     <td><span id="cell-${nomAstre}-etat">Inconnu</span></td>
@@ -831,30 +811,19 @@
                     perigee: document.getElementById(`cell-${nomAstre}-perigee`),
                     perihelion: document.getElementById(`cell-${nomAstre}-perihelion`),
                     aphelion: document.getElementById(`cell-${nomAstre}-aphelion`),
-                    dis: document.getElementById(`cell-${nomAstre}-dis`),
                     period: document.getElementById(`cell-${nomAstre}-period`),
                     lod: document.getElementById(`cell-${nomAstre}-lod`),
                     vel: document.getElementById(`cell-${nomAstre}-vel`),
                     shadow: document.getElementById(`cell-${nomAstre}-shadow`),
-                    objLevel: document.getElementById(`cell-${nomAstre}-obj-level`),
                     moonPhase: document.getElementById(`cell-${nomAstre}-moon-phase`),
                     moonAge: document.getElementById(`cell-${nomAstre}-moon-age`),
-                    nextNew: document.getElementById(`cell-${nomAstre}-next-new`),
-                    nextFull: document.getElementById(`cell-${nomAstre}-next-full`),
-                    nextPerigee: document.getElementById(`cell-${nomAstre}-next-perigee`),
-                    nextApogee: document.getElementById(`cell-${nomAstre}-next-apogee`),
                     rise: document.getElementById(`cell-${nomAstre}-rise`),
                     set: document.getElementById(`cell-${nomAstre}-set`),
                     dusk: document.getElementById(`cell-${nomAstre}-dusk`),
                     daylight: document.getElementById(`cell-${nomAstre}-daylight`),
                     jde: document.getElementById(`cell-${nomAstre}-jde`),
                     deltat: document.getElementById(`cell-${nomAstre}-deltat`),
-                    gmst: document.getElementById(`cell-${nomAstre}-gmst`),
                     gha: document.getElementById(`cell-${nomAstre}-gha`),
-                    marEq: document.getElementById(`cell-${nomAstre}-mar-eq`),
-                    junSol: document.getElementById(`cell-${nomAstre}-jun-sol`),
-                    sepEq: document.getElementById(`cell-${nomAstre}-sep-eq`),
-                    decSol: document.getElementById(`cell-${nomAstre}-dec-sol`),
                     solConst: document.getElementById(`cell-${nomAstre}-sol-const`),
                     am: document.getElementById(`cell-${nomAstre}-am`),
                     irr: document.getElementById(`cell-${nomAstre}-irr`),
@@ -863,51 +832,36 @@
             }
         }
 
-        for (const [nomAstre, dataInput] of Object.entries(bodiesData)) {
-            let donneesAstre = dataInput;
-            const cleCache = `astre_${nomAstre.toUpperCase()}`;
-
-            if (donneesAstre && donneesAstre.elevationGeometrique !== undefined) {
-                sentinelaCache.enregistrerMesure(cleCache, donneesAstre, Math.abs(donneesAstre.elevationGeometrique));
-            } else {
-                const secours = sentinelaCache.obtenirSecours(cleCache);
-                if (secours) {
-                    donneesAstre = secours.valeur;
-                } else {
-                    continue; 
-                }
-            }
-
+        for (const [nomAstre, donneesAstre] of Object.entries(bodiesData)) {
+            if (!donneesAstre) continue;
             const cache = lignesTableauCache[nomAstre];
             if (!cache) continue;
 
             if (cache.el) cache.el.textContent = donneesAstre.elevationGeometrique !== undefined ? donneesAstre.elevationGeometrique.toFixed(6) + '°' : '--';
             if (cache.az) cache.az.textContent = donneesAstre.azimuth !== undefined ? donneesAstre.azimuth.toFixed(6) + '°' : '--';
             if (cache.dist) cache.dist.textContent = donneesAstre.distanceAu !== undefined ? donneesAstre.distanceAu.toFixed(8) : '--';
-            if (cache.minmax) cache.minmax.textContent = donneesAstre.minMaxAu ?? '--';
+            if (cache.minmax) cache.minmax.textContent = donneesAstre.distanceMinMaxDisplay ?? '--';
             if (cache.mag) cache.mag.textContent = donneesAstre.magnitude !== undefined ? donneesAstre.magnitude.toFixed(2) : '--';
             if (cache.ra) cache.ra.textContent = donneesAstre.raDeg !== undefined ? donneesAstre.raDeg.toFixed(6) + '°' : '--';
             if (cache.dec) cache.dec.textContent = donneesAstre.decDeg !== undefined ? donneesAstre.decDeg.toFixed(6) + '°' : '--';
             if (cache.const) cache.const.textContent = donneesAstre.constellationDisplay ?? '--';
-            if (cache.perigee) cache.perigee.textContent = donneesAstre.perigee ?? '--';
-            if (cache.perihelion) cache.perihelion.textContent = donneesAstre.perihelion ?? '--';
-            if (cache.aphelion) cache.aphelion.textContent = donneesAstre.aphelion ?? '--';
-            if (cache.dis) cache.dis.textContent = donneesAstre.distanceAu !== undefined ? donneesAstre.distanceAu.toFixed(4) + ' AE' : '--';
-            if (cache.period) cache.period.textContent = donneesAstre.orbitPeriod ?? '--';
-            if (cache.lod) cache.lod.textContent = donneesAstre.lengthOfDay ?? '--';
-            if (cache.vel) cache.vel.textContent = donneesAstre.orbitVelocity ?? '--';
+            if (cache.perigee) cache.perigee.textContent = donneesAstre.perigeeDisplay ?? '--';
+            if (cache.perihelion) cache.perihelion.textContent = donneesAstre.perihelionDisplay ?? '--';
+            if (cache.aphelion) cache.aphelion.textContent = donneesAstre.aphelionDisplay ?? '--';
+            if (cache.period) cache.period.textContent = donneesAstre.orbitPeriodDisplay ?? '--';
+            if (cache.lod) cache.lod.textContent = donneesAstre.lengthOfDayDisplay ?? '--';
+            if (cache.vel) cache.vel.textContent = donneesAstre.orbitalVelocityDisplay ?? '--';
             if (cache.shadow) cache.shadow.textContent = donneesAstre.shadowLengthDisplay ?? '--';
+            if (cache.moonPhase) cache.moonPhase.textContent = (nomAstre.toUpperCase() === 'LUNE' && donneesAstre.moonPhasePct !== undefined) ? `${donneesAstre.moonPhasePct.toFixed(1)}%` : 'N/A';
+            if (cache.moonAge) cache.moonAge.textContent = (nomAstre.toUpperCase() === 'LUNE' && donneesAstre.moonAgeDays !== undefined) ? `${donneesAstre.moonAgeDays.toFixed(1)} j` : 'N/A';
             if (cache.rise) cache.rise.textContent = donneesAstre.sunrise ?? '--';
             if (cache.set) cache.set.textContent = donneesAstre.sunset ?? '--';
             if (cache.dusk) cache.dusk.textContent = donneesAstre.dusk ?? '--';
             if (cache.daylight) cache.daylight.textContent = donneesAstre.daylightDuration ?? '--';
             if (cache.jde) cache.jde.textContent = donneesAstre.jde !== undefined ? donneesAstre.jde.toFixed(4) : '--';
             if (cache.deltat) cache.deltat.textContent = donneesAstre.deltat !== undefined ? donneesAstre.deltat.toFixed(2) : '--';
-            if (cache.gmst) cache.gmst.textContent = donneesAstre.gmstDeg !== undefined ? donneesAstre.gmstDeg.toFixed(4) + '°' : '--';
             if (cache.gha) cache.gha.textContent = donneesAstre.gha !== undefined ? donneesAstre.gha.toFixed(4) + '°' : '--';
-            if (cache.moonPhase) cache.moonPhase.textContent = donneesAstre.moonPhasePct !== undefined ? `${donneesAstre.moonPhasePct.toFixed(1)}%` : '--';
-            if (cache.moonAge) cache.moonAge.textContent = donneesAstre.moonAgeDays !== undefined ? `${donneesAstre.moonAgeDays.toFixed(1)} j` : '--';
-            
+
             if (cache.solConst && donneesAstre.distanceAu) {
                 const solConstDyn = 1361.0 / (donneesAstre.distanceAu * donneesAstre.distanceAu);
                 cache.solConst.textContent = solConstDyn.toFixed(2);
@@ -917,25 +871,38 @@
             if (cache.irr) cache.irr.textContent = donneesAstre.irradiance !== undefined ? donneesAstre.irradiance.toFixed(2) : '--';
 
             if (cache.etat) {
-                if (donneesAstre.statutEclipse && donneesAstre.statutEclipse !== "Normal") {
-                    cache.etat.textContent = `⚠️ ${donneesAstre.statutEclipse}`;
-                    cache.etat.style.color = "var(--rose, #ff3366)";
-                    cache.etat.style.fontWeight = "bold";
-                } else {
-                    cache.etat.textContent = statutsVisibilite[donneesAstre.visibiliteCode] ?? "Inconnu";
-                    cache.etat.style.color = "inherit";
-                    cache.etat.style.fontWeight = "normal";
-                }
+                cache.etat.textContent = statutsVisibilite[donneesAstre.visibiliteCode] ?? "Inconnu";
             }
         }
     }
 
-    function appliquerCoordonneesManuelles(silencieux = false) {
+    function mettreAJourInterface(data) {
+        if (!data) return;
+        if (data.metrics) mettreAJourMetricsSolaires(data.metrics);
+        if (data.bodies) {
+            derniersResultatsAstres = data.bodies;
+            mettreAJourTableauAstres(data.bodies);
+            dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
+            sentinelaCache.enregistrerMesure('derniers_astres', data.bodies, 0);
+        }
+        if (data.wmm) {
+            resultatWmmCourant = data.wmm;
+            document.getElementById('val-dec-wmm').innerText = `${data.wmm.declination.toFixed(2)}°`;
+            document.getElementById('val-inc-wmm').innerText = `${data.wmm.inclination.toFixed(2)}°`;
+            document.getElementById('val-intensity-wmm').innerText = `${data.wmm.totalIntensity.toFixed(0)} nT`;
+        }
+    }
+
+    function appliquerCoordonneesSaisie() {
         const lat = parseFloat(document.getElementById('input-lat').value.replace(',', '.'));
         const lon = parseFloat(document.getElementById('input-lon').value.replace(',', '.'));
         const altM = parseFloat(document.getElementById('input-alt').value.replace(',', '.'));
         if (isNaN(lat) || isNaN(lon) || isNaN(altM)) return;
 
+        mettreAJourCoordonneesStation(lat, lon, altM, 'SAISIE MANUELLE');
+    }
+
+    function mettreAJourCoordonneesStation(lat, lon, altM, nomStation) {
         const a = 6378137.0, f = 1.0 / 298.257223563, e2 = f * (2.0 - f);
         const phi = lat * (Math.PI / 180.0), lambda = lon * (Math.PI / 180.0);
         const N = a / Math.sqrt(1.0 - e2 * Math.sin(phi) ** 2);
@@ -947,7 +914,7 @@
         document.getElementById('val-xyz-y').innerText = Y_km.toFixed(6);
         document.getElementById('val-xyz-z').innerText = Z_km.toFixed(6);
 
-        stationActive = { lat: lat, lon: lon, altMeters: altM, nom: silencieux ? stationActive.nom : 'SAISIE MANUELLE' };
+        stationActive = { lat: lat, lon: lon, altMeters: altM, nom: nomStation };
         document.getElementById('val-station-nom').innerText = stationActive.nom;
         document.getElementById('val-station-coords').innerText = `${lat.toFixed(6)}° / ${lon.toFixed(6)}° / ${altM.toFixed(4)}m`;
         
@@ -1042,16 +1009,19 @@
         const sphereGeo = new THREE.SphereGeometry(earthRadius3D, 64, 64);
         const textureLoader = new THREE.TextureLoader();
         
+        // Corrected: Pré-création du matériau pour éviter le ReferenceError
         const earthMaterial = new THREE.MeshStandardMaterial({
-            map: textureLoader.load('./textures/earth_atmos_2048.jpg', undefined, undefined, () => {
-                earthMaterial.map = textureLoader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg');
-            }),
-            bumpMap: textureLoader.load('./textures/earth_normal_2048.jpg', undefined, undefined, () => {
-                earthMaterial.bumpMap = textureLoader.load('https://threejs.org/examples/textures/planets/earth_normal_2048.jpg');
-            }),
             bumpScale: 0.05,
             roughness: 0.8,
             metalness: 0.1
+        });
+
+        earthMaterial.map = textureLoader.load('./textures/earth_atmos_2048.jpg', undefined, undefined, () => {
+            earthMaterial.map = textureLoader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg');
+        });
+
+        earthMaterial.bumpMap = textureLoader.load('./textures/earth_normal_2048.jpg', undefined, undefined, () => {
+            earthMaterial.bumpMap = textureLoader.load('https://threejs.org/examples/textures/planets/earth_normal_2048.jpg');
         });
 
         earthMesh = new THREE.Mesh(sphereGeo, earthMaterial);
@@ -1145,6 +1115,9 @@
     }
 
     function envoyerDemandeCalculWorker() {
+        // Corrected: Prévention de la surcharge du Web Worker
+        if (workerCalculEnCours) return;
+
         const timestampExact = obtenirTimestampUTCExact();
         const dateUtc = new Date(timestampExact);
         
@@ -1159,6 +1132,7 @@
             inputPicker.value = dateUtc.toISOString().substring(11, 19);
         }
 
+        workerCalculEnCours = true;
         envoyerMessageWorkerSecurise({
             type: 'COMPUTE',
             timestampUtc: timestampExact,
@@ -1183,7 +1157,7 @@
         setInterval(actualiserIndiceKpRapide, 60 * 60 * 1000);
         await chargerFluxLiveJPL();
         
-        appliquerCoordonneesManuelles(true);
+        appliquerCoordonneesSaisie();
         executerDiagnosticSysteme();
         lancerBoucleCalculSecurisee();
         ecrireLog("SYSTEMA SENTINELA v19.12 opérationnel.");
