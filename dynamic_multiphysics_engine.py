@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL Horizons Grade)
+SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (v20.2 Robust & Standardized)
 Générateur d'éphémérides Tchebychev position + vitesse depuis JPL DE440s
 """
 
@@ -18,15 +18,15 @@ except ImportError:
     sys.exit(1)
 
 CORPS_MAP = {
-    "SOLEIL": "sun",
-    "LUNE": "moon",
-    "MERCURE": "mercury",
-    "VENUS": "venus",
-    "MARS": "mars barycenter",
-    "JUPITER": "jupiter barycenter",
-    "SATURNE": "saturn barycenter",
-    "URANUS": "uranus barycenter",
-    "NEPTUNE": "neptune barycenter"
+    "SOLEIL": ["sun"],
+    "LUNE": ["moon"],
+    "MERCURE": ["mercury", "mercury barycenter"],
+    "VENUS": ["venus", "venus barycenter"],
+    "MARS": ["mars barycenter", "mars"],
+    "JUPITER": ["jupiter barycenter"],
+    "SATURNE": ["saturn barycenter"],
+    "URANUS": ["uranus barycenter"],
+    "NEPTUNE": ["neptune barycenter"]
 }
 
 PAS_HEURES_MAP = {
@@ -56,8 +56,13 @@ RAYONS_EQUATORIAUX_KM = {
 DEGRE_TCHEBYCHEV = 10
 UA_KM = 149597870.7
 
+def obtenir_astre(eph, noms_possibles):
+    for nom in noms_possibles:
+        if nom in eph:
+            return eph[nom]
+    raise KeyError(f"Aucune cible trouvée parmi : {noms_possibles}")
+
 def calculer_inclinaison_anneaux_saturne(pos_saturne_km):
-    """Calcule la latitude sub-terrestre B des anneaux de Saturne en radians."""
     ra_pole = np.radians(40.66)
     dec_pole = np.radians(83.54)
     n_pole = np.array([
@@ -65,7 +70,9 @@ def calculer_inclinaison_anneaux_saturne(pos_saturne_km):
         np.cos(dec_pole) * np.sin(ra_pole),
         np.sin(dec_pole)
     ])
-    v_terre_saturne = pos_saturne_km / np.linalg.norm(pos_saturne_km)
+    norme = np.linalg.norm(pos_saturne_km)
+    if norme == 0: return 0.0
+    v_terre_saturne = pos_saturne_km / norme
     sin_B = np.dot(-v_terre_saturne, n_pole)
     return np.arcsin(np.clip(sin_B, -1.0, 1.0))
 
@@ -89,7 +96,7 @@ def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
         return -26.74
 
     if nom_corps == "LUNE":
-        return round(-12.73 + 0.026 * alpha_deg + 4.0e-9 * (alpha_deg**4), 2)
+        return round(float(-12.73 + 0.026 * alpha_deg + 4.0e-9 * (alpha_deg**4)), 2)
 
     if nom_corps == "SATURNE":
         B = calculer_inclinaison_anneaux_saturne(pos_astre_km)
@@ -122,13 +129,13 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     pos_km = astrometric.position.km
     vel_kms = astrometric.velocity.km_per_s
 
-    cx = np.polynomial.chebyshev.chebfit(nodes_std, pos_km[0], degre).tolist()
-    cy = np.polynomial.chebyshev.chebfit(nodes_std, pos_km[1], degre).tolist()
-    cz = np.polynomial.chebyshev.chebfit(nodes_std, pos_km[2], degre).tolist()
+    cx = [float(val) for val in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[0], degre)]
+    cy = [float(val) for val in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[1], degre)]
+    cz = [float(val) for val in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[2], degre)]
 
-    cvx = np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[0], degre).tolist()
-    cvy = np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[1], degre).tolist()
-    cvz = np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[2], degre).tolist()
+    cvx = [float(val) for val in np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[0], degre)]
+    cvy = [float(val) for val in np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[1], degre)]
+    cvz = [float(val) for val in np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[2], degre)]
 
     t_mid_unix = 0.5 * (t1_unix + t2_unix)
     time_mid = ts.tt_jd((t_mid_unix / 86400.0) + 2440587.5)
@@ -139,12 +146,12 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     mag_val = calculer_magnitude_apparente(nom_corps, pos_astre_mid, pos_soleil_mid)
 
     return {
-        "t_start": t1_unix,
-        "t_end": t2_unix,
-        "rayon_km": RAYONS_EQUATORIAUX_KM.get(nom_corps, 0.0),
+        "t_start": float(t1_unix),
+        "t_end": float(t2_unix),
+        "rayon_km": float(RAYONS_EQUATORIAUX_KM.get(nom_corps, 0.0)),
         "cx": cx, "cy": cy, "cz": cz,
         "cvx": cvx, "cvy": cvy, "cvz": cvz,
-        "mag": mag_val
+        "mag": float(mag_val)
     }
 
 def generer_ephemerides(lat=43.284356, lon=5.358507, alt=49.81, nb_jours=7, bsp_path="de440s.bsp", fichier_sortie="flux_live.json"):
@@ -161,8 +168,8 @@ def generer_ephemerides(lat=43.284356, lon=5.358507, alt=49.81, nb_jours=7, bsp_
 
     data_output = {}
 
-    for nom_corps, target_key in CORPS_MAP.items():
-        astre = eph[target_key]
+    for nom_corps, cibles_possibles in CORPS_MAP.items():
+        astre = obtenir_astre(eph, cibles_possibles)
         pas_sec = PAS_HEURES_MAP.get(nom_corps, 12) * 3600.0
 
         segments = []
@@ -184,9 +191,9 @@ def generer_ephemerides(lat=43.284356, lon=5.358507, alt=49.81, nb_jours=7, bsp_
             "date_creation_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
             "fenetre_jours": nb_jours,
             "station": {
-                "latitude": lat,
-                "longitude": lon,
-                "altitude_m": alt
+                "latitude": float(lat),
+                "longitude": float(lon),
+                "altitude_m": float(alt)
             }
         },
         "DATA": data_output
