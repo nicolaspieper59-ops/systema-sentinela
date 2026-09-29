@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v20.2 Fully Fixed & Integrated)
+ * SYSTEMA SENTINELA — WEB WORKER (v20.3 Kernel Fixed & Optimized)
  */
 
 var Module = {
@@ -31,24 +31,27 @@ const METADATAS_CORPS = {
 };
 
 function determinerConstellation(raDeg, decDeg) {
-    const raH = raDeg / 15.0;
-    if (raH >= 0 && raH < 2) return "Poisson / Bélier";
-    if (raH >= 2 && raH < 4) return "Taureau";
-    if (raH >= 4 && raH < 6) return "Gémeaux";
-    if (raH >= 6 && raH < 8) return "Cancer / Lion";
-    if (raH >= 8 && raH < 11) return "Lion / Vierge";
-    if (raH >= 11 && raH < 14) return "Vierge / Balance";
-    if (raH >= 14 && raH < 16) return "Scorpion / Serpentaire";
-    if (raH >= 16 && raH < 19) return "Sagittaire";
-    if (raH >= 19 && raH < 21) return "Capricorne";
-    if (raH >= 21 && raH < 23) return "Verseau";
+    const raH = (raDeg % 360 + 360) % 360 / 15.0;
+    if (raH >= 0.0 && raH < 2.1) return "Poissons";
+    if (raH >= 2.1 && raH < 3.6) return "Bélier";
+    if (raH >= 3.6 && raH < 6.0) return "Taureau";
+    if (raH >= 6.0 && raH < 8.1) return "Gémeaux";
+    if (raH >= 8.1 && raH < 9.4) return "Cancer";
+    if (raH >= 9.4 && raH < 11.4) return "Lion";
+    if (raH >= 11.4 && raH < 14.4) return "Vierge";
+    if (raH >= 14.4 && raH < 15.4) return "Balance";
+    if (raH >= 15.4 && raH < 16.4) return "Scorpion / Serpentaire";
+    if (raH >= 16.4 && raH < 19.1) return "Sagittaire";
+    if (raH >= 19.1 && raH < 20.9) return "Capricorne";
+    if (raH >= 20.9 && raH < 23.0) return "Verseau";
     return "Poissons";
 }
 
 function formaterHeureDecimale(heures) {
-    if (isNaN(heures) || heures < 0) return "--:-- UTC";
-    const h = Math.floor(heures) % 24;
-    const m = Math.floor((heures - Math.floor(heures)) * 60);
+    if (isNaN(heures) || heures === null || heures === undefined) return "--:-- UTC";
+    const hNormalisees = ((heures % 24) + 24) % 24;
+    const h = Math.floor(hNormalisees);
+    const m = Math.floor((hNormalisees - h) * 60);
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} UTC`;
 }
 
@@ -71,7 +74,7 @@ function auditerEnvironnementInterne() {
 function initialiserMemoireWasm() {
     if (wasmReady && !metricsPtr) {
         metricsPtr = Module._malloc(40);   // 5 x double (40 octets)
-        resultPtr = Module._malloc(192);  // AstroResult struct (192 octets)
+        resultPtr = Module._malloc(192);  // Struct AstroResult (192 octets)
     }
 }
 
@@ -84,8 +87,8 @@ function parseWMMCOF(contenuTexte) {
         const parts = line.split(/\s+/);
         if (parts.length >= 6) {
             coeffs.push({
-                n: parseInt(parts[0]),
-                m: parseInt(parts[1]),
+                n: parseInt(parts[0], 10),
+                m: parseInt(parts[1], 10),
                 g: parseFloat(parts[2]),
                 h: parseFloat(parts[3]),
                 dg: parseFloat(parts[4]),
@@ -145,24 +148,41 @@ function obtenirEtatParChebyshev(arcsAstre, timestampSec) {
 }
 
 function calculerChampingGeomagnetiqueLocal(lat, lon, altM) {
-    if (wmmParsedCoeffs) {
-        let g10 = -29402.2, g11 = -1454.4, h11 = 4668.6;
-        const c1 = wmmParsedCoeffs.find(c => c.n === 1 && c.m === 0);
-        const c2 = wmmParsedCoeffs.find(c => c.n === 1 && c.m === 1);
-        if (c1) g10 = c1.g;
-        if (c2) { g11 = c2.g; h11 = c2.h; }
-        
-        const dec = Math.atan2(h11, g11) * (180.0 / Math.PI);
-        const B2 = g10*g10 + g11*g11 + h11*h11;
-        const intensity = Math.sqrt(B2) * (1.0 - 2.0 * (altM / 6371000.0));
-        const inc = Math.atan2(-2.0 * g10, Math.sqrt(g11*g11 + h11*h11)) * (180.0 / Math.PI);
-        return { declination: dec, inclination: inc, totalIntensity: intensity };
+    const latRad = lat * (Math.PI / 180.0);
+    const lonRad = lon * (Math.PI / 180.0);
+
+    if (wmmParsedCoeffs && wmmParsedCoeffs.length > 0) {
+        let X = 0.0, Y = 0.0, Z = 0.0;
+        const rRatio = Math.pow(6371200.0 / (6371200.0 + altM), 3);
+
+        for (const c of wmmParsedCoeffs) {
+            if (c.n > 4) continue; // Approximation tronquée à n=4 pour performances du thread Worker
+            const factor = Math.pow(rRatio, c.n + 2);
+            const mLon = c.m * lonRad;
+            const cosM = Math.cos(mLon);
+            const sinM = Math.sin(mLon);
+
+            const gPart = c.g * cosM + c.h * sinM;
+            const hPart = c.g * sinM - c.h * cosM;
+
+            X += factor * (gPart * Math.sin(c.n * latRad));
+            Y += factor * (hPart * Math.sin(latRad));
+            Z += factor * ((c.n + 1) * gPart * Math.cos(latRad));
+        }
+
+        const H = Math.sqrt(X * X + Y * Y);
+        const dec = Math.atan2(Y, X) * (180.0 / Math.PI);
+        const inc = Math.atan2(Z, H) * (180.0 / Math.PI);
+        const totalIntensity = Math.sqrt(H * H + Z * Z) || 45000.0;
+
+        return { declination: dec, inclination: inc, totalIntensity };
     }
-    
-    const dec = 2.45 + (lat - 43.0) * 0.05 + (lon - 5.0) * 0.1;
-    const inc = 61.15 + (lat - 43.0) * 0.8;
-    const intensity = 45000.0 + (lat - 43.0) * 350.0 - (altM * 0.01);
-    return { declination: dec, inclination: inc, totalIntensity: intensity };
+
+    // Modèle empirique de secours (géodésique local)
+    const dec = 2.45 + (lat - 43.0) * 0.05 + (lon - 5.0) * 0.12;
+    const inc = 61.15 + (lat - 43.0) * 0.75;
+    const totalIntensity = 45000.0 + (lat - 43.0) * 320.0 - (altM * 0.012);
+    return { declination: dec, inclination: inc, totalIntensity };
 }
 
 onmessage = async function(e) {
@@ -194,15 +214,15 @@ onmessage = async function(e) {
 
             Module._calculerParametresSiderauxEtSolaires(timestampSec, lon, metricsPtr);
 
-            const heapF64 = Module.HEAPF64;
-            const heap32 = Module.HEAP32;
-
+            // Re-vérification systématique de la référence mémoire Wasm
             const offsetMetrics = metricsPtr / 8;
-            const eqTempsMin = heapF64[offsetMetrics + 0];
-            const obliquiteDeg = heapF64[offsetMetrics + 1];
-            const longSolaireDeg = heapF64[offsetMetrics + 2];
-            const gastDeg = heapF64[offsetMetrics + 3];
-            const lstDeg = heapF64[offsetMetrics + 4];
+            const heapF64Metrics = Module.HEAPF64;
+
+            const eqTempsMin = heapF64Metrics[offsetMetrics + 0];
+            const obliquiteDeg = heapF64Metrics[offsetMetrics + 1];
+            const longSolaireDeg = heapF64Metrics[offsetMetrics + 2];
+            const gastDeg = heapF64Metrics[offsetMetrics + 3];
+            const lstDeg = heapF64Metrics[offsetMetrics + 4];
 
             const eraRad = (gastDeg % 360.0) * (Math.PI / 180.0);
             const bodiesResults = {};
@@ -228,41 +248,45 @@ onmessage = async function(e) {
                         etatICRF.mag, estLune, resultPtr
                     );
 
+                    // Re-lecture dynamique du tampon mémoire à chaque itération
+                    const heapF64Current = Module.HEAPF64;
+                    const heap32Current = Module.HEAP32;
+
                     const off = resultPtr / 8;
                     const off32 = resultPtr / 4;
                     const nomAstreMaj = nomAstre.toUpperCase();
-                    const shadowVal = heapF64[off + 14];
+                    const shadowVal = heapF64Current[off + 14];
                     const meta = METADATAS_CORPS[nomAstreMaj] || {};
 
-                    const raDeg = heapF64[off + 3];
-                    const decDeg = heapF64[off + 4];
+                    const raDeg = heapF64Current[off + 3];
+                    const decDeg = heapF64Current[off + 4];
 
                     bodiesResults[nomAstreMaj] = {
-                        azimuth: heapF64[off + 0],
-                        elevationGeometrique: heapF64[off + 1],
-                        elevationRefractee: heapF64[off + 2],
+                        azimuth: heapF64Current[off + 0],
+                        elevationGeometrique: heapF64Current[off + 1],
+                        elevationRefractee: heapF64Current[off + 2],
                         raDeg: raDeg,
                         decDeg: decDeg,
-                        distanceAu: heapF64[off + 5],
-                        sunrise: formaterHeureDecimale(heapF64[off + 6]),
-                        sunset: formaterHeureDecimale(heapF64[off + 7]),
-                        airMass: heapF64[off + 8],
-                        irradiance: heapF64[off + 9],
-                        deltat: heapF64[off + 10],
-                        gha: heapF64[off + 11],
-                        jde: heapF64[off + 12],
-                        magnitude: heapF64[off + 13],
+                        distanceAu: heapF64Current[off + 5],
+                        sunrise: formaterHeureDecimale(heapF64Current[off + 6]),
+                        sunset: formaterHeureDecimale(heapF64Current[off + 7]),
+                        airMass: heapF64Current[off + 8],
+                        irradiance: heapF64Current[off + 9],
+                        deltat: heapF64Current[off + 10],
+                        gha: heapF64Current[off + 11],
+                        jde: heapF64Current[off + 12],
+                        magnitude: heapF64Current[off + 13],
                         shadowLengthDisplay: shadowVal > 0 ? `${shadowVal.toFixed(2)} m` : "Nuit",
-                        moonPhasePct: heapF64[off + 15],
-                        moonAgeDays: heapF64[off + 16],
-                        dusk: formaterHeureDecimale(heapF64[off + 17]),
-                        daylightDuration: formaterDureeHeures(heapF64[off + 18]),
-                        angularDiameterArcsec: heapF64[off + 19],
-                        surfaceBrightness: heapF64[off + 20],
-                        illuminatedFractionPct: heapF64[off + 21],
-                        radialVelocityKmS: heapF64[off + 22],
-                        visibiliteCode: heap32[off32 + 46],
-                        seasonCode: heap32[off32 + 47],
+                        moonPhasePct: heapF64Current[off + 15],
+                        moonAgeDays: heapF64Current[off + 16],
+                        dusk: formaterHeureDecimale(heapF64Current[off + 17]),
+                        daylightDuration: formaterDureeHeures(heapF64Current[off + 18]),
+                        angularDiameterArcsec: heapF64Current[off + 19],
+                        surfaceBrightness: heapF64Current[off + 20],
+                        illuminatedFractionPct: heapF64Current[off + 21],
+                        radialVelocityKmS: heapF64Current[off + 22],
+                        visibiliteCode: heap32Current[off32 + 46],
+                        seasonCode: heap32Current[off32 + 47],
                         constellationDisplay: determinerConstellation(raDeg, decDeg),
                         distanceMinMaxDisplay: meta.minMax || "--",
                         perigeeDisplay: meta.perigee || "--",
@@ -272,15 +296,18 @@ onmessage = async function(e) {
                         lengthOfDayDisplay: meta.lod || "--",
                         orbitalVelocityDisplay: meta.orbitalVel || "--"
                     };
-                } catch (astreErr) {}
+                } catch (astreErr) {
+                    postMessage({ type: 'LOG', message: `Erreur de calcul sur ${nomAstre} : ${astreErr.message}` });
+                }
             }
 
             const resWmm = calculerChampingGeomagnetiqueLocal(lat, lon, alt);
 
+            // Correctif clé : Renommage en `metrics` pour alignement direct avec l'interface principale
             postMessage({
                 type: 'RESULTS_COMPUTE',
                 timestamp: timestampUtc,
-                solarMetrics: { eqTempsMin, obliquiteDeg, longSolaireDeg, gastDeg, lstDeg },
+                metrics: { eqTempsMin, obliquiteDeg, longSolaireDeg, gastDeg, lstDeg },
                 wmm: resWmm,
                 bodies: bodiesResults
             });
