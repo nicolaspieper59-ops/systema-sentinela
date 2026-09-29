@@ -855,7 +855,22 @@ function mettreAJourTableauAstres(bodiesData) {
             }
         }
     }
-    
+
+    function mettreAJourInterface(data) {
+    if (!data) return;
+    if (data.metrics) mettreAJourMetricsSolaires(data.metrics);
+    if (data.bodies) {
+        derniersResultatsAstres = data.bodies;
+        mettreAJourTableauAstres(data.bodies);
+        dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
+    }
+    if (data.wmm) {
+        resultatWmmCourant = data.wmm;
+        document.getElementById('val-dec-wmm').innerText = `${data.wmm.declination.toFixed(2)}°`;
+        document.getElementById('val-inc-wmm').innerText = `${data.wmm.inclination.toFixed(2)}°`;
+        document.getElementById('val-intensity-wmm').innerText = `${data.wmm.totalIntensity.toFixed(0)} nT`;
+    }
+    }
 
     function appliquerCoordonneesManuelles(silencieux = false) {
         const lat = parseFloat(document.getElementById('input-lat').value.replace(',', '.'));
