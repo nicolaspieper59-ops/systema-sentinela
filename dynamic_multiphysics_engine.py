@@ -58,7 +58,6 @@ UA_KM = 149597870.7
 
 def calculer_inclinaison_anneaux_saturne(pos_saturne_km):
     """Calcule la latitude sub-terrestre B des anneaux de Saturne en radians."""
-    # Pôle des anneaux de Saturne en ICRF (J2000)
     ra_pole = np.radians(40.66)
     dec_pole = np.radians(83.54)
     n_pole = np.array([
@@ -70,17 +69,7 @@ def calculer_inclinaison_anneaux_saturne(pos_saturne_km):
     sin_B = np.dot(-v_terre_saturne, n_pole)
     return np.arcsin(np.clip(sin_B, -1.0, 1.0))
 
-def calculer_magnitude_apparente(v_soleil_astre, v_terre_astre, r_km, delta_km, H, G):
-    # Correction du signe : produit scalaire direct pour le cosinus de l'angle de phase
-    cos_alpha = np.dot(v_soleil_astre, v_terre_astre) / (r_km * delta_km)
-    cos_alpha = np.clip(cos_alpha, -1.0, 1.0)
-    
-    alpha = np.arccos(cos_alpha)
-    phi1 = np.exp(-3.33 * (np.tan(alpha / 2.0)) ** 0.63)
-    phi2 = np.exp(-1.87 * (np.tan(alpha / 2.0)) ** 1.22)
-    
-    return H + 5.0 * np.log10(r_km * delta_km) - 2.5 * np.log10((1.0 - G) * phi1 + G * phi2)
-
+def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
     v_terre_astre = pos_astre_km
     delta_km = np.linalg.norm(v_terre_astre)
     delta_ua = delta_km / UA_KM
@@ -89,10 +78,15 @@ def calculer_magnitude_apparente(v_soleil_astre, v_terre_astre, r_km, delta_km, 
     r_km = np.linalg.norm(v_soleil_astre)
     r_ua = r_km / UA_KM
 
-    # Correction de la ligne cos_alpha
+    if r_km == 0 or delta_km == 0:
+        return 0.0
+
     cos_alpha = np.dot(v_soleil_astre, v_terre_astre) / (r_km * delta_km)
     cos_alpha = np.clip(cos_alpha, -1.0, 1.0)
     alpha_deg = np.degrees(np.arccos(cos_alpha))
+
+    if nom_corps == "SOLEIL":
+        return -26.74
 
     if nom_corps == "LUNE":
         return round(-12.73 + 0.026 * alpha_deg + 4.0e-9 * (alpha_deg**4), 2)
@@ -153,7 +147,7 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
         "mag": mag_val
     }
 
-def generer_ephemerides(lat=lat, lon=lon, alt=alt, nb_jours=days, fichier_sortie=output_file)
+def generer_ephemerides(lat=43.284356, lon=5.358507, alt=49.81, nb_jours=7, bsp_path="de440s.bsp", fichier_sortie="flux_live.json"):
     if not os.path.exists(bsp_path):
         raise FileNotFoundError(f"Fichier BSP introuvable : {bsp_path}")
 
@@ -163,7 +157,7 @@ def generer_ephemerides(lat=lat, lon=lon, alt=alt, nb_jours=days, fichier_sortie
     sun_target = eph['sun']
 
     t_start_unix = time.time()
-    t_end_unix = t_start_unix + (days * 86400)
+    t_end_unix = t_start_unix + (nb_jours * 86400)
 
     data_output = {}
 
@@ -188,27 +182,39 @@ def generer_ephemerides(lat=lat, lon=lon, alt=alt, nb_jours=days, fichier_sortie
         "ALMANACH": {
             "generateur": "Systema Sentinela DE440s Generator (JPL-Grade)",
             "date_creation_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
-            "fenetre_jours": days
+            "fenetre_jours": nb_jours,
+            "station": {
+                "latitude": lat,
+                "longitude": lon,
+                "altitude_m": alt
+            }
         },
         "DATA": data_output
     }
 
-    with open(output_path, "w", encoding="utf-8") as f:
+    with open(fichier_sortie, "w", encoding="utf-8") as f:
         json.dump(resultat_global, f, indent=2, ensure_ascii=False)
 
 def main():
     parser = argparse.ArgumentParser(description="Générateur JPL-Grade")
-    parser.add_argument("lat", type=float)
-    parser.add_argument("lon", type=float)
-    parser.add_argument("alt", type=float)
-    parser.add_argument("--days", type=int, default=7)
-    parser.add_argument("--bsp", type=str, default="de440s.bsp")
-    parser.add_argument("--out", type=str, default="flux_live.json")
+    parser.add_argument("lat", type=float, help="Latitude de la station")
+    parser.add_argument("lon", type=float, help="Longitude de la station")
+    parser.add_argument("alt", type=float, help="Altitude de la station (mètres)")
+    parser.add_argument("--days", type=int, default=7, help="Fenêtre temporelle en jours")
+    parser.add_argument("--bsp", type=str, default="de440s.bsp", help="Chemin du fichier JPL BSP")
+    parser.add_argument("--out", type=str, default="flux_live.json", help="Fichier JSON de sortie")
 
     args = parser.parse_args()
 
     try:
-        def generer_ephemerides(lat=48.8566, lon=2.3522, alt=35.0, nb_jours=7, fichier_sortie="flux_live.json"):
+        generer_ephemerides(
+            lat=args.lat,
+            lon=args.lon,
+            alt=args.alt,
+            nb_jours=args.days,
+            bsp_path=args.bsp,
+            fichier_sortie=args.out
+        )
         print(f"[SUCCÈS] Génération terminée dans {args.out}")
         sys.exit(0)
     except Exception as e:
