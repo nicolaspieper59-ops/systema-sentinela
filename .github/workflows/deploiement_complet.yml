@@ -29,18 +29,20 @@ on:
         default: '49.81'
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
 
     steps:
       - name: 📥 Cloner le dépôt
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
-          fetch-depth: 0
 
       - name: 🐍 Configurer Python 3.11
         uses: actions/setup-python@v5
@@ -64,20 +66,22 @@ jobs:
           path: de440s.bsp
           key: de440s-bsp-v1
 
-      - name: 📥 Téléchargement ou Vérification DE440s & WMM2025
+      - name: 📥 Téléchargement & Vérification des données (DE440s & WMM2025)
         run: |
           if [ ! -f "de440s.bsp" ] || [ $(wc -c < de440s.bsp) -lt 10000000 ]; then
             echo "Téléchargement du noyau de440s.bsp..."
             curl -fsSL --connect-timeout 20 --retry 3 -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || \
             curl -fsSL --connect-timeout 20 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
           fi
-          test -s de440s.bsp || exit 1
+          test -s de440s.bsp || { echo "ERREUR CRITIQUE : de440s.bsp invalide ou manquant"; exit 1; }
 
           if [ -f "src/WMM2025.COF" ]; then
             cp -f src/WMM2025.COF ./WMM2025.COF
-          elif [ ! -f "WMM2025.COF" ]; then
-            curl -fsSL --connect-timeout 20 --retry 3 -o WMM2025.COF https://www.ngdc.noaa.gov/geomag/WMM/data/WMM2025/WMM2025.COF || true
+          elif [ ! -f "WMM2025.COF" ] || [ $(wc -c < WMM2025.COF) -lt 1000 ]; then
+            echo "Téléchargement de WMM2025.COF..."
+            curl -fsSL --connect-timeout 20 --retry 3 -o WMM2025.COF https://www.ngdc.noaa.gov/geomag/WMM/data/WMM2025/WMM2025.COF
           fi
+          test -s WMM2025.COF || { echo "ERREUR CRITIQUE : WMM2025.COF introuvable ou vide"; exit 1; }
 
       - name: 🌍 Exécution de l'extracteur multiphysique (Fenêtre 7 Jours)
         env:
@@ -87,22 +91,29 @@ jobs:
         run: |
           python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT" --days 7 --out flux_live.json
 
-      - name: 🔍 Audit & Validation de l'intégrité du flux
+      - name: 🔍 Audit & Validation physique du flux généré
         run: |
-          if [ ! -s flux_live.json ]; then
-            echo "ERREUR CRITIQUE : flux_live.json est vide."
-            exit 1
-          fi
-          
-          python -c "import json; data=json.load(open('flux_live.json')); assert 'DATA' in data or 'corps' in data, 'Format de flux invalide'"
-          
-          TAILLE_OCTETS=$(wc -c < flux_live.json)
-          echo "Taille du flux généré : $TAILLE_OCTETS octets"
-          
-          if [ $TAILLE_OCTETS -gt 100000000 ]; then
-            echo "ERREUR : flux_live.json dépasse la limite GitHub de 100 Mo."
-            exit 1
-          fi
+          python -c "
+          import json, sys
+
+          try:
+              with open('flux_live.json', 'r') as f:
+                  data = json.load(f)
+          except Exception as e:
+              print(f'ERREUR: Fichier JSON corrompu : {e}')
+              sys.exit(1)
+
+          payload = data.get('DATA') or data.get('corps')
+          if not payload:
+              print('ERREUR CRITIQUE: Clé de données absente du flux.')
+              sys.exit(1)
+
+          if len(payload) == 0:
+              print('ERREUR CRITIQUE: Le flux produit est vide.')
+              sys.exit(1)
+
+          print(f'Validation réussie : {len(payload)} enregistrements vérifiés.')
+          "
 
       - name: 🔨 Compilation C++ vers WebAssembly (Wasm)
         run: |
@@ -114,7 +125,7 @@ jobs:
           fi
 
           if [ ! -f "$SRC_FILE" ]; then
-            echo "ERREUR CRITIQUE : Aucun fichier source C++ trouvé pour la compilation Wasm."
+            echo "ERREUR CRITIQUE : Aucun fichier source C++ trouvé pour le binaire WASM."
             exit 1
           fi
 
@@ -127,27 +138,28 @@ jobs:
             -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32','getValue','setValue']" \
             -o wasm_astronomie.js
 
-      - name: 🚀 Publication automatique & Cache PWA
+      - name: 🔖 Horodatage du Cache PWA
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action Bot"
-          
           DATE_CACHE=$(date +'%Y%m%d%H%M')
           if [ -f "sw.js" ]; then
             sed -i -E "s/(const|let|var)\s+CACHE_NAME\s*=.*/const CACHE_NAME = 'sentinela-cache-$DATE_CACHE';/" sw.js
           fi
-          
-          git add -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm
-          [ -f "sw.js" ] && git add -f sw.js
-          [ -f "WMM2025.COF" ] && git add -f WMM2025.COF
-          [ -f "worker.js" ] && git add -f worker.js
-          [ -f "meteo_manager.js" ] && git add -f meteo_manager.js
-          
-          if git diff --staged --quiet; then
-            echo "Aucune modification détectée."
-            exit 0
-          fi
 
-          git commit -m "Chore(data): Actualisation du flux 7 jours & binaire Wasm [skip ci]"
-          git pull origin main --rebase --autostash -X theirs
-          git push origin main
+      - name: 📦 Préparation de l'artefact GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+  deploy:
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 🚀 Déploiement vers GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
