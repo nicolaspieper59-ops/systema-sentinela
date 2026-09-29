@@ -131,27 +131,42 @@ void calculerDepuisECEF(
     double yObs = (N_obs + altM) * std::cos(phi) * std::sin(lambda);
     double zObs = (N_obs * (1.0 - e2) + altM) * std::sin(phi);
 
-    // Vitesse de rotation de l'observateur (ECEF m/s) -> Aberration diurne
+    // Vector position relative ECEF
+    double dx = xECEF - xObs;
+    double dy = yECEF - yObs;
+    double dz = zECEF - zObs;
+
+    // Vitesse de rotation de l'observateur (ECEF m/s)
     double vObsX = -OMEGA_TERRE_RAD_S * yObs;
     double vObsY =  OMEGA_TERRE_RAD_S * xObs;
     double vObsZ = 0.0;
 
-    // Calcul de la direction dans le repère ENU
-Vecteur3D dirENU = calculerENU(posECEF, observerECEF);
-dirENU = normaliser(dirENU);
-
-// Application de la correction angulaire d'aberration sur le vecteur directionnel uniquement
-dirENU.e += (vObsENU.e / VITESSE_LUMIERE_M_S);
-dirENU.n += (vObsENU.n / VITESSE_LUMIERE_M_S);
-dirENU = normaliser(dirENU);
-
-    // Repère local ENU
+    // Position relative dans le repère local ENU
     double E = -std::sin(lambda) * dx + std::cos(lambda) * dy;
     double N_top = -std::sin(phi) * std::cos(lambda) * dx - std::sin(phi) * std::sin(lambda) * dy + std::cos(phi) * dz;
     double U = std::cos(phi) * std::cos(lambda) * dx + std::cos(phi) * std::sin(lambda) * dy + std::sin(phi) * dz;
 
+    // Vitesse observateur dans le repère ENU
+    double vE = -std::sin(lambda) * vObsX + std::cos(lambda) * vObsY;
+    double vN = -std::sin(phi) * std::cos(lambda) * vObsX - std::sin(phi) * std::sin(lambda) * vObsY + std::cos(phi) * vObsZ;
+    double vU = std::cos(phi) * std::cos(lambda) * vObsX + std::cos(phi) * std::sin(lambda) * vObsY + std::sin(phi) * vObsZ;
+
     double distM = std::sqrt(dx * dx + dy * dy + dz * dz);
     result->distUA = distM / UA_EN_METRES;
+
+    // Correction angulaire d'aberration diurne sur la direction
+    if (distM > 0.0) {
+        double dirE = E / distM + (vE / VITESSE_LUMIERE_M_S);
+        double dirN = N_top / distM + (vN / VITESSE_LUMIERE_M_S);
+        double dirU = U / distM + (vU / VITESSE_LUMIERE_M_S);
+
+        double normDir = std::sqrt(dirE * dirE + dirN * dirN + dirU * dirU);
+        if (normDir > 0.0) {
+            E = (dirE / normDir) * distM;
+            N_top = (dirN / normDir) * distM;
+            U = (dirU / normDir) * distM;
+        }
+    }
 
     result->azim = normaliserDegres(std::atan2(E, N_top) * RAD2DEG);
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
@@ -222,7 +237,22 @@ dirENU = normaliser(dirENU);
         return std::acos(cosH);
     };
 
-    // eqTempsMinutes représente la valeur calculée de l'équation du temps
+    // Calcul direct de l'Équation du Temps (en minutes)
+    double jd = (timestampUtc / 86400.0) + 2440587.5;
+    double T_eq = (jd - 2451545.0) / 36525.0;
+    double l0_eq = normaliserDegres(280.46646 + 36000.76983 * T_eq);
+    double m_eq = normaliserDegres(357.52911 + 35999.05029 * T_eq);
+    double eps0_eq = 84381.448 - 46.8150 * T_eq - 0.00059 * T_eq * T_eq + 0.001813 * T_eq * T_eq * T_eq;
+    double obl_eq = eps0_eq / 3600.0;
+    double y_eq = std::tan((obl_eq / 2.0) * DEG2RAD);
+    y_eq *= y_eq;
+    double l0Rad_eq = l0_eq * DEG2RAD;
+    double mRad_eq = m_eq * DEG2RAD;
+    double eqTempsRad = y_eq * std::sin(2.0 * l0Rad_eq) - 2.0 * 0.016708634 * std::sin(mRad_eq) 
+                        + 4.0 * 0.016708634 * y_eq * std::sin(mRad_eq) * std::cos(2.0 * l0Rad_eq) 
+                        - 0.5 * y_eq * y_eq * std::sin(4.0 * l0Rad_eq);
+    double eqTempsMinutes = (eqTempsRad * RAD2DEG) * 4.0;
+
     double solarNoonUT = normaliserDegres(12.0 - (lonDeg / 15.0) - (eqTempsMinutes / 60.0));
     double H_std = calcHA(h0_std);
     double H_twi = calcHA(h0_twi);
@@ -241,7 +271,6 @@ dirENU = normaliser(dirENU);
         result->moonAgeDays = 0.0;
     }
 
-    double jd = (timestampUtc / 86400.0) + 2440587.5;
     result->jde = jd;
     double tC = (jd - 2451545.0) / 36525.0;
     result->deltaT = 64.6 + 31.5 * tC + 65.5 * tC * tC;
