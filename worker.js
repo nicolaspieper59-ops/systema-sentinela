@@ -124,7 +124,6 @@ function obtenirEtatParChebyshev(arcsAstre, timestampSec) {
 }
 
 function calculerChampingGeomagnetiqueLocal(lat, lon, altM) {
-    // Estimation géomagnétique WMM-2025 WGS84
     const dec = 2.45 + (lat - 43.0) * 0.05 + (lon - 5.0) * 0.1;
     const inc = 61.15 + (lat - 43.0) * 0.8;
     const intensity = 45000.0 + (lat - 43.0) * 350.0 - (altM * 0.01);
@@ -226,7 +225,6 @@ onmessage = async function(e) {
                         radialVelocityKmS: Module.HEAPF64[off + 22],
                         visibiliteCode: Module.HEAP32[off32 + 46],
                         seasonCode: Module.HEAP32[off32 + 47],
-                        // Métadonnées orbitales transmises
                         constellationDisplay: determinerConstellation(raDeg, decDeg),
                         distanceMinMaxDisplay: meta.minMax || "--",
                         perigeeDisplay: meta.perigee || "--",
