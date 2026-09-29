@@ -101,25 +101,21 @@ void calculerDepuisECEF(
 ) {
     if (!result) return;
 
-    // 1. ICRF -> Mètres
     double xI = xICRF_km * 1000.0;
     double yI = yICRF_km * 1000.0;
     double zI = zICRF_km * 1000.0;
 
-    // 2. RA/DEC ICRF
     double normICRF = std::sqrt(xI * xI + yI * yI + zI * zI);
     result->raDeg = normaliserDegres(std::atan2(yI, xI) * RAD2DEG);
-    result->decDeg = (normICRF > 0.0) ? std::asin(zI / normICRF) * RAD2DEG : 0.0;
+    result->decDeg = (normICRF > 0.0) ? std::asin(std::max(-1.0, std::min(1.0, zI / normICRF))) * RAD2DEG : 0.0;
     result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
 
-    // 3. Rotation ICRF -> ECEF
     double cosERA = std::cos(eraRad);
     double sinERA = std::sin(eraRad);
     double xECEF =  xI * cosERA + yI * sinERA;
     double yECEF = -xI * sinERA + yI * cosERA;
     double zECEF =  zI;
 
-    // 4. Observateur ECEF
     double phi = latDeg * DEG2RAD;
     double lambda = lonDeg * DEG2RAD;
     double a = 6378137.0;
@@ -131,34 +127,22 @@ void calculerDepuisECEF(
     double yObs = (N_obs + altM) * std::cos(phi) * std::sin(lambda);
     double zObs = (N_obs * (1.0 - e2) + altM) * std::sin(phi);
 
-    // Vector position relative ECEF
     double dx = xECEF - xObs;
     double dy = yECEF - yObs;
     double dz = zECEF - zObs;
 
-    // Vitesse de rotation de l'observateur (ECEF m/s)
-    double vObsX = -OMEGA_TERRE_RAD_S * yObs;
-    double vObsY =  OMEGA_TERRE_RAD_S * xObs;
-    double vObsZ = 0.0;
-
-    // Position relative dans le repère local ENU
     double E = -std::sin(lambda) * dx + std::cos(lambda) * dy;
     double N_top = -std::sin(phi) * std::cos(lambda) * dx - std::sin(phi) * std::sin(lambda) * dy + std::cos(phi) * dz;
     double U = std::cos(phi) * std::cos(lambda) * dx + std::cos(phi) * std::sin(lambda) * dy + std::sin(phi) * dz;
 
-    // Vitesse observateur dans le repère ENU
-    double vE = -std::sin(lambda) * vObsX + std::cos(lambda) * vObsY;
-    double vN = -std::sin(phi) * std::cos(lambda) * vObsX - std::sin(phi) * std::sin(lambda) * vObsY + std::cos(phi) * vObsZ;
-    double vU = std::cos(phi) * std::cos(lambda) * vObsX + std::cos(phi) * std::sin(lambda) * vObsY + std::sin(phi) * vObsZ;
-
     double distM = std::sqrt(dx * dx + dy * dy + dz * dz);
     result->distUA = distM / UA_EN_METRES;
 
-    // Correction angulaire d'aberration diurne sur la direction
+    double vEastObs = OMEGA_TERRE_RAD_S * (N_obs + altM) * std::cos(phi);
     if (distM > 0.0) {
-        double dirE = E / distM + (vE / VITESSE_LUMIERE_M_S);
-        double dirN = N_top / distM + (vN / VITESSE_LUMIERE_M_S);
-        double dirU = U / distM + (vU / VITESSE_LUMIERE_M_S);
+        double dirE = E / distM + (vEastObs / VITESSE_LUMIERE_M_S);
+        double dirN = N_top / distM;
+        double dirU = U / distM;
 
         double normDir = std::sqrt(dirE * dirE + dirN * dirN + dirU * dirU);
         if (normDir > 0.0) {
@@ -172,7 +156,6 @@ void calculerDepuisECEF(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
-    // 6. Réfraction Atmos
     if (result->elevGeom > -2.0) {
         double h = std::max(result->elevGeom, -1.0);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.1)) * DEG2RAD);
@@ -182,7 +165,6 @@ void calculerDepuisECEF(
         result->elevRefractee = result->elevGeom;
     }
 
-    // 7. Masse d'air et photométrie
     if (result->elevRefractee > 0.0) {
         double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
         result->airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
@@ -194,7 +176,6 @@ void calculerDepuisECEF(
     result->irradiance = (result->elevRefractee > 0.0) ? 1361.0 * std::pow(0.7, result->airMass) / (result->distUA * result->distUA) : 0.0;
     result->shadowLength = (result->elevRefractee > 0.0) ? 1.0 / std::tan(std::max(1e-4, result->elevRefractee * DEG2RAD)) : -1.0;
 
-    // 8. Diamètre angulaire & Brillance surfacique
     if (rayonCorpsKm > 0.0) {
         double rayonM = rayonCorpsKm * 1000.0;
         result->angularDiamArcsec = 2.0 * std::asin(std::min(1.0, rayonM / distM)) * RAD2DEG * 3600.0;
@@ -205,7 +186,6 @@ void calculerDepuisECEF(
         result->surfaceBrightness = 0.0;
     }
 
-    // 9. Angle de phase & Fraction éclairée
     double xS = xSoleilICRF_km * 1000.0;
     double yS = ySoleilICRF_km * 1000.0;
     double zS = zSoleilICRF_km * 1000.0;
@@ -215,29 +195,45 @@ void calculerDepuisECEF(
     double dzS = zS - zI;
 
     double distAstreSoleil = std::sqrt(dxS * dxS + dyS * dyS + dzS * dzS);
-    double cosAlpha = (distM * distM + distAstreSoleil * distAstreSoleil - (xS*xS + yS*yS + zS*zS)) / (2.0 * distM * distAstreSoleil);
-    cosAlpha = std::max(-1.0, std::min(1.0, cosAlpha));
-    result->illuminatedFraction = ((1.0 + cosAlpha) / 2.0) * 100.0;
+    if (distM > 0.0 && distAstreSoleil > 0.0) {
+        double cosAlpha = (distM * distM + distAstreSoleil * distAstreSoleil - (xS*xS + yS*yS + zS*zS)) / (2.0 * distM * distAstreSoleil);
+        cosAlpha = std::max(-1.0, std::min(1.0, cosAlpha));
+        result->illuminatedFraction = ((1.0 + cosAlpha) / 2.0) * 100.0;
+    } else {
+        result->illuminatedFraction = 100.0;
+    }
 
-    // Vitesse radiale topocentrique (km/s)
-    double uX = dx / distM;
-    double uY = dy / distM;
-    double uZ = dz / distM;
-    result->radialVelocityKmS = (vxICRF_kms * 1000.0 * uX + vyICRF_kms * 1000.0 * uY + vzICRF_kms * 1000.0 * uZ) / 1000.0;
+    double xObsI = xObs * cosERA - yObs * sinERA;
+    double yObsI = xObs * sinERA + yObs * cosERA;
+    double zObsI = zObs;
 
-    // 10. Ephemerides lever/coucher
-    double decRad = result->decDeg * DEG2RAD;
+    double dxI = xI - xObsI;
+    double dyI = yI - yObsI;
+    double dzI = zI - zObsI;
+    double distI = std::sqrt(dxI*dxI + dyI*dyI + dzI*dzI);
+
+    double vObsX_I = -OMEGA_TERRE_RAD_S * yObsI;
+    double vObsY_I =  OMEGA_TERRE_RAD_S * xObsI;
+
+    double relVx = vxICRF_kms * 1000.0 - vObsX_I;
+    double relVy = vyICRF_kms * 1000.0 - vObsY_I;
+    double relVz = vzICRF_kms * 1000.0;
+
+    result->radialVelocityKmS = (distI > 0.0) ? (dxI * relVx + dyI * relVy + dzI * relVz) / (distI * 1000.0) : 0.0;
+
+    double raSoleilDeg = normaliserDegres(std::atan2(yS, xS) * RAD2DEG);
+    double decSoleilRad = (std::sqrt(xS*xS + yS*yS + zS*zS) > 0.0) ? std::asin(zS / std::sqrt(xS*xS + yS*yS + zS*zS)) : 0.0;
+    
     double h0_std = -0.8333 * DEG2RAD; 
     double h0_twi = -6.0 * DEG2RAD; 
 
-    auto calcHA = [&](double h0) {
-        double cosH = (std::sin(h0) - std::sin(phi) * std::sin(decRad)) / (std::cos(phi) * std::cos(decRad));
+    auto calcHA = [&](double h0, double decR) {
+        double cosH = (std::sin(h0) - std::sin(phi) * std::sin(decR)) / (std::cos(phi) * std::cos(decR));
         if (cosH <= -1.0) return M_PI;  
-        if (cosH >= 1.0) return 0.0;    
+        if (cosH >= 1.0) return -1.0;   
         return std::acos(cosH);
     };
 
-    // Calcul direct de l'Équation du Temps (en minutes)
     double jd = (timestampUtc / 86400.0) + 2440587.5;
     double T_eq = (jd - 2451545.0) / 36525.0;
     double l0_eq = normaliserDegres(280.46646 + 36000.76983 * T_eq);
@@ -254,18 +250,25 @@ void calculerDepuisECEF(
     double eqTempsMinutes = (eqTempsRad * RAD2DEG) * 4.0;
 
     double solarNoonUT = normaliserDegres(12.0 - (lonDeg / 15.0) - (eqTempsMinutes / 60.0));
-    double H_std = calcHA(h0_std);
-    double H_twi = calcHA(h0_twi);
+    double H_std = calcHA(h0_std, decSoleilRad);
+    double H_twi = calcHA(h0_twi, decSoleilRad);
 
-    result->leverUT = normaliserDegres(solarNoonUT - (H_std * RAD2DEG / 15.0));
-    result->coucherUT = normaliserDegres(solarNoonUT + (H_std * RAD2DEG / 15.0));
-    result->crepusculeUT = normaliserDegres(solarNoonUT + (H_twi * RAD2DEG / 15.0));
-    result->dureeJourHeures = (2.0 * H_std * RAD2DEG) / 15.0;
+    if (H_std >= 0.0) {
+        result->leverUT = normaliserDegres(solarNoonUT - (H_std * RAD2DEG / 15.0));
+        result->coucherUT = normaliserDegres(solarNoonUT + (H_std * RAD2DEG / 15.0));
+        result->dureeJourHeures = (2.0 * H_std * RAD2DEG) / 15.0;
+    } else {
+        result->leverUT = -1.0;
+        result->coucherUT = -1.0;
+        result->dureeJourHeures = 0.0;
+    }
+
+    result->crepusculeUT = (H_twi >= 0.0) ? normaliserDegres(solarNoonUT + (H_twi * RAD2DEG / 15.0)) : -1.0;
 
     if (estLune) {
         result->moonPhasePct = result->illuminatedFraction;
-        double elongationRad = std::acos(std::max(-1.0, std::min(1.0, (xS*xI + yS*yI + zS*zI) / (std::sqrt(xS*xS+yS*yS+zS*zS)*normICRF))));
-        result->moonAgeDays = (elongationRad / (2.0 * M_PI)) * 29.53058886;
+        double diffRA = normaliserDegres(result->raDeg - raSoleilDeg);
+        result->moonAgeDays = (diffRA / 360.0) * 29.53058886;
     } else {
         result->moonPhasePct = 0.0;
         result->moonAgeDays = 0.0;
