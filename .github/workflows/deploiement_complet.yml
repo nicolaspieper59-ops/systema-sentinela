@@ -6,7 +6,7 @@ concurrency:
 
 on:
   schedule:
-    - cron: '0 2 * * *' # Exécution quotidienne à 02:00 UTC (garantie de la fenêtre glissante)
+    - cron: '0 2 * * *' # Exécution quotidienne à 02:00 UTC
   push:
     branches: [ main ]
     paths:
@@ -46,6 +46,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
 
       - name: 📦 Installer les dépendances Python
         run: |
@@ -68,15 +69,15 @@ jobs:
         run: |
           if [ ! -f "de440s.bsp" ] || [ $(wc -c < de440s.bsp) -lt 10000000 ]; then
             echo "Téléchargement du noyau de440s.bsp..."
-            curl -sSL --connect-timeout 20 --retry 3 -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || \
-            curl -sSL --connect-timeout 20 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
+            curl -fsSL --connect-timeout 20 --retry 3 -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || \
+            curl -fsSL --connect-timeout 20 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
           fi
           test -s de440s.bsp || exit 1
 
           if [ -f "src/WMM2025.COF" ]; then
             cp -f src/WMM2025.COF ./WMM2025.COF
           elif [ ! -f "WMM2025.COF" ]; then
-            curl -sSL --connect-timeout 20 --retry 3 -o WMM2025.COF https://www.ngdc.noaa.gov/geomag/WMM/data/WMM2025/WMM2025.COF || true
+            curl -fsSL --connect-timeout 20 --retry 3 -o WMM2025.COF https://www.ngdc.noaa.gov/geomag/WMM/data/WMM2025/WMM2025.COF || true
           fi
 
       - name: 🌍 Exécution de l'extracteur multiphysique (Fenêtre 7 Jours)
@@ -94,7 +95,6 @@ jobs:
             exit 1
           fi
           
-          # Vérification de la présence des blocs de données clés
           python -c "import json; data=json.load(open('flux_live.json')); assert 'DATA' in data or 'corps' in data, 'Format de flux invalide'"
           
           TAILLE_OCTETS=$(wc -c < flux_live.json)
@@ -110,6 +110,13 @@ jobs:
           SRC_FILE="src/astro_engine.cpp"
           if [ ! -f "$SRC_FILE" ] && [ -f "src/wasm_astronomie.cpp" ]; then
             SRC_FILE="src/wasm_astronomie.cpp"
+          elif [ ! -f "$SRC_FILE" ] && [ -f "astro_engine.cpp" ]; then
+            SRC_FILE="astro_engine.cpp"
+          fi
+
+          if [ ! -f "$SRC_FILE" ]; then
+            echo "ERREUR CRITIQUE : Aucun fichier source C++ trouvé pour la compilation Wasm."
+            exit 1
           fi
 
           emcc "$SRC_FILE" -O3 -std=c++17 \
@@ -118,7 +125,7 @@ jobs:
             -s ALLOW_MEMORY_GROWTH=1 \
             -s INITIAL_MEMORY=33554432 \
             -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_normaliserDegres','_malloc','_free']" \
-            -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32']" \
+            -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32','getValue','setValue']" \
             -o wasm_astronomie.js
 
       - name: 🚀 Publication automatique & Cache PWA
@@ -128,12 +135,14 @@ jobs:
           
           DATE_CACHE=$(date +'%Y%m%d%H%M')
           if [ -f "sw.js" ]; then
-            sed -i "s/const CACHE_NAME = .*/const CACHE_NAME = 'sentinela-cache-$DATE_CACHE';/" sw.js
+            sed -i -E "s/(const|let|var)\s+CACHE_NAME\s*=.*/const CACHE_NAME = 'sentinela-cache-$DATE_CACHE';/" sw.js
           fi
           
           git add -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm
           [ -f "sw.js" ] && git add -f sw.js
           [ -f "WMM2025.COF" ] && git add -f WMM2025.COF
+          [ -f "worker.js" ] && git add -f worker.js
+          [ -f "meteo_manager.js" ] && git add -f meteo_manager.js
           
           if git diff --staged --quiet; then
             echo "Aucune modification détectée."
@@ -141,5 +150,5 @@ jobs:
           fi
 
           git commit -m "Chore(data): Actualisation du flux 7 jours & binaire Wasm [skip ci]"
-          git pull origin main --rebase --autostash
+          git pull origin main --rebase --autostash -X theirs
           git push origin main
