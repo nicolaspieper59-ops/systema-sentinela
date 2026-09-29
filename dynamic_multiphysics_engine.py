@@ -84,7 +84,8 @@ def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
     r_km = np.linalg.norm(v_soleil_astre)
     r_ua = r_km / UA_KM
 
-    cos_alpha = np.dot(-v_soleil_astre, v_terre_astre) / (r_km * delta_km)
+    # Correction de la ligne cos_alpha
+    cos_alpha = np.dot(v_soleil_astre, v_terre_astre) / (r_km * delta_km)
     cos_alpha = np.clip(cos_alpha, -1.0, 1.0)
     alpha_deg = np.degrees(np.arccos(cos_alpha))
 
