@@ -70,11 +70,16 @@ def calculer_inclinaison_anneaux_saturne(pos_saturne_km):
     sin_B = np.dot(-v_terre_saturne, n_pole)
     return np.arcsin(np.clip(sin_B, -1.0, 1.0))
 
-def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
-    """Calcule la magnitude visuelle apparente (V) selon les modèles IAU / Mallama (2018)."""
-    if nom_corps == "SOLEIL":
-        dist_ua = np.linalg.norm(pos_astre_km) / UA_KM
-        return round(-26.74 + 5.0 * np.log10(dist_ua), 2)
+def calculer_magnitude_apparente(v_soleil_astre, v_terre_astre, r_km, delta_km, H, G):
+    # Correction du signe : produit scalaire direct pour le cosinus de l'angle de phase
+    cos_alpha = np.dot(v_soleil_astre, v_terre_astre) / (r_km * delta_km)
+    cos_alpha = np.clip(cos_alpha, -1.0, 1.0)
+    
+    alpha = np.arccos(cos_alpha)
+    phi1 = np.exp(-3.33 * (np.tan(alpha / 2.0)) ** 0.63)
+    phi2 = np.exp(-1.87 * (np.tan(alpha / 2.0)) ** 1.22)
+    
+    return H + 5.0 * np.log10(r_km * delta_km) - 2.5 * np.log10((1.0 - G) * phi1 + G * phi2)
 
     v_terre_astre = pos_astre_km
     delta_km = np.linalg.norm(v_terre_astre)
