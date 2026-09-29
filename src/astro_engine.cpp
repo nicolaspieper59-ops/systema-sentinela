@@ -136,10 +136,14 @@ void calculerDepuisECEF(
     double vObsY =  OMEGA_TERRE_RAD_S * xObs;
     double vObsZ = 0.0;
 
-    // 5. Vecteur Topocentrique avec Aberration Diurne
-    double dx = xECEF - xObs - (vObsX / VITESSE_LUMIERE_M_S) * normICRF;
-    double dy = yECEF - yObs - (vObsY / VITESSE_LUMIERE_M_S) * normICRF;
-    double dz = zECEF - zObs - (vObsZ / VITESSE_LUMIERE_M_S) * normICRF;
+    // Calcul de la direction dans le repère ENU
+Vecteur3D dirENU = calculerENU(posECEF, observerECEF);
+dirENU = normaliser(dirENU);
+
+// Application de la correction angulaire d'aberration sur le vecteur directionnel uniquement
+dirENU.e += (vObsENU.e / VITESSE_LUMIERE_M_S);
+dirENU.n += (vObsENU.n / VITESSE_LUMIERE_M_S);
+dirENU = normaliser(dirENU);
 
     // Repère local ENU
     double E = -std::sin(lambda) * dx + std::cos(lambda) * dy;
