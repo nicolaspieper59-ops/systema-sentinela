@@ -711,20 +711,21 @@
         }
     }
 
-    // REMPLACER cette ligne :
-// astroWorker = new Worker('worker.js', { type: 'module' });
-
-// PAR :
-function initialiserWorkerAstronomie() {
+ function initialiserWorkerAstronomie() {
     if (typeof Worker === 'undefined') return;
-    astroWorker = new Worker('worker.js'); // ✅ Correct
+    
+    // Remplace worker (2)_2.js par worker.js selon votre nom de fichier réel
+    astroWorker = new Worker('worker.js'); 
     astroWorker.onmessage = traiterMessageWorker;
     astroWorker.onerror = (err) => {
         console.error("Erreur Worker Astro :", err);
         document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
         document.getElementById('lbl-worker-status').style.color = "var(--rose)";
     };
-    if (matriceJplLive) envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+    
+    if (matriceJplLive) {
+        envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+    }
     }
 
     function mettreAJourMetricsSolaires(m) {
