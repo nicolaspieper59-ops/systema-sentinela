@@ -369,6 +369,13 @@
 
 <script src="three.min.js"></script>
 
+    <script type="module">
+  import { meteoManager } from './meteo_manager.js';
+  window.meteoManager = meteoManager;
+  // Initialisation du gestionnaire météo
+  meteoManager.init();
+    </script>
+
 <script>
     class SensorCacheManager {
         constructor(cacheKey) {
