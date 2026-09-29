@@ -1121,6 +1121,17 @@ function mettreAJourTableauAstres(bodiesData) {
         setTimeout(lancerBoucleCalculSecurisee, 1000);
     }
 
+    let astroWorker = null;
+if (window.Worker) {
+  astroWorker = new Worker('worker.js', { type: 'module' });
+  astroWorker.onerror = (err) => {
+    console.error("Erreur Worker Astro :", err);
+    // Fallback vers le thread principal si nécessaire
+  };
+} else {
+  console.warn("Web Workers indisponibles sur ce navigateur.");
+}
+
     window.addEventListener('load', async () => {
         document.getElementById('html-root').classList.add('day-mode');
         dessinerRadarAstres({}, 0);
