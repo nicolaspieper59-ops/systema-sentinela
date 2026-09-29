@@ -208,7 +208,7 @@ def main():
     args = parser.parse_args()
 
     try:
-        generer_ephemerides(args.bsp, days=args.days, output_path=args.out)
+        def generer_ephemerides(lat=48.8566, lon=2.3522, alt=35.0, nb_jours=7, fichier_sortie="flux_live.json"):
         print(f"[SUCCÈS] Génération terminée dans {args.out}")
         sys.exit(0)
     except Exception as e:
