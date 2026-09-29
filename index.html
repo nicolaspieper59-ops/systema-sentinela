@@ -711,16 +711,20 @@
         }
     }
 
-    function initialiserWorkerAstronomie() {
-        if (typeof Worker === 'undefined') return;
-        astroWorker = new Worker('worker.js', { type: 'module' });
-        astroWorker.onmessage = traiterMessageWorker;
-        astroWorker.onerror = (err) => {
-            console.error("Erreur Worker Astro :", err);
-            document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
-            document.getElementById('lbl-worker-status').style.color = "var(--rose)";
-        };
-        if (matriceJplLive) envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+    // REMPLACER cette ligne :
+// astroWorker = new Worker('worker.js', { type: 'module' });
+
+// PAR :
+function initialiserWorkerAstronomie() {
+    if (typeof Worker === 'undefined') return;
+    astroWorker = new Worker('worker.js'); // Mode Classic standard
+    astroWorker.onmessage = traiterMessageWorker;
+    astroWorker.onerror = (err) => {
+        console.error("Erreur Worker Astro :", err);
+        document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
+        document.getElementById('lbl-worker-status').style.color = "var(--rose)";
+    };
+    if (matriceJplLive) envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
     }
 
     function mettreAJourMetricsSolaires(m) {
