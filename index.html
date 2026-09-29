@@ -717,7 +717,7 @@
 // PAR :
 function initialiserWorkerAstronomie() {
     if (typeof Worker === 'undefined') return;
-    astroWorker = new Worker('worker.js'); // Mode Classic standard
+    astroWorker = new Worker('worker.js'); // ✅ Correct
     astroWorker.onmessage = traiterMessageWorker;
     astroWorker.onerror = (err) => {
         console.error("Erreur Worker Astro :", err);
