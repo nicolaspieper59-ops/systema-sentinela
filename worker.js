@@ -268,7 +268,11 @@ onmessage = async function(e) {
                     };
                 } catch (astreErr) {}
             }
-
+try {
+    importScripts('wasm_astronomie.js');
+} catch (e) {
+    console.warn("Script WASM non disponible ou exécuté en local sans serveur");
+}
             const resWmm = calculerChampingGeomagnetiqueLocal(lat, lon, alt);
 
             postMessage({
