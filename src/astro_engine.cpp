@@ -218,7 +218,8 @@ void calculerDepuisECEF(
         return std::acos(cosH);
     };
 
-    double solarNoonUT = normaliserDegres(12.0 - (lonDeg / 15.0));
+    // eqTempsMinutes représente la valeur calculée de l'équation du temps
+    double solarNoonUT = normaliserDegres(12.0 - (lonDeg / 15.0) - (eqTempsMinutes / 60.0));
     double H_std = calcHA(h0_std);
     double H_twi = calcHA(h0_twi);
 
