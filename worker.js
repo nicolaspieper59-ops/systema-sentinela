@@ -16,7 +16,7 @@ let metricsPtr = 0;
 let resultPtr = 0;
 let wmmParsedCoeffs = null;
 
-// Chargement sécurisé des scripts dépendants (Script standard / Non-module)
+// Chargement unique en haut de fichier
 try {
     importScripts('wasm_astronomie.js');
 } catch (e) {
@@ -35,7 +35,6 @@ const METADATAS_CORPS = {
     NEPTUNE: { minMax: "28.82 - 30.40 AU", perigee: "4.31 Md km", perihelion: "4.46 Md km", aphelion: "4.54 Md km", period: "164.8 ans", lod: "16h 06m", orbitalVel: "5.43 km/s" }
 };
 
-// Limites UAI officielles J2000
 function determinerConstellationUAI(raDeg, decDeg) {
     const h = ((raDeg < 0 ? raDeg + 360 : raDeg) % 360) / 15.0;
     const dec = decDeg;
@@ -55,20 +54,6 @@ function determinerConstellationUAI(raDeg, decDeg) {
     if (h >= 15.22 && h < 15.95) return "Balance";
 
     return "Hors zodiaque";
-}
-
-function formaterHeureDecimale(heures) {
-    if (isNaN(heures) || heures < 0) return "--:-- UTC";
-    const h = Math.floor(heures) % 24;
-    const m = Math.floor((heures - Math.floor(heures)) * 60);
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} UTC`;
-}
-
-function formaterDureeHeures(heures) {
-    if (isNaN(heures) || heures < 0) return "--h --m";
-    const h = Math.floor(heures);
-    const m = Math.floor((heures - h) * 60);
-    return `${h}h ${m.toString().padStart(2, '0')}m`;
 }
 
 function auditerEnvironnementInterne() {
@@ -268,11 +253,7 @@ onmessage = async function(e) {
                     };
                 } catch (astreErr) {}
             }
-try {
-    importScripts('wasm_astronomie.js');
-} catch (e) {
-    console.warn("Script WASM non disponible ou exécuté en local sans serveur");
-}
+
             const resWmm = calculerChampingGeomagnetiqueLocal(lat, lon, alt);
 
             postMessage({
