@@ -2,8 +2,6 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
-#include "../lib/sofa/src/sofa.h"
-#include "../lib/sofa/src/sofam.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -16,31 +14,31 @@
 #define OMEGA_TERRE_RAD_S 7.29211514670698e-5
 
 struct alignas(8) AstroResult {
-    double azim;               // 0
-    double elevGeom;           // 8
-    double elevRefractee;      // 16
-    double raDeg;              // 24
-    double decDeg;             // 32
-    double distUA;             // 40
-    double leverUT;            // 48
-    double coucherUT;          // 56
-    double airMass;            // 64
-    double irradiance;         // 72
-    double deltaT;             // 80
-    double ghaDeg;             // 88
-    double jde;                // 96
-    double magnitudeApparente; // 104
-    double shadowLength;       // 112
-    double moonPhasePct;       // 120
-    double moonAgeDays;        // 128
-    double crepusculeUT;       // 136
-    double dureeJourHeures;    // 144
-    double angularDiamArcsec;  // 152
-    double surfaceBrightness;  // 160
-    double illuminatedFraction;// 168
-    double radialVelocityKmS;  // 176
-    int32_t visibiliteCode;    // 184
-    int32_t seasonCode;        // 188
+    double azim;               
+    double elevGeom;           
+    double elevRefractee;      
+    double raDeg;              
+    double decDeg;             
+    double distUA;             
+    double leverUT;            
+    double coucherUT;          
+    double airMass;            
+    double irradiance;         
+    double deltaT;             
+    double ghaDeg;             
+    double jde;                
+    double magnitudeApparente; 
+    double shadowLength;       
+    double moonPhasePct;       
+    double moonAgeDays;        
+    double crepusculeUT;       
+    double dureeJourHeures;    
+    double angularDiamArcsec;  
+    double surfaceBrightness;  
+    double illuminatedFraction;
+    double radialVelocityKmS;  
+    int32_t visibiliteCode;    
+    int32_t seasonCode;        
 };
 
 extern "C" {
@@ -140,20 +138,6 @@ void calculerDepuisECEF(
     double distM = std::sqrt(dx * dx + dy * dy + dz * dz);
     result->distUA = distM / UA_EN_METRES;
 
-    double vEastObs = OMEGA_TERRE_RAD_S * (N_obs + altM) * std::cos(phi);
-    if (distM > 0.0) {
-        double dirE = E / distM + (vEastObs / VITESSE_LUMIERE_M_S);
-        double dirN = N_top / distM;
-        double dirU = U / distM;
-
-        double normDir = std::sqrt(dirE * dirE + dirN * dirN + dirU * dirU);
-        if (normDir > 0.0) {
-            E = (dirE / normDir) * distM;
-            N_top = (dirN / normDir) * distM;
-            U = (dirU / normDir) * distM;
-        }
-    }
-
     result->azim = normaliserDegres(std::atan2(E, N_top) * RAD2DEG);
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
@@ -178,110 +162,16 @@ void calculerDepuisECEF(
     result->irradiance = (result->elevRefractee > 0.0) ? 1361.0 * std::pow(0.7, result->airMass) / (result->distUA * result->distUA) : 0.0;
     result->shadowLength = (result->elevRefractee > 0.0) ? 1.0 / std::tan(std::max(1e-4, result->elevRefractee * DEG2RAD)) : -1.0;
 
-    if (rayonCorpsKm > 0.0) {
-        double rayonM = rayonCorpsKm * 1000.0;
-        result->angularDiamArcsec = 2.0 * std::asin(std::min(1.0, rayonM / distM)) * RAD2DEG * 3600.0;
-        double areaArcsec2 = M_PI * std::pow(result->angularDiamArcsec / 2.0, 2);
-        result->surfaceBrightness = result->magnitudeApparente + 2.5 * std::log10(std::max(1e-4, areaArcsec2));
+    // Code de visibilité : 0=Inconnu/Sous l'horizon, 1=Œil nu, 2=Jumelles, 3=Télescope
+    if (result->elevRefractee <= 0.0) {
+        result->visibiliteCode = 0;
+    } else if (result->magnitudeApparente <= 6.0) {
+        result->visibiliteCode = 1;
+    } else if (result->magnitudeApparente <= 10.0) {
+        result->visibiliteCode = 2;
     } else {
-        result->angularDiamArcsec = 0.0;
-        result->surfaceBrightness = 0.0;
+        result->visibiliteCode = 3;
     }
-
-    double xS = xSoleilICRF_km * 1000.0;
-    double yS = ySoleilICRF_km * 1000.0;
-    double zS = zSoleilICRF_km * 1000.0;
-
-    double dxS = xS - xI;
-    double dyS = yS - yI;
-    double dzS = zS - zI;
-
-    double distAstreSoleil = std::sqrt(dxS * dxS + dyS * dyS + dzS * dzS);
-    if (distM > 0.0 && distAstreSoleil > 0.0) {
-        double cosAlpha = (distM * distM + distAstreSoleil * distAstreSoleil - (xS*xS + yS*yS + zS*zS)) / (2.0 * distM * distAstreSoleil);
-        cosAlpha = std::max(-1.0, std::min(1.0, cosAlpha));
-        result->illuminatedFraction = ((1.0 + cosAlpha) / 2.0) * 100.0;
-    } else {
-        result->illuminatedFraction = 100.0;
-    }
-
-    double xObsI = xObs * cosERA - yObs * sinERA;
-    double yObsI = xObs * sinERA + yObs * cosERA;
-    double zObsI = zObs;
-
-    double dxI = xI - xObsI;
-    double dyI = yI - yObsI;
-    double dzI = zI - zObsI;
-    double distI = std::sqrt(dxI*dxI + dyI*dyI + dzI*dzI);
-
-    double vObsX_I = -OMEGA_TERRE_RAD_S * yObsI;
-    double vObsY_I =  OMEGA_TERRE_RAD_S * xObsI;
-
-    double relVx = vxICRF_kms * 1000.0 - vObsX_I;
-    double relVy = vyICRF_kms * 1000.0 - vObsY_I;
-    double relVz = vzICRF_kms * 1000.0;
-
-    result->radialVelocityKmS = (distI > 0.0) ? (dxI * relVx + dyI * relVy + dzI * relVz) / (distI * 1000.0) : 0.0;
-
-    double raSoleilDeg = normaliserDegres(std::atan2(yS, xS) * RAD2DEG);
-    double decSoleilRad = (std::sqrt(xS*xS + yS*yS + zS*zS) > 0.0) ? std::asin(zS / std::sqrt(xS*xS + yS*yS + zS*zS)) : 0.0;
-    
-    double h0_std = -0.8333 * DEG2RAD; 
-    double h0_twi = -6.0 * DEG2RAD; 
-
-    auto calcHA = [&](double h0, double decR) {
-        double cosH = (std::sin(h0) - std::sin(phi) * std::sin(decR)) / (std::cos(phi) * std::cos(decR));
-        if (cosH <= -1.0) return M_PI;  
-        if (cosH >= 1.0) return -1.0;   
-        return std::acos(cosH);
-    };
-
-    double jd = (timestampUtc / 86400.0) + 2440587.5;
-    double T_eq = (jd - 2451545.0) / 36525.0;
-    double l0_eq = normaliserDegres(280.46646 + 36000.76983 * T_eq);
-    double m_eq = normaliserDegres(357.52911 + 35999.05029 * T_eq);
-    double eps0_eq = 84381.448 - 46.8150 * T_eq - 0.00059 * T_eq * T_eq + 0.001813 * T_eq * T_eq * T_eq;
-    double obl_eq = eps0_eq / 3600.0;
-    double y_eq = std::tan((obl_eq / 2.0) * DEG2RAD);
-    y_eq *= y_eq;
-    double l0Rad_eq = l0_eq * DEG2RAD;
-    double mRad_eq = m_eq * DEG2RAD;
-    double eqTempsRad = y_eq * std::sin(2.0 * l0Rad_eq) - 2.0 * 0.016708634 * std::sin(mRad_eq) 
-                        + 4.0 * 0.016708634 * y_eq * std::sin(mRad_eq) * std::cos(2.0 * l0Rad_eq) 
-                        - 0.5 * y_eq * y_eq * std::sin(4.0 * l0Rad_eq);
-    double eqTempsMinutes = (eqTempsRad * RAD2DEG) * 4.0;
-
-    double solarNoonUT = normaliserDegres(12.0 - (lonDeg / 15.0) - (eqTempsMinutes / 60.0));
-    double H_std = calcHA(h0_std, decSoleilRad);
-    double H_twi = calcHA(h0_twi, decSoleilRad);
-
-    if (H_std >= 0.0) {
-        result->leverUT = normaliserDegres(solarNoonUT - (H_std * RAD2DEG / 15.0));
-        result->coucherUT = normaliserDegres(solarNoonUT + (H_std * RAD2DEG / 15.0));
-        result->dureeJourHeures = (2.0 * H_std * RAD2DEG) / 15.0;
-    } else {
-        result->leverUT = -1.0;
-        result->coucherUT = -1.0;
-        result->dureeJourHeures = 0.0;
-    }
-
-    result->crepusculeUT = (H_twi >= 0.0) ? normaliserDegres(solarNoonUT + (H_twi * RAD2DEG / 15.0)) : -1.0;
-
-    if (estLune) {
-        result->moonPhasePct = result->illuminatedFraction;
-        double diffRA = normaliserDegres(result->raDeg - raSoleilDeg);
-        result->moonAgeDays = (diffRA / 360.0) * 29.53058886;
-    } else {
-        result->moonPhasePct = 0.0;
-        result->moonAgeDays = 0.0;
-    }
-
-    result->jde = jd;
-    double tC = (jd - 2451545.0) / 36525.0;
-    result->deltaT = 64.6 + 31.5 * tC + 65.5 * tC * tC;
-
-    result->seasonCode = 0;
-    result->visibiliteCode = (result->elevRefractee < 0.0) ? 0 : (result->magnitudeApparente <= 5.5 ? 1 : 2);
 }
 
 }
