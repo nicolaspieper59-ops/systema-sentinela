@@ -1,101 +1,72 @@
 /**
- * ============================================================================
- * SYSTEMA SENTINELA — SERVICE WORKER PWA & CROSS-ORIGIN ISOLATION (CORRIGÉ)
- * ============================================================================
+ * Service Worker - Systema Sentinela
+ * Gestion avancée du cache : Network-First pour les données, Cache-First pour les assets.
  */
 
-const CACHE_NAME = 'sentinela-kernel-v19.12';
+const CACHE_NAME = 'sentinela-cache-v2026.1';
+
 const STATIC_ASSETS = [
     './',
     './index.html',
-    './manifest.json',
-    './three.min.js',
+    './worker.js',
     './meteo_manager.js',
-    './worker.js'
+    './wasm_astronomie.js',
+    './wasm_astronomie.wasm',
+    './three.min.js',
+    './manifest.json',
+    './WMM2025.COF'
 ];
 
-// 1. Installation & Précachage des ressources essentielles
-self.addEventListener('install', (event) => {
+self.addEventListener('install', (e) => {
+    e.waitUntil(
+        caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+    );
     self.skipWaiting();
-    event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
-            console.log('[SW] Mise en cache des ressources critiques');
-            return cache.addAll(STATIC_ASSETS);
+});
+
+self.addEventListener('activate', (e) => {
+    e.waitUntil(
+        caches.keys().then((keys) => {
+            return Promise.all(
+                keys.map((key) => {
+                    if (key !== CACHE_NAME) return caches.delete(key);
+                })
+            );
         })
     );
+    self.clients.claim();
 });
 
-// 2. Activation & Nettoyage des anciens caches
-self.addEventListener('activate', (event) => {
-    event.waitUntil(
-        Promise.all([
-            self.clients.claim(),
-            caches.keys().then((keys) => {
-                return Promise.all(
-                    keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-                );
-            })
-        ])
-    );
-});
+self.addEventListener('fetch', (e) => {
+    const url = new URL(e.request.url);
 
-// 3. Interception Réseau & Stratégie d'isolation
-self.addEventListener('fetch', (event) => {
-    const request = event.request;
-    const url = new URL(request.url);
-    const pathnameLower = url.pathname.toLowerCase();
+    // Stratégie Network-First pour le flux dynamique JSON
+    if (url.pathname.endsWith('flux_live.json')) {
+        e.respondWith(
+            fetch(e.request)
+                .then((response) => {
+                    if (!response || response.status !== 200) throw new Error('Réseau indisponible');
+                    const copy = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => cache.put(e.request, copy));
+                    return response;
+                })
+                .catch(() => caches.match(e.request))
+        );
+        return;
+    }
 
-    // Traitement séparé pour les données dynamiques et flux binaires
-    const isCriticalData = 
-        pathnameLower.endsWith('.wasm') || 
-        pathnameLower.endsWith('.json') || 
-        pathnameLower.endsWith('.cof')  || 
-        pathnameLower.endsWith('.bsp');
-
-    event.respondWith(
-        fetch(request)
-            .then((networkResponse) => {
-                if (!networkResponse || networkResponse.status === 0) {
+    // Stratégie Cache-First pour tous les autres assets statiques et le WASM
+    e.respondWith(
+        caches.match(e.request).then((cachedResponse) => {
+            if (cachedResponse) return cachedResponse;
+            return fetch(e.request).then((networkResponse) => {
+                if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
                     return networkResponse;
                 }
-
-                // Pour les fichiers de données critiques, on met à jour le cache et on renvoie
-                if (isCriticalData) {
-                    const responseClone = networkResponse.clone();
-                    caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
-                    return networkResponse;
-                }
-
-                // Pour le reste (HTML, JS, CSS), on injecte les en-têtes d'isolation requis
-                const newHeaders = new Headers(networkResponse.headers);
-                
-                // Uniquement sur les documents HTML principaux
-                if (networkResponse.headers.get('content-type')?.includes('text/html')) {
-                    newHeaders.set('Cross-Origin-Opener-Policy', 'same-origin');
-                    newHeaders.set('Cross-Origin-Embedder-Policy', 'require-corp');
-                }
-                
-                // En-tête universel pour permettre le chargement croisé des sous-ressources
-                newHeaders.set('Cross-Origin-Resource-Policy', 'cross-origin');
-
-                const modifiedResponse = new Response(networkResponse.body, {
-                    status: networkResponse.status,
-                    statusText: networkResponse.statusText,
-                    headers: newHeaders
-                });
-
-                // Copie dans le cache pour accès hors ligne
-                const cacheClone = modifiedResponse.clone();
-                caches.open(CACHE_NAME).then((cache) => cache.put(request, cacheClone));
-
-                return modifiedResponse;
-            })
-            .catch(async () => {
-                // Secours hors ligne (Offline First) en cas de rupture de réseau
-                const cachedResponse = await caches.match(request);
-                if (cachedResponse) return cachedResponse;
-                
-                console.error(`[SW] Ressource introuvable hors ligne : ${request.url}`);
-            })
+                const copy = networkResponse.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put(e.request, copy));
+                return networkResponse;
+            });
+        })
     );
 });
