@@ -2,6 +2,8 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
+#include "../lib/sofa/src/sofa.h"
+#include "../lib/sofa/src/sofam.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
