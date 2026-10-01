@@ -444,7 +444,7 @@
         const [h, m, s] = heureString.split(':').map(Number);
         const d = new Date(obtenirTimestampUTCExact());
         const ancienTs = d.getTime();
-        d.setUTCHours(h, m, s || 0);
+        d.setUTCHours(h, m, s || 0); // Corrected: Use UTC Hours
         manuelOffsetMs += (d.getTime() - ancienTs);
         ecrireLog(`Heure principale ajustée manuellement (UTC) à : ${heureString}`);
     }
@@ -602,6 +602,7 @@
                 document.getElementById('input-lon').value = lon.toFixed(6);
                 document.getElementById('input-alt').value = alt.toFixed(4);
                 
+                // Transfert direct sans re-parsing inutile
                 mettreAJourCoordonneesStation(lat, lon, alt, 'GPS TEMPS RÉEL');
             },
             (err) => { ecrireLog(`Erreur GPS (${err.code}): ${err.message}`); },
@@ -700,7 +701,7 @@
                 ecrireLog("WMM-2025 : Modèle géomagnétique synchronisé dans le Worker.");
                 break;
             case 'RESULTS_COMPUTE':
-                workerCalculEnCours = false;
+                workerCalculEnCours = false; // Autorise le prochain calcul
                 mettreAJourInterface(data);
                 break;
             case 'ERROR':
@@ -710,20 +711,21 @@
         }
     }
 
-    function initialiserWorkerAstronomie() {
-        if (typeof Worker === 'undefined') return;
-        
-        astroWorker = new Worker('worker.js'); 
-        astroWorker.onmessage = traiterMessageWorker;
-        astroWorker.onerror = (err) => {
-            console.error("Erreur Worker Astro :", err);
-            document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
-            document.getElementById('lbl-worker-status').style.color = "var(--rose)";
-        };
-        
-        if (matriceJplLive) {
-            envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
-        }
+ function initialiserWorkerAstronomie() {
+    if (typeof Worker === 'undefined') return;
+    
+    // Remplace worker (2)_2.js par worker.js selon votre nom de fichier réel
+    astroWorker = new Worker('worker.js'); 
+    astroWorker.onmessage = traiterMessageWorker;
+    astroWorker.onerror = (err) => {
+        console.error("Erreur Worker Astro :", err);
+        document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
+        document.getElementById('lbl-worker-status').style.color = "var(--rose)";
+    };
+    
+    if (matriceJplLive) {
+        envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+    }
     }
 
     function mettreAJourMetricsSolaires(m) {
@@ -1012,6 +1014,7 @@
         const sphereGeo = new THREE.SphereGeometry(earthRadius3D, 64, 64);
         const textureLoader = new THREE.TextureLoader();
         
+        // Corrected: Pré-création du matériau pour éviter le ReferenceError
         const earthMaterial = new THREE.MeshStandardMaterial({
             bumpScale: 0.05,
             roughness: 0.8,
@@ -1117,6 +1120,7 @@
     }
 
     function envoyerDemandeCalculWorker() {
+        // Corrected: Prévention de la surcharge du Web Worker
         if (workerCalculEnCours) return;
 
         const timestampExact = obtenirTimestampUTCExact();
@@ -1166,4 +1170,3 @@
 </script>
 </body>
 </html>
-     
