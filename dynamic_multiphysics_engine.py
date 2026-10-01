@@ -56,6 +56,15 @@ RAYONS_EQUATORIAUX_KM = {
 DEGRE_TCHEBYCHEV = 10
 UA_KM = 149597870.7
 
+def valider_coordonnees_station(lat, lon, alt):
+    """Vérifie la validité physique des coordonnées de la station."""
+    if not (-90.0 <= lat <= 90.0):
+        raise ValueError(f"Latitude hors limites [-90, 90] : {lat}")
+    if not (-180.0 <= lon <= 180.0):
+        raise ValueError(f"Longitude hors limites [-180, 180] : {lon}")
+    if not (-500.0 <= alt <= 100000.0):
+        raise ValueError(f"Altitude hors limites [-500m, 100km] : {alt}")
+
 def obtenir_astre(eph, noms_possibles):
     for nom in noms_possibles:
         if nom in eph:
@@ -71,7 +80,8 @@ def calculer_inclinaison_anneaux_saturne(pos_saturne_km):
         np.sin(dec_pole)
     ])
     norme = np.linalg.norm(pos_saturne_km)
-    if norme == 0: return 0.0
+    if norme == 0: 
+        return 0.0
     v_terre_saturne = pos_saturne_km / norme
     sin_B = np.dot(-v_terre_saturne, n_pole)
     return np.arcsin(np.clip(sin_B, -1.0, 1.0))
@@ -125,9 +135,10 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     t_sec_nodes = 0.5 * (t2_unix - t1_unix) * nodes_std + 0.5 * (t2_unix + t1_unix)
     times_nodes = ts.tt_jd((t_sec_nodes / 86400.0) + 2440587.5)
     
-    astrometric = earth.at(times_nodes).observe(astre_target)
-    pos_km = astrometric.position.km
-    vel_kms = astrometric.velocity.km_per_s
+    # Prise en compte de l'aberration de la lumière et du temps de transit avec .apparent()
+    apparent_obs = earth.at(times_nodes).observe(astre_target).apparent()
+    pos_km = apparent_obs.position.km
+    vel_kms = apparent_obs.velocity.km_per_s
 
     cx = [float(val) for val in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[0], degre)]
     cy = [float(val) for val in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[1], degre)]
@@ -140,8 +151,8 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     t_mid_unix = 0.5 * (t1_unix + t2_unix)
     time_mid = ts.tt_jd((t_mid_unix / 86400.0) + 2440587.5)
     
-    pos_astre_mid = earth.at(time_mid).observe(astre_target).position.km
-    pos_soleil_mid = earth.at(time_mid).observe(sun_target).position.km
+    pos_astre_mid = earth.at(time_mid).observe(astre_target).apparent().position.km
+    pos_soleil_mid = earth.at(time_mid).observe(sun_target).apparent().position.km
     
     mag_val = calculer_magnitude_apparente(nom_corps, pos_astre_mid, pos_soleil_mid)
 
@@ -155,6 +166,8 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     }
 
 def generer_ephemerides(lat=43.284356, lon=5.358507, alt=49.81, nb_jours=7, bsp_path="de440s.bsp", fichier_sortie="flux_live.json"):
+    valider_coordonnees_station(lat, lon, alt)
+
     if not os.path.exists(bsp_path):
         raise FileNotFoundError(f"Fichier BSP introuvable : {bsp_path}")
 
