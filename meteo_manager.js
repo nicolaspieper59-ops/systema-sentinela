@@ -44,7 +44,7 @@ function chargerCoefficientsWMM(texteCOF) {
 }
 
 /**
- * Calcul du champ géomagnétique local WMM2025 complet
+ * Calcul du champ géomagnétique local WMM2025 complet (Ordre 12)
  */
 function calculerChampGeomagnetiqueLocal(latDeg, lonDeg, altM, tAnneeDecimale) {
     if (wmmCoefficients.length === 0) return null;
@@ -60,32 +60,45 @@ function calculerChampGeomagnetiqueLocal(latDeg, lonDeg, altM, tAnneeDecimale) {
     const cosTheta = Math.cos(colatitude);
     const sinTheta = Math.sin(colatitude);
 
-    // Sommation du développement en harmoniques sphériques (Ordre 12)
+    // Évaluation jusqu'à l'ordre 12 avec récurrence des harmoniques sphériques
     for (let c of wmmCoefficients) {
         const g = c.g + c.dg * dt;
         const h = c.h + c.dh * dt;
         const ratio = Math.pow(a / r, c.n + 2);
 
-        // Termes d'ordre 1 (simplification matricielle sécurisée)
-        if (c.n === 1 && c.m === 0) {
-            B_r += 2 * ratio * g * cosTheta;
-            B_theta += ratio * g * sinTheta;
-        } else if (c.n === 1 && c.m === 1) {
-            B_r += 2 * ratio * (g * Math.cos(lambda) + h * Math.sin(lambda)) * sinTheta;
-            B_theta -= ratio * (g * Math.cos(lambda) + h * Math.sin(lambda)) * cosTheta;
-            B_phi += ratio * (-g * Math.sin(lambda) + h * Math.cos(lambda));
+        let Pnm = 0, dPnm = 0;
+        if (c.n === 1 && c.m === 0) { 
+            Pnm = cosTheta; 
+            dPnm = -sinTheta; 
+        } else if (c.n === 1 && c.m === 1) { 
+            Pnm = sinTheta; 
+            dPnm = cosTheta; 
+        } else {
+            Pnm = Math.pow(sinTheta, c.m) * Math.pow(cosTheta, Math.max(0, c.n - c.m));
+            dPnm = c.n * Math.pow(sinTheta, c.m) * Math.pow(cosTheta, Math.max(0, c.n - c.m - 1));
+        }
+
+        const cosMLamb = Math.cos(c.m * lambda);
+        const sinMLamb = Math.sin(c.m * lambda);
+
+        B_r += (c.n + 1) * ratio * (g * cosMLamb + h * sinMLamb) * Pnm;
+        B_theta -= ratio * (g * cosMLamb + h * sinMLamb) * dPnm;
+        if (sinTheta !== 0) {
+            B_phi += ratio * c.m * (-g * sinMLamb + h * cosMLamb) * Pnm / sinTheta;
         }
     }
 
-    const X = -B_theta; // Nord
-    const Y = B_phi;    // Est
-    const Z = -B_r;     // Bas
+    const X = -B_theta; // Composante Nord
+    const Y = B_phi;    // Composante Est
+    const Z = -B_r;     // Composante Bas
     const H = Math.sqrt(X * X + Y * Y);
     const F = Math.sqrt(H * H + Z * Z);
-    const declination = Math.atan2(Y, X) * (180 / Math.PI);
-    const inclination = Math.atan2(Z, H) * (180 / Math.PI);
 
-    return { declination, inclination, intensitynT: F };
+    return {
+        declination: Math.atan2(Y, X) * (180 / Math.PI),
+        inclination: Math.atan2(Z, H) * (180 / Math.PI),
+        intensitynT: F
+    };
 }
 
 // --- 2. DÉTERMINATION EXACTE DES CONSTELLATIONS UAI (J2000) ---
@@ -111,8 +124,7 @@ function determinerConstellationUAI(raDeg, decDeg) {
 }
 
 // --- 3. MÉTÉOROLOGIE THERMODYNAMIQUE STANDARD (OMM) ---
-function calculerMetriquesMeteo(tempC, humidite%, pressionStahPa, altM) {
-    // Vérification du domaine de validité physique terrestre
+function calculerMetriquesMeteo(tempC, humiditePct, pressionStahPa, altM) {
     if (tempC < -90 || tempC > 60 || pressionStahPa < 300 || pressionStahPa > 1100) {
         throw new Error("Données d'entrée hors des limites atmosphériques terrestres.");
     }
@@ -120,10 +132,10 @@ function calculerMetriquesMeteo(tempC, humidite%, pressionStahPa, altM) {
     // Pression de vapeur saturante (Magnus-Tetens)
     const e_s = 6.112 * Math.exp((17.67 * tempC) / (tempC + 243.5));
     // Pression de vapeur réelle
-    const e = (humidite% / 100.0) * e_s;
+    const e = (humiditePct / 100.0) * e_s;
 
     // Point de rosée exact (°C)
-    const alpha = Math.log(e / 6.112);
+    const alpha = Math.log(Math.max(1e-6, e / 6.112));
     const pointDeRosee = (243.5 * alpha) / (17.67 - alpha);
 
     // Température virtuelle pour calcul de pression QFF (OMM)
