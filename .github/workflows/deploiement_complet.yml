@@ -13,7 +13,6 @@ on:
       - 'src/**'
       - 'dynamic_multiphysics_engine.py'
       - '.github/workflows/**'
-      - 'src.zip'
   workflow_dispatch:
     inputs:
       lat:
@@ -120,21 +119,25 @@ jobs:
         run: |
           mkdir -p lib/sofa/src
           if [ -f "src.zip" ]; then
-            echo "Décompression de src.zip présent à la racine..."
-            unzip -o src.zip -d lib/sofa/src/
+            unzip -q -o src.zip -d lib/sofa/tmp_extract/
+            SOFA_DIR=$(find lib/sofa/tmp_extract/ -name "sofa.h" -exec dirname {} \;)
+            if [ -n "$SOFA_DIR" ]; then
+              cp -r "$SOFA_DIR"/* lib/sofa/src/
+              rm -rf lib/sofa/tmp_extract/
+            fi
           elif [ -f "lib/sofa/src.zip" ]; then
-            echo "Décompression de lib/sofa/src.zip..."
-            unzip -o lib/sofa/src.zip -d lib/sofa/src/
+            unzip -q -o lib/sofa/src.zip -d lib/sofa/tmp_extract/
+            SOFA_DIR=$(find lib/sofa/tmp_extract/ -name "sofa.h" -exec dirname {} \;)
+            if [ -n "$SOFA_DIR" ]; then
+              cp -r "$SOFA_DIR"/* lib/sofa/src/
+              rm -rf lib/sofa/tmp_extract/
+            fi
           else
             echo "ERREUR CRITIQUE : Fichier src.zip introuvable sur le dépôt."
             exit 1
           fi
 
-          # Vérification de la présence de sofa.h
-          if [ ! -f "lib/sofa/src/sofa.h" ] && [ -f "lib/sofa/src/src/sofa.h" ]; then
-            mv lib/sofa/src/src/* lib/sofa/src/
-          fi
-          test -f "lib/sofa/src/sofa.h" || { echo "ERREUR CRITIQUE : sofa.h introuvable après décompression."; exit 1; }
+          test -f "lib/sofa/src/sofa.h" || { echo "ERREUR CRITIQUE : sofa.h introuvable après extraction."; exit 1; }
 
       - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
         run: |
