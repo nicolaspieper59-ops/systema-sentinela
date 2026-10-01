@@ -882,20 +882,27 @@
     }
 
     function mettreAJourInterface(data) {
-        if (!data) return;
-        if (data.metrics) mettreAJourMetricsSolaires(data.metrics);
-        if (data.bodies) {
-            derniersResultatsAstres = data.bodies;
-            mettreAJourTableauAstres(data.bodies);
-            dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
-            sentinelaCache.enregistrerMesure('derniers_astres', data.bodies, 0);
-        }
-        if (data.wmm) {
-            resultatWmmCourant = data.wmm;
-            document.getElementById('val-dec-wmm').innerText = `${data.wmm.declination.toFixed(2)}°`;
-            document.getElementById('val-inc-wmm').innerText = `${data.wmm.inclination.toFixed(2)}°`;
-            document.getElementById('val-intensity-wmm').innerText = `${data.wmm.totalIntensity.toFixed(0)} nT`;
-        }
+    if (!data) return;
+    
+    // Support hybride metrics / solarMetrics pour garantir l'étanchéité
+    const metricsPayload = data.metrics || data.solarMetrics;
+    if (metricsPayload) {
+        mettreAJourMetricsSolaires(metricsPayload);
+    }
+    
+    if (data.bodies) {
+        derniersResultatsAstres = data.bodies;
+        mettreAJourTableauAstres(data.bodies);
+        dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
+        sentinelaCache.enregistrerMesure('derniers_astres', data.bodies, 0);
+    }
+    
+    if (data.wmm) {
+        resultatWmmCourant = data.wmm;
+        document.getElementById('val-dec-wmm').innerText = `${data.wmm.declination.toFixed(2)}°`;
+        document.getElementById('val-inc-wmm').innerText = `${data.wmm.inclination.toFixed(2)}°`;
+        document.getElementById('val-intensity-wmm').innerText = `${data.wmm.totalIntensity.toFixed(0)} nT`;
+    }
     }
 
     function appliquerCoordonneesSaisie() {
