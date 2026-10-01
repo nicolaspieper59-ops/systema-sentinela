@@ -150,9 +150,14 @@ jobs:
             exit 1
           fi
 
-          echo "Compilation de $SRC_FILE avec l'ensemble des routines IAU SOFA..."
+          echo "1/2 - Compilation des objets C de SOFA..."
+          mkdir -p build_sofa
+          for f in lib/sofa/src/*.c; do
+            emcc -c "$f" -O3 -I lib/sofa/src -o "build_sofa/$(basename ${f%.c}.o)"
+          done
 
-          emcc "$SRC_FILE" lib/sofa/src/*.c -O3 -std=c++17 \
+          echo "2/2 - Compilation finale C++ et linkage WebAssembly..."
+          em++ "$SRC_FILE" build_sofa/*.o -O3 -std=c++17 \
             -I lib/sofa/src \
             -s WASM=1 \
             -s FORCE_FILESYSTEM=1 \
