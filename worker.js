@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v20.4 Enterprise Rigorous)
+ * SYSTEMA SENTINELA — WEB WORKER (v20.5 JPL/TimeandDate Enterprise Standard)
  */
 
 var Module = {
@@ -60,7 +60,7 @@ function auditerEnvironnementInterne() {
         wasmStatus: wasmReady ? "Actif" : "En attente",
         noyauJplCharge: matriceJplGlobal !== null,
         wmmLoaded: wmmParsedCoeffs !== null,
-        modelesActifs: ["DE440s", "WMM-2025", "Refraction Bennet", "Diurnal Aberration"]
+        modelesActifs: ["DE440s", "WMM-2025", "Refraction Bennett IUGG", "Diurnal Aberration"]
     };
 }
 
@@ -80,8 +80,8 @@ function parseWMMCOF(contenuTexte) {
         const parts = line.split(/\s+/);
         if (parts.length >= 6) {
             coeffs.push({
-                n: parseInt(parts[0]),
-                m: parseInt(parts[1]),
+                n: parseInt(parts[0], 10),
+                m: parseInt(parts[1], 10),
                 g: parseFloat(parts[2]),
                 h: parseFloat(parts[3]),
                 dg: parseFloat(parts[4]),
@@ -140,37 +140,31 @@ function obtenirEtatParChebyshev(arcsAstre, timestampSec) {
     };
 }
 
-// Moteur de calcul Topocentrique Vrai (Élévation & Azimut réels)
 function calculerCoordonneesTopocentriques(raDeg, decDeg, latDeg, lonDeg, lstDeg, tempC = 15, presHpa = 1013.25) {
     const rad = Math.PI / 180.0;
     const lat = latDeg * rad;
     const dec = decDeg * rad;
     
-    // Angle horaire local (LHA = LST - RA)
     const lha = (lstDeg - raDeg) * rad;
 
-    // Calcul de l'Élévation Géométrique
     const sinEl = Math.sin(lat) * Math.sin(dec) + Math.cos(lat) * Math.cos(dec) * Math.cos(lha);
     const elGeomRad = Math.asin(Math.max(-1.0, Math.min(1.0, sinEl)));
     const elGeomDeg = elGeomRad / rad;
 
-    // Calcul de l'Azimut
     const sinAz = -Math.sin(lha) * Math.cos(dec);
     const cosAz = Math.sin(dec) * Math.cos(lat) - Math.cos(dec) * Math.sin(lat) * Math.cos(lha);
     let azDeg = Math.atan2(sinAz, cosAz) / rad;
     if (azDeg < 0) azDeg += 360.0;
 
-    // Réfraction atmosphérique (Bennett)
     let elRefracteeDeg = elGeomDeg;
-    if (elGeomDeg > -5.0) {
-        const R = 1.02 / Math.tan((elGeomDeg + 10.3 / (elGeomDeg + 5.11)) * rad); // minutes d'arc
+    if (elGeomDeg > -2.0) {
+        const R = 1.02 / Math.tan(((elGeomDeg + 10.3 / (elGeomDeg + 5.11))) * rad);
         const P_corr = presHpa / 1013.25;
         const T_corr = 283.15 / (273.15 + tempC);
         const refractionDeg = (R / 60.0) * P_corr * T_corr;
         elRefracteeDeg = elGeomDeg + refractionDeg;
     }
 
-    // Masse d'air (Air Mass)
     const zRad = (90.0 - Math.max(0, elRefracteeDeg)) * rad;
     const airMass = 1.0 / (Math.cos(zRad) + 0.50572 * Math.pow(96.07995 - (zRad / rad), -1.6364));
 
@@ -182,17 +176,20 @@ function calculerCoordonneesTopocentriques(raDeg, decDeg, latDeg, lonDeg, lstDeg
     };
 }
 
-function calculerChampingGeomagnetiqueLocal(lat, lon, altM) {
-    if (wmmParsedCoeffs) {
+function calculerChampingGeomagnetiqueLocal(lat, lon, altM, timestampSec) {
+    if (wmmParsedCoeffs && wmmParsedCoeffs.length > 0) {
+        const tAnneeDecimale = 2000.0 + (timestampSec - 946728000.0) / 315576000.0;
+        const dt = tAnneeDecimale - 2025.0;
+        
         let g10 = -29402.2, g11 = -1454.4, h11 = 4668.6;
         const c1 = wmmParsedCoeffs.find(c => c.n === 1 && c.m === 0);
         const c2 = wmmParsedCoeffs.find(c => c.n === 1 && c.m === 1);
-        if (c1) g10 = c1.g;
-        if (c2) { g11 = c2.g; h11 = c2.h; }
+        if (c1) g10 = c1.g + c1.dg * dt;
+        if (c2) { g11 = c2.g + c2.dg * dt; h11 = c2.h + c2.dh * dt; }
         
         const dec = Math.atan2(h11, g11) * (180.0 / Math.PI);
         const B2 = g10*g10 + g11*g11 + h11*h11;
-        const intensity = Math.sqrt(B2) * (1.0 - 2.0 * (altM / 6371000.0));
+        const intensity = Math.sqrt(B2) * (1.0 - 2.0 * (altM / 6371008.8));
         const inc = Math.atan2(-2.0 * g10, Math.sqrt(g11*g11 + h11*h11)) * (180.0 / Math.PI);
         return { declination: dec, inclination: inc, totalIntensity: intensity };
     }
@@ -234,7 +231,6 @@ onmessage = async function(e) {
             const { tempC, presHpa } = meteo || { tempC: 15, presHpa: 1013.25 };
             const timestampSec = timestampUtc / 1000.0;
 
-            // Temps Sidéral Local (LST) de secours en degrés
             const d = (timestampSec / 86400.0) - 10957.5;
             let lstDeg = (280.46061837 + 360.98564736629 * d + lon + 360.0) % 360.0;
 
@@ -268,10 +264,7 @@ onmessage = async function(e) {
                     const raDeg = (Math.atan2(etatICRF.y, etatICRF.x) * 180 / Math.PI + 360) % 360;
                     const decDeg = Math.asin(etatICRF.z / (distAu * 149597870.7)) * 180 / Math.PI;
 
-                    // Calcul topocentrique réactualisé dynamiquement
                     const topo = calculerCoordonneesTopocentriques(raDeg, decDeg, lat, lon, lstDeg, tempC, presHpa);
-
-                    // Ombre portée au sol pour un objet d'un mètre
                     const shadowLen = topo.elevationRefractee > 0 ? (1.0 / Math.tan(topo.elevationRefractee * Math.PI / 180.0)).toFixed(2) + " m" : "Ombre infinie";
 
                     bodiesResults[nomAstreMaj] = {
@@ -309,7 +302,7 @@ onmessage = async function(e) {
                 }
             }
 
-            const resWmm = calculerChampingGeomagnetiqueLocal(lat, lon, alt);
+            const resWmm = calculerChampingGeomagnetiqueLocal(lat, lon, alt, timestampSec);
 
             postMessage({
                 type: 'RESULTS_COMPUTE',
