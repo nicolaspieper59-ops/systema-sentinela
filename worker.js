@@ -1,5 +1,5 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER (v20.3 Purified)
+ * SYSTEMA SENTINELA — WEB WORKER (v20.4 Optimized & Fixed)
  */
 
 var Module = {
@@ -16,7 +16,6 @@ let metricsPtr = 0;
 let resultPtr = 0;
 let wmmParsedCoeffs = null;
 
-// Chargement unique en haut de fichier
 try {
     importScripts('wasm_astronomie.js');
 } catch (e) {
@@ -192,7 +191,7 @@ onmessage = async function(e) {
             const { lat, lon, alt } = coords;
             const timestampSec = timestampUtc / 1000.0;
 
-            let metrics = { eqTempsMin: 0, obliquiteDeg: 23.44, longSolaireDeg: 0, gastDeg: 0, lstDeg: 0 };
+            let metrics = { eqTempsMin: 0, excentricite: 0.01671022, obliquiteDeg: 23.44, longSolaireDeg: 0, gastDeg: 0, lstDeg: 0 };
             
             if (wasmReady && typeof Module._calculerParametresSiderauxEtSolaires === 'function') {
                 initialiserMemoireWasm();
@@ -201,10 +200,29 @@ onmessage = async function(e) {
                 const offsetMetrics = metricsPtr / 8;
                 metrics = {
                     eqTempsMin: heapF64[offsetMetrics + 0],
+                    excentricite: 0.01671022,
                     obliquiteDeg: heapF64[offsetMetrics + 1],
                     longSolaireDeg: heapF64[offsetMetrics + 2],
                     gastDeg: heapF64[offsetMetrics + 3],
                     lstDeg: heapF64[offsetMetrics + 4]
+                };
+            } else {
+                // Fallback analytique pure JS pour les métriques solaires si WASM non dispo
+                const d = (timestampSec / 86400.0) - 10957.5;
+                const g = (357.529 + 0.98560028 * d) % 360;
+                const q = (280.459 + 0.98564736 * d) % 360;
+                const L = (q + 1.915 * Math.sin(g * Math.PI / 180) + 0.020 * Math.sin(2 * g * Math.PI / 180)) % 360;
+                const e = 23.439 - 0.00000036 * d;
+                const ra = Math.atan2(Math.cos(e * Math.PI / 180) * Math.sin(L * Math.PI / 180), Math.cos(L * Math.PI / 180)) * 180 / Math.PI;
+                const eqTime = (q - (ra < 0 ? ra + 360 : ra)) * 4.0;
+
+                metrics = {
+                    eqTempsMin: eqTime,
+                    excentricite: 0.01671022,
+                    obliquiteDeg: e,
+                    longSolaireDeg: L,
+                    gastDeg: (q + lon) % 360,
+                    lstDeg: (q + lon) % 360
                 };
             }
 
@@ -217,31 +235,44 @@ onmessage = async function(e) {
                     const nomAstreMaj = nomAstre.toUpperCase();
                     const meta = METADATAS_CORPS[nomAstreMaj] || {};
 
-                    const distAu = Math.sqrt(etatICRF.x**2 + etatICRF.y**2 + etatICRF.z**2) / 149597870.7;
+                    const distKm = Math.sqrt(etatICRF.x**2 + etatICRF.y**2 + etatICRF.z**2);
+                    const distAu = distKm / 149597870.7;
                     const raDeg = (Math.atan2(etatICRF.y, etatICRF.x) * 180 / Math.PI + 360) % 360;
-                    const decDeg = Math.asin(etatICRF.z / (distAu * 149597870.7)) * 180 / Math.PI;
+                    const decDeg = Math.asin(Math.max(-1.0, Math.min(1.0, etatICRF.z / distKm))) * 180 / Math.PI;
+
+                    // Sphérique topocentrique simplifiée
+                    const haDeg = (metrics.lstDeg - raDeg + 360) % 360;
+                    const haRad = haDeg * Math.PI / 180;
+                    const latRad = lat * Math.PI / 180;
+                    const decRad = decDeg * Math.PI / 180;
+
+                    const elRad = Math.asin(Math.sin(latRad) * Math.sin(decRad) + Math.cos(latRad) * Math.cos(decRad) * Math.cos(haRad));
+                    const azRad = Math.atan2(-Math.sin(haRad), Math.tan(decRad) * Math.cos(latRad) - Math.sin(latRad) * Math.cos(haRad));
+
+                    const elDeg = elRad * 180 / Math.PI;
+                    const azDeg = (azRad * 180 / Math.PI + 360) % 360;
 
                     bodiesResults[nomAstreMaj] = {
-                        azimuth: 180.0,
-                        elevationGeometrique: 45.0,
-                        elevationRefractee: 45.0,
+                        azimuth: azDeg,
+                        elevationGeometrique: elDeg,
+                        elevationRefractee: elDeg > -0.5 ? elDeg + (1.0 / Math.tan((elDeg + 10.3 / (elDeg + 5.11)) * Math.PI / 180)) / 60.0 : elDeg,
                         raDeg: raDeg,
                         decDeg: decDeg,
                         distanceAu: distAu,
                         sunrise: "06:00 UTC",
                         sunset: "18:00 UTC",
-                        airMass: 1.0,
-                        irradiance: 1361.0,
-                        deltat: 69.0,
-                        gha: raDeg,
-                        jde: 2460000.5,
+                        airMass: elDeg > 0 ? 1.0 / (Math.sin(elRad) + 0.15 * Math.pow(elDeg + 3.885, -1.253)) : 0.0,
+                        irradiance: 1361.0 / (distAu * distAu),
+                        deltat: 69.18,
+                        gha: (metrics.gastDeg - raDeg + 360) % 360,
+                        jde: 2460000.5 + (timestampSec / 86400.0),
                         magnitude: etatICRF.mag || 0.0,
-                        shadowLengthDisplay: "1.50 m",
+                        shadowLengthDisplay: elDeg > 0 ? (1.0 / Math.tan(elRad)).toFixed(2) + " m" : "N/A",
                         moonPhasePct: 50.0,
                         moonAgeDays: 14.0,
                         dusk: "18:30 UTC",
                         daylightDuration: "12h 00m",
-                        visibiliteCode: 1,
+                        visibiliteCode: elDeg > 0 ? (etatICRF.mag < 6.0 ? 1 : 2) : 0,
                         constellationDisplay: determinerConstellationUAI(raDeg, decDeg),
                         distanceMinMaxDisplay: meta.minMax || "--",
                         perigeeDisplay: meta.perigee || "--",
@@ -259,7 +290,7 @@ onmessage = async function(e) {
             postMessage({
                 type: 'RESULTS_COMPUTE',
                 timestamp: timestampUtc,
-                solarMetrics: metrics,
+                metrics: metrics,
                 wmm: resWmm,
                 bodies: bodiesResults
             });
