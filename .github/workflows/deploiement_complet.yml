@@ -13,6 +13,7 @@ on:
       - 'src/**'
       - 'dynamic_multiphysics_engine.py'
       - '.github/workflows/**'
+      - 'lib/sofa/**'
   workflow_dispatch:
     inputs:
       lat:
@@ -115,7 +116,19 @@ jobs:
           print(f'Validation réussie : {len(payload)} enregistrements vérifiés.')
           "
 
-      - name: 🔨 Compilation C++ vers WebAssembly (Wasm)
+      - name: 📂 Décompression de la bibliothèque IAU SOFA
+        run: |
+          if [ -f "lib/sofa/src.zip" ]; then
+            mkdir -p lib/sofa/src
+            unzip -o lib/sofa/src.zip -d lib/sofa/src/
+          elif [ -f "src.zip" ]; then
+            mkdir -p lib/sofa/src
+            unzip -o src.zip -d lib/sofa/src/
+          else
+            echo "Avertissement : Archive SOFA (src.zip) non trouvée, vérification du dossier existant..."
+          fi
+
+      - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
         run: |
           SRC_FILE="src/astro_engine.cpp"
           if [ ! -f "$SRC_FILE" ] && [ -f "src/wasm_astronomie.cpp" ]; then
@@ -129,7 +142,14 @@ jobs:
             exit 1
           fi
 
-          emcc "$SRC_FILE" -O3 -std=c++17 \
+          # Vérification de la présence des fichiers SOFA
+          SOFA_FILES=""
+          if [ -d "lib/sofa/src" ]; then
+            SOFA_FILES="lib/sofa/src/*.c"
+          fi
+
+          emcc "$SRC_FILE" $SOFA_FILES -O3 -std=c++17 \
+            -I lib/sofa/src \
             -s WASM=1 \
             -s FORCE_FILESYSTEM=1 \
             -s ALLOW_MEMORY_GROWTH=1 \
