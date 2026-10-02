@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (v20.2 Corrected)
+SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine)
 """
 
 import argparse
@@ -13,7 +13,7 @@ import numpy as np
 try:
     from skyfield.api import load
 except ImportError:
-    print("[ERREUR] La bibliothèque skyfield est requise (`pip install skyfield`)", file=sys.stderr)
+    print("[FATAL] Skyfield introuvable (`pip install skyfield`).", file=sys.stderr)
     sys.exit(1)
 
 CORPS_MAP = {
@@ -29,8 +29,8 @@ CORPS_MAP = {
 }
 
 PAS_HEURES_MAP = {
-    "LUNE": 4, "MERCURE": 6, "SOLEIL": 12, "VENUS": 12,
-    "MARS": 12, "JUPITER": 24, "SATURNE": 24, "URANUS": 48, "NEPTUNE": 48
+    "LUNE": 2, "MERCURE": 4, "SOLEIL": 6, "VENUS": 6,
+    "MARS": 6, "JUPITER": 12, "SATURNE": 12, "URANUS": 24, "NEPTUNE": 24
 }
 
 RAYONS_EQUATORIAUX_KM = {
@@ -38,18 +38,18 @@ RAYONS_EQUATORIAUX_KM = {
     "MARS": 3396.2, "JUPITER": 71492.0, "SATURNE": 60268.0, "URANUS": 25559.0, "NEPTUNE": 24764.0
 }
 
-DEGRE_TCHEBYCHEV = 10
+DEGRE_TCHEBYCHEV = 12
 UA_KM = 149597870.7
 
-def valider_coordonnees_station(lat, lon, alt):
-    if not (-90.0 <= lat <= 90.0): raise ValueError(f"Latitude hors limites : {lat}")
-    if not (-180.0 <= lon <= 180.0): raise ValueError(f"Longitude hors limites : {lon}")
-    if not (-500.0 <= alt <= 100000.0): raise ValueError(f"Altitude hors limites : {alt}")
+def valider_coordonnees(lat, lon, alt):
+    if not (-90.0 <= lat <= 90.0): raise ValueError(f"Latitude invalide : {lat}")
+    if not (-180.0 <= lon <= 180.0): raise ValueError(f"Longitude invalide : {lon}")
+    if not (-500.0 <= alt <= 100000.0): raise ValueError(f"Altitude invalide : {alt}")
 
-def obtenir_astre(eph, noms_possibles):
-    for nom in noms_possibles:
+def obtenir_astre(eph, noms):
+    for nom in noms:
         if nom in eph: return eph[nom]
-    raise KeyError(f"Aucune cible trouvée parmi : {noms_possibles}")
+    raise KeyError(f"Astre non trouvé : {noms}")
 
 def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
     v_terre_astre = pos_astre_km
@@ -65,9 +65,11 @@ def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
     cos_alpha = np.dot(v_soleil_astre, v_terre_astre) / (r_km * delta_km)
     alpha_deg = np.degrees(np.arccos(np.clip(cos_alpha, -1.0, 1.0)))
 
-    if nom_corps == "SOLEIL": return -26.74
+    if nom_corps == "SOLEIL": 
+        return -26.74
     if nom_corps == "LUNE":
-        return round(float(-12.73 + 0.026 * alpha_deg + 4.0e-9 * (alpha_deg**4)), 2)
+        alpha_clamp = np.clip(alpha_deg, 0.0, 180.0)
+        return round(float(-12.73 + 0.026 * alpha_clamp + 4.0e-9 * (alpha_clamp**4)), 2)
 
     modeles = {
         "MERCURE": (-0.60, 0.0498 * alpha_deg),
@@ -79,16 +81,16 @@ def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
     }
 
     if nom_corps in modeles:
-        v_0, corr_phase = modeles[nom_corps]
-        return round(float(v_0 + 5.0 * np.log10(r_ua * delta_ua) + corr_phase), 2)
+        v_0, corr = modeles[nom_corps]
+        return round(float(v_0 + 5.0 * np.log10(r_ua * delta_ua) + corr), 2)
 
     return 0.0
 
-def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2_unix, nom_corps, degre=10):
+def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2_unix, nom_corps, degre=12):
     nodes_std = np.cos(np.pi * np.arange(degre + 1) / degre)
     t_sec_nodes = 0.5 * (t2_unix - t1_unix) * nodes_std + 0.5 * (t2_unix + t1_unix)
     times_nodes = ts.tt_jd((t_sec_nodes / 86400.0) + 2440587.5)
-    
+
     apparent_obs = earth.at(times_nodes).observe(astre_target).apparent()
     pos_km = apparent_obs.position.km
     vel_kms = apparent_obs.velocity.km_per_s
@@ -106,7 +108,6 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     
     pos_astre_mid = earth.at(time_mid).observe(astre_target).apparent().position.km
     pos_soleil_mid = earth.at(time_mid).observe(sun_target).apparent().position.km
-    
     mag_val = calculer_magnitude_apparente(nom_corps, pos_astre_mid, pos_soleil_mid)
 
     return {
@@ -118,9 +119,10 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
         "mag": float(mag_val)
     }
 
-def generer_ephemerides(lat=43.284356, lon=5.358507, alt=49.81, nb_jours=7, bsp_path="de440s.bsp", fichier_sortie="flux_live.json"):
-    valider_coordonnees_station(lat, lon, alt)
-    if not os.path.exists(bsp_path): raise FileNotFoundError(f"Fichier BSP introuvable : {bsp_path}")
+def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
+    valider_coordonnees(lat, lon, alt)
+    if not os.path.exists(bsp_path):
+        raise FileNotFoundError(f"Éphémérides JPL introuvables : {bsp_path}")
 
     ts = load.timescale()
     eph = load(bsp_path)
@@ -131,9 +133,9 @@ def generer_ephemerides(lat=43.284356, lon=5.358507, alt=49.81, nb_jours=7, bsp_
     t_end_unix = t_start_unix + (nb_jours * 86400)
     data_output = {}
 
-    for nom_corps, cibles_possibles in CORPS_MAP.items():
-        astre = obtenir_astre(eph, cibles_possibles)
-        pas_sec = PAS_HEURES_MAP.get(nom_corps, 12) * 3600.0
+    for nom_corps, cibles in CORPS_MAP.items():
+        astre = obtenir_astre(eph, cibles)
+        pas_sec = PAS_HEURES_MAP.get(nom_corps, 6) * 3600.0
         segments = []
         curr_t = t_start_unix
 
@@ -147,7 +149,7 @@ def generer_ephemerides(lat=43.284356, lon=5.358507, alt=49.81, nb_jours=7, bsp_
 
     resultat_global = {
         "ALMANACH": {
-            "generateur": "Systema Sentinela DE440s Generator",
+            "generateur": "Systema Sentinela DE440s Kernel",
             "date_creation_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
             "fenetre_jours": nb_jours,
             "station": {"latitude": float(lat), "longitude": float(lon), "altitude_m": float(alt)}
@@ -159,20 +161,20 @@ def generer_ephemerides(lat=43.284356, lon=5.358507, alt=49.81, nb_jours=7, bsp_
         json.dump(resultat_global, f, indent=2, ensure_ascii=False)
 
 def main():
-    parser = argparse.ArgumentParser(description="Générateur JPL-Grade")
+    parser = argparse.ArgumentParser(description="Générateur d'éphémérides JPL DE440s Rigoureux")
     parser.add_argument("lat", type=float)
     parser.add_argument("lon", type=float)
     parser.add_argument("alt", type=float)
     parser.add_argument("--days", type=int, default=7)
     parser.add_argument("--bsp", type=str, default="de440s.bsp")
-    parser.out = parser.add_argument("--out", type=str, default="flux_live.json")
+    parser.add_argument("--out", type=str, default="flux_live.json")
 
     args = parser.parse_args()
     try:
         generer_ephemerides(args.lat, args.lon, args.alt, args.days, args.bsp, args.out)
-        print(f"[SUCCÈS] Génération terminée dans {args.out}")
+        print(f"[SUCCÈS] Flux généré : {args.out}")
     except Exception as e:
-        print(f"[ERREUR] {e}", file=sys.stderr)
+        print(f"[ERREUR FATALE] {e}", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":
