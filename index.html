@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SYSTEMA SENTINELA v19.12 — KERNEL RIGOROUS REPOSITORY</title>
     
-    <!-- Configuration PWA -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#f0f2f5">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -65,7 +64,7 @@
           background: var(--bg-base);
           color: var(--text-main);
           font-family: 'Consolas', 'Courier New', monospace;
-          font-size: 0.7rem;
+          font-size: 0.75rem;
           padding: 8px;
           margin: 0;
           -webkit-text-size-adjust: 100%;
@@ -89,7 +88,7 @@
         }
 
         .brand {
-          font-size: 0.75rem;
+          font-size: 0.8rem;
           font-weight: bold;
           letter-spacing: 0.5px;
           color: var(--sky);
@@ -119,7 +118,7 @@
           padding-bottom: 6px;
           margin-top: 0;
           margin-bottom: 8px;
-          font-size: 0.7rem;
+          font-size: 0.75rem;
           color: var(--sky);
           display: flex;
           justify-content: space-between;
@@ -131,7 +130,7 @@
           display: grid;
           grid-template-columns: 1fr;
           gap: 6px;
-          font-size: 0.65rem;
+          font-size: 0.7rem;
         }
 
         .metrics-grid {
@@ -146,13 +145,13 @@
           border: 1px solid var(--border-dim);
           padding: 6px 8px;
           border-radius: 4px;
-          font-size: 0.6rem;
+          font-size: 0.65rem;
         }
 
         .metric-val {
           font-weight: bold;
           color: var(--neon-green);
-          font-size: 0.68rem;
+          font-size: 0.72rem;
           margin-top: 3px;
         }
 
@@ -169,7 +168,7 @@
         }
 
         table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
-        th, td { padding: 5px 8px; border-bottom: 1px solid var(--border-dim); font-size: 0.6rem; }
+        th, td { padding: 5px 8px; border-bottom: 1px solid var(--border-dim); font-size: 0.65rem; }
         th {
           color: var(--sky);
           font-weight: bold;
@@ -184,11 +183,11 @@
           background: var(--border-dim);
           color: var(--text-main);
           border: 1px solid var(--sky);
-          padding: 5px 10px;
+          padding: 6px 12px;
           border-radius: 4px;
           cursor: pointer;
           font-family: monospace;
-          font-size: 0.65rem;
+          font-size: 0.7rem;
           font-weight: bold;
           transition: background 0.2s, color 0.2s, border-color 0.2s;
         }
@@ -202,7 +201,7 @@
           overflow-y: auto;
           padding: 6px;
           border-radius: 4px;
-          font-size: 0.58rem;
+          font-size: 0.65rem;
           font-family: monospace;
         }
 
@@ -246,17 +245,17 @@
         <div class="panel" style="grid-column: 1 / -1;">
             <h3 class="panel-title">1. COORDONNÉES TOPOCENTRIQUES &amp; VISIBILITÉ DES CORPS CÉLESTES (JPL DE440s)</h3>
             
-            <div class="metrics-grid" style="margin-bottom: 8px;">
+            <div class="metrics-grid">
                 <div class="metric-card"><div>ÉQ. DU TEMPS (CALC)</div><div class="metric-val rainbow-decimal" id="val-eq-temps">-- min</div></div>
                 <div class="metric-card"><div>EXCENTRICITÉ TERR.</div><div class="metric-val rainbow-decimal" id="val-excentricite">--</div></div>
                 <div class="metric-card"><div>OBLIQUITÉ ÉCLIPTIQUE</div><div class="metric-val rainbow-decimal" id="val-obliquite">--°</div></div>
                 <div class="metric-card"><div>LONGITUDE SOLAIRE</div><div class="metric-val rainbow-decimal" id="val-long-solaire">--°</div></div>
                 <div class="metric-card"><div>TEMPS SOLAIRE MOYEN (TSM)</div><div class="metric-val time-tsm" id="val-tsm">--</div></div>
                 <div class="metric-card"><div>TEMPS SOLAIRE VRAI (TSV)</div><div class="metric-val" id="val-tsv" style="color:var(--neon-green);">--</div></div>
-                <div class="metric-card"><div>RÉGLAGE HEURE PRIMAIRE</div>
+                <div class="metric-card"><div>RÉGLAGE HEURE PRIMAIRE (UTC)</div>
                     <div class="metric-val">
-                        <label for="input-time-picker" style="display:none;">Ajustement heure</label>
-                        <input type="time" id="input-time-picker" step="1" style="background:var(--bg-base); color:var(--neon-green); border:1px solid var(--border-dim); font-size:10px; padding:2px;" onchange="ajusterHeurePrincipaleManuelle(this.value)">
+                        <label for="input-time-picker" style="display:none;">Ajustement heure UTC</label>
+                        <input type="time" id="input-time-picker" step="1" style="background:var(--bg-base); color:var(--neon-green); border:1px solid var(--border-dim); font-size:11px; padding:2px;" onchange="ajusterHeurePrincipaleManuelle(this.value)">
                     </div>
                 </div>
             </div>
@@ -309,7 +308,7 @@
                     <div class="metric-card"><div>LAT / LON / ALT</div><div class="metric-val" id="val-station-coords">--° / --° / --m</div></div>
                     <div class="metric-card"><div>GAST / LST</div><div class="metric-val" id="val-gast" style="color:var(--amber)">--°</div></div>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 4px; font-size: 10px;">
+                <div style="display: flex; flex-direction: column; gap: 4px; font-size: 11px;">
                     <div>
                         <label for="input-lat" style="color: var(--sky);">LAT (°)</label>
                         <input type="number" id="input-lat" value="43.284300" step="0.000001" style="width: 100%; background: var(--bg-base); color: var(--neon-green); border: 1px solid var(--border-dim); padding: 3px; font-family: monospace; border-radius: 3px;">
@@ -332,7 +331,7 @@
 
         <div class="panel">
             <h3 class="panel-title">3. CHAMP GÉOMAGNÉTIQUE WMM-2025 &amp; VARIATIONS</h3>
-            <div class="metrics-grid" style="margin-bottom: 8px;">
+            <div class="metrics-grid">
                 <div class="metric-card"><div>CAP MAGNÉTIQUE</div><div id="val-cap-brut" class="metric-val" style="color:var(--amber);">--°</div></div>
                 <div class="metric-card"><div>CAP VRAI GÉO</div><div id="val-cap-net" class="metric-val" style="color:var(--neon-green);">--°</div></div>
                 <div class="metric-card"><div>DÉCLINAISON (D)</div><div id="val-dec-wmm" class="metric-val" style="color:var(--sky);">Calcul...</div></div>
@@ -340,7 +339,7 @@
                 <div class="metric-card"><div>INTENSITÉ TOTALE (F)</div><div id="val-intensity-wmm" class="metric-val" style="color:var(--neon-green);">-- nT</div></div>
                 <div class="metric-card"><div>INDICE KP (ORAGE)</div><div id="val-kp-index" class="metric-val" style="color:var(--sky);">--</div></div>
             </div>
-            <button id="btn-toggle-capteurs" class="btn-action" style="width: 100%;" onclick="basculerTousLesCapteurs()">ACTIVER GPS &amp; CAPTEURS</button>
+            <button id="btn-toggle-capteurs" class="btn-action" style="width: 100%; margin-top: 8px;" onclick="basculerTousLesCapteurs()">ACTIVER GPS &amp; CAPTEURS</button>
         </div>
 
         <div class="panel">
@@ -350,12 +349,12 @@
 
         <div class="panel">
             <h3 class="panel-title">5. VECTEUR XYZ (ECEF) &amp; GLOBE 3D (HAUTE PRÉCISION)</h3>
-            <div style="font-size: 9.5px; background: rgba(0,0,0,0.03); padding: 6px; border-radius: 4px; border: 1px solid var(--border-dim); margin-bottom: 6px;">
+            <div style="font-size: 10px; background: rgba(0,0,0,0.03); padding: 6px; border-radius: 4px; border: 1px solid var(--border-dim); margin-bottom: 6px;">
                 <div style="color: var(--amber); margin-bottom: 3px; font-weight: bold;">ECEF WGS84 (km) :</div>
                 <div>X : <span id="val-xyz-x" class="rainbow-decimal">--</span> | Y : <span id="val-xyz-y" class="rainbow-decimal">--</span> | Z : <span id="val-xyz-z" class="rainbow-decimal">--</span></div>
             </div>
             <canvas id="globeCanvas" width="280" height="150" aria-label="Globe terrestre 3D"></canvas>
-            <div style="font-size: 9.5px; color: var(--sky); text-align: center; margin-top: 4px;">
+            <div style="font-size: 10px; color: var(--sky); text-align: center; margin-top: 4px;">
                 BAROMÈTRE / MÉTÉO : <span id="val-baro-statut" style="color:var(--amber)">EN ATTENTE</span>
             </div>
         </div>
@@ -415,6 +414,20 @@
     let fileDAttenteWorker = [];
     let lignesTableauCache = {};
 
+    function ecrireLog(msg) {
+        const consoleEl = document.getElementById('logConsole');
+        if (!consoleEl) return;
+        let timeStr = "--:--:--";
+        const ts = obtenirTimestampUTCExact();
+        if (ts !== null) timeStr = new Date(ts).toISOString().substring(11, 19);
+        
+        const line = document.createElement('div');
+        line.textContent = `[${timeStr}] ${msg}`;
+        consoleEl.appendChild(line);
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+        while (consoleEl.children.length > 100) consoleEl.removeChild(consoleEl.firstChild);
+    }
+
     function envoyerMessageWorkerSecurise(message) {
         if (astroWorker && workerPret) {
             astroWorker.postMessage(message);
@@ -442,10 +455,18 @@
     function ajusterHeurePrincipaleManuelle(heureString) {
         if (!heureString) return;
         const [h, m, s] = heureString.split(':').map(Number);
-        const d = new Date(obtenirTimestampUTCExact());
-        const ancienTs = d.getTime();
-        d.setUTCHours(h, m, s || 0); // Corrected: Use UTC Hours
-        manuelOffsetMs += (d.getTime() - ancienTs);
+        
+        const timestampActuel = obtenirTimestampUTCExact();
+        const dateActuelle = new Date(timestampActuel);
+        
+        const dateCibleUTC = new Date(Date.UTC(
+            dateActuelle.getUTCFullYear(),
+            dateActuelle.getUTCMonth(),
+            dateActuelle.getUTCDate(),
+            h, m, s || 0
+        ));
+        
+        manuelOffsetMs += (dateCibleUTC.getTime() - timestampActuel);
         ecrireLog(`Heure principale ajustée manuellement (UTC) à : ${heureString}`);
     }
 
@@ -492,20 +513,6 @@
     let globeScene, globeCamera, globeRenderer, earthMesh, atmosphereMesh, radarGroup, radarBeam;
     let isDragging = false, lastX = 0, lastY = 0;
     const earthRadius3D = 2.0;
-
-    function ecrireLog(msg) {
-        const consoleEl = document.getElementById('logConsole');
-        if (!consoleEl) return;
-        let timeStr = "--:--:--";
-        const ts = obtenirTimestampUTCExact();
-        if (ts !== null) timeStr = new Date(ts).toISOString().substring(11, 19);
-        
-        const line = document.createElement('div');
-        line.textContent = `[${timeStr}] ${msg}`;
-        consoleEl.appendChild(line);
-        consoleEl.scrollTop = consoleEl.scrollHeight;
-        while (consoleEl.children.length > 100) consoleEl.removeChild(consoleEl.firstChild);
-    }
 
     async function synchroniserHeureAtomique() {
         let synchroReussie = false;
@@ -602,7 +609,6 @@
                 document.getElementById('input-lon').value = lon.toFixed(6);
                 document.getElementById('input-alt').value = alt.toFixed(4);
                 
-                // Transfert direct sans re-parsing inutile
                 mettreAJourCoordonneesStation(lat, lon, alt, 'GPS TEMPS RÉEL');
             },
             (err) => { ecrireLog(`Erreur GPS (${err.code}): ${err.message}`); },
@@ -701,7 +707,7 @@
                 ecrireLog("WMM-2025 : Modèle géomagnétique synchronisé dans le Worker.");
                 break;
             case 'RESULTS_COMPUTE':
-                workerCalculEnCours = false; // Autorise le prochain calcul
+                workerCalculEnCours = false;
                 mettreAJourInterface(data);
                 break;
             case 'ERROR':
@@ -711,21 +717,19 @@
         }
     }
 
- function initialiserWorkerAstronomie() {
-    if (typeof Worker === 'undefined') return;
-    
-    // Remplace worker (2)_2.js par worker.js selon votre nom de fichier réel
-    astroWorker = new Worker('worker.js'); 
-    astroWorker.onmessage = traiterMessageWorker;
-    astroWorker.onerror = (err) => {
-        console.error("Erreur Worker Astro :", err);
-        document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
-        document.getElementById('lbl-worker-status').style.color = "var(--rose)";
-    };
-    
-    if (matriceJplLive) {
-        envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
-    }
+    function initialiserWorkerAstronomie() {
+        if (typeof Worker === 'undefined') return;
+        astroWorker = new Worker('worker.js'); 
+        astroWorker.onmessage = traiterMessageWorker;
+        astroWorker.onerror = (err) => {
+            console.error("Erreur Worker Astro :", err);
+            document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
+            document.getElementById('lbl-worker-status').style.color = "var(--rose)";
+        };
+        
+        if (matriceJplLive) {
+            envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+        }
     }
 
     function mettreAJourMetricsSolaires(m) {
@@ -771,37 +775,36 @@
                 const tr = document.createElement('tr');
                 tr.id = `row-astre-${nomAstre}`;
                 
-                tr.innerHTML = `
-                    <td><strong>${nomAstre.toUpperCase()}</strong></td>
-                    <td id="cell-${nomAstre}-el" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-az" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-dist" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-minmax">--</td>
-                    <td id="cell-${nomAstre}-mag" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-ra" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-dec" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-const">--</td>
-                    <td id="cell-${nomAstre}-perigee">--</td>
-                    <td id="cell-${nomAstre}-perihelion">--</td>
-                    <td id="cell-${nomAstre}-aphelion">--</td>
-                    <td id="cell-${nomAstre}-period">--</td>
-                    <td id="cell-${nomAstre}-lod">--</td>
-                    <td id="cell-${nomAstre}-vel">--</td>
-                    <td id="cell-${nomAstre}-shadow">--</td>
-                    <td id="cell-${nomAstre}-moon-phase" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-moon-age" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-rise">--</td>
-                    <td id="cell-${nomAstre}-set">--</td>
-                    <td id="cell-${nomAstre}-dusk">--</td>
-                    <td id="cell-${nomAstre}-daylight">--</td>
-                    <td id="cell-${nomAstre}-jde">--</td>
-                    <td id="cell-${nomAstre}-deltat">--</td>
-                    <td id="cell-${nomAstre}-gha">--</td>
-                    <td id="cell-${nomAstre}-sol-const" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-am" class="rainbow-decimal">--</td>
-                    <td id="cell-${nomAstre}-irr" class="rainbow-decimal">--</td>
-                    <td><span id="cell-${nomAstre}-etat">Inconnu</span></td>
-                `;
+                const tdName = document.createElement('td');
+                const strongName = document.createElement('strong');
+                strongName.textContent = nomAstre.toUpperCase();
+                tdName.appendChild(strongName);
+                tr.appendChild(tdName);
+
+                const champs = [
+                    ['el', 'rainbow-decimal'], ['az', 'rainbow-decimal'], ['dist', 'rainbow-decimal'],
+                    ['minmax', ''], ['mag', 'rainbow-decimal'], ['ra', 'rainbow-decimal'], ['dec', 'rainbow-decimal'],
+                    ['const', ''], ['perigee', ''], ['perihelion', ''], ['aphelion', ''], ['period', ''],
+                    ['lod', ''], ['vel', ''], ['shadow', ''], ['moonPhase', 'rainbow-decimal'], ['moonAge', 'rainbow-decimal'],
+                    ['rise', ''], ['set', ''], ['dusk', ''], ['daylight', ''], ['jde', ''], ['deltat', ''],
+                    ['gha', ''], ['solConst', 'rainbow-decimal'], ['am', 'rainbow-decimal'], ['irr', 'rainbow-decimal']
+                ];
+
+                champs.forEach(([cle, cssClass]) => {
+                    const td = document.createElement('td');
+                    td.id = `cell-${nomAstre}-${cle}`;
+                    if (cssClass) td.className = cssClass;
+                    td.textContent = '--';
+                    tr.appendChild(td);
+                });
+
+                const tdEtat = document.createElement('td');
+                const spanEtat = document.createElement('span');
+                spanEtat.id = `cell-${nomAstre}-etat`;
+                spanEtat.textContent = 'Inconnu';
+                tdEtat.appendChild(spanEtat);
+                tr.appendChild(tdEtat);
+
                 tbody.appendChild(tr);
                 
                 lignesTableauCache[nomAstre] = {
@@ -820,8 +823,8 @@
                     lod: document.getElementById(`cell-${nomAstre}-lod`),
                     vel: document.getElementById(`cell-${nomAstre}-vel`),
                     shadow: document.getElementById(`cell-${nomAstre}-shadow`),
-                    moonPhase: document.getElementById(`cell-${nomAstre}-moon-phase`),
-                    moonAge: document.getElementById(`cell-${nomAstre}-moon-age`),
+                    moonPhase: document.getElementById(`cell-${nomAstre}-moonPhase`),
+                    moonAge: document.getElementById(`cell-${nomAstre}-moonAge`),
                     rise: document.getElementById(`cell-${nomAstre}-rise`),
                     set: document.getElementById(`cell-${nomAstre}-set`),
                     dusk: document.getElementById(`cell-${nomAstre}-dusk`),
@@ -829,7 +832,7 @@
                     jde: document.getElementById(`cell-${nomAstre}-jde`),
                     deltat: document.getElementById(`cell-${nomAstre}-deltat`),
                     gha: document.getElementById(`cell-${nomAstre}-gha`),
-                    solConst: document.getElementById(`cell-${nomAstre}-sol-const`),
+                    solConst: document.getElementById(`cell-${nomAstre}-solConst`),
                     am: document.getElementById(`cell-${nomAstre}-am`),
                     irr: document.getElementById(`cell-${nomAstre}-irr`),
                     etat: document.getElementById(`cell-${nomAstre}-etat`)
@@ -837,7 +840,7 @@
             }
         }
 
-        for (const [nomAstre, donneesAstre] of Object.entries(bodiesData)) {
+for (const [nomAstre, donneesAstre] of Object.entries(bodiesData)) {
             if (!donneesAstre) continue;
             const cache = lignesTableauCache[nomAstre];
             if (!cache) continue;
@@ -882,27 +885,26 @@
     }
 
     function mettreAJourInterface(data) {
-    if (!data) return;
-    
-    // Support hybride metrics / solarMetrics pour garantir l'étanchéité
-    const metricsPayload = data.metrics || data.solarMetrics;
-    if (metricsPayload) {
-        mettreAJourMetricsSolaires(metricsPayload);
-    }
-    
-    if (data.bodies) {
-        derniersResultatsAstres = data.bodies;
-        mettreAJourTableauAstres(data.bodies);
-        dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
-        sentinelaCache.enregistrerMesure('derniers_astres', data.bodies, 0);
-    }
-    
-    if (data.wmm) {
-        resultatWmmCourant = data.wmm;
-        document.getElementById('val-dec-wmm').innerText = `${data.wmm.declination.toFixed(2)}°`;
-        document.getElementById('val-inc-wmm').innerText = `${data.wmm.inclination.toFixed(2)}°`;
-        document.getElementById('val-intensity-wmm').innerText = `${data.wmm.totalIntensity.toFixed(0)} nT`;
-    }
+        if (!data) return;
+        
+        const metricsPayload = data.metrics || data.solarMetrics;
+        if (metricsPayload) {
+            mettreAJourMetricsSolaires(metricsPayload);
+        }
+        
+        if (data.bodies) {
+            derniersResultatsAstres = data.bodies;
+            mettreAJourTableauAstres(data.bodies);
+            dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
+            sentinelaCache.enregistrerMesure('derniers_astres', data.bodies, 0);
+        }
+        
+        if (data.wmm) {
+            resultatWmmCourant = data.wmm;
+            document.getElementById('val-dec-wmm').innerText = `${data.wmm.declination.toFixed(2)}°`;
+            document.getElementById('val-inc-wmm').innerText = `${data.wmm.inclination.toFixed(2)}°`;
+            document.getElementById('val-intensity-wmm').innerText = `${data.wmm.totalIntensity.toFixed(0)} nT`;
+        }
     }
 
     function appliquerCoordonneesSaisie() {
@@ -1021,7 +1023,6 @@
         const sphereGeo = new THREE.SphereGeometry(earthRadius3D, 64, 64);
         const textureLoader = new THREE.TextureLoader();
         
-        // Corrected: Pré-création du matériau pour éviter le ReferenceError
         const earthMaterial = new THREE.MeshStandardMaterial({
             bumpScale: 0.05,
             roughness: 0.8,
@@ -1127,7 +1128,6 @@
     }
 
     function envoyerDemandeCalculWorker() {
-        // Corrected: Prévention de la surcharge du Web Worker
         if (workerCalculEnCours) return;
 
         const timestampExact = obtenirTimestampUTCExact();
