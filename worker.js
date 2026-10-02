@@ -6,6 +6,7 @@ importScripts('https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-
 
 let jplMatrixData = null;
 let wmmLoaded = false;
+let wmmCoeffsText = null;
 
 self.onmessage = function(e) {
     const data = e.data;
@@ -17,6 +18,7 @@ self.onmessage = function(e) {
             break;
 
         case 'LOAD_WMM_COF':
+            wmmCoeffsText = data.contenu;
             wmmLoaded = true;
             self.postMessage({ type: 'WMM_LOADED' });
             break;
@@ -28,10 +30,31 @@ self.onmessage = function(e) {
 };
 
 function determinerVisibilite(elevation, magnitude) {
-    if (elevation <= 0.0) return 0; // Invisible (sous l'horizon)
-    if (magnitude <= 6.0) return 1;  // Œil nu
-    if (magnitude <= 10.0) return 2; // Jumelles
-    return 3;                        // Télescope
+    if (elevation <= 0.0) return 0; 
+    if (magnitude <= 6.0) return 1;  
+    if (magnitude <= 10.0) return 2; 
+    return 3;                        
+}
+
+function calculerEquationDuTemps(jd) {
+    const T = (jd - 2451545.0) / 36525.0;
+    const l0 = (280.46646 + 36000.76983 * T) % 360;
+    const m = (357.52911 + 35999.05029 * T) % 360;
+    const rad = Math.PI / 180.0;
+    const C = (1.914602 - 0.004817 * T) * Math.sin(m * rad) + (0.019993 - 0.000101 * T) * Math.sin(2.0 * m * rad);
+    const sunTrueLong = l0 + C;
+    const obliquite = 23.439291 - 0.0130042 * T;
+    
+    let y = Math.tan((obliquite / 2.0) * rad);
+    y *= y;
+    const l0Rad = l0 * rad;
+    const mRad = m * rad;
+    
+    const eqRad = y * Math.sin(2.0 * l0Rad) - 2.0 * 0.016708634 * Math.sin(mRad) 
+                + 4.0 * 0.016708634 * y * Math.sin(mRad) * Math.cos(2.0 * l0Rad) 
+                - 0.5 * y * y * Math.sin(4.0 * l0Rad);
+                
+    return (eqRad * (180.0 / Math.PI)) * 4.0; // minutes
 }
 
 function traiterCalculs(params) {
@@ -39,11 +62,9 @@ function traiterCalculs(params) {
     const coords = params.coords;
     const meteo = params.meteo;
 
-    const dateUtc = new Date(ts);
     const jde = (ts / 86400000.0) + 2440587.5;
-    const eqTemps = 2.45 * Math.sin((dateUtc.getUTCMonth() + 1)); 
+    const eqTemps = calculerEquationDuTemps(jde);
 
-    // Calculs d'éphémérides
     const bodies = {
         soleil: {
             elevationGeometrique: -49.7082, azimuth: 9.2774, distanceAu: 1.0010,
@@ -73,17 +94,15 @@ function traiterCalculs(params) {
         },
         neptune: {
             elevationGeometrique: 45.3043, azimuth: 195.6338, distanceAu: 28.8825,
-            magnitude: 7.81, raDeg: 2.82, decDeg: -0.32, visibiliteCode: 2, // Corrigé : Jumelles (Mag > 6.0)
+            magnitude: 7.81, raDeg: 2.82, decDeg: -0.32, visibiliteCode: 2,
             airMass: 1.40, irradiance: 1.63
         }
     };
 
-    // Mise à jour explicite du code de visibilité selon la magnitude réelle
     for (const key in bodies) {
         bodies[key].visibiliteCode = determinerVisibilite(bodies[key].elevationGeometrique, bodies[key].magnitude);
     }
 
-    // Réponse au thread principal
     self.postMessage({
         type: 'RESULTS_COMPUTE',
         solarMetrics: {
@@ -102,5 +121,4 @@ function traiterCalculs(params) {
     });
 }
 
-// Envoi du signal d'initialisation du Worker
 self.postMessage({ type: 'WORKER_READY' });
