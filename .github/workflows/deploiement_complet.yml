@@ -123,39 +123,29 @@ jobs:
           print(f'Validation réussie : {len(payload)} enregistrements vérifiés.')
           "
 
-      - name: 📂 Préparation de la bibliothèque SOFA C (Sources décompressées ou Auto-Download)
+      - name: 📂 Préparation de la bibliothèque SOFA C / ERFA
         run: |
           mkdir -p lib/sofa/src
 
-          # 1. Vérification si sofa.h est présent dans les fichiers du dépôt
-          SOFA_HEADER=$(find . -maxdepth 4 -iname "sofa.h" | head -n 1)
+          # 1. Recherche de sofa.h ou erfa.h dans le dépôt
+          SOFA_HEADER=$(find . -maxdepth 4 \( -name "sofa.h" -o -name "erfa.h" \) | head -n 1)
 
           if [ -n "$SOFA_HEADER" ]; then
-            echo "SOFA détecté dans le dépôt à : $SOFA_HEADER"
+            echo "En-tête astronomique trouvé à : $SOFA_HEADER"
             SOFA_DIR=$(dirname "$SOFA_HEADER")
             cp -r "$SOFA_DIR"/* lib/sofa/src/
           else
-            echo "SOFA introuvable dans src/. Téléchargement direct depuis l'IAU..."
-            curl -fsSL --connect-timeout 20 --retry 3 -o sofa_c.tar.gz https://www.iana.org/assignments/media-types/media-types.xhtml || true
-            # Backup : Téléchargement du miroir officiel SOFA C
-            curl -fsSL --connect-timeout 20 --retry 3 -o sofa_c.tar.gz https://www.bbsing.org/sofa/sofa_c-20231011.tar.gz || \
-            curl -fsSL --connect-timeout 20 --retry 3 -o sofa_c.tar.gz https://raw.githubusercontent.com/astropy/erfa/main/src/erfa.h
-            
-            if [ -f "sofa_c.tar.gz" ]; then
-              tar -xzf sofa_c.tar.gz -C lib/sofa/
-              FOUND_DIR=$(find lib/sofa/ -iname "sofa.h" -exec dirname {} \; | head -n 1)
-              if [ -n "$FOUND_DIR" ]; then
-                cp -r "$FOUND_DIR"/* lib/sofa/src/
-              fi
-            fi
+            echo "Clonage direct de la bibliothèque ERFA (Alternative SOFA IAU officielle)..."
+            git clone --depth 1 https://github.com/astropy/erfa.git lib/sofa/erfa_repo
+            cp lib/sofa/erfa_repo/src/* lib/sofa/src/ 2>/dev/null || true
           fi
 
-          # Vérification finale
-          if [ ! -f "lib/sofa/src/sofa.h" ]; then
-            echo "Création d'un header SOFA fallback minimal si les sources C++ gèrent les inclusions relatives..."
-            mkdir -p lib/sofa/src
-            touch lib/sofa/src/sofa.h
+          # Création d'un alias de compatibilité sofa.h si seul erfa.h est présent
+          if [ -f "lib/sofa/src/erfa.h" ] && [ ! -f "lib/sofa/src/sofa.h" ]; then
+            echo '#include "erfa.h"' > lib/sofa/src/sofa.h
           fi
+
+          test -f "lib/sofa/src/sofa.h" || test -f "lib/sofa/src/erfa.h" || { echo "ERREUR CRITIQUE : Fichiers SOFA/ERFA introuvables."; exit 1; }
 
       - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
         run: |
