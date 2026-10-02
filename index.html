@@ -459,7 +459,7 @@
         const timestampActuel = obtenirTimestampUTCExact();
         const dateActuelle = new Date(timestampActuel);
         
-        const dateCibleUTC = new Date(Date.UTC(
+                const dateCibleUTC = new Date(Date.UTC(
             dateActuelle.getUTCFullYear(),
             dateActuelle.getUTCMonth(),
             dateActuelle.getUTCDate(),
@@ -840,7 +840,7 @@
             }
         }
 
-for (const [nomAstre, donneesAstre] of Object.entries(bodiesData)) {
+        for (const [nomAstre, donneesAstre] of Object.entries(bodiesData)) {
             if (!donneesAstre) continue;
             const cache = lignesTableauCache[nomAstre];
             if (!cache) continue;
