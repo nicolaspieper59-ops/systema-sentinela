@@ -1127,36 +1127,33 @@
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
-    function envoyerDemandeCalculWorker() {
-        if (workerCalculEnCours) return;
+    // Remplacez la fonction de rafraîchissement par un cycle cadencé propre
+function envoyerDemandeCalculWorker() {
+    if (workerCalculEnCours || !workerPret) return;
 
-        const timestampExact = obtenirTimestampUTCExact();
-        const dateUtc = new Date(timestampExact);
-        
-        const elEpoch = document.getElementById('lbl-epoch');
-        if (elEpoch && !elEpoch.querySelector('input')) {
-            elEpoch.innerText = dateUtc.toISOString().substring(11, 23) + " UTC";
-            elEpoch.style.color = "var(--sky)";
-        }
-
-        const inputPicker = document.getElementById('input-time-picker');
-        if (inputPicker && !inputPicker.matches(':focus')) {
-            inputPicker.value = dateUtc.toISOString().substring(11, 19);
-        }
-
-        workerCalculEnCours = true;
-        envoyerMessageWorkerSecurise({
-            type: 'COMPUTE',
-            timestampUtc: timestampExact,
-            coords: { lat: stationActive.lat, lon: stationActive.lon, alt: stationActive.altMeters },
-            meteo: { tempC: meteoActive.temperatureC, presHpa: meteoActive.pressionBaro }
-        });
+    const timestampExact = obtenirTimestampUTCExact();
+    const dateUtc = new Date(timestampExact);
+    
+    const elEpoch = document.getElementById('lbl-epoch');
+    if (elEpoch) {
+        elEpoch.innerText = dateUtc.toISOString().substring(11, 23) + " UTC";
+        elEpoch.style.color = "var(--sky)";
     }
 
-    function lancerBoucleCalculSecurisee() {
-        envoyerDemandeCalculWorker();
-        setTimeout(lancerBoucleCalculSecurisee, 1000);
-    }
+    workerCalculEnCours = true;
+    envoyerMessageWorkerSecurise({
+        type: 'COMPUTE',
+        timestampUtc: timestampExact,
+        coords: { lat: stationActive.lat, lon: stationActive.lon, alt: stationActive.altMeters },
+        meteo: { tempC: meteoActive.temperatureC, presHpa: meteoActive.pressionBaro }
+    });
+}
+
+function lancerBoucleCalculSecurisee() {
+    envoyerDemandeCalculWorker();
+    // Utiliser setInterval contrôlé plutôt qu'une récursion sur setTimeout
+    setInterval(envoyerDemandeCalculWorker, 1000);
+}
 
     window.addEventListener('load', async () => {
         document.getElementById('html-root').classList.add('day-mode');
