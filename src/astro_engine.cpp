@@ -11,7 +11,6 @@
 #define RAD2DEG (180.0 / M_PI)
 #define UA_EN_METRES 149597870700.0
 #define VITESSE_LUMIERE_M_S 299792458.0
-#define OMEGA_TERRE_RAD_S 7.29211514670698e-5
 
 struct alignas(8) AstroResult {
     double azim;               
@@ -56,26 +55,21 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
     double jd = (timestampSec / 86400.0) + 2440587.5;
     double T = (jd - 2451545.0) / 36525.0;
 
-    // Obliquité moyenne IAU 2006
     double eps0Arcsec = 84381.448 - 46.8150 * T - 0.00059 * T * T + 0.001813 * T * T * T;
     double obliquiteDeg = eps0Arcsec / 3600.0;
 
-    // Angle de Rotation Terrestre (ERA / IAU 2000)
     double du = jd - 2451545.0;
     double eraRad = 2.0 * M_PI * (0.7790572732640 + 1.00273781191135448 * du);
     double eraDeg = normaliserDegres(eraRad * RAD2DEG);
 
-    // Temps Sidéral Apparent de Greenwich (GAST) & Local (LAST)
     double gastDeg = normaliserDegres(eraDeg + (0.00264 * std::sin((125.04 - 1934.136 * T) * DEG2RAD)));
     double lstDeg = normaliserDegres(gastDeg + lonDeg);
 
-    // Position moyenne & vraie du Soleil (Nutation de faible ordre inclus)
     double l0 = normaliserDegres(280.46646 + 36000.76983 * T);
     double m = normaliserDegres(357.52911 + 35999.05029 * T);
     double c = (1.914602 - 0.004817 * T) * std::sin(m * DEG2RAD) + (0.019993 - 0.000101 * T) * std::sin(2.0 * m * DEG2RAD);
     double sunTrueLong = normaliserDegres(l0 + c);
 
-    // Équation du temps
     double y = std::tan((obliquiteDeg / 2.0) * DEG2RAD);
     y *= y;
     double l0Rad = l0 * DEG2RAD;
@@ -94,19 +88,13 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
 EMSCRIPTEN_KEEPALIVE
 void calculerDepuisECEF(
     double xICRF_km, double yICRF_km, double zICRF_km,
-    double vxICRF_kms, double vyICRF_kms, double vzICRF_kms,
-    double xSoleilICRF_km, double ySoleilICRF_km, double zSoleilICRF_km,
-    double rayonCorpsKm,
     double latDeg, double lonDeg, double altM,
-    double eraRad, double timestampUtc,
-    double tempC, double presHpa, double extinctionCoeff,
+    double eraRad, double tempC, double presHpa, double extinctionCoeff,
     double magBruteAstre,
-    bool estLune,
     AstroResult* result
 ) {
     if (!result) return;
 
-    // Convertir ICRF km -> mètres
     double xI = xICRF_km * 1000.0;
     double yI = yICRF_km * 1000.0;
     double zI = zICRF_km * 1000.0;
@@ -116,14 +104,12 @@ void calculerDepuisECEF(
     result->decDeg = (normICRF > 0.0) ? std::asin(std::max(-1.0, std::min(1.0, zI / normICRF))) * RAD2DEG : 0.0;
     result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
 
-    // Transformation ICRF -> ECEF via la matrice ERA
     double cosERA = std::cos(eraRad);
     double sinERA = std::sin(eraRad);
     double xECEF =  xI * cosERA + yI * sinERA;
     double yECEF = -xI * sinERA + yI * cosERA;
     double zECEF =  zI;
 
-    // Position géodésique WGS84 de l'observateur
     double phi = latDeg * DEG2RAD;
     double lambda = lonDeg * DEG2RAD;
     double a = 6378137.0;
@@ -135,12 +121,10 @@ void calculerDepuisECEF(
     double yObs = (N_obs + altM) * std::cos(phi) * std::sin(lambda);
     double zObs = (N_obs * (1.0 - e2) + altM) * std::sin(phi);
 
-    // Vecteur topocentrique ECEF
     double dx = xECEF - xObs;
     double dy = yECEF - yObs;
     double dz = zECEF - zObs;
 
-    // Passage au repère ENU (East, North, Up)
     double E = -std::sin(lambda) * dx + std::cos(lambda) * dy;
     double N_top = -std::sin(phi) * std::cos(lambda) * dx - std::sin(phi) * std::sin(lambda) * dy + std::cos(phi) * dz;
     double U = std::cos(phi) * std::cos(lambda) * dx + std::cos(phi) * std::sin(lambda) * dy + std::sin(phi) * dz;
@@ -152,9 +136,8 @@ void calculerDepuisECEF(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
-    // Réfraction atmosphérique rigoureuse (Bennett & Standard IUGG)
-    if (result->elevGeom > -2.0) {
-        double h = std::max(result->elevGeom, -1.0);
+    if (result->elevGeom > -0.5) {
+        double h = std::max(result->elevGeom, -0.5);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.11)) * DEG2RAD);
         double facteurMeteo = (presHpa / 1013.25) * (283.15 / (273.15 + tempC));
         result->elevRefractee = result->elevGeom + (refArcMin * facteurMeteo) / 60.0;
@@ -162,7 +145,6 @@ void calculerDepuisECEF(
         result->elevRefractee = result->elevGeom;
     }
 
-    // Masse d'air exacte (Rozenberg / Young)
     if (result->elevRefractee > 0.0) {
         double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
         result->airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
@@ -174,7 +156,6 @@ void calculerDepuisECEF(
     result->irradiance = (result->elevRefractee > 0.0) ? 1361.0 * std::pow(0.7, result->airMass) / (result->distUA * result->distUA) : 0.0;
     result->shadowLength = (result->elevRefractee > 0.0) ? 1.0 / std::tan(std::max(1e-4, result->elevRefractee * DEG2RAD)) : -1.0;
 
-    // Code de visibilité : 0=Inconnu/Sous l'horizon, 1=Œil nu, 2=Jumelles, 3=Télescope
     if (result->elevRefractee <= 0.0) {
         result->visibiliteCode = 0;
     } else if (result->magnitudeApparente <= 6.0) {
