@@ -101,7 +101,7 @@ void calculerDepuisECEF(
 
     double normICRF = std::sqrt(xI * xI + yI * yI + zI * zI);
     result->raDeg = normaliserDegres(std::atan2(yI, xI) * RAD2DEG);
-    result->decDeg = (normICRF > 0.0) ? std::asin(std::max(-1.0, std::min(1.0, zI / normICRF))) * RAD2DEG : 0.0;
+    result->decDeg = (normICRF > 0.0) ? std::asin(std::fmax(-1.0, std::min(1.0, zI / normICRF))) * RAD2DEG : 0.0;
     result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
 
     double cosERA = std::cos(eraRad);
@@ -137,7 +137,7 @@ void calculerDepuisECEF(
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
     if (result->elevGeom > -0.5) {
-        double h = std::max(result->elevGeom, -0.5);
+        double h = std::fmax(result->elevGeom, -0.5);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.11)) * DEG2RAD);
         double facteurMeteo = (presHpa / 1013.25) * (283.15 / (273.15 + tempC));
         result->elevRefractee = result->elevGeom + (refArcMin * facteurMeteo) / 60.0;
@@ -146,7 +146,7 @@ void calculerDepuisECEF(
     }
 
     if (result->elevRefractee > 0.0) {
-        double sinH = std::sin(std::max(0.01, result->elevRefractee) * DEG2RAD);
+        double sinH = std::sin(std::fmax(0.01, result->elevRefractee) * DEG2RAD);
         result->airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
     } else {
         result->airMass = 40.0;
@@ -154,7 +154,7 @@ void calculerDepuisECEF(
 
     result->magnitudeApparente = magBruteAstre + (extinctionCoeff * result->airMass);
     result->irradiance = (result->elevRefractee > 0.0) ? 1361.0 * std::pow(0.7, result->airMass) / (result->distUA * result->distUA) : 0.0;
-    result->shadowLength = (result->elevRefractee > 0.0) ? 1.0 / std::tan(std::max(1e-4, result->elevRefractee * DEG2RAD)) : -1.0;
+    result->shadowLength = (result->elevRefractee > 0.0) ? 1.0 / std::tan(std::fmax(1e-4, result->elevRefractee * DEG2RAD)) : -1.0;
 
     if (result->elevRefractee <= 0.0) {
         result->visibiliteCode = 0;
