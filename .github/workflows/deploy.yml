@@ -140,7 +140,7 @@ jobs:
           fi
 
           test -f "lib/sofa/src/sofa.h" || test -f "lib/sofa/src/erfa.h" || { echo "ERREUR CRITIQUE : Fichiers SOFA/ERFA introuvables."; exit 1; }
-          
+
       - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
         run: |
           SRC_FILE=""
