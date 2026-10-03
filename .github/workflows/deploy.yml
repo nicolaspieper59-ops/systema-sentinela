@@ -126,9 +126,13 @@ jobs:
             SOFA_DIR=$(dirname "$SOFA_HEADER")
             cp -r "$SOFA_DIR"/* lib/sofa/src/
           else
-            echo "Clonage direct de la bibliothèque ERFA (Alternative SOFA IAU officielle)..."
-            git clone --depth 1 https://github.com/astropy/erfa.git lib/sofa/erfa_repo
-            cp lib/sofa/erfa_repo/src/* lib/sofa/src/ 2>/dev/null || true
+            echo "Téléchargement de l'archive ERFA (Alternative SOFA IAU)..."
+            curl -fsSL --connect-timeout 20 --retry 3 -o erfa.tar.gz https://github.com/astropy/erfa/archive/refs/tags/v2.0.1.1.tar.gz
+            tar -xzf erfa.tar.gz -C lib/sofa/
+            ERFA_SRC=$(find lib/sofa/ -type d -name "src" | head -n 1)
+            if [ -n "$ERFA_SRC" ]; then
+              cp -r "$ERFA_SRC"/* lib/sofa/src/
+            fi
           fi
 
           if [ -f "lib/sofa/src/erfa.h" ] && [ ! -f "lib/sofa/src/sofa.h" ]; then
@@ -136,7 +140,7 @@ jobs:
           fi
 
           test -f "lib/sofa/src/sofa.h" || test -f "lib/sofa/src/erfa.h" || { echo "ERREUR CRITIQUE : Fichiers SOFA/ERFA introuvables."; exit 1; }
-
+          
       - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
         run: |
           SRC_FILE=""
