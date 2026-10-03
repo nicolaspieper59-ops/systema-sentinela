@@ -78,7 +78,6 @@ jobs:
         run: |
           mkdir -p lib/sofa/src
 
-          # Décompression universelle sans erreur fatale
           find . -name "*.zip" -exec unzip -o {} -d lib/sofa/src/ \; || true
 
           SOFA_HEADER=$(find . -maxdepth 5 \( -name "sofa.h" -o -name "erfa.h" \) | head -n 1)
@@ -88,7 +87,7 @@ jobs:
             SOFA_DIR=$(dirname "$SOFA_HEADER")
             cp -r "$SOFA_DIR"/* lib/sofa/src/ 2>/dev/null || true
           else
-            echo "Téléchargement automatique de secours ERFA/SOFA..."
+            echo "Téléchargement automatique ERFA..."
             curl -fsSL -o erfa.tar.gz https://github.com/astropy/erfa/archive/refs/tags/v2.0.1.1.tar.gz
             tar -xzf erfa.tar.gz -C lib/sofa/
             cp -r lib/sofa/erfa-*/src/* lib/sofa/src/ 2>/dev/null || true
