@@ -78,16 +78,9 @@ jobs:
         run: |
           mkdir -p lib/sofa/src
 
-          # 1. Tentative de décompression non-bloquante si une archive existe
-          if [ -f "src/src.zip" ]; then
-            echo "Archive src/src.zip détectée, décompression..."
-            unzip -o src/src.zip -d lib/sofa/src/ || true
-          elif [ -f "src.zip" ]; then
-            echo "Archive src.zip détectée, décompression..."
-            unzip -o src.zip -d lib/sofa/src/ || true
-          fi
+          # Décompression universelle sans erreur fatale
+          find . -name "*.zip" -exec unzip -o {} -d lib/sofa/src/ \; || true
 
-          # 2. Recherche d'un en-tête déjà présent
           SOFA_HEADER=$(find . -maxdepth 5 \( -name "sofa.h" -o -name "erfa.h" \) | head -n 1)
 
           if [ -n "$SOFA_HEADER" ]; then
@@ -95,18 +88,16 @@ jobs:
             SOFA_DIR=$(dirname "$SOFA_HEADER")
             cp -r "$SOFA_DIR"/* lib/sofa/src/ 2>/dev/null || true
           else
-            echo "Téléchargement automatique de la bibliothèque ERFA..."
+            echo "Téléchargement automatique de secours ERFA/SOFA..."
             curl -fsSL -o erfa.tar.gz https://github.com/astropy/erfa/archive/refs/tags/v2.0.1.1.tar.gz
             tar -xzf erfa.tar.gz -C lib/sofa/
             cp -r lib/sofa/erfa-*/src/* lib/sofa/src/ 2>/dev/null || true
           fi
 
-          # 3. Création du shim de compatibilité sofa.h si nécessaire
           if [ -f "lib/sofa/src/erfa.h" ] && [ ! -f "lib/sofa/src/sofa.h" ]; then
             echo '#include "erfa.h"' > lib/sofa/src/sofa.h
           fi
 
-          # 4. Validation finale de la présence des fichiers requis
           test -f "lib/sofa/src/sofa.h" || test -f "lib/sofa/src/erfa.h" || { echo "ERREUR CRITIQUE : SOFA/ERFA introuvable"; exit 1; }
 
       - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
