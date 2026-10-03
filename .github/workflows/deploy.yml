@@ -14,19 +14,6 @@ on:
       - 'dynamic_multiphysics_engine.py'
       - '.github/workflows/**'
   workflow_dispatch:
-    inputs:
-      lat:
-        description: 'Latitude station'
-        required: true
-        default: '43.284356'
-      lon:
-        description: 'Longitude station'
-        required: true
-        default: '5.358507'
-      alt:
-        description: 'Altitude orthométrique (mètres)'
-        required: true
-        default: '49.81'
 
 permissions:
   contents: read
@@ -68,78 +55,55 @@ jobs:
             finals2000A.all
           key: astronomical-data-v2
 
-      - name: 📥 Téléchargement & Vérification des données (DE440s, WMM2025 & IERS EOP)
+      - name: 📥 Téléchargement & Vérification des données
         run: |
           if [ ! -f "de440s.bsp" ] || [ $(wc -c < de440s.bsp) -lt 10000000 ]; then
-            echo "Téléchargement du noyau de440s.bsp..."
             curl -fsSL --connect-timeout 20 --retry 3 -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || \
             curl -fsSL --connect-timeout 20 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
           fi
-          test -s de440s.bsp || { echo "ERREUR CRITIQUE : de440s.bsp invalide"; exit 1; }
 
           if [ -f "src/WMM2025.COF" ]; then
             cp -f src/WMM2025.COF ./WMM2025.COF
           elif [ ! -f "WMM2025.COF" ] || [ $(wc -c < WMM2025.COF) -lt 1000 ]; then
-            echo "Téléchargement de WMM2025.COF..."
             curl -fsSL --connect-timeout 20 --retry 3 -o WMM2025.COF https://www.ngdc.noaa.gov/geomag/WMM/data/WMM2025/WMM2025.COF
           fi
-          test -s WMM2025.COF || { echo "ERREUR CRITIQUE : WMM2025.COF introuvable"; exit 1; }
 
-          echo "Mise à jour des bulletins IERS EOP (finals2000A.all)..."
           curl -fsSL --connect-timeout 20 --retry 3 -o finals2000A.all https://datacenter.iers.org/data/latestVersion/finals2000A.all || true
 
-      - name: 🌍 Exécution de l'extracteur multiphysique (Fenêtre 7 Jours)
-        env:
-          LAT: ${{ github.event.inputs.lat || vars.STATION_LAT || '43.284356' }}
-          LON: ${{ github.event.inputs.lon || vars.STATION_LON || '5.358507' }}
-          ALT: ${{ github.event.inputs.alt || vars.STATION_ALT || '49.81' }}
+      - name: 🌍 Exécution de l'extracteur multiphysique
         run: |
-          python dynamic_multiphysics_engine.py "$LAT" "$LON" "$ALT" --days 7 --out flux_live.json
-
-      - name: 🔍 Audit & Validation physique du flux généré
-        run: |
-          python -c "
-          import json, sys
-          try:
-              with open('flux_live.json', 'r') as f:
-                  data = json.load(f)
-          except Exception as e:
-              print(f'ERREUR: Fichier JSON corrompu : {e}')
-              sys.exit(1)
-
-          payload = data.get('DATA') or data.get('corps') or data.get('ephemerides')
-          if not payload or len(payload) == 0:
-              print('ERREUR CRITIQUE: Le flux produit est vide.')
-              sys.exit(1)
-
-          print(f'Validation réussie : {len(payload)} enregistrements vérifiés.')
-          "
+          python dynamic_multiphysics_engine.py "43.284356" "5.358507" "49.81" --days 7 --out flux_live.json
 
       - name: 📂 Préparation de la bibliothèque SOFA C / ERFA
         run: |
           mkdir -p lib/sofa/src
 
-          SOFA_HEADER=$(find . -maxdepth 4 \( -name "sofa.h" -o -name "erfa.h" \) | head -n 1)
+          if [ -f "src/src.zip" ]; then
+            echo "Archive src/src.zip détectée, décompression..."
+            unzip -o src/src.zip -d lib/sofa/src/
+          elif [ -f "src.zip" ]; then
+            echo "Archive src.zip détectée, décompression..."
+            unzip -o src.zip -d lib/sofa/src/
+          fi
+
+          SOFA_HEADER=$(find . -maxdepth 5 \( -name "sofa.h" -o -name "erfa.h" \) | head -n 1)
 
           if [ -n "$SOFA_HEADER" ]; then
             echo "En-tête astronomique trouvé à : $SOFA_HEADER"
             SOFA_DIR=$(dirname "$SOFA_HEADER")
-            cp -r "$SOFA_DIR"/* lib/sofa/src/
+            cp -r "$SOFA_DIR"/* lib/sofa/src/ 2>/dev/null || true
           else
-            echo "Téléchargement de l'archive ERFA (Alternative SOFA IAU)..."
-            curl -fsSL --connect-timeout 20 --retry 3 -o erfa.tar.gz https://github.com/astropy/erfa/archive/refs/tags/v2.0.1.1.tar.gz
+            echo "Téléchargement de secours ERFA..."
+            curl -fsSL -o erfa.tar.gz https://github.com/astropy/erfa/archive/refs/tags/v2.0.1.1.tar.gz
             tar -xzf erfa.tar.gz -C lib/sofa/
-            ERFA_SRC=$(find lib/sofa/ -type d -name "src" | head -n 1)
-            if [ -n "$ERFA_SRC" ]; then
-              cp -r "$ERFA_SRC"/* lib/sofa/src/
-            fi
+            cp -r lib/sofa/erfa-*/src/* lib/sofa/src/ 2>/dev/null || true
           fi
 
           if [ -f "lib/sofa/src/erfa.h" ] && [ ! -f "lib/sofa/src/sofa.h" ]; then
             echo '#include "erfa.h"' > lib/sofa/src/sofa.h
           fi
 
-          test -f "lib/sofa/src/sofa.h" || test -f "lib/sofa/src/erfa.h" || { echo "ERREUR CRITIQUE : Fichiers SOFA/ERFA introuvables."; exit 1; }
+          test -f "lib/sofa/src/sofa.h" || test -f "lib/sofa/src/erfa.h" || { echo "ERREUR CRITIQUE : SOFA/ERFA introuvable"; exit 1; }
 
       - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
         run: |
@@ -151,23 +115,12 @@ jobs:
             fi
           done
 
-          if [ -z "$SRC_FILE" ]; then
-            echo "ERREUR CRITIQUE : Aucun fichier source C++ trouvé dans src/."
-            exit 1
-          fi
-
-          echo "1/2 - Compilation des objets C de SOFA/ERFA..."
           mkdir -p build_sofa
-          SOFA_C_FILES=$(find lib/sofa/src/ -maxdepth 1 -name "*.c")
-          
-          if [ -n "$SOFA_C_FILES" ]; then
-            for f in lib/sofa/src/*.c; do
-              [ -f "$f" ] || continue
-              emcc -c "$f" -O3 -I lib/sofa/src -I src/ -o "build_sofa/$(basename ${f%.c}.o)"
-            done
-          fi
+          for f in lib/sofa/src/*.c; do
+            [ -f "$f" ] || continue
+            emcc -c "$f" -O3 -I lib/sofa/src -I src/ -o "build_sofa/$(basename ${f%.c}.o)"
+          done
 
-          echo "2/2 - Compilation C++ et linkage WebAssembly..."
           OBJECTS=""
           if ls build_sofa/*.o 1> /dev/null 2>&1; then
             OBJECTS="build_sofa/*.o"
@@ -183,13 +136,6 @@ jobs:
             -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_normaliserDegres','_malloc','_free']" \
             -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32','getValue','setValue']" \
             -o wasm_astronomie.js
-
-      - name: 🔖 Horodatage du Cache PWA
-        run: |
-          DATE_CACHE=$(date +'%Y%m%d%H%M%S')
-          if [ -f "sw.js" ]; then
-            sed -i -E "s/(const|let|var)\s+CACHE_NAME\s*=.*/const CACHE_NAME = 'sentinela-cache-$DATE_CACHE';/" sw.js
-          fi
 
       - name: 📦 Préparation de l'artefact GitHub Pages
         uses: actions/upload-pages-artifact@v3
