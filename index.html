@@ -495,8 +495,9 @@
         return seuilDeriveActuelMs;
     }
 
-    let stationActive = { lat: 43.284300, lon: 5.358500, altMeters: 10.0000, nom: 'STATION INITIALE' };
-    let meteoActive = { temperatureC: 15.0, humiditePct: 50.0, pressionBaro: 1013.25 };
+    // MODIFICATION : Forcer l'attente de données réelles (suppression des approximations)
+    let stationActive = { lat: null, lon: null, altMeters: null, nom: 'EN ATTENTE DE SAISIE' };
+    let meteoActive = { temperatureC: null, humiditePct: null, pressionBaro: null };
     
     let capteursActifs = false;
     let watchPositionId = null;
@@ -691,31 +692,69 @@
     }
 
     function traiterMessageWorker(e) {
-        const data = e.data;
-        if (!data) return;
-        switch (data.type) {
-            case 'WORKER_READY':
-                workerPret = true;
-                document.getElementById('lbl-worker-status').innerText = "PRÊT";
-                document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-                chargerFichierWMMDeSecours();
-                while (fileDAttenteWorker.length > 0) {
-                    astroWorker.postMessage(fileDAttenteWorker.shift());
-                }
-                break;
-            case 'WMM_LOADED':
-                ecrireLog("WMM-2025 : Modèle géomagnétique synchronisé dans le Worker.");
-                break;
-            case 'RESULTS_COMPUTE':
-                workerCalculEnCours = false;
-                mettreAJourInterface(data);
-                break;
-            case 'ERROR':
-                workerCalculEnCours = false;
-                ecrireLog(`Erreur Worker : ${data.message}`);
-                break;
-        }
+    const data = e.data;
+    if (!data) return;
+
+    // Interception critique des erreurs fatales du Kernel Worker
+    if (data.type === 'FATAL_ERROR') {
+        déclencherVerrouillageCritique(data.message);
+        return;
     }
+
+    switch (data.type) {
+        case 'WORKER_READY':
+            workerPret = true;
+            document.getElementById('lbl-worker-status').innerText = "PRÊT";
+            document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+            chargerFichierWMMDeSecours();
+            while (fileDAttenteWorker.length > 0) {
+                astroWorker.postMessage(fileDAttenteWorker.shift());
+            }
+            break;
+        case 'WMM_LOADED':
+            ecrireLog("WMM-2025 : Modèle géomagnétique synchronisé dans le Worker.");
+            break;
+        case 'RESULTS_COMPUTE':
+            workerCalculEnCours = false;
+            // Synchronisation stricte de l'affichage DOM
+            requestAnimationFrame(() => mettreAJourInterface(data));
+            break;
+        case 'ERROR':
+            workerCalculEnCours = false;
+            ecrireLog(`Erreur Worker : ${data.message}`);
+            break;
+    }
+    }
+
+    function déclencherVerrouillageCritique(messageErreur) {
+    const dashboard = document.querySelector('.container') || document.body;
+    dashboard.style.transition = 'filter 0.3s ease';
+    dashboard.style.filter = 'blur(4px) grayscale(100%)';
+    dashboard.style.pointerEvents = 'none';
+
+    let alerte = document.getElementById('alerte-critique-systeme');
+    if (!alerte) {
+        alerte = document.createElement('div');
+        alerte.id = 'alerte-critique-systeme';
+        alerte.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(211, 47, 47, 0.9); color: white; display: flex;
+            flex-direction: column; justify-content: center; align-items: center;
+            font-size: 1.4rem; font-weight: bold; z-index: 99999; text-align: center; padding: 20px;
+        `;
+        document.body.appendChild(alerte);
+    }
+    
+    alerte.innerHTML = `
+        <div style="max-width: 600px; background: #b71c1c; padding: 30px; border-radius: 8px; box-shadow: 0 8px 16px rgba(0,0,0,0.5);">
+            <p style="margin-top: 0; font-size: 1.8rem;">🛑 ARRÊT DE SÉCURITÉ SYSTÈME</p>
+            <p style="font-size: 1rem; font-weight: normal; margin: 20px 0; line-height: 1.5;">${messageErreur}</p>
+            <button onclick="location.reload()" style="padding: 10px 20px; font-size: 1rem; font-weight: bold; cursor: pointer; background: white; color: #b71c1c; border: none; border-radius: 4px;">
+                Corriger et redémarrer
+            </button>
+        </div>
+    `;
+}
 
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
@@ -908,12 +947,21 @@
     }
 
     function appliquerCoordonneesSaisie() {
-        const lat = parseFloat(document.getElementById('input-lat').value.replace(',', '.'));
-        const lon = parseFloat(document.getElementById('input-lon').value.replace(',', '.'));
-        const altM = parseFloat(document.getElementById('input-alt').value.replace(',', '.'));
-        if (isNaN(lat) || isNaN(lon) || isNaN(altM)) return;
+    const latInput = document.getElementById('input-lat');
+    const lonInput = document.getElementById('input-lon');
+    const altInput = document.getElementById('input-alt');
 
-        mettreAJourCoordonneesStation(lat, lon, altM, 'SAISIE MANUELLE');
+    const lat = parseFloat(latInput.value.replace(',', '.'));
+    const lon = parseFloat(lonInput.value.replace(',', '.'));
+    const altM = parseFloat(altInput.value.replace(',', '.'));
+
+    // Validation stricte : aucun champ ne doit être NaN ou vide
+    if (isNaN(lat) || isNaN(lon) || isNaN(altM)) {
+        alert("ERREUR CRITIQUE : Les coordonnées géographiques (Latitude, Longitude, Altitude) doivent être explicitement renseignées et valides.");
+        return;
+    }
+
+    mettreAJourCoordonneesStation(lat, lon, altM, 'SAISIE MANUELLE');
     }
 
     function mettreAJourCoordonneesStation(lat, lon, altM, nomStation) {
