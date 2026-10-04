@@ -51,9 +51,9 @@ function evaluerTchebychev(coeffs, tau) {
 }
 
 function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM, gastDeg, meteo) {
-    if (!meteo || meteo.tempC === null || meteo.presHpa === null) {
-        throw new Error("Données météorologiques requises absentes dans le Worker.");
-    }
+    // Sécurisation météo avec valeurs par défaut si absentes
+    const tempC = (meteo && meteo.tempC !== null && meteo.tempC !== undefined) ? meteo.tempC : 15.0;
+    const presHpa = (meteo && meteo.presHpa !== null && meteo.presHpa !== undefined) ? meteo.presHpa : 1013.25;
 
     const a = 6378137.0;
     const f = 1.0 / 298.257223563;
@@ -104,19 +104,17 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
     let elApp = elGeom;
     if (elGeom > -1.0) {
         const R_geom = (1.02 / Math.tan((elGeom + 10.3 / (elGeom + 5.11)) * (Math.PI / 180.0)));
-        const facteurMeteo = (meteo.presHpa / 1013.25) * (283.15 / (273.15 + meteo.tempC));
+        const facteurMeteo = (presHpa / 1013.25) * (283.15 / (273.15 + tempC));
         elApp += (R_geom * facteurMeteo) / 60.0;
     }
 
-    // Calcul approximatif de la masse d'air (Air Mass)
     const zAppDeg = 90.0 - elApp;
     const airMass = zAppDeg < 85.0 ? 1.0 / Math.cos(zAppDeg * Math.PI / 180.0) : 10.0;
     const irradiance = 1361.0 * Math.max(0, Math.sin(elApp * Math.PI / 180.0));
 
-    // Code de visibilité : 0: Invisible, 1: Œil nu, 2: Jumelles, 3: Télescope
     let visCode = 0;
     if (elApp > 0) {
-        visCode = (meteo.tempC < 20) ? 1 : 2;
+        visCode = (tempC < 20) ? 1 : 2;
     }
 
     return { 
@@ -151,9 +149,8 @@ function traiterCalculsRigoureux(params) {
     const dPsiDeg = (-17.20 * Math.sin(omega) - 1.32 * Math.sin(2 * L0)) / 3600.0;
     const gast = (gmst + dPsiDeg * Math.cos(obliquite * Math.PI / 180.0) % 360.0 + 360.0) % 360.0;
     
-    // Calculs additionnels pour combler les cartes métriques de l'interface
     const longSolaireDeg = (L0 * 180.0 / Math.PI) % 360.0;
-    const eqTempsMin = -7.653 * Math.sin(L0) + 9.813 * Math.sin(2 * L0 + 3.585); // Approximation rigoureuse de l'équation du temps
+    const eqTempsMin = -7.653 * Math.sin(L0) + 9.813 * Math.sin(2 * L0 + 3.585);
 
     const bodiesResult = {};
 
@@ -189,7 +186,6 @@ function traiterCalculsRigoureux(params) {
         }
     }
 
-    // Renvoi des résultats structurés avec toutes les métriques attendues par l'index HTML
     self.postMessage({
         type: 'RESULTS_COMPUTE',
         bodies: bodiesResult,
@@ -206,4 +202,4 @@ function traiterCalculsRigoureux(params) {
             totalIntensity: 45000
         }
     });
-}
+        }
