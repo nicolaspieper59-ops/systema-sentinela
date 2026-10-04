@@ -1210,6 +1210,87 @@
         envoyerDemandeCalculWorker();
         setInterval(envoyerDemandeCalculWorker, 1000);
             }
+    // --- INITIALISATION DU WORKER ET SÉCURISATION ---
+const worker = new Worker('worker.js');
+
+// Affichage sécurisé des erreurs du Worker dans le bandeau UI
+worker.onerror = function(error) {
+    afficherErreurFatale(`Erreur Worker : ${error.message || "Erreur d'exécution inattendue"}`);
+};
+
+worker.onmessage = function(e) {
+    const data = e.data;
+    if (!data) return;
+
+    switch (data.type) {
+        case 'WORKER_READY':
+            console.log("Noyau astronomique opérationnel.");
+            break;
+        case 'WMM_LOADED':
+            console.log("Flux et modèles validés par le Worker.");
+            break;
+        case 'RESULTS_COMPUTE':
+            mettreAJourInterfaceSecurisee(data);
+            break;
+        case 'FATAL_ERROR':
+            afficherErreurFatale(data.message);
+            break;
+        default:
+            console.warn("Type de message non géré :", data.type);
+    }
+};
+
+// Fonction d'affichage du bandeau d'alerte
+function afficherErreurFatale(message) {
+    const banner = document.getElementById('app-error-banner');
+    const textSpan = document.getElementById('error-message-text');
+    if (banner && textSpan) {
+        textSpan.textContent = message;
+        banner.style.display = 'block';
+    }
+    console.error(message);
+}
+
+// --- MISE À JOUR SÉCURISÉE DE L'INTERFACE (Évite les plantages DOM) ---
+function mettreAJourInterfaceSecurisee(data) {
+    // Exemple sécurisé pour les métriques solaires
+    if (data.metrics) {
+        mettreAJourElement('val-eq-temps', data.metrics.eqTempsMin?.toFixed(2) + " min");
+        mettreAJourElement('val-excentricite', data.metrics.excentricite?.toFixed(6));
+        mettreAJourElement('val-long-solaire', data.metrics.longSolaireDeg?.toFixed(2) + "°");
+    }
+
+    // Mise à jour sécurisée du tableau des astres
+    if (data.bodies) {
+        for (const [nom, astre] of Object.entries(data.bodies)) {
+            mettreAJourElement(`el-${nom}`, astre.elevationGeometrique !== undefined ? astre.elevationGeometrique.toFixed(2) + "°" : "--");
+            mettreAJourElement(`az-${nom}`, astre.azimuth !== undefined ? astre.azimuth.toFixed(2) + "°" : "--");
+        }
+    }
+}
+
+// Utilitaire pour modifier un élément seulement s'il existe dans le DOM
+function mettreAJourElement(id, valeur) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.textContent = valeur;
+    }
+}
+
+// --- GESTION DU REDIMENSIONNEMENT 3D (Three.js) ---
+window.addEventListener('resize', () => {
+    // Remplacez 'renderer' et 'camera' par vos variables globales Three.js si leurs noms diffèrent
+    if (typeof renderer !== 'undefined' && typeof camera !== 'undefined' && typeof scene !== 'undefined') {
+        const container = renderer.domElement.parentElement;
+        if (container) {
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        }
+    }
+});
 
     window.addEventListener('load', async () => {
         document.getElementById('html-root').classList.add('day-mode');
