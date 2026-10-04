@@ -1148,7 +1148,22 @@ function envoyerDemandeCalculWorker() {
         meteo: { tempC: meteoActive.temperatureC, presHpa: meteoActive.pressionBaro }
     });
 }
+// Dans le thread principal (main.js ou index.html)
+import { getMagneticDeclination } from './meteo_manager.js';
 
+function declencherCalcul(temps, coords, meteo) {
+    // Calcul rigoureux WMM-2025 en amont (pas de fallback géométrique)
+    const declinaisonMag = getMagneticDeclination(coords.lat, coords.lon, coords.alt, temps);
+    
+    // Enrichissement du payload pour le Worker
+    meteo.declinaisonMag = declinaisonMag;
+
+    worker.postMessage({
+        time: temps,
+        coords: coords,
+        meteo: meteo
+    });
+                                                            }
 function lancerBoucleCalculSecurisee() {
     envoyerDemandeCalculWorker();
     // Utiliser setInterval contrôlé plutôt qu'une récursion sur setTimeout
