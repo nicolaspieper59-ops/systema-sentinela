@@ -230,16 +230,19 @@
     </style>
 </head>
 <body>
+
+<!-- Bandeau d'alerte global pour les erreurs fatales (Corrigé et isolé) -->
+<div id="app-error-banner" style="display: none; position: fixed; top: 0; left: 0; width: 100%; background-color: #ff4d4d; color: white; padding: 12px; text-align: center; z-index: 9999; font-family: sans-serif; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
+    <span id="error-message-text">Une erreur critique est survenue.</span>
+    <button onclick="document.getElementById('app-error-banner').style.display='none'" style="margin-left: 20px; background: white; color: #ff4d4d; border: none; padding: 4px 8px; cursor: pointer; font-weight: bold; border-radius: 4px;">Fermer</button>
+</div>
+
 <div class="container">
     <header class="master-header">
         <div class="brand">SYSTEMA SENTINELA v19.12 — KERNEL RIGOROUS REPOSITORY</div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <div>JPL FLUX : <span id="lbl-jpl-status" style="color:var(--amber); font-weight:bold;">CHARGEMENT...</span></div>
             <div>WORKER : <span id="lbl-worker-status" style="color:var(--amber); font-weight:bold;">INIT...</span></div>
-            <!-- Bandeau d'alerte global pour les erreurs fatales -->
-<div id="app-error-banner" style="display: none; position: fixed; top: 0; left: 0; width: 100%; background-color: #ff4d4d; color: white; padding: 12px; text-align: center; z-index: 9999; font-family: sans-serif; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
-    <span id="error-message-text">Une erreur critique est survenue.</span>
-    <button onclick="document.getElementById('app-error-banner').style.display='none'" style="margin-left: 20px; background: white; color: #ff4d4d; border: none; padding: 4px 8px; cursor: pointer; font-weight: bold; border-radius: 4px;">Fermer</button>
             <div>EPOCH UTC : <span id="lbl-epoch" class="time-utc">--</span></div>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR / NUIT</button>
         </div>
@@ -463,7 +466,7 @@
         const timestampActuel = obtenirTimestampUTCExact();
         const dateActuelle = new Date(timestampActuel);
         
-                const dateCibleUTC = new Date(Date.UTC(
+        const dateCibleUTC = new Date(Date.UTC(
             dateActuelle.getUTCFullYear(),
             dateActuelle.getUTCMonth(),
             dateActuelle.getUTCDate(),
@@ -499,9 +502,8 @@
         return seuilDeriveActuelMs;
     }
 
-    // MODIFICATION : Forcer l'attente de données réelles (suppression des approximations)
-    let stationActive = { lat: null, lon: null, altMeters: null, nom: 'EN ATTENTE DE SAISIE' };
-    let meteoActive = { temperatureC: null, humiditePct: null, pressionBaro: null };
+    let stationActive = { lat: 43.284300, lon: 5.358500, altMeters: 10.0, nom: 'INITIALISATION' };
+    let meteoActive = { temperatureC: 15.0, humiditePct: 50.0, pressionBaro: 1013.25 };
     
     let capteursActifs = false;
     let watchPositionId = null;
@@ -689,76 +691,54 @@
             const reponse = await fetch('WMM2025.COF');
             if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable.");
             const texteCof = await reponse.text();
-            meteoManager.parseWMM2025COF(texteCof); // Utilisation directe du module météo
+            meteoManager.parseWMM2025COF(texteCof);
         } catch (e) {
             ecrireLog("WMM : Avertissement - WMM2025.COF non chargé automatiquement.");
         }
     }
     
     function traiterMessageWorker(e) {
-    const data = e.data;
-    if (!data) return;
+        const data = e.data;
+        if (!data) return;
 
-    // Interception critique des erreurs fatales du Kernel Worker
-    if (data.type === 'FATAL_ERROR') {
-        déclencherVerrouillageCritique(data.message);
-        return;
-    }
+        if (data.type === 'FATAL_ERROR') {
+            déclencherVerrouillageCritique(data.message);
+            return;
+        }
 
-    switch (data.type) {
-        case 'WORKER_READY':
-            workerPret = true;
-            document.getElementById('lbl-worker-status').innerText = "PRÊT";
-            document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-            chargerFichierWMMDeSecours();
-            while (fileDAttenteWorker.length > 0) {
-                astroWorker.postMessage(fileDAttenteWorker.shift());
-            }
-            break;
-        case 'WMM_LOADED':
-            ecrireLog("WMM-2025 : Modèle géomagnétique synchronisé dans le Worker.");
-            break;
-        case 'RESULTS_COMPUTE':
-            workerCalculEnCours = false;
-            // Synchronisation stricte de l'affichage DOM
-            requestAnimationFrame(() => mettreAJourInterface(data));
-            break;
-        case 'ERROR':
-            workerCalculEnCours = false;
-            ecrireLog(`Erreur Worker : ${data.message}`);
-            break;
-    }
+        switch (data.type) {
+            case 'WORKER_READY':
+                workerPret = true;
+                document.getElementById('lbl-worker-status').innerText = "PRÊT";
+                document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+                chargerFichierWMMDeSecours();
+                while (fileDAttenteWorker.length > 0) {
+                    astroWorker.postMessage(fileDAttenteWorker.shift());
+                }
+                break;
+            case 'WMM_LOADED':
+                ecrireLog("WMM-2025 : Modèle géomagnétique synchronisé dans le Worker.");
+                break;
+            case 'RESULTS_COMPUTE':
+                workerCalculEnCours = false;
+                requestAnimationFrame(() => mettreAJourInterface(data));
+                break;
+            case 'ERROR':
+                workerCalculEnCours = false;
+                ecrireLog(`Erreur Worker : ${data.message}`);
+                break;
+        }
     }
 
     function déclencherVerrouillageCritique(messageErreur) {
-    const dashboard = document.querySelector('.container') || document.body;
-    dashboard.style.transition = 'filter 0.3s ease';
-    dashboard.style.filter = 'blur(4px) grayscale(100%)';
-    dashboard.style.pointerEvents = 'none';
-
-    let alerte = document.getElementById('alerte-critique-systeme');
-    if (!alerte) {
-        alerte = document.createElement('div');
-        alerte.id = 'alerte-critique-systeme';
-        alerte.style.cssText = `
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(211, 47, 47, 0.9); color: white; display: flex;
-            flex-direction: column; justify-content: center; align-items: center;
-            font-size: 1.4rem; font-weight: bold; z-index: 99999; text-align: center; padding: 20px;
-        `;
-        document.body.appendChild(alerte);
+        const banner = document.getElementById('app-error-banner');
+        const textSpan = document.getElementById('error-message-text');
+        if (banner && textSpan) {
+            textSpan.textContent = messageErreur;
+            banner.style.display = 'block';
+        }
+        console.error(messageErreur);
     }
-    
-    alerte.innerHTML = `
-        <div style="max-width: 600px; background: #b71c1c; padding: 30px; border-radius: 8px; box-shadow: 0 8px 16px rgba(0,0,0,0.5);">
-            <p style="margin-top: 0; font-size: 1.8rem;">🛑 ARRÊT DE SÉCURITÉ SYSTÈME</p>
-            <p style="font-size: 1rem; font-weight: normal; margin: 20px 0; line-height: 1.5;">${messageErreur}</p>
-            <button onclick="location.reload()" style="padding: 10px 20px; font-size: 1rem; font-weight: bold; cursor: pointer; background: white; color: #b71c1c; border: none; border-radius: 4px;">
-                Corriger et redémarrer
-            </button>
-        </div>
-    `;
-}
 
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
@@ -951,21 +931,20 @@
     }
 
     function appliquerCoordonneesSaisie() {
-    const latInput = document.getElementById('input-lat');
-    const lonInput = document.getElementById('input-lon');
-    const altInput = document.getElementById('input-alt');
+        const latInput = document.getElementById('input-lat');
+        const lonInput = document.getElementById('input-lon');
+        const altInput = document.getElementById('input-alt');
 
-    const lat = parseFloat(latInput.value.replace(',', '.'));
-    const lon = parseFloat(lonInput.value.replace(',', '.'));
-    const altM = parseFloat(altInput.value.replace(',', '.'));
+        const lat = parseFloat(latInput.value.replace(',', '.'));
+        const lon = parseFloat(lonInput.value.replace(',', '.'));
+        const altM = parseFloat(altInput.value.replace(',', '.'));
 
-    // Validation stricte : aucun champ ne doit être NaN ou vide
-    if (isNaN(lat) || isNaN(lon) || isNaN(altM)) {
-        alert("ERREUR CRITIQUE : Les coordonnées géographiques (Latitude, Longitude, Altitude) doivent être explicitement renseignées et valides.");
-        return;
-    }
+        if (isNaN(lat) || isNaN(lon) || isNaN(altM)) {
+            alert("ERREUR CRITIQUE : Les coordonnées géographiques (Latitude, Longitude, Altitude) doivent être explicitement renseignées et valides.");
+            return;
+        }
 
-    mettreAJourCoordonneesStation(lat, lon, altM, 'SAISIE MANUELLE');
+        mettreAJourCoordonneesStation(lat, lon, altM, 'SAISIE MANUELLE');
     }
 
     function mettreAJourCoordonneesStation(lat, lon, altM, nomStation) {
@@ -1179,7 +1158,6 @@
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
-// Cycle cadencé propre pour l'envoi des calculs au Worker
     function envoyerDemandeCalculWorker() {
         if (workerCalculEnCours || !workerPret) return;
 
@@ -1194,7 +1172,6 @@
 
         workerCalculEnCours = true;
         
-        // Transmission sécurisée avec les clés attendues par le Worker
         envoyerMessageWorkerSecurise({
             type: 'COMPUTE',
             timestampUtc: timestampExact,
@@ -1209,88 +1186,21 @@
     function lancerBoucleCalculSecurisee() {
         envoyerDemandeCalculWorker();
         setInterval(envoyerDemandeCalculWorker, 1000);
+    }
+
+    // Redimensionnement 3D sécurisé global
+    window.addEventListener('resize', () => {
+        if (typeof globeRenderer !== 'undefined' && typeof globeCamera !== 'undefined') {
+            const container = globeRenderer.domElement.parentElement;
+            if (container) {
+                const width = container.clientWidth;
+                const height = container.clientHeight;
+                globeCamera.aspect = width / height;
+                globeCamera.updateProjectionMatrix();
+                globeRenderer.setSize(width, height);
             }
-    // --- INITIALISATION DU WORKER ET SÉCURISATION ---
-const worker = new Worker('worker.js');
-
-// Affichage sécurisé des erreurs du Worker dans le bandeau UI
-worker.onerror = function(error) {
-    afficherErreurFatale(`Erreur Worker : ${error.message || "Erreur d'exécution inattendue"}`);
-};
-
-worker.onmessage = function(e) {
-    const data = e.data;
-    if (!data) return;
-
-    switch (data.type) {
-        case 'WORKER_READY':
-            console.log("Noyau astronomique opérationnel.");
-            break;
-        case 'WMM_LOADED':
-            console.log("Flux et modèles validés par le Worker.");
-            break;
-        case 'RESULTS_COMPUTE':
-            mettreAJourInterfaceSecurisee(data);
-            break;
-        case 'FATAL_ERROR':
-            afficherErreurFatale(data.message);
-            break;
-        default:
-            console.warn("Type de message non géré :", data.type);
-    }
-};
-
-// Fonction d'affichage du bandeau d'alerte
-function afficherErreurFatale(message) {
-    const banner = document.getElementById('app-error-banner');
-    const textSpan = document.getElementById('error-message-text');
-    if (banner && textSpan) {
-        textSpan.textContent = message;
-        banner.style.display = 'block';
-    }
-    console.error(message);
-}
-
-// --- MISE À JOUR SÉCURISÉE DE L'INTERFACE (Évite les plantages DOM) ---
-function mettreAJourInterfaceSecurisee(data) {
-    // Exemple sécurisé pour les métriques solaires
-    if (data.metrics) {
-        mettreAJourElement('val-eq-temps', data.metrics.eqTempsMin?.toFixed(2) + " min");
-        mettreAJourElement('val-excentricite', data.metrics.excentricite?.toFixed(6));
-        mettreAJourElement('val-long-solaire', data.metrics.longSolaireDeg?.toFixed(2) + "°");
-    }
-
-    // Mise à jour sécurisée du tableau des astres
-    if (data.bodies) {
-        for (const [nom, astre] of Object.entries(data.bodies)) {
-            mettreAJourElement(`el-${nom}`, astre.elevationGeometrique !== undefined ? astre.elevationGeometrique.toFixed(2) + "°" : "--");
-            mettreAJourElement(`az-${nom}`, astre.azimuth !== undefined ? astre.azimuth.toFixed(2) + "°" : "--");
         }
-    }
-}
-
-// Utilitaire pour modifier un élément seulement s'il existe dans le DOM
-function mettreAJourElement(id, valeur) {
-    const el = document.getElementById(id);
-    if (el) {
-        el.textContent = valeur;
-    }
-}
-
-// --- GESTION DU REDIMENSIONNEMENT 3D (Three.js) ---
-window.addEventListener('resize', () => {
-    // Remplacez 'renderer' et 'camera' par vos variables globales Three.js si leurs noms diffèrent
-    if (typeof renderer !== 'undefined' && typeof camera !== 'undefined' && typeof scene !== 'undefined') {
-        const container = renderer.domElement.parentElement;
-        if (container) {
-            const width = container.clientWidth;
-            const height = container.clientHeight;
-            camera.aspect = width / height;
-            camera.updateProjectionMatrix();
-            renderer.setSize(width, height);
-        }
-    }
-});
+    });
 
     window.addEventListener('load', async () => {
         document.getElementById('html-root').classList.add('day-mode');
