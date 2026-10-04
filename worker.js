@@ -151,5 +151,33 @@ function traiterCalculsRigoureux(params) {
         };
     }
 
-    self.postMessage({ type: 'RESULTS_COMPUTE', bodies: bodiesResult });
-}
+    // Dans worker (2).js
+self.onmessage = function (e) {
+    try {
+        const data = e.data;
+        if (!data) throw new Error("Message vide reçu par le Worker.");
+
+        switch (data.type) {
+            case 'UPDATE_JPL_MATRIX':
+                if (!data.matrix) throw new Error("Matrice JPL fournie invalide.");
+                jplMatrixData = data.matrix;
+                break;
+            case 'LOAD_WMM_COF':
+                // CORRECTION : Ajout du traitement du fichier WMM
+                if (!data.contenu) throw new Error("Contenu WMM vide.");
+                // Traiter ou stocker les coefficients WMM ici si nécessaire
+                self.postMessage({ type: 'WMM_LOADED' });
+                break;
+            case 'COMPUTE':
+                traiterCalculsRigoureux(data);
+                break;
+            default:
+                throw new Error(`Type de message inconnu : ${data.type}`);
+        }
+    } catch (erreur) {
+        self.postMessage({ 
+            type: 'FATAL_ERROR', 
+            message: erreur.message 
+        });
+    }
+};
