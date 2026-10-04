@@ -685,12 +685,12 @@
             const reponse = await fetch('WMM2025.COF');
             if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable.");
             const texteCof = await reponse.text();
-            envoyerMessageWorkerSecurise({ type: 'LOAD_WMM_COF', contenu: texteCof });
+            meteoManager.parseWMM2025COF(texteCof); // Utilisation directe du module météo
         } catch (e) {
             ecrireLog("WMM : Avertissement - WMM2025.COF non chargé automatiquement.");
         }
     }
-
+    
     function traiterMessageWorker(e) {
     const data = e.data;
     if (!data) return;
@@ -1175,30 +1175,6 @@
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
-    // Remplacez la fonction de rafraîchissement par un cycle cadencé propre
-function envoyerDemandeCalculWorker() {
-    if (workerCalculEnCours || !workerPret) return;
-
-    const timestampExact = obtenirTimestampUTCExact();
-    const dateUtc = new Date(timestampExact);
-    
-    const elEpoch = document.getElementById('lbl-epoch');
-    if (elEpoch) {
-        elEpoch.innerText = dateUtc.toISOString().substring(11, 23) + " UTC";
-        elEpoch.style.color = "var(--sky)";
-    }
-
-    workerCalculEnCours = true;
-    envoyerMessageWorkerSecurise({
-        type: 'COMPUTE',
-        timestampUtc: timestampExact,
-        coords: { lat: stationActive.lat, lon: stationActive.lon, alt: stationActive.altMeters },
-        meteo: { tempC: meteoActive.temperatureC, presHpa: meteoActive.pressionBaro }
-    });
-}
-// Dans le thread principal (main.js ou index.html)
-import { getMagneticDeclination } from './meteo_manager.js';
-
 // Cycle cadencé propre pour l'envoi des calculs au Worker
     function envoyerDemandeCalculWorker() {
         if (workerCalculEnCours || !workerPret) return;
@@ -1214,7 +1190,7 @@ import { getMagneticDeclination } from './meteo_manager.js';
 
         workerCalculEnCours = true;
         
-        // Transmission sécurisée avec les clés attendues par le Worker (tempC, presHpa)
+        // Transmission sécurisée avec les clés attendues par le Worker
         envoyerMessageWorkerSecurise({
             type: 'COMPUTE',
             timestampUtc: timestampExact,
@@ -1228,9 +1204,9 @@ import { getMagneticDeclination } from './meteo_manager.js';
 
     function lancerBoucleCalculSecurisee() {
         envoyerDemandeCalculWorker();
-        // Utilisation d'un setInterval contrôlé (1 seconde)
         setInterval(envoyerDemandeCalculWorker, 1000);
-    }
+            }
+
     window.addEventListener('load', async () => {
         document.getElementById('html-root').classList.add('day-mode');
         dessinerRadarAstres({}, 0);
