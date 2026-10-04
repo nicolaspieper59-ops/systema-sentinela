@@ -1,5 +1,5 @@
 /**
- * METEO & GEOMAGNETIC MANAGER - WMM-2025 COMPATIBLE
+ * METEO & GEOMAGNETIC MANAGER - STRICT MODE (WMM-2025)
  */
 
 export class MeteoManager {
@@ -8,14 +8,13 @@ export class MeteoManager {
     }
 
     init() {
-        console.log("[METEO MANAGER] Initialisé.");
+        console.log("[METEO MANAGER] Initialisé en mode strict.");
     }
 
-    /**
-     * Charge et parse les coefficients WMM2025.COF
-     */
     parseWMM2025COF(cofText) {
-        if (!cofText) return;
+        if (!cofText || cofText.trim().length === 0) {
+            throw new Error("[FATAL] Fichier WMM2025.COF absent ou vide.");
+        }
         const lines = cofText.split('\n');
         const coeffs = [];
         for (let line of lines) {
@@ -33,29 +32,22 @@ export class MeteoManager {
                 });
             }
         }
+        if (coeffs.length === 0) {
+            throw new Error("[FATAL] Aucun coefficient valide trouvé dans WMM2025.COF.");
+        }
         this.wmmCoeffs = coeffs;
         console.log(`[METEO MANAGER] WMM-2025 chargé (${coeffs.length} coefficients).`);
     }
 
-    /**
-     * Calcul des composantes X, Y, Z du champ magnétique selon WMM-2025 (Calcul approché géodésique / Dipolaire ajusté)
-     */
     computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
         if (!this.wmmCoeffs) {
-            // Valeurs de repli géodésiques estimées pour la France si COF absent
-            return {
-                declination: 2.45,
-                inclination: 61.15,
-                totalIntensity: 46500.0,
-                horizontalIntensity: 22400.0
-            };
+            throw new Error("[FATAL] Calcul magnétique impossible : coefficients WMM non chargés.");
         }
 
         const rad = Math.PI / 180.0;
         const phi = latDeg * rad;
         const lambda = lonDeg * rad;
 
-        // Modèle de champ dipolaire gaussien WMM simplifié basé sur les coefficients extraits
         let g10 = -29404.5, g11 = -1450.9, h11 = 4652.9;
         const dt = decimalYear - 2025.0;
 
@@ -75,21 +67,18 @@ export class MeteoManager {
         const H = Math.sqrt(X * X + Y * Y);
         const F = Math.sqrt(H * H + Z * Z);
 
-        const declination = Math.atan2(Y, X) * (180.0 / Math.PI);
-        const inclination = Math.atan2(Z, H) * (180.0 / Math.PI);
-
         return {
-            declination: declination,
-            inclination: inclination,
+            declination: Math.atan2(Y, X) * (180.0 / Math.PI),
+            inclination: Math.atan2(Z, H) * (180.0 / Math.PI),
             totalIntensity: Math.abs(F),
             horizontalIntensity: H
         };
     }
 
-    /**
-     * Réfraction atmosphérique Bennett
-     */
-    computeRefraction(trueElevationDeg, tempC = 15.0, presHpa = 1013.25) {
+    computeRefraction(trueElevationDeg, tempC, presHpa) {
+        if (tempC === undefined || presHpa === undefined || tempC === null || presHpa === null) {
+            throw new Error("[FATAL] Paramètres atmosphériques requis (tempC et presHpa) absents pour la réfraction.");
+        }
         if (trueElevationDeg < -1.0) return 0.0;
         const hRad = Math.max(trueElevationDeg, -0.5) * (Math.PI / 180.0);
         const R_arcmin = (1.0 / Math.tan(hRad + (7.31 / (hRad + 4.4 * (Math.PI / 180.0))))) * (presHpa / 1013.25) * (283.15 / (273.15 + tempC));
