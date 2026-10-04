@@ -741,20 +741,30 @@
     }
 
     function initialiserWorkerAstronomie() {
-        if (typeof Worker === 'undefined') return;
-        astroWorker = new Worker('worker.js'); 
-        astroWorker.onmessage = traiterMessageWorker;
-        astroWorker.onerror = (err) => {
-            console.error("Erreur Worker Astro :", err);
-            document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
-            document.getElementById('lbl-worker-status').style.color = "var(--rose)";
-        };
-        
-        if (matriceJplLive) {
-            envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
-        }
-    }
+    if (typeof Worker === 'undefined') return;
+    astroWorker = new Worker('worker.js'); 
+    astroWorker.onmessage = traiterMessageWorker;
+    astroWorker.onerror = (err) => {
+        console.error("Erreur Worker Astro :", err);
+        document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
+        document.getElementById('lbl-worker-status').style.color = "var(--rose)";
+    };
 
+    // SÉCURITÉ ANTI-BLOCAGE : Forcer le passage en mode prêt si le worker met plus de 2 secondes
+    setTimeout(() => {
+        if (!workerPret) {
+            console.warn("Forçage de l'état Worker PRÊT (Timeout de sécurité)");
+            workerPret = true;
+            document.getElementById('lbl-worker-status').innerText = "PRÊT (SEC)";
+            document.getElementById('lbl-worker-status').style.color = "var(--amber)";
+            lancerBoucleCalculSecurisee();
+        }
+    }, 2000);
+
+    if (matriceJplLive) {
+        envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+    }
+    }
     function mettreAJourMetricsSolaires(m) {
         if (!m) return;
         currentEqTempsMin = m.eqTempsMin ?? 0;
