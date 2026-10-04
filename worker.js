@@ -171,6 +171,8 @@ self.onmessage = function (e) {
         self.postMessage({ 
             type: 'FATAL_ERROR', 
             message: erreur.message 
+            // Ajoutez cette ligne tout à la fin de votre fichier worker.js :
+self.postMessage({ type: 'WORKER_READY' });
         });
     }
 };
