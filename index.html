@@ -236,6 +236,10 @@
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <div>JPL FLUX : <span id="lbl-jpl-status" style="color:var(--amber); font-weight:bold;">CHARGEMENT...</span></div>
             <div>WORKER : <span id="lbl-worker-status" style="color:var(--amber); font-weight:bold;">INIT...</span></div>
+            <!-- Bandeau d'alerte global pour les erreurs fatales -->
+<div id="app-error-banner" style="display: none; position: fixed; top: 0; left: 0; width: 100%; background-color: #ff4d4d; color: white; padding: 12px; text-align: center; z-index: 9999; font-family: sans-serif; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
+    <span id="error-message-text">Une erreur critique est survenue.</span>
+    <button onclick="document.getElementById('app-error-banner').style.display='none'" style="margin-left: 20px; background: white; color: #ff4d4d; border: none; padding: 4px 8px; cursor: pointer; font-weight: bold; border-radius: 4px;">Fermer</button>
             <div>EPOCH UTC : <span id="lbl-epoch" class="time-utc">--</span></div>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR / NUIT</button>
         </div>
