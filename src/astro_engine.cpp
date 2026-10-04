@@ -149,7 +149,7 @@ void calculerDepuisECEF(
         double sinH = std::sin(std::fmax(0.01, result->elevRefractee) * DEG2RAD);
         result->airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
     } else {
-        result->airMass = 40.0;
+        result->airMass = -1.0; // Valeur sentinelle stricte au lieu de 40.0
     }
 
     result->magnitudeApparente = magBruteAstre + (extinctionCoeff * result->airMass);
