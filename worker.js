@@ -4,6 +4,9 @@
 
 let jplMatrixData = null;
 
+// 1. Notifier immédiatement le fil principal que le Worker est prêt
+self.postMessage({ type: 'WORKER_READY' });
+
 self.onmessage = function (e) {
     try {
         const data = e.data;
@@ -151,28 +154,13 @@ function traiterCalculsRigoureux(params) {
         };
     }
 
-self.onmessage = function (e) {
-    try {
-        const data = e.data;
-        if (!data) throw new Error("Message vide reçu par le Worker.");
-
-        switch (data.type) {
-            case 'UPDATE_JPL_MATRIX':
-                if (!data.matrix) throw new Error("Matrice JPL fournie invalide.");
-                jplMatrixData = data.matrix;
-                break;
-            case 'COMPUTE':
-                traiterCalculsRigoureux(data);
-                break;
-            default:
-                throw new Error(`Type de message inconnu : ${data.type}`);
+    // [CORRECTIF] Renvoi indispensable des résultats vers le fil principal
+    self.postMessage({
+        type: 'RESULTS_COMPUTE',
+        bodies: bodiesResult,
+        metrics: {
+            gastDeg: gast,
+            obliquiteDeg: obliquite
         }
-    } catch (erreur) {
-        self.postMessage({ 
-            type: 'FATAL_ERROR', 
-            message: erreur.message 
-            // Ajoutez cette ligne tout à la fin de votre fichier worker.js :
-self.postMessage({ type: 'WORKER_READY' });
-        });
-    }
-};
+    });
+        }
