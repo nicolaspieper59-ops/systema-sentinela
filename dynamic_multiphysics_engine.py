@@ -176,13 +176,6 @@ def main():
     except Exception as e:
         print(f"[ERREUR FATALE] {e}", file=sys.stderr)
         sys.exit(1)
-return {
-        "t_start": float(t1_unix),
-        "t_end": float(t2_unix),
-        "rayon_km": float(RAYONS_EQUATORIAUX_KM[nom_corps]), # Lève une KeyError stricte si absent
-        "cx": cx, "cy": cy, "cz": cz,
-        "cvx": cvx, "cvy": cvy, "cvz": cvz,
-        "mag": float(mag_val)
-    }
+
 if __name__ == "__main__":
     main()
