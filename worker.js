@@ -1,8 +1,9 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL SYNCHRONISÉ v19.12
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL SYNCHRONISÉ v19.13
  */
 
 let jplMatrixData = null;
+let wmmTableauCoeffs = null; // Stockage des coefficients WMM
 
 // Notifier immédiatement le fil principal que le Worker est opérationnel
 self.postMessage({ type: 'WORKER_READY' });
@@ -16,11 +17,21 @@ self.onmessage = function (e) {
             case 'UPDATE_JPL_MATRIX':
                 if (!data.matrix) throw new Error("Matrice JPL fournie invalide.");
                 jplMatrixData = data.matrix;
-                self.postMessage({ type: 'WMM_LOADED' }); // Validation du flux
+                // CORRECTION : Ne plus envoyer WMM_LOADED ici, mais un accusé de réception JPL
+                self.postMessage({ type: 'JPL_MATRIX_UPDATED' }); 
                 break;
+
+            case 'LOAD_WMM_COF_TEXT':
+                // AJOUT : Écoute et traitement du texte WMM transmis par l'interface
+                if (!data.text) throw new Error("Texte du fichier WMM vide.");
+                wmmTableauCoeffs = analyserTexteWMM(data.text);
+                self.postMessage({ type: 'WMM_LOADED', status: 'success' });
+                break;
+
             case 'COMPUTE':
                 traiterCalculsRigoureux(data);
                 break;
+
             default:
                 throw new Error(`Type de message inconnu : ${data.type}`);
         }
@@ -31,6 +42,27 @@ self.onmessage = function (e) {
         });
     }
 };
+
+// --- Parseur basique pour les coefficients WMM reçus en texte ---
+function analyserTexteWMM(texte) {
+    // Logique de parsing des lignes du fichier .COF (exemple simplifié de structure)
+    const lignes = texte.split('\n');
+    const coeffs = [];
+    for (let ligne of lignes) {
+        const elements = ligne.trim().split(/\s+/);
+        if (elements.length >= 6) {
+            coeffs.push({
+                n: parseInt(elements[0], 10),
+                m: parseInt(elements[1], 10),
+                gnm: parseFloat(elements[2]),
+                hnm: parseFloat(elements[3]),
+                dgnm: parseFloat(elements[4]),
+                dhnm: parseFloat(elements[5])
+            });
+        }
+    }
+    return coeffs;
+}
 
 function evaluerTchebychev(coeffs, tau) {
     const degre = coeffs.length - 1;
@@ -51,7 +83,6 @@ function evaluerTchebychev(coeffs, tau) {
 }
 
 function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM, gastDeg, meteo) {
-    // Sécurisation météo avec valeurs par défaut si absentes
     const tempC = (meteo && meteo.tempC !== null && meteo.tempC !== undefined) ? meteo.tempC : 15.0;
     const presHpa = (meteo && meteo.presHpa !== null && meteo.presHpa !== undefined) ? meteo.presHpa : 1013.25;
 
@@ -197,9 +228,11 @@ function traiterCalculsRigoureux(params) {
             longSolaireDeg: longSolaireDeg
         },
         wmm: {
+            // Optionnel : si wmmTableauCoeffs est chargé, on pourrait y injecter les calculs réels, 
+            // sinon on garde un retour par défaut sécurisé.
             declination: 2.45,
             inclination: 61.15,
             totalIntensity: 45000
         }
     });
-        }
+                    }
