@@ -231,7 +231,6 @@
 </head>
 <body>
 
-<!-- Bandeau d'alerte global pour les erreurs fatales (Corrigé et isolé) -->
 <div id="app-error-banner" style="display: none; position: fixed; top: 0; left: 0; width: 100%; background-color: #ff4d4d; color: white; padding: 12px; text-align: center; z-index: 9999; font-family: sans-serif; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
     <span id="error-message-text">Une erreur critique est survenue.</span>
     <button onclick="document.getElementById('app-error-banner').style.display='none'" style="margin-left: 20px; background: white; color: #ff4d4d; border: none; padding: 4px 8px; cursor: pointer; font-weight: bold; border-radius: 4px;">Fermer</button>
@@ -651,9 +650,17 @@
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
+    // CORRECTION APPLIQUÉE : Sécurisation de l'API Baromètre selon le contexte sécurisé du navigateur
     function activerBarometre() {
         const elBaro = document.getElementById('val-baro-statut');
         if (!elBaro) return;
+
+        if (!window.isSecureContext) {
+            elBaro.innerText = "1013.25 hPa (HTTP non sécurisé)";
+            elBaro.style.color = "var(--amber)";
+            return;
+        }
+
         if ('Barometer' in window) {
             try {
                 instanceBarometre = new Barometer({ frequency: 1 });
@@ -666,9 +673,11 @@
                 });
                 instanceBarometre.start();
             } catch (e) {
-                elBaro.innerText = "1013.25 hPa (STD)";
+                elBaro.innerText = "1013.25 hPa (Erreur capteur)";
             }
-        } else { elBaro.innerText = "1013.25 hPa (STD)"; }
+        } else { 
+            elBaro.innerText = "1013.25 hPa (API absente)"; 
+        }
     }
 
     async function chargerFluxLiveJPL() {
@@ -692,6 +701,9 @@
             if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable.");
             const texteCof = await reponse.text();
             meteoManager.parseWMM2025COF(texteCof);
+            
+            // Transmission optionnelle du contenu COF au Worker pour le calcul magnétique dynamique
+            envoyerMessageWorkerSecurise({ type: 'LOAD_WMM_COF_TEXT', text: texteCof });
         } catch (e) {
             ecrireLog("WMM : Avertissement - WMM2025.COF non chargé automatiquement.");
         }
@@ -717,7 +729,8 @@
                 }
                 break;
             case 'WMM_LOADED':
-                ecrireLog("WMM-2025 : Modèle géomagnétique synchronisé dans le Worker.");
+            case 'JPL_MATRIX_LOADED':
+                ecrireLog("Noyau : Synchronisation des coefficients validée par le Worker.");
                 break;
             case 'RESULTS_COMPUTE':
                 workerCalculEnCours = false;
@@ -741,30 +754,20 @@
     }
 
     function initialiserWorkerAstronomie() {
-    if (typeof Worker === 'undefined') return;
-    astroWorker = new Worker('worker.js'); 
-    astroWorker.onmessage = traiterMessageWorker;
-    astroWorker.onerror = (err) => {
-        console.error("Erreur Worker Astro :", err);
-        document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
-        document.getElementById('lbl-worker-status').style.color = "var(--rose)";
-    };
-
-    // SÉCURITÉ ANTI-BLOCAGE : Forcer le passage en mode prêt si le worker met plus de 2 secondes
-    setTimeout(() => {
-        if (!workerPret) {
-            console.warn("Forçage de l'état Worker PRÊT (Timeout de sécurité)");
-            workerPret = true;
-            document.getElementById('lbl-worker-status').innerText = "PRÊT (SEC)";
-            document.getElementById('lbl-worker-status').style.color = "var(--amber)";
-            lancerBoucleCalculSecurisee();
+        if (typeof Worker === 'undefined') return;
+        astroWorker = new Worker('worker.js'); 
+        astroWorker.onmessage = traiterMessageWorker;
+        astroWorker.onerror = (err) => {
+            console.error("Erreur Worker Astro :", err);
+            document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
+            document.getElementById('lbl-worker-status').style.color = "var(--rose)";
+        };
+        
+        if (matriceJplLive) {
+            envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
         }
-    }, 2000);
+    }
 
-    if (matriceJplLive) {
-        envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
-    }
-    }
     function mettreAJourMetricsSolaires(m) {
         if (!m) return;
         currentEqTempsMin = m.eqTempsMin ?? 0;
@@ -979,7 +982,7 @@
     function executerDiagnosticSysteme() {
         const diag = {
             gps: "geolocation" in navigator ? "ACTIF (GPS Web API)" : "INACTIF",
-            barometre: "Pressure" in window || "Barometer" in window ? "ACTIF" : "DÉGRADÉ",
+            barometre: window.isSecureContext && ("Pressure" in window || "Barometer" in window) ? "ACTIF" : "DÉGRADÉ/HTTP",
             orientation: "DeviceOrientationEvent" in window ? "ACTIF (IMU)" : "INACTIF",
             wasm: "OPÉRATIONNEL"
         };
@@ -1198,7 +1201,6 @@
         setInterval(envoyerDemandeCalculWorker, 1000);
     }
 
-    // Redimensionnement 3D sécurisé global
     window.addEventListener('resize', () => {
         if (typeof globeRenderer !== 'undefined' && typeof globeCamera !== 'undefined') {
             const container = globeRenderer.domElement.parentElement;
