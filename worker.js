@@ -3,7 +3,7 @@
  */
 
 let jplMatrixData = null;
-let wmmTableauCoeffs = null; // Stockage des coefficients WMM
+let wmmTableauCoeffs = null;
 
 // Notifier immédiatement le fil principal que le Worker est opérationnel
 self.postMessage({ type: 'WORKER_READY' });
@@ -17,12 +17,10 @@ self.onmessage = function (e) {
             case 'UPDATE_JPL_MATRIX':
                 if (!data.matrix) throw new Error("Matrice JPL fournie invalide.");
                 jplMatrixData = data.matrix;
-                // CORRECTION : Ne plus envoyer WMM_LOADED ici, mais un accusé de réception JPL
                 self.postMessage({ type: 'JPL_MATRIX_UPDATED' }); 
                 break;
 
             case 'LOAD_WMM_COF_TEXT':
-                // AJOUT : Écoute et traitement du texte WMM transmis par l'interface
                 if (!data.text) throw new Error("Texte du fichier WMM vide.");
                 wmmTableauCoeffs = analyserTexteWMM(data.text);
                 self.postMessage({ type: 'WMM_LOADED', status: 'success' });
@@ -43,9 +41,7 @@ self.onmessage = function (e) {
     }
 };
 
-// --- Parseur basique pour les coefficients WMM reçus en texte ---
 function analyserTexteWMM(texte) {
-    // Logique de parsing des lignes du fichier .COF (exemple simplifié de structure)
     const lignes = texte.split('\n');
     const coeffs = [];
     for (let ligne of lignes) {
@@ -228,11 +224,9 @@ function traiterCalculsRigoureux(params) {
             longSolaireDeg: longSolaireDeg
         },
         wmm: {
-            // Optionnel : si wmmTableauCoeffs est chargé, on pourrait y injecter les calculs réels, 
-            // sinon on garde un retour par défaut sécurisé.
             declination: 2.45,
             inclination: 61.15,
             totalIntensity: 45000
         }
     });
-                    }
+            }
