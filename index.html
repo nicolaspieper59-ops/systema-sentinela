@@ -709,39 +709,40 @@
         }
     }
     
-    function traiterMessageWorker(e) {
-        const data = e.data;
-        if (!data) return;
+    // Extrait de la gestion des messages du worker dans index.html
+function traiterMessageWorker(e) {
+    const data = e.data;
+    if (!data) return;
 
-        if (data.type === 'FATAL_ERROR') {
-            déclencherVerrouillageCritique(data.message);
-            return;
-        }
-
-        switch (data.type) {
-            case 'WORKER_READY':
-                workerPret = true;
-                document.getElementById('lbl-worker-status').innerText = "PRÊT";
-                document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-                chargerFichierWMMDeSecours();
-                while (fileDAttenteWorker.length > 0) {
-                    astroWorker.postMessage(fileDAttenteWorker.shift());
-                }
-                break;
-            case 'WMM_LOADED':
-            case 'JPL_MATRIX_LOADED':
-                ecrireLog("Noyau : Synchronisation des coefficients validée par le Worker.");
-                break;
-            case 'RESULTS_COMPUTE':
-                workerCalculEnCours = false;
-                requestAnimationFrame(() => mettreAJourInterface(data));
-                break;
-            case 'ERROR':
-                workerCalculEnCours = false;
-                ecrireLog(`Erreur Worker : ${data.message}`);
-                break;
-        }
+    if (data.type === 'FATAL_ERROR') {
+        déclencherVerrouillageCritique(data.message);
+        return;
     }
+
+    switch (data.type) {
+        case 'WORKER_READY':
+            workerPret = true;
+            document.getElementById('lbl-worker-status').innerText = "PRÊT";
+            document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+            chargerFichierWMMDeSecours();
+            while (fileDAttenteWorker.length > 0) {
+                astroWorker.postMessage(fileDAttenteWorker.shift());
+            }
+            break;
+        case 'WMM_LOADED':
+        case 'JPL_MATRIX_UPDATED': // Aligné avec le worker corrigé
+            ecrireLog("Noyau : Synchronisation des coefficients validée par le Worker.");
+            break;
+        case 'RESULTS_COMPUTE':
+            workerCalculEnCours = false;
+            requestAnimationFrame(() => mettreAJourInterface(data));
+            break;
+        case 'ERROR':
+            workerCalculEnCours = false;
+            ecrireLog(`Erreur Worker : ${data.message}`);
+            break;
+    }
+}
 
     function déclencherVerrouillageCritique(messageErreur) {
         const banner = document.getElementById('app-error-banner');
