@@ -160,6 +160,7 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
     with open(fichier_sortie, "w", encoding="utf-8") as f:
         json.dump(resultat_global, f, indent=2, ensure_ascii=False)
 
+# Fin corrigée du fichier dynamic_multiphysics_engine.py
 def main():
     parser = argparse.ArgumentParser(description="Générateur d'éphémérides JPL DE440s Rigoureux")
     parser.add_argument("lat", type=float)
