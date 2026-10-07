@@ -1,5 +1,5 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL STRICT v19.16
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL STRICT v19.18
  */
 
 let jplMatrixData = null;
@@ -44,16 +44,22 @@ function analyserTexteWMM(texte) {
     const lignes = texte.split('\n');
     const coeffs = [];
     for (let ligne of lignes) {
-        const elements = ligne.trim().split(/\s+/);
+        const lineTrim = ligne.trim();
+        if (!lineTrim || lineTrim.startsWith('99999999') || lineTrim.startsWith('WMM') || lineTrim.startsWith('2025')) continue;
+        const elements = lineTrim.split(/\s+/);
         if (elements.length >= 6) {
-            coeffs.push({
-                n: parseInt(elements[0], 10),
-                m: parseInt(elements[1], 10),
-                gnm: parseFloat(elements[2]),
-                hnm: parseFloat(elements[3]),
-                dgnm: parseFloat(elements[4]),
-                dhnm: parseFloat(elements[5])
-            });
+            const n = parseInt(elements[0], 10);
+            const m = parseInt(elements[1], 10);
+            if (!isNaN(n) && !isNaN(m) && n <= 12) {
+                coeffs.push({
+                    n: n,
+                    m: m,
+                    gnm: parseFloat(elements[2]),
+                    hnm: parseFloat(elements[3]),
+                    dgnm: parseFloat(elements[4]),
+                    dhnm: parseFloat(elements[5])
+                });
+            }
         }
     }
     if (coeffs.length === 0) throw new Error("Échec critique du parsing des coefficients WMM.");
@@ -82,6 +88,7 @@ function calculerWMM12x12Complet(latDeg, lonDeg, altKm, decimalYear) {
     P[0][0] = 1.0;
     dP[0][0] = 0.0;
 
+    // Calcul des polynômes de Legendre semi-normalisés de Schmidt
     for (let n = 1; n <= nMax; n++) {
         for (let m = 0; m <= n; m++) {
             if (n === m) {
@@ -92,8 +99,9 @@ function calculerWMM12x12Complet(latDeg, lonDeg, altKm, decimalYear) {
                 dP[1][0] = cosPhi;
             } else {
                 let k = (((n - 1) * (n - 1)) - (m * m)) / ((2 * n - 1) * (2 * n - 3));
-                P[n][m] = sinPhi * P[n - 1][m] - Math.sqrt(Math.max(0, k)) * P[n - 2][m];
-                dP[n][m] = sinPhi * dP[n - 1][m] + cosPhi * P[n - 1][m] - Math.sqrt(Math.max(0, k)) * dP[n - 2][m];
+                let sqrtK = Math.sqrt(Math.max(0, k));
+                P[n][m] = sinPhi * P[n - 1][m] - sqrtK * P[n - 2][m];
+                dP[n][m] = sinPhi * dP[n - 1][m] + cosPhi * P[n - 1][m] - sqrtK * dP[n - 2][m];
             }
         }
     }
@@ -151,7 +159,7 @@ function evaluerTchebychev(coeffs, tau) {
     return somme;
 }
 
-function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM, gastDeg, meteo) {
+function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM, gastDeg, meteo, estSoleil) {
     if (!meteo || meteo.tempC === undefined || meteo.presHpa === undefined) {
         throw new Error("Paramètres météorologiques de terrain requis pour la réfraction.");
     }
@@ -211,7 +219,10 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
 
     const zAppDeg = 90.0 - elApp;
     const airMass = zAppDeg < 85.0 ? 1.0 / Math.cos(zAppDeg * Math.PI / 180.0) : -1.0;
-    const irradiance = elApp > 0 ? 1361.0 * Math.max(0, Math.sin(elApp * Math.PI / 180.0)) : 0.0;
+    
+    // Irradiance et longueur d'ombre calculées exclusivement pour le Soleil
+    const irradiance = (estSoleil && elApp > 0) ? (1361.0 / (distAU * distAU)) * Math.pow(0.7, Math.max(0, airMass)) : 0.0;
+    const shadowLength = (estSoleil && elApp > 0) ? 1.0 / Math.tan(Math.max(1e-4, elApp * (Math.PI / 180.0))) : -1.0;
 
     let visCode = 0;
     if (elApp > 0) {
@@ -225,6 +236,7 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
         distanceAu: distAU,
         airMass: airMass,
         irradiance: irradiance,
+        shadowLength: shadowLength,
         visibiliteCode: visCode
     };
 }
@@ -255,6 +267,8 @@ function traiterCalculsRigoureux(params) {
     const eqTempsMin = -7.653 * Math.sin(L0) + 9.813 * Math.sin(2 * L0 + 3.585);
 
     const bodiesResult = {};
+    let posSoleilRA = 0.0;
+    let posLuneRA = 0.0;
 
     if (jplMatrixData.DATA) {
         for (const [nomCorps, segments] of Object.entries(jplMatrixData.DATA)) {
@@ -269,29 +283,50 @@ function traiterCalculsRigoureux(params) {
             const y = evaluerTchebychev(seg.cy, tau);
             const z = evaluerTchebychev(seg.cz, tau);
             
-            const topo = transformerECIenTopocentrique([x, y, z], coords.lat, coords.lon, coords.alt, gast, meteo);
+            const estSoleil = (nomCorps.toUpperCase() === "SOLEIL");
+            const topo = transformerECIenTopocentrique([x, y, z], coords.lat, coords.lon, coords.alt, gast, meteo, estSoleil);
             
+            const raDeg = (Math.atan2(y, x) * 180.0 / Math.PI + 360.0) % 360.0;
+            if (estSoleil) posSoleilRA = raDeg;
+            if (nomCorps.toUpperCase() === "LUNE") posLuneRA = raDeg;
+
             bodiesResult[nomCorps.toLowerCase()] = {
                 elevationGeometrique: topo.elevationGeometrique,
                 elevationApparente: topo.elevationApparente,
                 azimuth: topo.azimuth,
                 distanceAu: topo.distanceAu,
                 magnitude: seg.mag ?? 0.0,
-                raDeg: (Math.atan2(y, x) * 180.0 / Math.PI + 360.0) % 360.0,
+                raDeg: raDeg,
                 decDeg: Math.asin(z / Math.hypot(x, y, z)) * 180.0 / Math.PI,
                 visibiliteCode: topo.visibiliteCode,
                 airMass: topo.airMass,
                 irradiance: topo.irradiance,
                 jde: jde,
                 deltat: 69.2,
-                gha: (gast - ((Math.atan2(y, x) * 180.0 / Math.PI + 360.0) % 360.0) + 360.0) % 360.0,
+                gha: (gast - raDeg + 360.0) % 360.0,
                 distanceMinMaxDisplay: `${topo.distanceAu.toFixed(6)} AU`,
                 constellationDisplay: "JPL-DE440s",
+                perigeeDisplay: seg.perigee_ua ? `${seg.perigee_ua.toFixed(5)} AU` : "--",
+                perihelionDisplay: seg.perihelion_ua ? `${seg.perihelion_ua.toFixed(4)} AU` : "--",
+                aphelionDisplay: seg.aphelion_ua ? `${seg.aphelion_ua.toFixed(4)} AU` : "--",
+                orbitPeriodDisplay: seg.period_days ? `${seg.period_days.toFixed(1)} j` : "--",
+                lengthOfDayDisplay: seg.lod_hours ? `${seg.lod_hours.toFixed(1)} h` : "--",
+                orbitalVelocityDisplay: seg.vel_kms ? `${seg.vel_kms.toFixed(2)} km/s` : "--",
+                shadowLengthDisplay: topo.shadowLength > 0 ? `${topo.shadowLength.toFixed(2)} m` : "N/A",
                 sunrise: topo.elevationApparente >= -0.833 ? "Visible" : "Sous horizon",
                 sunset: topo.elevationApparente < -0.833 ? "Couché" : "Au-dessus horizon",
                 dusk: topo.elevationApparente < -6.0 ? "Nuit" : "Crépuscule/Jour",
                 daylightDuration: topo.elevationApparente > 0 ? "Jour" : "Nuit"
             };
+        }
+
+        // Calcul dynamique rigoureux de la phase et de l'âge lunaires
+        if (bodiesResult["lune"]) {
+            let elongDeg = (posLuneRA - posSoleilRA + 360.0) % 360.0;
+            let moonPhasePct = (1.0 - Math.cos(elongDeg * Math.PI / 180.0)) / 2.0 * 100.0;
+            let moonAgeDays = (elongDeg / 360.0) * 29.530588;
+            bodiesResult["lune"].moonPhasePct = moonPhasePct;
+            bodiesResult["lune"].moonAgeDays = moonAgeDays;
         }
     }
 
@@ -309,4 +344,4 @@ function traiterCalculsRigoureux(params) {
         },
         wmm: resultatWmm
     });
-}
+        }
