@@ -127,6 +127,7 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add flux_live.json wasm_astronomie.js wasm_astronomie.wasm WMM2025.COF
           git commit -m "Chore(data): Actualisation automatique du flux et du Wasm [skip ci]" || echo "Aucun changement à commiter"
+          git pull --rebase origin main
           git push
 
       - name: 📦 Préparation de l'artefact GitHub Pages
