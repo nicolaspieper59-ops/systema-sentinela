@@ -652,33 +652,35 @@
 
     // CORRECTION APPLIQUÉE : Sécurisation de l'API Baromètre selon le contexte sécurisé du navigateur
     function activerBarometre() {
-        const elBaro = document.getElementById('val-baro-statut');
-        if (!elBaro) return;
+    const elBaro = document.getElementById('val-baro-statut');
+    if (!elBaro) return;
 
-        if (!window.isSecureContext) {
-            elBaro.innerText = "1013.25 hPa (HTTP non sécurisé)";
-            elBaro.style.color = "var(--amber)";
-            return;
-        }
-
-        if ('Barometer' in window) {
-            try {
-                instanceBarometre = new Barometer({ frequency: 1 });
-                instanceBarometre.addEventListener('reading', () => {
-                    if (!capteursActifs) return;
-                    const p = instanceBarometre.pressure;
-                    elBaro.innerText = `${p.toFixed(2)} hPa`;
-                    elBaro.style.color = "var(--neon-green)";
-                    meteoActive.pressionBaro = p;
-                });
-                instanceBarometre.start();
-            } catch (e) {
-                elBaro.innerText = "1013.25 hPa (Erreur capteur)";
-            }
-        } else { 
-            elBaro.innerText = "1013.25 hPa (API absente)"; 
-        }
+    if (!window.isSecureContext) {
+        elBaro.innerText = "ÉTAT DÉGRADÉ (HTTP non sécurisé - Capteurs restreints)";
+        elBaro.style.color = "var(--rose)";
+        return;
     }
+
+    if ('Barometer' in window) {
+        try {
+            instanceBarometre = new Barometer({ frequency: 1 });
+            instanceBarometre.addEventListener('reading', () => {
+                if (!capteursActifs) return;
+                const p = instanceBarometre.pressure;
+                elBaro.innerText = `${p.toFixed(2)} hPa (Matériel brut)`;
+                elBaro.style.color = "var(--neon-green)";
+                meteoActive.pressionBaro = p;
+            });
+            instanceBarometre.start();
+        } catch (e) {
+            elBaro.innerText = "ERREUR MATÉRIELLE CAPTEUR";
+            elBaro.style.color = "var(--rose)";
+        }
+    } else { 
+        elBaro.innerText = "API BAROMÈTRE ABSENTE SUR CET APPAREIL"; 
+        elBaro.style.color = "var(--amber)"; 
+    }
+}
 
     async function chargerFluxLiveJPL() {
         try {
