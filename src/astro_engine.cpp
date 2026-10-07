@@ -2,6 +2,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -95,6 +96,9 @@ void calculerDepuisECEF(
 ) {
     if (!result) return;
 
+    // Initialisation intégrale de la mémoire pour supprimer toute valeur aléatoire
+    std::memset(result, 0, sizeof(AstroResult));
+
     double xI = xICRF_km * 1000.0;
     double yI = yICRF_km * 1000.0;
     double zI = zICRF_km * 1000.0;
@@ -154,7 +158,6 @@ void calculerDepuisECEF(
 
     result->magnitudeApparente = magBruteAstre + (extinctionCoeff * std::fmax(0.0, result->airMass));
     
-    // Application stricte de la constante solaire uniquement sur le flux du Soleil
     if (estSoleil == 1) {
         result->irradiance = (result->elevRefractee > 0.0) ? (1361.0 / (result->distUA * result->distUA)) * std::pow(0.7, result->airMass) : 0.0;
         result->shadowLength = (result->elevRefractee > 0.0) ? 1.0 / std::tan(std::fmax(1e-4, result->elevRefractee * DEG2RAD)) : -1.0;
