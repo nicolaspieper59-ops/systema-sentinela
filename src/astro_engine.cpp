@@ -78,7 +78,7 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
                         + 4.0 * 0.016708634 * y * std::sin(mRad) * std::cos(2.0 * l0Rad) 
                         - 0.5 * y * y * std::sin(4.0 * l0Rad);
 
-    metricsPtr[0] = (eqTempsRad * RAD2DEG) * 4.0; // Minutes
+    metricsPtr[0] = (eqTempsRad * RAD2DEG) * 4.0; 
     metricsPtr[1] = obliquiteDeg;
     metricsPtr[2] = sunTrueLong;
     metricsPtr[3] = gastDeg;
@@ -90,7 +90,7 @@ void calculerDepuisECEF(
     double xICRF_km, double yICRF_km, double zICRF_km,
     double latDeg, double lonDeg, double altM,
     double eraRad, double tempC, double presHpa, double extinctionCoeff,
-    double magBruteAstre,
+    double magBruteAstre, int32_t estSoleil,
     AstroResult* result
 ) {
     if (!result) return;
@@ -149,12 +149,19 @@ void calculerDepuisECEF(
         double sinH = std::sin(std::fmax(0.01, result->elevRefractee) * DEG2RAD);
         result->airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
     } else {
-        result->airMass = -1.0; // Valeur sentinelle stricte au lieu de 40.0
+        result->airMass = -1.0; 
     }
 
-    result->magnitudeApparente = magBruteAstre + (extinctionCoeff * result->airMass);
-    result->irradiance = (result->elevRefractee > 0.0) ? 1361.0 * std::pow(0.7, result->airMass) / (result->distUA * result->distUA) : 0.0;
-    result->shadowLength = (result->elevRefractee > 0.0) ? 1.0 / std::tan(std::fmax(1e-4, result->elevRefractee * DEG2RAD)) : -1.0;
+    result->magnitudeApparente = magBruteAstre + (extinctionCoeff * std::fmax(0.0, result->airMass));
+    
+    // Application stricte de la constante solaire uniquement sur le flux du Soleil
+    if (estSoleil == 1) {
+        result->irradiance = (result->elevRefractee > 0.0) ? (1361.0 / (result->distUA * result->distUA)) * std::pow(0.7, result->airMass) : 0.0;
+        result->shadowLength = (result->elevRefractee > 0.0) ? 1.0 / std::tan(std::fmax(1e-4, result->elevRefractee * DEG2RAD)) : -1.0;
+    } else {
+        result->irradiance = 0.0;
+        result->shadowLength = -1.0;
+    }
 
     if (result->elevRefractee <= 0.0) {
         result->visibiliteCode = 0;
