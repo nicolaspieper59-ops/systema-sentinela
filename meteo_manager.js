@@ -1,5 +1,5 @@
 /**
- * METEO & GEOMAGNETIC MANAGER - STRICT MODE (WMM-2025)
+ * METEO & GEOMAGNETIC MANAGER - STRICT MODE (WMM-2025 COMPLET 12x12)
  */
 
 export class MeteoManager {
@@ -8,7 +8,7 @@ export class MeteoManager {
     }
 
     init() {
-        console.log("[METEO MANAGER] Initialisé en mode strict.");
+        console.log("[METEO MANAGER] Initialisé en mode strict (WMM-2025 complet).");
     }
 
     parseWMM2025COF(cofText) {
@@ -36,33 +36,92 @@ export class MeteoManager {
             throw new Error("[FATAL] Aucun coefficient valide trouvé dans WMM2025.COF.");
         }
         this.wmmCoeffs = coeffs;
-        console.log(`[METEO MANAGER] WMM-2025 chargé (${coeffs.length} coefficients).`);
+        console.log(`[METEO MANAGER] WMM-2025 chargé (${coeffs.length} coefficients).`);[cite: 6]
     }
 
     computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
         if (!this.wmmCoeffs) {
-            throw new Error("[FATAL] Calcul magnétique impossible : coefficients WMM non chargés.");
+            throw new Error("[FATAL] Calcul magnétique impossible : coefficients WMM non chargés.");[cite: 6]
         }
 
+        const dt = decimalYear - 2025.0;
         const rad = Math.PI / 180.0;
         const phi = latDeg * rad;
         const lambda = lonDeg * rad;
 
-        let g10 = -29404.5, g11 = -1450.9, h11 = 4652.9;
-        const dt = decimalYear - 2025.0;
+        // Paramètres géodésiques de référence WMM-2025 (WGS84)
+        const a = 6371.2; // Rayon moyen de référence (km)
+        const r = a + altKm;
+        const altRatio = a / r;
 
-        for (let c of this.wmmCoeffs) {
-            if (c.n === 1 && c.m === 0) g10 += c.dg * dt;
-            if (c.n === 1 && c.m === 1) { g11 += c.dg * dt; h11 += c.dh * dt; }
+        // Tableaux dynamiques pour les harmoniques sphériques (Degré max = 12)
+        const nMax = 12;
+        let P = Array.from({ length: nMax + 2 }, () => new Array(nMax + 2).fill(0.0));
+        let dP = Array.from({ length: nMax + 2 }, () => new Array(nMax + 2).fill(0.0));
+
+        // Initialisation des fonctions de Legendre semi-normalisées de Schmidt
+        P[0][0] = 1.0;
+        dP[0][0] = 0.0;
+
+        const sinPhi = Math.sin(phi);
+        const cosPhi = Math.cos(phi);
+
+        for (let n = 1; n <= nMax; n++) {
+            for (let m = 0; m <= n; m++) {
+                if (n === m) {
+                    P[n][n] = sinPhi * P[n - 1][n - 1];
+                    dP[n][n] = sinPhi * dP[n - 1][n - 1] + cosPhi * P[n - 1][n - 1];
+                } else if (n === 1 && m === 0) {
+                    P[1][0] = sinPhi * P[0][0];
+                    dP[1][0] = sinPhi * dP[0][0] - cosPhi * P[0][0];
+                } else if (n > 1 && n !== m) {
+                    let k = (((n - 1) * (n - 1)) - (m * m)) / (((2 * n - 1) * (2 * n - 3)));
+                    P[n][m] = sinPhi * P[n - 1][m] - Math.sqrt(k) * P[n - 2][m];
+                    dP[n][m] = sinPhi * dP[n - 1][m] - cosPhi * P[n - 1][m] - Math.sqrt(k) * dP[n - 2][m];
+                }
+            }
         }
 
-        const B_r = 2.0 * (g10 * Math.sin(phi) + (g11 * Math.cos(lambda) + h11 * Math.sin(lambda)) * Math.cos(phi));
-        const B_theta = - (g10 * Math.cos(phi) - (g11 * Math.cos(lambda) + h11 * Math.sin(lambda)) * Math.sin(phi));
-        const B_phi = - (-g11 * Math.sin(lambda) + h11 * Math.cos(lambda));
+        let q = altRatio;
+        let B_r = 0.0, B_theta = 0.0, B_phi = 0.0;
+
+        // Cosinus et sinus de l'ordre m * lambda
+        let cosMlambda = new Array(nMax + 1);
+        let sinMlambda = new Array(nMax + 1);
+        cosMlambda[0] = 1.0;
+        sinMlambda[0] = 0.0;
+        for (let m = 1; m <= nMax; m++) {
+            cosMlambda[m] = Math.cos(m * lambda);
+            sinMlambda[m] = Math.sin(m * lambda);
+        }
+
+        for (let c of this.wmmCoeffs) {
+            if (c.n > nMax || c.m > c.n) continue;
+            
+            const g = c.g + c.dg * dt;
+            const h = c.h + c.dh * dt;
+
+            let q_pow = Math.pow(altRatio, c.n + 2);
+
+            const p_val = P[c.n][c.m];
+            const dp_val = dP[c.n][c.m];
+
+            const cos_term = g * cosMlambda[c.m] + h * sinMlambda[c.m];
+            const sin_term = g * sinMlambda[c.m] - h * cosMlambda[c.m];
+
+            B_r += q_pow * (c.n + 1) * p_val * cos_term;
+            B_theta -= q_pow * dp_val * cos_term;
+            if (c.m > 0) {
+                B_phi += q_pow * (c.m / Math.max(1e-6, cosPhi)) * p_val * sin_term;
+            }
+        }
+
+        B_r = -B_r;
+        B_theta = -B_theta;
 
         const X = -B_theta; 
         const Y = B_phi;    
-        const Z = -B_r;     
+        const Z = B_r;     
 
         const H = Math.sqrt(X * X + Y * Y);
         const F = Math.sqrt(H * H + Z * Z);
@@ -77,13 +136,13 @@ export class MeteoManager {
 
     computeRefraction(trueElevationDeg, tempC, presHpa) {
         if (tempC === undefined || presHpa === undefined || tempC === null || presHpa === null) {
-            throw new Error("[FATAL] Paramètres atmosphériques requis (tempC et presHpa) absents pour la réfraction.");
+            throw new Error("[FATAL] Paramètres atmosphériques requis (tempC et presHpa) absents pour la réfraction.");[cite: 6]
         }
         if (trueElevationDeg < -1.0) return 0.0;
         const hRad = Math.max(trueElevationDeg, -0.5) * (Math.PI / 180.0);
         const R_arcmin = (1.0 / Math.tan(hRad + (7.31 / (hRad + 4.4 * (Math.PI / 180.0))))) * (presHpa / 1013.25) * (283.15 / (273.15 + tempC));
-        return Math.max(0.0, R_arcmin / 60.0);
+        return Math.max(0.0, R_arcmin / 60.0);[cite: 6]
     }
 }
 
-export const meteoManager = new MeteoManager();
+export const meteoManager = new MeteoManager();[cite: 6]
