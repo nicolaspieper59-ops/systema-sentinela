@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: 📥 Cloner le dépôt
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: 🐍 Configurer Python 3.11
         uses: actions/setup-python@v5
@@ -138,7 +140,6 @@ jobs:
   deploy:
     needs: build-and-deploy
     runs-on: ubuntu-latest
-    # Isolation stricte de la concurrence sur la phase de déploiement Pages
     concurrency:
       group: "github-pages-deploy"
       cancel-in-progress: false
