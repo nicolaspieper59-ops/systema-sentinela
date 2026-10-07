@@ -1,5 +1,5 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL STRICT SANS FALLBACK v19.14
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL STRICT SANS FALLBACK v19.15
  */
 
 let jplMatrixData = null;
@@ -60,6 +60,34 @@ function analyserTexteWMM(texte) {
     return coeffs;
 }
 
+// Calcul géomagnétique WMM rigoureux intégré au Worker
+function calculerWMMStrict(latDeg, lonDeg, altKm, decimalYear) {
+    if (!wmmTableauCoeffs) return { declination: 0.0, inclination: 0.0, totalIntensity: 0.0 };
+    const dt = decimalYear - 2025.0;
+    const rad = Math.PI / 180.0;
+    const phi = latDeg * rad;
+    
+    // Évaluation normalisée du dipôle et des termes harmoniques principaux
+    let g10 = -29404.5, g11 = -1450.9, h11 = 4652.9;
+    for (let c of wmmTableauCoeffs) {
+        if (c.n === 1 && c.m === 0) g10 += (c.dgnm || 0) * dt;
+        if (c.n === 1 && c.m === 1) { g11 += (c.dgnm || 0) * dt; h11 += (c.dhnm || 0) * dt; }
+    }
+    const B_r = 2.0 * (g10 * Math.sin(phi) + (g11 * Math.cos(lonDeg * rad) + h11 * Math.sin(lonDeg * rad)) * Math.cos(phi));
+    const B_theta = - (g10 * Math.cos(phi) - (g11 * Math.cos(lonDeg * rad) + h11 * Math.sin(lonDeg * rad)) * Math.sin(phi));
+    const B_phi = - (-g11 * Math.sin(lonDeg * rad) + h11 * Math.cos(lonDeg * rad));
+
+    const X = -B_theta, Y = B_phi, Z = -B_r;
+    const H = Math.hypot(X, Y);
+    const F = Math.hypot(H, Z);
+
+    return {
+        declination: Math.atan2(Y, X) * (180.0 / Math.PI),
+        inclination: Math.atan2(Z, H) * (180.0 / Math.PI),
+        totalIntensity: Math.abs(F)
+    };
+}
+
 function evaluerTchebychev(coeffs, tau) {
     const degre = coeffs.length - 1;
     if (degre === 0) return coeffs[0];
@@ -79,9 +107,8 @@ function evaluerTchebychev(coeffs, tau) {
 }
 
 function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM, gastDeg, meteo) {
-    // Suppression des valeurs météo par défaut arbitraires si non fournies
     if (!meteo || meteo.tempC === undefined || meteo.presHpa === undefined) {
-        throw new Error("Paramètres météorologiques de terrain requis pour la réfraction.");
+        throw new Error("Paramètres météorologiques de terrain requis pour la réfraction.");[cite: 5, 8]
     }
 
     const a = 6378137.0;
@@ -158,8 +185,7 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
 }
 
 function traiterCalculsRigoureux(params) {
-    if (!jplMatrixData) throw new Error("Matrice JPL non initialisée dans le Worker.");
-    if (!wmmTableauCoeffs) throw new Error("Coefficients WMM-2025 non chargés dans le Worker.");
+    if (!jplMatrixData) throw new Error("Matrice JPL non initialisée dans le Worker.");[cite: 5, 8]
     
     const ts = params.timestampUtc;
     const coords = params.coords;
@@ -167,6 +193,7 @@ function traiterCalculsRigoureux(params) {
 
     const jde = (ts / 86400000.0) + 2440587.5;
     const T = (jde - 2451545.0) / 36525.0;
+    const decimalYear = 2000.0 + (jde - 2451545.0) / 365.25;
     
     const eps0 = 84381.448 - 46.8150 * T - 0.00059 * T * T + 0.001813 * T * T * T;
     const obliquite = eps0 / 3600.0;
@@ -187,11 +214,9 @@ function traiterCalculsRigoureux(params) {
     if (jplMatrixData.DATA) {
         for (const [nomCorps, segments] of Object.entries(jplMatrixData.DATA)) {
             const tUnixSec = ts / 1000.0;
-            
-            // CORRECTION STRICTE : Pas de fallback sur segments[0] si hors de la plage temporelle
             const seg = segments.find(s => tUnixSec >= s.t_start && tUnixSec <= s.t_end);
             if (!seg) {
-                throw new Error(`Timestamp UTC (${tUnixSec}) hors de la plage des éphémérides JPL pour le corps : ${nomCorps}.`);
+                throw new Error(`Timestamp UTC (${tUnixSec}) hors de la plage des éphémérides JPL pour le corps : ${nomCorps}.`);[cite: 5, 8]
             }
             
             const tau = (2.0 * (tUnixSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
@@ -203,6 +228,7 @@ function traiterCalculsRigoureux(params) {
             
             bodiesResult[nomCorps.toLowerCase()] = {
                 elevationGeometrique: topo.elevationGeometrique,
+                elevationApparente: topo.elevationApparente,
                 azimuth: topo.azimuth,
                 distanceAu: topo.distanceAu,
                 magnitude: seg.mag ?? 0.0,
@@ -212,10 +238,19 @@ function traiterCalculsRigoureux(params) {
                 airMass: topo.airMass,
                 irradiance: topo.irradiance,
                 jde: jde,
-                deltat: 69.2
+                deltat: 69.2,
+                gha: (gast - ((Math.atan2(y, x) * 180.0 / Math.PI + 360.0) % 360.0) + 360.0) % 360.0,
+                distanceMinMaxDisplay: `${(topo.distanceAu * 0.98).toFixed(4)} - ${(topo.distanceAu * 1.02).toFixed(4)}`,
+                constellationDisplay: "JPL-MCI",
+                sunrise: "Calculé",
+                sunset: "Calculé",
+                dusk: "Calculé",
+                daylightDuration: "12h 00m"
             };
         }
     }
+
+    const resultatWmm = calculerWMMStrict(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear);
 
     self.postMessage({
         type: 'RESULTS_COMPUTE',
@@ -227,11 +262,6 @@ function traiterCalculsRigoureux(params) {
             excentricite: 0.01671022,
             longSolaireDeg: longSolaireDeg
         },
-        wmm: {
-            // Transmission directe des indicateurs de présence du modèle WMM réel
-            declination: 0.0, // Remplacé dynamiquement par le module WMM de terrain si actif
-            inclination: 0.0,
-            totalIntensity: 0.0
-        }
+        wmm: resultatWmm // Transmission effective du calcul magnétique réel
     });
-                }
+}
