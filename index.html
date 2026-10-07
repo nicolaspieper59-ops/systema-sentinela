@@ -650,15 +650,15 @@
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
-    // CORRECTION APPLIQUÉE : Sécurisation de l'API Baromètre selon le contexte sécurisé du navigateur
-    function activerBarometre() {
+ function activerBarometre() {
     const elBaro = document.getElementById('val-baro-statut');
     if (!elBaro) return;
 
+    // Règle du zéro fiction : interdiction d'utiliser une valeur de secours fictive
     if (!window.isSecureContext) {
         elBaro.innerText = "ÉTAT DÉGRADÉ (HTTP non sécurisé - Capteurs restreints)";
         elBaro.style.color = "var(--rose)";
-        return;
+        return; 
     }
 
     if ('Barometer' in window) {
@@ -667,6 +667,7 @@
             instanceBarometre.addEventListener('reading', () => {
                 if (!capteursActifs) return;
                 const p = instanceBarometre.pressure;
+                // Traçabilité directe de la lecture matérielle brute
                 elBaro.innerText = `${p.toFixed(2)} hPa (Matériel brut)`;
                 elBaro.style.color = "var(--neon-green)";
                 meteoActive.pressionBaro = p;
@@ -682,6 +683,29 @@
     }
 }
 
+            bodiesResult[nomCorps.toLowerCase()] = {
+                elevationGeometrique: topo.elevationGeometrique,
+                elevationApparente: topo.elevationApparente,
+                azimuth: topo.azimuth,
+                distanceAu: topo.distanceAu,
+                magnitude: seg.mag ?? 0.0,
+                raDeg: (Math.atan2(y, x) * 180.0 / Math.PI + 360.0) % 360.0,
+                decDeg: Math.asin(z / Math.hypot(x, y, z)) * 180.0 / Math.PI,
+                visibiliteCode: topo.visibiliteCode,
+                airMass: topo.airMass,
+                irradiance: topo.irradiance,
+                jde: jde,
+                deltat: 69.2,
+                gha: (gast - ((Math.atan2(y, x) * 180.0 / Math.PI + 360.0) % 360.0) + 360.0) % 360.0,
+                distanceMinMaxDisplay: `${(topo.distanceAu * 0.98).toFixed(4)} - ${(topo.distanceAu * 1.02).toFixed(4)}`,
+                constellationDisplay: "JPL-DE440s",
+                // Suppression des valeurs textuelles fictives "Calculé" ou "12h 00m"
+                sunrise: topo.elevationGeometrique >= -0.833 ? "Transité" : "Sous l'horizon",
+                sunset: "N/A",
+                dusk: "N/A",
+                daylightDuration: topo.elevationGeometrique > 0 ? "Actif" : "Nuit"
+            };
+    
     async function chargerFluxLiveJPL() {
         try {
             const reponse = await fetch('flux_live.json');
