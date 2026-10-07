@@ -60,7 +60,6 @@ function analyserTexteWMM(texte) {
     return coeffs;
 }
 
-// Calcul géomagnétique WMM rigoureux intégré au Worker
 // Remplacement rigoureux dans worker.js pour le calcul WMM complet 12x12
 function calculerWMMStrict(latDeg, lonDeg, altKm, decimalYear) {
     if (!wmmTableauCoeffs) return { declination: 0.0, inclination: 0.0, totalIntensity: 0.0 };
@@ -104,11 +103,12 @@ function calculerWMMStrict(latDeg, lonDeg, altKm, decimalYear) {
         inclination: Math.atan2(Z, H) * (180.0 / Math.PI),
         totalIntensity: Math.abs(F)
     };
+}
 
 sunrise: topo.elevationApparente > -0.833 ? "TRANSIT ACTIF" : "SOUS L'HORIZON",
 sunset: "RÉSOLUBLE BRENT",
 dusk: "CRÉPUSCULE -6°",
-daylightDuration: topo.elevationApparente > 0 ? "JOUR ACTIF" : "NUIT",
+daylightDuration: topo.elevationApparente > 0 ? "JOUR ACTIF" : "NUIT"
 
 function evaluerTchebychev(coeffs, tau) {
     const degre = coeffs.length - 1;
