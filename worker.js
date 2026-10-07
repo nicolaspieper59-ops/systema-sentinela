@@ -1,5 +1,5 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL STRICT SANS FALLBACK v19.15
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL STRICT v19.16
  */
 
 let jplMatrixData = null;
@@ -60,35 +60,63 @@ function analyserTexteWMM(texte) {
     return coeffs;
 }
 
-// Remplacement rigoureux dans worker.js pour le calcul WMM complet 12x12
-function calculerWMMStrict(latDeg, lonDeg, altKm, decimalYear) {
+function calculerWMM12x12Complet(latDeg, lonDeg, altKm, decimalYear) {
     if (!wmmTableauCoeffs) return { declination: 0.0, inclination: 0.0, totalIntensity: 0.0 };
+
     const dt = decimalYear - 2025.0;
     const rad = Math.PI / 180.0;
     const phi = latDeg * rad;
     const lambda = lonDeg * rad;
 
-    const a = 6371.2; // Rayon moyen de référence WMM (km)
+    const a = 6371.2;
     const r = a + altKm;
-    let altRatio = a / r;
+    const altRatio = a / r;
+
+    const nMax = 12;
+    let P = Array.from({ length: nMax + 1 }, () => new Array(nMax + 1).fill(0.0));
+    let dP = Array.from({ length: nMax + 1 }, () => new Array(nMax + 1).fill(0.0));
+
+    const sinPhi = Math.sin(phi);
+    const cosPhi = Math.max(1e-6, Math.cos(phi));
+
+    P[0][0] = 1.0;
+    dP[0][0] = 0.0;
+
+    for (let n = 1; n <= nMax; n++) {
+        for (let m = 0; m <= n; m++) {
+            if (n === m) {
+                P[n][n] = sinPhi * P[n - 1][n - 1];
+                dP[n][n] = sinPhi * dP[n - 1][n - 1] + cosPhi * P[n - 1][n - 1];
+            } else if (n === 1 && m === 0) {
+                P[1][0] = sinPhi;
+                dP[1][0] = cosPhi;
+            } else {
+                let k = (((n - 1) * (n - 1)) - (m * m)) / ((2 * n - 1) * (2 * n - 3));
+                P[n][m] = sinPhi * P[n - 1][m] - Math.sqrt(Math.max(0, k)) * P[n - 2][m];
+                dP[n][m] = sinPhi * dP[n - 1][m] + cosPhi * P[n - 1][m] - Math.sqrt(Math.max(0, k)) * dP[n - 2][m];
+            }
+        }
+    }
 
     let B_r = 0.0, B_theta = 0.0, B_phi = 0.0;
-    const nMax = 12;
 
-    // Sommation déterministe sur l'ensemble des coefficients harmoniques du fichier COF
     for (let c of wmmTableauCoeffs) {
         if (c.n > nMax || c.m > c.n) continue;
+
         const g = c.gnm + (c.dgnm || 0) * dt;
         const h = c.hnm + (c.dhnm || 0) * dt;
-        
+
         let q_pow = Math.pow(altRatio, c.n + 2);
         const cosMlam = Math.cos(c.m * lambda);
         const sinMlam = Math.sin(c.m * lambda);
 
-        B_r += q_pow * (c.n + 1) * g * cosMlam; // Terme axial simplifié rigoureux
-        B_theta -= q_pow * g * cosMlam;
+        const cos_term = g * cosMlam + h * sinMlam;
+        const sin_term = g * sinMlam - h * cosMlam;
+
+        B_r += q_pow * (c.n + 1) * P[c.n][c.m] * cos_term;
+        B_theta -= q_pow * dP[c.n][c.m] * cos_term;
         if (c.m > 0) {
-            B_phi += q_pow * (c.m / Math.max(1e-6, Math.cos(phi))) * h * sinMlam;
+            B_phi += q_pow * (c.m / cosPhi) * P[c.n][c.m] * sin_term;
         }
     }
 
@@ -104,11 +132,6 @@ function calculerWMMStrict(latDeg, lonDeg, altKm, decimalYear) {
         totalIntensity: Math.abs(F)
     };
 }
-
-sunrise: topo.elevationApparente > -0.833 ? "TRANSIT ACTIF" : "SOUS L'HORIZON",
-sunset: "RÉSOLUBLE BRENT",
-dusk: "CRÉPUSCULE -6°",
-daylightDuration: topo.elevationApparente > 0 ? "JOUR ACTIF" : "NUIT"
 
 function evaluerTchebychev(coeffs, tau) {
     const degre = coeffs.length - 1;
@@ -130,7 +153,7 @@ function evaluerTchebychev(coeffs, tau) {
 
 function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM, gastDeg, meteo) {
     if (!meteo || meteo.tempC === undefined || meteo.presHpa === undefined) {
-        throw new Error("Paramètres météorologiques de terrain requis pour la réfraction.");[cite: 5, 8]
+        throw new Error("Paramètres météorologiques de terrain requis pour la réfraction.");
     }
 
     const a = 6378137.0;
@@ -207,7 +230,7 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
 }
 
 function traiterCalculsRigoureux(params) {
-    if (!jplMatrixData) throw new Error("Matrice JPL non initialisée dans le Worker.");[cite: 5, 8]
+    if (!jplMatrixData) throw new Error("Matrice JPL non initialisée dans le Worker.");
     
     const ts = params.timestampUtc;
     const coords = params.coords;
@@ -238,7 +261,7 @@ function traiterCalculsRigoureux(params) {
             const tUnixSec = ts / 1000.0;
             const seg = segments.find(s => tUnixSec >= s.t_start && tUnixSec <= s.t_end);
             if (!seg) {
-                throw new Error(`Timestamp UTC (${tUnixSec}) hors de la plage des éphémérides JPL pour le corps : ${nomCorps}.`);[cite: 5, 8]
+                throw new Error(`Timestamp UTC (${tUnixSec}) hors de la plage des éphémérides JPL pour le corps : ${nomCorps}.`);
             }
             
             const tau = (2.0 * (tUnixSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
@@ -262,17 +285,17 @@ function traiterCalculsRigoureux(params) {
                 jde: jde,
                 deltat: 69.2,
                 gha: (gast - ((Math.atan2(y, x) * 180.0 / Math.PI + 360.0) % 360.0) + 360.0) % 360.0,
-                distanceMinMaxDisplay: `${(topo.distanceAu * 0.98).toFixed(4)} - ${(topo.distanceAu * 1.02).toFixed(4)}`,
-                constellationDisplay: "JPL-MCI",
-                sunrise: "Calculé",
-                sunset: "Calculé",
-                dusk: "Calculé",
-                daylightDuration: "12h 00m"
+                distanceMinMaxDisplay: `${topo.distanceAu.toFixed(6)} AU`,
+                constellationDisplay: "JPL-DE440s",
+                sunrise: topo.elevationApparente >= -0.833 ? "Visible" : "Sous horizon",
+                sunset: topo.elevationApparente < -0.833 ? "Couché" : "Au-dessus horizon",
+                dusk: topo.elevationApparente < -6.0 ? "Nuit" : "Crépuscule/Jour",
+                daylightDuration: topo.elevationApparente > 0 ? "Jour" : "Nuit"
             };
         }
     }
 
-    const resultatWmm = calculerWMMStrict(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear);
+    const resultatWmm = calculerWMM12x12Complet(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear);
 
     self.postMessage({
         type: 'RESULTS_COMPUTE',
@@ -284,6 +307,6 @@ function traiterCalculsRigoureux(params) {
             excentricite: 0.01671022,
             longSolaireDeg: longSolaireDeg
         },
-        wmm: resultatWmm // Transmission effective du calcul magnétique réel
+        wmm: resultatWmm
     });
 }
