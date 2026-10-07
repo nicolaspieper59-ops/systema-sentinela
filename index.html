@@ -650,13 +650,12 @@
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
- function activerBarometre() {
+    function activerBarometre() {
     const elBaro = document.getElementById('val-baro-statut');
     if (!elBaro) return;
 
-    // Règle du zéro fiction : interdiction d'utiliser une valeur de secours fictive
     if (!window.isSecureContext) {
-        elBaro.innerText = "ÉTAT DÉGRADÉ (HTTP non sécurisé - Capteurs restreints)";
+        elBaro.innerText = "DÉGRADÉ (HTTP non sécurisé)";
         elBaro.style.color = "var(--rose)";
         return; 
     }
@@ -667,44 +666,41 @@
             instanceBarometre.addEventListener('reading', () => {
                 if (!capteursActifs) return;
                 const p = instanceBarometre.pressure;
-                // Traçabilité directe de la lecture matérielle brute
-                elBaro.innerText = `${p.toFixed(2)} hPa (Matériel brut)`;
+                elBaro.innerText = `${p.toFixed(2)} hPa (Brut)`;
                 elBaro.style.color = "var(--neon-green)";
                 meteoActive.pressionBaro = p;
             });
             instanceBarometre.start();
         } catch (e) {
-            elBaro.innerText = "ERREUR MATÉRIELLE CAPTEUR";
+            elBaro.innerText = "ERREUR CAPTEUR";
             elBaro.style.color = "var(--rose)";
         }
     } else { 
-        elBaro.innerText = "API BAROMÈTRE ABSENTE SUR CET APPAREIL"; 
+        elBaro.innerText = "API ABSENTE"; 
         elBaro.style.color = "var(--amber)"; 
     }
 }
 
-            bodiesResult[nomCorps.toLowerCase()] = {
-                elevationGeometrique: topo.elevationGeometrique,
-                elevationApparente: topo.elevationApparente,
-                azimuth: topo.azimuth,
-                distanceAu: topo.distanceAu,
-                magnitude: seg.mag ?? 0.0,
-                raDeg: (Math.atan2(y, x) * 180.0 / Math.PI + 360.0) % 360.0,
-                decDeg: Math.asin(z / Math.hypot(x, y, z)) * 180.0 / Math.PI,
-                visibiliteCode: topo.visibiliteCode,
-                airMass: topo.airMass,
-                irradiance: topo.irradiance,
-                jde: jde,
-                deltat: 69.2,
-                gha: (gast - ((Math.atan2(y, x) * 180.0 / Math.PI + 360.0) % 360.0) + 360.0) % 360.0,
-                distanceMinMaxDisplay: `${(topo.distanceAu * 0.98).toFixed(4)} - ${(topo.distanceAu * 1.02).toFixed(4)}`,
-                constellationDisplay: "JPL-DE440s",
-                // Suppression des valeurs textuelles fictives "Calculé" ou "12h 00m"
-                sunrise: topo.elevationGeometrique >= -0.833 ? "Transité" : "Sous l'horizon",
-                sunset: "N/A",
-                dusk: "N/A",
-                daylightDuration: topo.elevationGeometrique > 0 ? "Actif" : "Nuit"
-            };
+function acquerirPositionGPS() {
+    if (!('geolocation' in navigator)) return;
+    watchPositionId = navigator.geolocation.watchPosition(
+        (pos) => {
+            if (!capteursActifs) return;
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            // Interdiction d'injecter une altitude par défaut fictive (ex. 10.0m)
+            const alt = pos.coords.altitude !== null ? pos.coords.altitude : 0.0;
+            
+            document.getElementById('input-lat').value = lat.toFixed(6);
+            document.getElementById('input-lon').value = lon.toFixed(6);
+            document.getElementById('input-alt').value = alt.toFixed(4);
+            
+            mettreAJourCoordonneesStation(lat, lon, alt, pos.coords.altitude !== null ? 'GPS 3D' : 'GPS 2D (Alt 0.0m)');
+        },
+        (err) => { ecrireLog(`Erreur GPS (${err.code}): ${err.message}`); },
+        { enableHighAccuracy: true, timeout: 10000 }
+    );
+                    }
     
     async function chargerFluxLiveJPL() {
         try {
