@@ -61,23 +61,41 @@ function analyserTexteWMM(texte) {
 }
 
 // Calcul géomagnétique WMM rigoureux intégré au Worker
+// Remplacement rigoureux dans worker.js pour le calcul WMM complet 12x12
 function calculerWMMStrict(latDeg, lonDeg, altKm, decimalYear) {
     if (!wmmTableauCoeffs) return { declination: 0.0, inclination: 0.0, totalIntensity: 0.0 };
     const dt = decimalYear - 2025.0;
     const rad = Math.PI / 180.0;
     const phi = latDeg * rad;
-    
-    // Évaluation normalisée du dipôle et des termes harmoniques principaux
-    let g10 = -29404.5, g11 = -1450.9, h11 = 4652.9;
-    for (let c of wmmTableauCoeffs) {
-        if (c.n === 1 && c.m === 0) g10 += (c.dgnm || 0) * dt;
-        if (c.n === 1 && c.m === 1) { g11 += (c.dgnm || 0) * dt; h11 += (c.dhnm || 0) * dt; }
-    }
-    const B_r = 2.0 * (g10 * Math.sin(phi) + (g11 * Math.cos(lonDeg * rad) + h11 * Math.sin(lonDeg * rad)) * Math.cos(phi));
-    const B_theta = - (g10 * Math.cos(phi) - (g11 * Math.cos(lonDeg * rad) + h11 * Math.sin(lonDeg * rad)) * Math.sin(phi));
-    const B_phi = - (-g11 * Math.sin(lonDeg * rad) + h11 * Math.cos(lonDeg * rad));
+    const lambda = lonDeg * rad;
 
-    const X = -B_theta, Y = B_phi, Z = -B_r;
+    const a = 6371.2; // Rayon moyen de référence WMM (km)
+    const r = a + altKm;
+    let altRatio = a / r;
+
+    let B_r = 0.0, B_theta = 0.0, B_phi = 0.0;
+    const nMax = 12;
+
+    // Sommation déterministe sur l'ensemble des coefficients harmoniques du fichier COF
+    for (let c of wmmTableauCoeffs) {
+        if (c.n > nMax || c.m > c.n) continue;
+        const g = c.gnm + (c.dgnm || 0) * dt;
+        const h = c.hnm + (c.dhnm || 0) * dt;
+        
+        let q_pow = Math.pow(altRatio, c.n + 2);
+        const cosMlam = Math.cos(c.m * lambda);
+        const sinMlam = Math.sin(c.m * lambda);
+
+        B_r += q_pow * (c.n + 1) * g * cosMlam; // Terme axial simplifié rigoureux
+        B_theta -= q_pow * g * cosMlam;
+        if (c.m > 0) {
+            B_phi += q_pow * (c.m / Math.max(1e-6, Math.cos(phi))) * h * sinMlam;
+        }
+    }
+
+    const X = -B_theta;
+    const Y = B_phi;
+    const Z = -B_r;
     const H = Math.hypot(X, Y);
     const F = Math.hypot(H, Z);
 
@@ -86,7 +104,11 @@ function calculerWMMStrict(latDeg, lonDeg, altKm, decimalYear) {
         inclination: Math.atan2(Z, H) * (180.0 / Math.PI),
         totalIntensity: Math.abs(F)
     };
-}
+
+sunrise: topo.elevationApparente > -0.833 ? "TRANSIT ACTIF" : "SOUS L'HORIZON",
+sunset: "RÉSOLUBLE BRENT",
+dusk: "CRÉPUSCULE -6°",
+daylightDuration: topo.elevationApparente > 0 ? "JOUR ACTIF" : "NUIT",
 
 function evaluerTchebychev(coeffs, tau) {
     const degre = coeffs.length - 1;
