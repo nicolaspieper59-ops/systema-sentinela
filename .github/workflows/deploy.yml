@@ -123,7 +123,7 @@ jobs:
             -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32','getValue','setValue']" \
             -o wasm_astronomie.js
 
-      - - name: 📝 Commit et push sécurisé des fichiers générés
+       - name: 📝 Commit et push sécurisé des fichiers générés
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
