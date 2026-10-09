@@ -121,7 +121,7 @@ jobs:
             -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32','getValue','setValue']" \
             -o wasm_astronomie.js
 
-      - name: 📂 Assemblage du site dans un répertoire dédié
+      - name: 📂 Assemblage du site Web
         run: |
           mkdir -p public_site
           cp -f index.html manifest.json sw.js worker.js meteo_manager.js three.min.js public_site/ 2>/dev/null || true
