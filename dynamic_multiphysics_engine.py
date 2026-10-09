@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.17)
+SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.18)
 """
 
 import argparse
@@ -8,6 +8,7 @@ import sys
 import json
 import time
 import os
+import traceback
 import numpy as np
 
 try:
@@ -17,15 +18,15 @@ except ImportError:
     sys.exit(1)
 
 CORPS_MAP = {
-    "SOLEIL": ["sun"],
-    "LUNE": ["moon"],
-    "MERCURE": ["mercury", "mercury barycenter"],
-    "VENUS": ["venus", "venus barycenter"],
-    "MARS": ["mars barycenter", "mars"],
-    "JUPITER": ["jupiter barycenter"],
-    "SATURNE": ["saturn barycenter"],
-    "URANUS": ["uranus barycenter"],
-    "NEPTUNE": ["neptune barycenter"]
+    "SOLEIL": ["sun", 10],
+    "LUNE": ["moon", 301],
+    "MERCURE": ["mercury barycenter", "mercury", 1],
+    "VENUS": ["venus barycenter", "venus", 2],
+    "MARS": ["mars barycenter", "mars", 4],
+    "JUPITER": ["jupiter barycenter", 5],
+    "SATURNE": ["saturn barycenter", 6],
+    "URANUS": ["uranus barycenter", 7],
+    "NEPTUNE": ["neptune barycenter", 8]
 }
 
 PAS_HEURES_MAP = {
@@ -38,7 +39,6 @@ RAYONS_EQUATORIAUX_KM = {
     "MARS": 3396.2, "JUPITER": 71492.0, "SATURNE": 60268.0, "URANUS": 25559.0, "NEPTUNE": 24764.0
 }
 
-# Ingestion déterministe des éléments orbitaux et physiques officiels IAU/JPL
 PARAMETRES_ORBITAUX = {
     "SOLEIL":  {"perihelion_ua": 0.0, "aphelion_ua": 0.0, "perigee_ua": 0.98329, "period_days": 365.256, "lod_hours": 609.6, "vel_kms": 0.0},
     "LUNE":    {"perihelion_ua": 0.00240, "aphelion_ua": 0.00271, "perigee_ua": 0.00243, "period_days": 27.321, "lod_hours": 655.7, "vel_kms": 1.022},
@@ -61,14 +61,14 @@ def valider_coordonnees(lat, lon, alt):
 
 def obtenir_astre(eph, noms):
     for nom in noms:
-        if nom in eph: return eph[nom]
-    raise KeyError(f"Astre non trouvé : {noms}")
+        if nom in eph: 
+            return eph[nom]
+    raise KeyError(f"Astre non trouvé dans le fichier BSP : {noms}")
 
 def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
     if nom_corps == "SOLEIL": 
         return -26.74
 
-    # Vecteurs directeurs de l'angle de phase au sommet de l'astre (Astre -> Terre et Astre -> Soleil)
     r_AE = -pos_astre_km
     r_AS = pos_soleil_km - pos_astre_km
     
@@ -109,9 +109,14 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     t_sec_nodes = 0.5 * (t2_unix - t1_unix) * nodes_std + 0.5 * (t2_unix + t1_unix)
     times_nodes = ts.tt_jd((t_sec_nodes / 86400.0) + 2440587.5)
 
-    apparent_obs = earth.at(times_nodes).observe(astre_target).apparent()
+    obs = earth.at(times_nodes).observe(astre_target)
+    apparent_obs = obs.apparent()
     pos_km = apparent_obs.position.km
-    vel_kms = apparent_obs.velocity.km_per_s
+
+    try:
+        vel_kms = apparent_obs.velocity.km_per_s
+    except Exception:
+        vel_kms = obs.velocity.km_per_s
 
     cx = [float(v) for v in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[0], degre)]
     cy = [float(v) for v in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[1], degre)]
@@ -137,12 +142,12 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
         "cx": cx, "cy": cy, "cz": cz,
         "cvx": cvx, "cvy": cvy, "cvz": cvz,
         "mag": float(mag_val),
-        "perihelion_ua": orb.get("perihelion_ua", 0.0),
-        "aphelion_ua": orb.get("aphelion_ua", 0.0),
-        "perigee_ua": orb.get("perigee_ua", 0.0),
-        "period_days": orb.get("period_days", 0.0),
-        "lod_hours": orb.get("lod_hours", 0.0),
-        "vel_kms": orb.get("vel_kms", 0.0)
+        "perihelion_ua": float(orb.get("perihelion_ua", 0.0)),
+        "aphelion_ua": float(orb.get("aphelion_ua", 0.0)),
+        "perigee_ua": float(orb.get("perigee_ua", 0.0)),
+        "period_days": float(orb.get("period_days", 0.0)),
+        "lod_hours": float(orb.get("lod_hours", 0.0)),
+        "vel_kms": float(orb.get("vel_kms", 0.0))
     }
 
 def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
@@ -150,10 +155,15 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
     if not os.path.exists(bsp_path):
         raise FileNotFoundError(f"Éphémérides JPL introuvables : {bsp_path}")
 
-    ts = load.timescale()
+    # Charge l'échelle de temps hors-ligne pour éviter tout timeout réseau IERS
+    try:
+        ts = load.timescale(builtin=True)
+    except Exception:
+        ts = load.timescale()
+
     eph = load(bsp_path)
-    earth = eph['earth']
-    sun_target = eph['sun']
+    earth = obtenir_astre(eph, ["earth", 399, "earth barycenter", 3])
+    sun_target = obtenir_astre(eph, ["sun", 10])
 
     t_start_unix = time.time()
     t_end_unix = t_start_unix + (nb_jours * 86400)
@@ -177,7 +187,7 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
         "ALMANACH": {
             "generateur": "Systema Sentinela DE440s Kernel",
             "date_creation_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
-            "fenetre_jours": nb_jours,
+            "fenetre_jours": int(nb_jours),
             "station": {"latitude": float(lat), "longitude": float(lon), "altitude_m": float(alt)}
         },
         "DATA": data_output
@@ -199,8 +209,9 @@ def main():
     try:
         generer_ephemerides(args.lat, args.lon, args.alt, args.days, args.bsp, args.out)
         print(f"[SUCCÈS] Flux généré : {args.out}")
-    except Exception as e:
-        print(f"[ERREUR FATALE] {e}", file=sys.stderr)
+    except Exception:
+        print("[ERREUR FATALE] Échec du traitement Python :", file=sys.stderr)
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":
