@@ -702,11 +702,13 @@ function acquerirPositionGPS() {
     );
                     }
     
-    async function chargerFluxLiveJPL() {
-        try {
-            const reponse = await fetch('flux_live.json');
-            if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
-            matriceJplLive = await reponse.json();
+    // Dans index.html
+async function chargerFluxLiveJPL() {
+    try {
+        // Ajout d'un paramètre anti-cache t=timestamp
+        const reponse = await fetch(`flux_live.json?t=${Date.now()}`, { cache: 'no-store' });
+        if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
+        matriceJplLive = await reponse.json();
             document.getElementById('lbl-jpl-status').innerText = "SYNCHRONISÉ";
             document.getElementById('lbl-jpl-status').style.color = "var(--neon-green)";
             envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
@@ -736,9 +738,11 @@ function traiterMessageWorker(e) {
     const data = e.data;
     if (!data) return;
 
-    if (data.type === 'FATAL_ERROR') {
-        déclencherVerrouillageCritique(data.message);
-        return;
+    // Dans index.html
+if (data.type === 'FATAL_ERROR') {
+    workerCalculEnCours = false; // 🔓 Libère le verrou pour permettre de nouvelles tentatives
+    déclencherVerrouillageCritique(data.message);
+    return;
     }
 
     switch (data.type) {
