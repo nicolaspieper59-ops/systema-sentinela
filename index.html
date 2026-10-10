@@ -709,39 +709,41 @@
         }
     }
     
-    function traiterMessageWorker(e) {
-        const data = e.data;
-        if (!data) return;
+    // Dans index.html
+function traiterMessageWorker(e) {
+    const data = e.data;
+    if (!data) return;
 
-        if (data.type === 'FATAL_ERROR') {
-            workerCalculEnCours = false; // 🔓 Libération du verrou
-            déclencherVerrouillageCritique(data.message);
-            return;
-        }
+    // Libération systématique du verrou sur tout type de retour du worker
+    workerCalculEnCours = false;
 
-        switch (data.type) {
-            case 'WORKER_READY':
-                workerPret = true;
-                document.getElementById('lbl-worker-status').innerText = "PRÊT";
-                document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-                chargerFichierWMMDeSecours();
-                while (fileDAttenteWorker.length > 0) {
-                    astroWorker.postMessage(fileDAttenteWorker.shift());
-                }
-                break;
-            case 'WMM_LOADED':
-            case 'JPL_MATRIX_UPDATED':
-                ecrireLog("Noyau : Synchronisation des coefficients validée par le Worker.");
-                break;
-            case 'RESULTS_COMPUTE':
-                workerCalculEnCours = false; // 🔓 Libération du verrou
-                requestAnimationFrame(() => mettreAJourInterface(data));
-                break;
-            case 'ERROR':
-                workerCalculEnCours = false; // 🔓 Libération du verrou
-                ecrireLog(`Erreur Worker : ${data.message}`);
-                break;
-        }
+    if (data.type === 'FATAL_ERROR' || data.type === 'ERROR') {
+        déclencherVerrouillageCritique(data.message || "Erreur critique dans le noyau de calcul.");
+        return;
+    }
+
+    switch (data.type) {
+        case 'WORKER_READY':
+            workerPret = true;
+            document.getElementById('lbl-worker-status').innerText = "PRÊT";
+            document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+            chargerFichierWMMDeSecours();
+            // Envoi de la matrice JPL si elle est déjà dispo en mémoire
+            if (matriceJplLive) {
+                astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+            }
+            while (fileDAttenteWorker.length > 0) {
+                astroWorker.postMessage(fileDAttenteWorker.shift());
+            }
+            break;
+        case 'WMM_LOADED':
+        case 'JPL_MATRIX_UPDATED':
+            ecrireLog("Noyau : Synchronisation des coefficients validée par le Worker.");
+            break;
+        case 'RESULTS_COMPUTE':
+            requestAnimationFrame(() => mettreAJourInterface(data));
+            break;
+    }
     }
 
     function déclencherVerrouillageCritique(messageErreur) {
@@ -1176,29 +1178,30 @@
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
-    function envoyerDemandeCalculWorker() {
-        if (workerCalculEnCours || !workerPret) return;
+    // Dans index.html
+function envoyerDemandeCalculWorker() {
+    if (workerCalculEnCours || !workerPret || !matriceJplLive) return;
 
-        const timestampExact = obtenirTimestampUTCExact();
-        const dateUtc = new Date(timestampExact);
-        
-        const elEpoch = document.getElementById('lbl-epoch');
-        if (elEpoch) {
-            elEpoch.innerText = dateUtc.toISOString().substring(11, 23) + " UTC";
-            elEpoch.style.color = "var(--sky)";
+    const timestampExact = obtenirTimestampUTCExact();
+    const dateUtc = new Date(timestampExact);
+    
+    const elEpoch = document.getElementById('lbl-epoch');
+    if (elEpoch) {
+        elEpoch.innerText = dateUtc.toISOString().substring(11, 23) + " UTC";
+        elEpoch.style.color = "var(--sky)";
+    }
+
+    workerCalculEnCours = true;
+    
+    astroWorker.postMessage({
+        type: 'COMPUTE',
+        timestampUtc: timestampExact,
+        coords: { lat: stationActive.lat, lon: stationActive.lon, alt: stationActive.altMeters },
+        meteo: { 
+            tempC: meteoActive.temperatureC ?? 15.0, 
+            presHpa: meteoActive.pressionBaro ?? 1013.25 
         }
-
-        workerCalculEnCours = true;
-        
-        envoyerMessageWorkerSecurise({
-            type: 'COMPUTE',
-            timestampUtc: timestampExact,
-            coords: { lat: stationActive.lat, lon: stationActive.lon, alt: stationActive.altMeters },
-            meteo: { 
-                tempC: meteoActive.temperatureC ?? 15.0, 
-                presHpa: meteoActive.pressionBaro ?? 1013.25 
-            }
-        });
+    });
     }
 
     function lancerBoucleCalculSecurisee() {
