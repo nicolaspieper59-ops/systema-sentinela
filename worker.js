@@ -342,4 +342,4 @@ function traiterCalculsRigoureux(params) {
         },
         wmm: resultatWmm
     });
-                      }
+    }
