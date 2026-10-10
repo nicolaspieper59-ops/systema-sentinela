@@ -757,27 +757,21 @@ function traiterMessageWorker(e) {
     }
 
 function initialiserWorkerAstronomie() {
-        if (typeof Worker === 'undefined') {
-            ecrireLog("Erreur critique : Votre navigateur ne supporte pas les Web Workers.");
-            document.getElementById('lbl-worker-status').innerText = "NON SUPPORTÉ";
-            document.getElementById('lbl-worker-status').style.color = "var(--rose)";
-            return;
-        }
-
-        try {
-            astroWorker = new Worker('worker.js'); 
-            astroWorker.onmessage = traiterMessageWorker;
-            astroWorker.onerror = (err) => {
-                console.error("Erreur Worker Astro :", err);
-                workerCalculEnCours = false;
-                document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER (CORS/FILE)";
-                document.getElementById('lbl-worker-status').style.color = "var(--rose)";
-                ecrireLog("ERREUR CRITIQUE WORKER : Si vous utilisez le protocole file://, lancez un serveur local (Live Server / http-server).");
-            };
-        } catch (e) {
-            ecrireLog(`Impossible d'initialiser le Worker : ${e.message}`);
-        }
+    if (typeof Worker === 'undefined') return;
+    astroWorker = new Worker('worker.js'); 
+    astroWorker.onmessage = traiterMessageWorker;
+    astroWorker.onerror = (err) => {
+        console.error("Erreur Worker Astro détaillée :", err.message, "Fichier :", err.filename, "Ligne :", err.lineno);
+        workerCalculEnCours = false;
+        document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
+        document.getElementById('lbl-worker-status').style.color = "var(--rose)";
+        ecrireLog(`Erreur critique Worker [Ligne ${err.lineno}] : ${err.message}`);
+    };
+    
+    if (matriceJplLive) {
+        envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
     }
+}
 
 
     function mettreAJourMetricsSolaires(m) {
