@@ -240,8 +240,10 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
 }
 
 function traiterCalculsRigoureux(params) {
-    if (!jplMatrixData) throw new Error("Matrice JPL non initialisée dans le Worker.");[cite: 10]
-    
+    if (!jplMatrixData || !jplMatrixData.DATA) {
+        // Ignorer silencieusement si les données ne sont pas encore chargées, au lieu de tuer le worker
+        return;
+        
     const ts = params.timestampUtc;
     const coords = params.coords;
     const meteo = params.meteo;
