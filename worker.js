@@ -241,7 +241,7 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
 
 function traiterCalculsRigoureux(params) {
     if (!jplMatrixData || !jplMatrixData.DATA) {
-        return; // Sortie anticipée sécurisée sans lever d'erreur bloquante[cite: 11]
+        return; 
     }
     
     const ts = params.timestampUtc;
@@ -330,35 +330,16 @@ function traiterCalculsRigoureux(params) {
 
     const resultatWmm = calculerWMM12x12Complet(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear);
 
-    self.onmessage = function (e) {
-    try {
-        const data = e.data;
-        if (!data) throw new Error("Message vide reçu par le Worker.");
-
-        switch (data.type) {
-            case 'UPDATE_JPL_MATRIX':
-                if (!data.matrix) throw new Error("Matrice JPL fournie invalide.");
-                jplMatrixData = data.matrix;
-                self.postMessage({ type: 'JPL_MATRIX_UPDATED' });
-                break;
-
-            case 'LOAD_WMM_COF_TEXT':
-                if (!data.text) throw new Error("Texte du fichier WMM vide.");
-                wmmTableauCoeffs = analyserTexteWMM(data.text);
-                self.postMessage({ type: 'WMM_LOADED', status: 'success' });
-                break;
-
-            case 'COMPUTE':
-                traiterCalculsRigoureux(data);
-                break;
-
-            default:
-                throw new Error(`Type de message inconnu : ${data.type}`);
-        }
-    } catch (erreur) {
-        self.postMessage({ 
-            type: 'FATAL_ERROR', 
-            message: erreur.message 
-        });
-    }
-};
+    self.postMessage({
+        type: 'RESULTS_COMPUTE',
+        bodies: bodiesResult,
+        metrics: {
+            gastDeg: gast,
+            obliquiteDeg: obliquite,
+            eqTempsMin: eqTempsMin,
+            excentricite: 0.01671022,
+            longSolaireDeg: longSolaireDeg
+        },
+        wmm: resultatWmm
+    });
+                      }
