@@ -1,0 +1,42 @@
+# ==========================================
+# 1. Ephemeris Kernels NASA JPL (Ne jamais commiter)
+# ==========================================
+*.bsp
+*.bsp.*
+
+# ==========================================
+# 2. Fichiers générés C++ / WebAssembly (Wasm)
+# ==========================================
+wasm_astronomie.js
+wasm_astronomie.wasm
+*.o
+*.out
+*.tar.gz
+
+# ==========================================
+# 3. Données dynamiques générées
+# ==========================================
+flux_live.json
+
+# ==========================================
+# 4. Python Cache & Environnement
+# ==========================================
+__pycache__/
+*.pyc
+.venv/
+env/
+
+# ==========================================
+# 5. Fichiers système & Éditeurs
+# ==========================================
+.DS_Store
+.vscode/
+.idea/
+
+# ==========================================
+# 6. Dossiers de build et dépendances temporaires
+# ==========================================
+build_sofa/
+public_site/
+lib/sofa/
+erfa.tar.gz

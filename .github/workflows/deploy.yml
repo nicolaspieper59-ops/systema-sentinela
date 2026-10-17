@@ -1,0 +1,154 @@
+name: Pipeline Ephemerides DE440s & Wasm Build (SOFA IAU Integrated)
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - '*.js'
+      - '*.html'
+      - 'dynamic_multiphysics_engine.py'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read      # Réduit à 'read' puisqu'on ne pousse plus rien sur la branche main
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Cloner le dépôt
+        uses: actions/checkout@v4
+
+      - name: 🐍 Configurer Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Installer les dépendances Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install spiceypy numpy skyfield scipy requests
+
+      - name: ⚙️ Configurer Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.64
+          actions-cache-folder: 'emsdk-cache'
+
+      - name: 🛰️ Cache du noyau DE440s & Données IERS
+        uses: actions/cache@v4
+        with:
+          path: |
+            de440s.bsp
+            finals2000A.all
+          key: astronomical-data-v2
+
+      - name: 📥 Téléchargement & Vérification des données
+        run: |
+          if [ ! -f "de440s.bsp" ] || [ $(wc -c < de440s.bsp) -lt 10000000 ]; then
+            curl -fsSL --connect-timeout 20 --retry 3 -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || \
+            curl -fsSL --connect-timeout 20 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
+          fi
+
+          if [ -f "src/WMM2025.COF" ]; then
+            cp -f src/WMM2025.COF ./WMM2025.COF
+          elif [ ! -f "WMM2025.COF" ] || [ $(wc -c < WMM2025.COF) -lt 1000 ]; then
+            curl -fsSL --connect-timeout 20 --retry 3 -o WMM2025.COF https://www.ngdc.noaa.gov/geomag/WMM/data/WMM2025/WMM2025.COF
+          fi
+
+          curl -fsSL --connect-timeout 20 --retry 3 -o finals2000A.all https://datacenter.iers.org/data/latestVersion/finals2000A.all || true
+
+      - name: 🌍 Exécution de l'extracteur multiphysique Python
+        run: |
+          python dynamic_multiphysics_engine.py "43.284356" "5.358507" "49.81" --days 90 --out flux_live.json
+
+      - name: 📂 Préparation de la bibliothèque SOFA C / ERFA
+        run: |
+          mkdir -p lib/sofa/src
+          find . -name "*.zip" -exec unzip -o {} -d lib/sofa/src/ \; || true
+          SOFA_HEADER=$(find . -maxdepth 5 \( -name "sofa.h" -o -name "erfa.h" \) | head -n 1)
+
+          if [ -n "$SOFA_HEADER" ]; then
+            SOFA_DIR=$(dirname "$SOFA_HEADER")
+            cp -r "$SOFA_DIR"/* lib/sofa/src/ 2>/dev/null || true
+          else
+            curl -fsSL -o erfa.tar.gz https://github.com/astropy/erfa/archive/refs/tags/v2.0.1.1.tar.gz
+            tar -xzf erfa.tar.gz -C lib/sofa/
+            cp -r lib/sofa/erfa-*/src/* lib/sofa/src/ 2>/dev/null || true
+          fi
+
+          if [ -f "lib/sofa/src/erfa.h" ] && [ ! -f "lib/sofa/src/sofa.h" ]; then
+            echo '#include "erfa.h"' > lib/sofa/src/sofa.h
+          fi
+
+          test -f "lib/sofa/src/sofa.h" || test -f "lib/sofa/src/erfa.h" || { echo "ERREUR CRITIQUE : SOFA/ERFA introuvable"; exit 1; }
+
+      - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
+        run: |
+          SRC_FILE=""
+          for candidate in "src/astro_engine.cpp" "src/wasm_astronomie.cpp" "astro_engine.cpp"; do
+            if [ -f "$candidate" ]; then
+              SRC_FILE="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$SRC_FILE" ]; then
+            echo "ERREUR CRITIQUE : Aucun fichier source C++ trouvé."
+            exit 1
+          fi
+
+          mkdir -p build_sofa
+          for f in lib/sofa/src/*.c; do
+            [ -f "$f" ] || continue
+            emcc -c "$f" -O3 -I lib/sofa/src -I src/ -o "build_sofa/$(basename ${f%.c}.o)"
+          done
+
+          OBJECTS=""
+          if ls build_sofa/*.o 1> /dev/null 2>&1; then
+            OBJECTS="build_sofa/*.o"
+          fi
+
+          em++ "$SRC_FILE" $OBJECTS -O3 -std=c++17 \
+            -I lib/sofa/src -I src/ \
+            -s WASM=1 -s FORCE_FILESYSTEM=1 -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=33554432 \
+            -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_normaliserDegres','_malloc','_free']" \
+            -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32','getValue','setValue']" \
+            -o wasm_astronomie.js
+
+      - name: 📂 Assemblage du site Web
+        run: |
+          mkdir -p public_site
+          cp -f index.html manifest.json sw.js worker.js meteo_manager.js three.min.js public_site/ 2>/dev/null || true
+          cp -rf textures public_site/ 2>/dev/null || true
+          cp -f EGM2008.gfc public_site/ 2>/dev/null || true
+          cp -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm WMM2025.COF public_site/ 2>/dev/null || true
+
+      - name: 📦 Préparation de l'artefact GitHub Pages
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: 'public_site'
+
+  deploy:
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    concurrency:
+      group: "pages"
+      cancel-in-progress: false
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 🚀 Déploiement vers GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
