@@ -696,6 +696,27 @@
         }
     }
 
+    // Exemple de vérification de fraîcheur des données
+function verifierObsolescenceFlux(matriceJplLive) {
+    // Supposons que votre JSON contient un timestamp UTC ou un JDE (Julian Date Ephemeris)
+    const tempsFichier = matriceJplLive.epoch_utc_ms; // ou calculé via JDE
+    const maintenant = Date.now();
+    
+    // Si le fichier a plus de 2 heures (7200000 ms) de décalage
+    const diffHeures = (maintenant - tempsFichier) / (1000 * 60 * 60);
+    
+    const statusElement = document.getElementById('lbl-jpl-status');
+    
+    if (diffHeures > 2) {
+        statusElement.innerText = "DONNÉES OBSOLÈTES (> 2h)";
+        statusElement.style.color = "var(--neon-orange, orange)";
+        ecrireLog(`[AVERTISSEMENT] Le flux JPL a ${diffHeures.toFixed(1)}h de décalage.`);
+    } else {
+        statusElement.innerText = "SYNCHRONISÉ";
+        statusElement.style.color = "var(--neon-green)";
+    }
+        }
+
     async function chargerFichierWMMDeSecours() {
         try {
             const wmmUrl = new URL('./WMM2025.COF', window.location.href).href;
