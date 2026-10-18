@@ -705,7 +705,9 @@ async function chargerFluxLiveJPL() {
 
 function verifierObsolescenceFlux(data, tempsReference) {
     const statusElement = document.getElementById('lbl-jpl-status');
-    let timestampFlux = data.epoch_utc_ms || (data.jde ? (data.jde - 2440587.5) * 86400000 : null);
+    
+    // Récupération de l'époque UTC en millisecondes depuis l'almanach du JSON
+    let timestampFlux = data.ALMANACH?.epoch_utc_ms || data.epoch_utc_ms;
     
     if (!timestampFlux) {
         statusElement.innerText = "SYNCHRONISÉ (ÂGE INCONNU)";
@@ -713,20 +715,20 @@ function verifierObsolescenceFlux(data, tempsReference) {
         return;
     }
 
-    // Calcul de l'âge basé sur l'heure fiable du serveur
+    // Calcul de l'âge basé sur l'heure fiable du serveur HTTP
     const ageHeures = (tempsReference - timestampFlux) / (1000 * 60 * 60);
 
     if (ageHeures > 2) {
         statusElement.innerText = `OBSOLÈTE (+${ageHeures.toFixed(1)}h)`;
-        statusElement.style.color = "#ff9800";
-        ecrireLog(`[AVERTISSEMENT] Données JPL obsolètes de ${ageHeures.toFixed(1)}h (selon le serveur).`);
+        statusElement.style.color = "#ff9800"; // Orange
+        ecrireLog(`[AVERTISSEMENT] Données JPL obsolètes de ${ageHeures.toFixed(1)}h.`);
     } else {
         statusElement.innerText = "SYNCHRONISÉ (FRAIS)";
         statusElement.style.color = "var(--neon-green)";
-        ecrireLog(`JPL : flux_live.json à jour.`);
+        ecrireLog(`JPL : flux_live.json à jour (Généré il y a ${Math.round(ageHeures * 60)} min).`);
     }
-            }
-
+    }
+    
     async function chargerFichierWMMDeSecours() {
         try {
             const wmmUrl = new URL('./WMM2025.COF', window.location.href).href;
