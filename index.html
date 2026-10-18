@@ -681,56 +681,51 @@
         }
     }
     
-    async function chargerFluxLiveJPL() {
+async function chargerFluxLiveJPL() {
     try {
-        // Chargement du fichier avec cache-busting (?t=...)
-        const reponse = await fetch(`flux_live.json?t=${Date.now()}`, { 
-            cache: 'no-store',
-            headers: {
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache'
-            }
-        });
+        const reponse = await fetch(`flux_live.json?t=${Date.now()}`, { cache: 'no-store' });
         if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
+        
+        // Récupération de l'heure officielle du serveur via le header HTTP
+        const dateServeurHeader = reponse.headers.get('Date');
+        const tempsServeur = dateServeurHeader ? new Date(dateServeurHeader).getTime() : Date.now();
+
         matriceJplLive = await reponse.json();
 
-        // --- NOUVEAU : Contrôle de l'âge/obsolescence des données ---
-        verifierObsolescenceFlux(matriceJplLive);
+        // On vérifie l'obsolescence en comparant avec le temps du serveur
+        verifierObsolescenceFlux(matriceJplLive, tempsServeur);
 
         envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
     } catch (e) {
         document.getElementById('lbl-jpl-status').innerText = "MODE DÉGRADÉ";
         document.getElementById('lbl-jpl-status').style.color = "var(--neon-red, red)";
-        ecrireLog("Avertissement : Impossible de charger flux_live.json (Flux distant indisponible).");
+        ecrireLog("Avertissement : Impossible de charger flux_live.json.");
     }
 }
 
-function verifierObsolescenceFlux(data) {
+function verifierObsolescenceFlux(data, tempsReference) {
     const statusElement = document.getElementById('lbl-jpl-status');
-    
-    // Récupération de la date de génération (Timestamp MS ou calcul depuis le JDE)
     let timestampFlux = data.epoch_utc_ms || (data.jde ? (data.jde - 2440587.5) * 86400000 : null);
     
     if (!timestampFlux) {
         statusElement.innerText = "SYNCHRONISÉ (ÂGE INCONNU)";
         statusElement.style.color = "var(--neon-green)";
-        ecrireLog("JPL : flux_live.json chargé avec succès.");
         return;
     }
 
-    const maintenant = Date.now();
-    const ageHeures = (maintenant - timestampFlux) / (1000 * 60 * 60);
+    // Calcul de l'âge basé sur l'heure fiable du serveur
+    const ageHeures = (tempsReference - timestampFlux) / (1000 * 60 * 60);
 
     if (ageHeures > 2) {
         statusElement.innerText = `OBSOLÈTE (+${ageHeures.toFixed(1)}h)`;
-        statusElement.style.color = "#ff9800"; // Orange d'alerte
-        ecrireLog(`[AVERTISSEMENT] Données JPL obsolètes (générées il y a ${ageHeures.toFixed(1)}h). Veuillez relancer le script Python.`);
+        statusElement.style.color = "#ff9800";
+        ecrireLog(`[AVERTISSEMENT] Données JPL obsolètes de ${ageHeures.toFixed(1)}h (selon le serveur).`);
     } else {
         statusElement.innerText = "SYNCHRONISÉ (FRAIS)";
         statusElement.style.color = "var(--neon-green)";
-        ecrireLog(`JPL : flux_live.json à jour (Âge: ${Math.round(ageHeures * 60)} min).`);
+        ecrireLog(`JPL : flux_live.json à jour.`);
     }
-    }
+            }
 
     async function chargerFichierWMMDeSecours() {
         try {
