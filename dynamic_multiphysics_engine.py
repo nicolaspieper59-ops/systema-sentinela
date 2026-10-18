@@ -187,11 +187,12 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
         "ALMANACH": {
             "generateur": "Systema Sentinela DE440s Kernel",
             "date_creation_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
+            "epoch_utc_ms": int(time.time() * 1000),  # <--- AJOUTEZ CETTE LIGNE ICI
             "fenetre_jours": int(nb_jours),
             "station": {"latitude": float(lat), "longitude": float(lon), "altitude_m": float(alt)}
         },
         "DATA": data_output
-    }
+            }
 
     with open(fichier_sortie, "w", encoding="utf-8") as f:
         json.dump(resultat_global, f, indent=2, ensure_ascii=False)
