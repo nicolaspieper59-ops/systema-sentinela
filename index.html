@@ -682,40 +682,55 @@
     }
     
     async function chargerFluxLiveJPL() {
-        try {
-            const reponse = await fetch(`flux_live.json?t=${Date.now()}`, { cache: 'no-store' });
-            if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
-            matriceJplLive = await reponse.json();
-            document.getElementById('lbl-jpl-status').innerText = "SYNCHRONISÉ";
-            document.getElementById('lbl-jpl-status').style.color = "var(--neon-green)";
-            envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
-            ecrireLog("JPL : flux_live.json chargé avec succès.");
-        } catch (e) {
-            document.getElementById('lbl-jpl-status').innerText = "MODE DÉGRADÉ";
-            ecrireLog("Avertissement : Impossible de charger flux_live.json (Flux distant indisponible).");
-        }
-    }
+    try {
+        // Chargement du fichier avec cache-busting (?t=...)
+        const reponse = await fetch(`flux_live.json?t=${Date.now()}`, { 
+            cache: 'no-store',
+            headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
+            }
+        });
+        if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
+        matriceJplLive = await reponse.json();
 
-    // Exemple de vérification de fraîcheur des données
-function verifierObsolescenceFlux(matriceJplLive) {
-    // Supposons que votre JSON contient un timestamp UTC ou un JDE (Julian Date Ephemeris)
-    const tempsFichier = matriceJplLive.epoch_utc_ms; // ou calculé via JDE
-    const maintenant = Date.now();
-    
-    // Si le fichier a plus de 2 heures (7200000 ms) de décalage
-    const diffHeures = (maintenant - tempsFichier) / (1000 * 60 * 60);
-    
+        // --- NOUVEAU : Contrôle de l'âge/obsolescence des données ---
+        verifierObsolescenceFlux(matriceJplLive);
+
+        envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+    } catch (e) {
+        document.getElementById('lbl-jpl-status').innerText = "MODE DÉGRADÉ";
+        document.getElementById('lbl-jpl-status').style.color = "var(--neon-red, red)";
+        ecrireLog("Avertissement : Impossible de charger flux_live.json (Flux distant indisponible).");
+    }
+}
+
+function verifierObsolescenceFlux(data) {
     const statusElement = document.getElementById('lbl-jpl-status');
     
-    if (diffHeures > 2) {
-        statusElement.innerText = "DONNÉES OBSOLÈTES (> 2h)";
-        statusElement.style.color = "var(--neon-orange, orange)";
-        ecrireLog(`[AVERTISSEMENT] Le flux JPL a ${diffHeures.toFixed(1)}h de décalage.`);
-    } else {
-        statusElement.innerText = "SYNCHRONISÉ";
+    // Récupération de la date de génération (Timestamp MS ou calcul depuis le JDE)
+    let timestampFlux = data.epoch_utc_ms || (data.jde ? (data.jde - 2440587.5) * 86400000 : null);
+    
+    if (!timestampFlux) {
+        statusElement.innerText = "SYNCHRONISÉ (ÂGE INCONNU)";
         statusElement.style.color = "var(--neon-green)";
+        ecrireLog("JPL : flux_live.json chargé avec succès.");
+        return;
     }
-        }
+
+    const maintenant = Date.now();
+    const ageHeures = (maintenant - timestampFlux) / (1000 * 60 * 60);
+
+    if (ageHeures > 2) {
+        statusElement.innerText = `OBSOLÈTE (+${ageHeures.toFixed(1)}h)`;
+        statusElement.style.color = "#ff9800"; // Orange d'alerte
+        ecrireLog(`[AVERTISSEMENT] Données JPL obsolètes (générées il y a ${ageHeures.toFixed(1)}h). Veuillez relancer le script Python.`);
+    } else {
+        statusElement.innerText = "SYNCHRONISÉ (FRAIS)";
+        statusElement.style.color = "var(--neon-green)";
+        ecrireLog(`JPL : flux_live.json à jour (Âge: ${Math.round(ageHeures * 60)} min).`);
+    }
+    }
 
     async function chargerFichierWMMDeSecours() {
         try {
