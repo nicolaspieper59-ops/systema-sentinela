@@ -686,20 +686,21 @@ async function chargerFluxLiveJPL() {
         const reponse = await fetch(`flux_live.json?t=${Date.now()}`, { cache: 'no-store' });
         if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
         
-        // Récupération de l'heure officielle du serveur via le header HTTP
+        // Récupération de l'heure officielle du serveur via le header HTTP (Garantie Anti-Android)
         const dateServeurHeader = reponse.headers.get('Date');
         const tempsServeur = dateServeurHeader ? new Date(dateServeurHeader).getTime() : Date.now();
 
         matriceJplLive = await reponse.json();
 
-        // On vérifie l'obsolescence en comparant avec le temps du serveur
+        // Vérification rigoureuse de la fraîcheur du flux
         verifierObsolescenceFlux(matriceJplLive, tempsServeur);
 
         envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+        ecrireLog("JPL : flux_live.json chargé avec succès.");
     } catch (e) {
         document.getElementById('lbl-jpl-status').innerText = "MODE DÉGRADÉ";
-        document.getElementById('lbl-jpl-status').style.color = "var(--neon-red, red)";
-        ecrireLog("Avertissement : Impossible de charger flux_live.json.");
+        document.getElementById('lbl-jpl-status').style.color = "var(--rose)";
+        ecrireLog("Avertissement : Impossible de charger flux_live.json (Flux distant indisponible).");
     }
 }
 
@@ -711,23 +712,23 @@ function verifierObsolescenceFlux(data, tempsReference) {
     
     if (!timestampFlux) {
         statusElement.innerText = "SYNCHRONISÉ (ÂGE INCONNU)";
-        statusElement.style.color = "var(--neon-green)";
+        statusElement.style.color = "var(--amber)";
         return;
     }
 
     // Calcul de l'âge basé sur l'heure fiable du serveur HTTP
     const ageHeures = (tempsReference - timestampFlux) / (1000 * 60 * 60);
 
-    if (ageHeures > 2) {
-        statusElement.innerText = `OBSOLÈTE (+${ageHeures.toFixed(1)}h)`;
-        statusElement.style.color = "#ff9800"; // Orange
+    if (ageHeures > 168) { // Plus de 7 jours (puisqu'on génère sur de larges périodes)
+        statusElement.innerText = `OBSOLÈTE (+${Math.round(ageHeures)}h)`;
+        statusElement.style.color = "var(--rose)";
         ecrireLog(`[AVERTISSEMENT] Données JPL obsolètes de ${ageHeures.toFixed(1)}h.`);
     } else {
         statusElement.innerText = "SYNCHRONISÉ (FRAIS)";
         statusElement.style.color = "var(--neon-green)";
-        ecrireLog(`JPL : flux_live.json à jour (Généré il y a ${Math.round(ageHeures * 60)} min).`);
+        ecrireLog(`JPL : flux_live.json à jour (Généré il y a ${Math.round(ageHeures * 10) / 10} h).`);
     }
-    }
+}
     
     async function chargerFichierWMMDeSecours() {
         try {
