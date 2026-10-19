@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read      # Réduit à 'read' puisqu'on ne pousse plus rien sur la branche main
+  contents: read
   pages: write
   id-token: write
 
