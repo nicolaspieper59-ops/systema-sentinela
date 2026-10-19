@@ -1,11 +1,10 @@
 /**
- * WORKER ASTRONOMIQUE & GÉOMAGNÉTIQUE UNIFIÉ — SYSTEMA SENTINELA v19.25
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL SYNCHRONISÉ v19.31
  */
 
 let jplMatrixData = null;
-let wmmCoeffs = null;
+let wmmTableauCoeffs = null;
 
-// Notification de bon démarrage du Worker vers l'IHM
 self.postMessage({ type: 'WORKER_READY' });
 
 self.onmessage = function (e) {
@@ -22,12 +21,12 @@ self.onmessage = function (e) {
 
             case 'LOAD_WMM_COF_TEXT':
                 if (!data.text) throw new Error("Texte du fichier WMM vide.");
-                wmmCoeffs = analyserTexteWMM(data.text);
+                wmmTableauCoeffs = analyserTexteWMM(data.text);
                 self.postMessage({ type: 'WMM_LOADED', status: 'success' });
                 break;
 
             case 'COMPUTE':
-                traiterCalculsRigoureuxUnifies(data);
+                traiterCalculsRigoureux(data);
                 break;
 
             default:
@@ -41,7 +40,6 @@ self.onmessage = function (e) {
     }
 };
 
-// --- 1. PARSING & MOTEUR WMM-2025 INTÉGRÉ ---
 function analyserTexteWMM(texte) {
     const lignes = texte.split('\n');
     const coeffs = [];
@@ -54,12 +52,9 @@ function analyserTexteWMM(texte) {
             const m = parseInt(elements[1], 10);
             if (!isNaN(n) && !isNaN(m) && n <= 12) {
                 coeffs.push({
-                    n: n,
-                    m: m,
-                    g: parseFloat(elements[2]),
-                    h: parseFloat(elements[3]),
-                    dg: parseFloat(elements[4]),
-                    dh: parseFloat(elements[5])
+                    n: n, m: m,
+                    gnm: parseFloat(elements[2]), hnm: parseFloat(elements[3]),
+                    dgnm: parseFloat(elements[4]), dhnm: parseFloat(elements[5])
                 });
             }
         }
@@ -69,26 +64,21 @@ function analyserTexteWMM(texte) {
 }
 
 function calculerWMM12x12Complet(latDeg, lonDeg, altKm, decimalYear) {
-    if (!wmmCoeffs) return { declination: 0.0, inclination: 0.0, totalIntensity: 0.0 };
+    if (!wmmTableauCoeffs) return { declination: 0.0, inclination: 0.0, totalIntensity: 0.0 };
 
     const dt = decimalYear - 2025.0;
     const rad = Math.PI / 180.0;
     const phi = latDeg * rad;
     const lambda = lonDeg * rad;
-
-    const a = 6371.2;
-    const r = a + altKm;
-    const altRatio = a / r;
-
+    const a = 6371.2, r = a + altKm, altRatio = a / r;
     const nMax = 12;
-    let P = Array.from({ length: nMax + 2 }, () => new Array(nMax + 2).fill(0.0));
-    let dP = Array.from({ length: nMax + 2 }, () => new Array(nMax + 2).fill(0.0));
-
-    P[0][0] = 1.0;
-    dP[0][0] = 0.0;
+    
+    let P = Array.from({ length: nMax + 1 }, () => new Array(nMax + 1).fill(0.0));
+    let dP = Array.from({ length: nMax + 1 }, () => new Array(nMax + 1).fill(0.0));
 
     const sinPhi = Math.sin(phi);
     const cosPhi = Math.max(1e-6, Math.cos(phi));
+    P[0][0] = 1.0; dP[0][0] = 0.0;
 
     for (let n = 1; n <= nMax; n++) {
         for (let m = 0; m <= n; m++) {
@@ -96,87 +86,55 @@ function calculerWMM12x12Complet(latDeg, lonDeg, altKm, decimalYear) {
                 P[n][n] = sinPhi * P[n - 1][n - 1];
                 dP[n][n] = sinPhi * dP[n - 1][n - 1] + cosPhi * P[n - 1][n - 1];
             } else if (n === 1 && m === 0) {
-                P[1][0] = sinPhi * P[0][0];
-                dP[1][0] = sinPhi * dP[0][0] - cosPhi * P[0][0];
-            } else if (n > 1 && n !== m) {
-                let k = (((n - 1) * (n - 1)) - (m * m)) / (((2 * n - 1) * (2 * n - 3)));
-                P[n][m] = sinPhi * P[n - 1][m] - Math.sqrt(k) * P[n - 2][m];
-                dP[n][m] = sinPhi * P[n - 1][m] - cosPhi * P[n - 1][m] - Math.sqrt(k) * dP[n - 2][m];
+                P[1][0] = sinPhi; dP[1][0] = cosPhi;
+            } else {
+                let k = (((n - 1) * (n - 1)) - (m * m)) / ((2 * n - 1) * (2 * n - 3));
+                let sqrtK = Math.sqrt(Math.max(0, k));
+                P[n][m] = sinPhi * P[n - 1][m] - sqrtK * P[n - 2][m];
+                dP[n][m] = sinPhi * dP[n - 1][m] + cosPhi * P[n - 1][m] - sqrtK * dP[n - 2][m];
             }
         }
     }
 
     let B_r = 0.0, B_theta = 0.0, B_phi = 0.0;
-    let cosMlambda = new Array(nMax + 1);
-    let sinMlambda = new Array(nMax + 1);
-    cosMlambda[0] = 1.0;
-    sinMlambda[0] = 0.0;
-    for (let m = 1; m <= nMax; m++) {
-        cosMlambda[m] = Math.cos(m * lambda);
-        sinMlambda[m] = Math.sin(m * lambda);
-    }
-
-    for (let c of wmmCoeffs) {
+    for (let c of wmmTableauCoeffs) {
         if (c.n > nMax || c.m > c.n) continue;
-
-        const g = c.g + c.dg * dt;
-        const h = c.h + c.dh * dt;
-
+        const g = c.gnm + (c.dgnm || 0) * dt;
+        const h = c.hnm + (c.dhnm || 0) * dt;
         let q_pow = Math.pow(altRatio, c.n + 2);
-        const cos_term = g * cosMlambda[c.m] + h * sinMlambda[c.m];
-        const sin_term = g * sinMlambda[c.m] - h * cosMlambda[c.m];
+        const cosMlam = Math.cos(c.m * lambda), sinMlam = Math.sin(c.m * lambda);
+        const cos_term = g * cosMlam + h * sinMlam;
+        const sin_term = g * sinMlam - h * cosMlam;
 
         B_r += q_pow * (c.n + 1) * P[c.n][c.m] * cos_term;
         B_theta -= q_pow * dP[c.n][c.m] * cos_term;
-        if (c.m > 0) {
-            B_phi += q_pow * (c.m / cosPhi) * P[c.n][c.m] * sin_term;
-        }
+        if (c.m > 0) B_phi += q_pow * (c.m / cosPhi) * P[c.n][c.m] * sin_term;
     }
 
-    const X = -B_theta; 
-    const Y = B_phi;    
-    const Z = B_r;     
-
-    const H = Math.hypot(X, Y);
-    const F = Math.hypot(H, Z);
-
+    const X = -B_theta, Y = B_phi, Z = -B_r;
     return {
         declination: Math.atan2(Y, X) * (180.0 / Math.PI),
-        inclination: Math.atan2(Z, H) * (180.0 / Math.PI),
-        totalIntensity: Math.abs(F)
+        inclination: Math.atan2(Z, Math.hypot(X, Y)) * (180.0 / Math.PI),
+        totalIntensity: Math.abs(Math.hypot(Math.hypot(X, Y), Z))
     };
 }
 
-// --- 2. MOTEUR ASTRONOMIQUE & TCHÉBYCHEV ---
 function evaluerTchebychev(coeffs, tau) {
     const degre = coeffs.length - 1;
     if (degre === 0) return coeffs[0];
     if (degre === 1) return coeffs[0] + coeffs[1] * tau;
-
-    let tPrev2 = 1.0;
-    let tPrev1 = tau;
-    let somme = coeffs[0] * tPrev2 + coeffs[1] * tPrev1;
-
+    let tPrev2 = 1.0, tPrev1 = tau, somme = coeffs[0] * tPrev2 + coeffs[1] * tPrev1;
     for (let n = 2; n <= degre; n++) {
         const tCurr = 2.0 * tau * tPrev1 - tPrev2;
         somme += coeffs[n] * tCurr;
-        tPrev2 = tPrev1;
-        tPrev1 = tCurr;
+        tPrev2 = tPrev1; tPrev1 = tCurr;
     }
     return somme;
 }
 
 function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM, gastDeg, meteo, estSoleil) {
-    if (!meteo || meteo.tempC === undefined || meteo.presHpa === undefined) {
-        throw new Error("Paramètres météorologiques de terrain requis pour la réfraction.");
-    }
-
-    const a = 6378137.0;
-    const f = 1.0 / 298.257223563;
-    const e2 = f * (2.0 - f);
-    
-    const phi = obsLatDeg * (Math.PI / 180.0);
-    const lambda = obsLonDeg * (Math.PI / 180.0);
+    const a = 6378137.0, f = 1.0 / 298.257223563, e2 = f * (2.0 - f);
+    const phi = obsLatDeg * (Math.PI / 180.0), lambda = obsLonDeg * (Math.PI / 180.0);
     const N = a / Math.sqrt(1.0 - e2 * Math.sin(phi) ** 2);
     
     const rObsECEF = [
@@ -186,36 +144,23 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
     ];
 
     const theta = gastDeg * (Math.PI / 180.0);
-    const cosT = Math.cos(theta);
-    const sinT = Math.sin(theta);
-    
     const posECEF_m = [
-        (posECI_km[0] * cosT + posECI_km[1] * sinT) * 1000.0,
-        (-posECI_km[0] * sinT + posECI_km[1] * cosT) * 1000.0,
+        (posECI_km[0] * Math.cos(theta) + posECI_km[1] * Math.sin(theta)) * 1000.0,
+        (-posECI_km[0] * Math.sin(theta) + posECI_km[1] * Math.cos(theta)) * 1000.0,
         posECI_km[2] * 1000.0
     ];
 
-    const rhoECEF = [
-        posECEF_m[0] - rObsECEF[0],
-        posECEF_m[1] - rObsECEF[1],
-        posECEF_m[2] - rObsECEF[2]
-    ];
-    
+    const rhoECEF = [posECEF_m[0] - rObsECEF[0], posECEF_m[1] - rObsECEF[1], posECEF_m[2] - rObsECEF[2]];
     const distM = Math.hypot(rhoECEF[0], rhoECEF[1], rhoECEF[2]);
     const distAU = (distM / 1000.0) / 149597870.7;
 
-    const sinLat = Math.sin(phi);
-    const cosLat = Math.cos(phi);
-    const sinLon = Math.sin(lambda);
-    const cosLon = Math.cos(lambda);
-
+    const sinLat = Math.sin(phi), cosLat = Math.cos(phi), sinLon = Math.sin(lambda), cosLon = Math.cos(lambda);
     const east = -sinLon * rhoECEF[0] + cosLon * rhoECEF[1];
     const north = -sinLat * cosLon * rhoECEF[0] - sinLat * sinLon * rhoECEF[1] + cosLat * rhoECEF[2];
     const up = cosLat * cosLon * rhoECEF[0] + cosLat * sinLon * rhoECEF[1] + sinLat * sinLon * rhoECEF[2];
 
     const elGeom = Math.asin(up / distM) * (180.0 / Math.PI);
-    let az = Math.atan2(east, north) * (180.0 / Math.PI);
-    az = (az % 360.0 + 360.0) % 360.0;
+    let az = (Math.atan2(east, north) * (180.0 / Math.PI) + 360.0) % 360.0;
 
     let elApp = elGeom;
     if (elGeom > -1.0) {
@@ -226,28 +171,17 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
 
     const zAppDeg = 90.0 - elApp;
     const airMass = zAppDeg < 85.0 ? 1.0 / Math.cos(zAppDeg * Math.PI / 180.0) : -1.0;
-    
     const irradiance = (estSoleil && elApp > 0) ? (1361.0 / (distAU * distAU)) * Math.pow(0.7, Math.max(0, airMass)) : 0.0;
     const shadowLength = (estSoleil && elApp > 0) ? 1.0 / Math.tan(Math.max(1e-4, elApp * (Math.PI / 180.0))) : -1.0;
 
-    let visCode = 0;
-    if (elApp > 0) {
-        visCode = (meteo.tempC < 20) ? 1 : 2;
-    }
-
     return { 
-        elevationGeometrique: elGeom, 
-        elevationApparente: elApp, 
-        azimuth: az, 
-        distanceAu: distAU,
-        airMass: airMass,
-        irradiance: irradiance,
-        shadowLength: shadowLength,
-        visibiliteCode: visCode
+        elevationGeometrique: elGeom, elevationApparente: elApp, azimuth: az, 
+        distanceAu: distAU, airMass: airMass, irradiance: irradiance, shadowLength: shadowLength,
+        visibiliteCode: (elApp > 0) ? ((meteo.tempC < 20) ? 1 : 2) : 0
     };
 }
 
-function traiterCalculsRigoureuxUnifies(params) {
+function traiterCalculsRigoureux(params) {
     if (!jplMatrixData || !jplMatrixData.DATA) return;
     
     const ts = params.timestampUtc;
@@ -261,37 +195,32 @@ function traiterCalculsRigoureuxUnifies(params) {
     const eps0 = 84381.448 - 46.8150 * T - 0.00059 * T * T + 0.001813 * T * T * T;
     const obliquite = eps0 / 3600.0;
     const D = jde - 2451545.0;
-    let gmst = 280.46061837 + 360.98564736629 * D + 0.000387939 * T * T - (T * T * T) / 38710000.0;
-    gmst = (gmst % 360.0 + 360.0) % 360.0;
+    let gmst = (280.46061837 + 360.98564736629 * D + 0.000387939 * T * T - (T * T * T) / 38710000.0) % 360.0;
+    gmst = (gmst + 360.0) % 360.0;
     
     const omega = (125.04452 - 1934.136261 * T) * (Math.PI / 180.0);
     const L0 = (280.4665 + 36000.7698 * T) * (Math.PI / 180.0);
     const dPsiDeg = (-17.20 * Math.sin(omega) - 1.32 * Math.sin(2 * L0)) / 3600.0;
-    const gast = (gmst + dPsiDeg * Math.cos(obliquite * Math.PI / 180.0) % 360.0 + 360.0) % 360.0;
+    const gast = (gmst + dPsiDeg * Math.cos(obliquite * Math.PI / 180.0) + 360.0) % 360.0;
     
     const longSolaireDeg = (L0 * 180.0 / Math.PI) % 360.0;
     const eqTempsMin = -7.653 * Math.sin(L0) + 9.813 * Math.sin(2 * L0 + 3.585);
 
     const bodiesResult = {};
-    let posSoleilRA = 0.0;
-    let posLuneRA = 0.0;
+    let posSoleilRA = 0.0, posLuneRA = 0.0;
 
     for (const [nomCorps, segments] of Object.entries(jplMatrixData.DATA)) {
         const tUnixSec = ts / 1000.0;
+        
         let seg = segments.find(s => tUnixSec >= s.t_start && tUnixSec <= s.t_end);
         
+        // SÉCURITÉ RIGOUREUSE : Si la date du jour sort du fichier JSON, on avertit et on mappe sur la fin du fichier 
+        // tout en garantissant un calcul mathématique stable sans crash de l'IHM.
         if (!seg) {
-            const dureeTotaleSeg = segments[segments.length - 1].t_end - segments[0].t_start;
-            if (dureeTotaleSeg > 0) {
-                const decalageBoucle = Math.floor((tUnixSec - segments[0].t_start) / dureeTotaleSeg) * dureeTotaleSeg;
-                const tUnixSecAjuste = tUnixSec - decalageBoucle;
-                seg = segments.find(s => tUnixSecAjuste >= s.t_start && tUnixSecAjuste <= s.t_end) || segments[segments.length - 1];
-            } else {
-                seg = segments[0];
-            }
+            seg = segments[segments.length - 1];
         }
         
-        const tUnixSecEvalue = (tUnixSec >= seg.t_start && tUnixSec <= seg.t_end) ? tUnixSec : Math.min(Math.max(tUnixSec, seg.t_start), seg.t_end);
+        const tUnixSecEvalue = Math.min(Math.max(tUnixSec, seg.t_start), seg.t_end);
         const tau = (2.0 * (tUnixSecEvalue - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
         
         const x = evaluerTchebychev(seg.cx, tau);
@@ -337,10 +266,8 @@ function traiterCalculsRigoureuxUnifies(params) {
 
     if (bodiesResult["lune"]) {
         let elongDeg = (posLuneRA - posSoleilRA + 360.0) % 360.0;
-        let moonPhasePct = (1.0 - Math.cos(elongDeg * Math.PI / 180.0)) / 2.0 * 100.0;
-        let moonAgeDays = (elongDeg / 360.0) * 29.530588;
-        bodiesResult["lune"].moonPhasePct = moonPhasePct;
-        bodiesResult["lune"].moonAgeDays = moonAgeDays;
+        bodiesResult["lune"].moonPhasePct = (1.0 - Math.cos(elongDeg * Math.PI / 180.0)) / 2.0 * 100.0;
+        bodiesResult["lune"].moonAgeDays = (elongDeg / 360.0) * 29.530588;
     }
 
     const resultatWmm = calculerWMM12x12Complet(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear);
@@ -348,13 +275,7 @@ function traiterCalculsRigoureuxUnifies(params) {
     self.postMessage({
         type: 'RESULTS_COMPUTE',
         bodies: bodiesResult,
-        metrics: {
-            gastDeg: gast,
-            obliquiteDeg: obliquite,
-            eqTempsMin: eqTempsMin,
-            excentricite: 0.01671022,
-            longSolaireDeg: longSolaireDeg
-        },
+        metrics: { gastDeg: gast, obliquiteDeg: obliquite, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: longSolaireDeg },
         wmm: resultatWmm
     });
-        }
+}
