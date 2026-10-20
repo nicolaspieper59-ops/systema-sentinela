@@ -130,13 +130,14 @@ jobs:
           cp -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm WMM2025.COF public_site/ 2>/dev/null || true
 
       - name: 🔄 Commit et sauvegarde automatique de flux_live.json
-      - name: 🔄 Commit et sauvegarde automatique de flux_live.json
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          
-          # 1. Met de côté le fichier généré pour libérer l'espace de travail
           git stash
+          git pull --rebase origin main
+          git stash pop || true
+          git add flux_live.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Mise à jour automatique du flux live journalier [skip ci]" && git push)
           
           # 2. Récupère les derniers changements du dépôt distant proprement
           git pull --rebase origin main
