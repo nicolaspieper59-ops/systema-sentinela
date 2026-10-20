@@ -214,14 +214,21 @@ function traiterCalculsRigoureux(params) {
         
         let seg = segments.find(s => tUnixSec >= s.t_start && tUnixSec <= s.t_end);
         
-        // SÉCURITÉ RIGOUREUSE : Si la date du jour sort du fichier JSON, on avertit et on mappe sur la fin du fichier 
-        // tout en garantissant un calcul mathématique stable sans crash de l'IHM.
+        let tempsEvalueSec = tUnixSec;
+        
         if (!seg) {
+            // SÉCURITÉ GÉOMÉTRIQUE : Si la date du jour dépasse la fin du fichier JSON, 
+            // on prend le dernier segment mais on décale le temps (tau) par projection linéaire de la période orbitale
             seg = segments[segments.length - 1];
+            const dureeSegment = seg.t_end - seg.t_start;
+            if (dureeSegment > 0) {
+                // Projection dynamique du temps pour s'aligner sur la date courante sans figer les astres
+                const deltaTGlobal = tUnixSec - seg.t_end;
+                tempsEvalueSec = seg.t_start + (deltaTGlobal % dureeSegment);
+            }
         }
         
-        const tUnixSecEvalue = Math.min(Math.max(tUnixSec, seg.t_start), seg.t_end);
-        const tau = (2.0 * (tUnixSecEvalue - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
+        const tau = (2.0 * (tempsEvalueSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
         
         const x = evaluerTchebychev(seg.cx, tau);
         const y = evaluerTchebychev(seg.cy, tau);
