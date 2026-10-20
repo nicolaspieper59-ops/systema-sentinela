@@ -133,9 +133,10 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git pull --rebase origin main
           git add flux_live.json
           git diff --quiet && git diff --staged --quiet || (git commit -m "Mise à jour automatique du flux live journalier [skip ci]" && git push)
-
+          
       - name: 📦 Préparation de l'artefact GitHub Pages
         uses: actions/upload-pages-artifact@v4
         with:
