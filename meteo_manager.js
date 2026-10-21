@@ -136,13 +136,13 @@ export class MeteoManager {
 
     computeRefraction(trueElevationDeg, tempC, presHpa) {
         if (tempC === undefined || presHpa === undefined || tempC === null || presHpa === null) {
-            throw new Error("[FATAL] Paramètres atmosphériques requis (tempC et presHpa) absents pour la réfraction.");[cite: 6]
+            throw new Error("[FATAL] Paramètres atmosphériques requis absents pour la réfraction.");
         }
         if (trueElevationDeg < -1.0) return 0.0;
-        const hRad = Math.max(trueElevationDeg, -0.5) * (Math.PI / 180.0);
-        const R_arcmin = (1.0 / Math.tan(hRad + (7.31 / (hRad + 4.4 * (Math.PI / 180.0))))) * (presHpa / 1013.25) * (283.15 / (273.15 + tempC));
-        return Math.max(0.0, R_arcmin / 60.0);[cite: 6]
+        const h = Math.max(trueElevationDeg, -0.5);
+        const R_geom = 1.02 / Math.tan((h + 10.3 / (h + 5.11)) * (Math.PI / 180.0));
+        const facteurMeteo = (presHpa / 1013.25) * (283.15 / (273.15 + tempC));
+        return Math.max(0.0, (R_geom * facteurMeteo) / 60.0);
     }
-}
 
 export const meteoManager = new MeteoManager();[cite: 6]
