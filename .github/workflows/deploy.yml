@@ -65,8 +65,8 @@ jobs:
 
       - name: 🌍 Exécution de l'extracteur multiphysique Python
         run: |
-          python dynamic_multiphysics_engine.py "43.284356" "5.358507" "49.81" --days 90 --out flux_live.json
-
+          python dynamic_multiphysics_engine.py "43.284356" "5.358507" "49.81" --days 7 --out flux_live.json
+        
       - name: 📂 Préparation de la bibliothèque SOFA C / ERFA
         run: |
           mkdir -p lib/sofa/src
