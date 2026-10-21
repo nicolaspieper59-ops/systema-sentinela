@@ -63,10 +63,10 @@ jobs:
 
           curl -fsSL --connect-timeout 20 --retry 3 -o finals2000A.all https://datacenter.iers.org/data/latestVersion/finals2000A.all || true
 
-      - name: 🌍 Exécution de l'extracteur multiphysique Python
+      - name: 🌍 Exécution de l'extracteur multiphysique Python (Fenêtre optimisée 7 jours)
         run: |
           python dynamic_multiphysics_engine.py "43.284356" "5.358507" "49.81" --days 7 --out flux_live.json
-        
+
       - name: 📂 Préparation de la bibliothèque SOFA C / ERFA
         run: |
           mkdir -p lib/sofa/src
@@ -135,7 +135,6 @@ jobs:
           git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
           
           git add flux_live.json
-          # Vérifie s'il y a de vrais changements
           if git diff --staged --quiet; then
             echo "Aucun changement détecté dans flux_live.json."
           else
@@ -143,17 +142,7 @@ jobs:
             git pull --rebase origin main
             git push
           fi
-          
-          # 2. Récupère les derniers changements du dépôt distant proprement
-          git pull --rebase origin main
-          
-          # 3. Restaure le fichier mis de côté
-          git stash pop || true
-          
-          # 4. Valide et pousse les modifications s'il y en a
-          git add flux_live.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Mise à jour automatique du flux live journalier [skip ci]" && git push)
-          
+
       - name: 📦 Préparation de l'artefact GitHub Pages
         uses: actions/upload-pages-artifact@v4
         with:
