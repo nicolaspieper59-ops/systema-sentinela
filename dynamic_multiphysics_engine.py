@@ -165,10 +165,10 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
     earth = obtenir_astre(eph, ["earth", 399, "earth barycenter", 3])
     sun_target = obtenir_astre(eph, ["sun", 10])
 
-    # Calage propre à minuit UTC pour éviter tout décalage temporel
-now_utc = datetime.datetime.now(datetime.timezone.utc)
-midnight_utc = datetime.datetime(now_utc.year, now_utc.month, now_utc.day, tzinfo=datetime.timezone.utc)
-t_start_unix = midnight_utc.timestamp()
+# Calage propre à minuit UTC pour éviter tout décalage temporel
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    midnight_utc = datetime.datetime(now_utc.year, now_utc.month, now_utc.day, tzinfo=datetime.timezone.utc)
+    t_start_unix = midnight_utc.timestamp()
     
     t_end_unix = t_start_unix + (nb_jours * 86400)
     data_output = {}
@@ -191,12 +191,14 @@ t_start_unix = midnight_utc.timestamp()
         "ALMANACH": {
             "generateur": "Systema Sentinela DE440s Kernel",
             "date_creation_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
-            "epoch_utc_ms": int(time.time() * 1000),  # <--- AJOUTEZ CETTE LIGNE ICI
+            "epoch_utc_ms": int(time.time() * 1000),
             "fenetre_jours": int(nb_jours),
             "station": {"latitude": float(lat), "longitude": float(lon), "altitude_m": float(alt)}
         },
         "DATA": data_output
-            }
+    }
+
+
 
     with open(fichier_sortie, "w", encoding="utf-8") as f:
         json.dump(resultat_global, f, indent=2, ensure_ascii=False)
