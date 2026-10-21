@@ -133,11 +133,16 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git stash
-          git pull --rebase origin main
-          git stash pop || true
+          
           git add flux_live.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Mise à jour automatique du flux live journalier [skip ci]" && git push)
+          # Vérifie s'il y a de vrais changements
+          if git diff --staged --quiet; then
+            echo "Aucun changement détecté dans flux_live.json."
+          else
+            git commit -m "Mise à jour automatique du flux live journalier [skip ci]"
+            git pull --rebase origin main
+            git push
+          fi
           
           # 2. Récupère les derniers changements du dépôt distant proprement
           git pull --rebase origin main
