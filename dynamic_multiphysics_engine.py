@@ -9,8 +9,8 @@ import json
 import time
 import os
 import traceback
+import datetime  # <--- AJOUTEZ CETTE LIGNE ICI
 import numpy as np
-
 try:
     from skyfield.api import load
 except ImportError:
