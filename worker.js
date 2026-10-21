@@ -1,5 +1,5 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL SYNCHRONISÉ v19.31
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL SYNCHRONISÉ v19.32
  */
 
 let jplMatrixData = null;
@@ -213,23 +213,19 @@ function traiterCalculsRigoureux(params) {
         const tUnixSec = ts / 1000.0;
         
         let seg = segments.find(s => tUnixSec >= s.t_start && tUnixSec <= s.t_end);
-        
         let tempsEvalueSec = tUnixSec;
         
         if (!seg) {
-            // SÉCURITÉ GÉOMÉTRIQUE : Si la date du jour dépasse la fin du fichier JSON, 
-            // on prend le dernier segment mais on décale le temps (tau) par projection linéaire de la période orbitale
             seg = segments[segments.length - 1];
             const dureeSegment = seg.t_end - seg.t_start;
             if (dureeSegment > 0) {
-                // Projection dynamique du temps pour s'aligner sur la date courante sans figer les astres
                 const deltaTGlobal = tUnixSec - seg.t_end;
                 tempsEvalueSec = seg.t_start + (deltaTGlobal % dureeSegment);
             }
         }
         
         let tau = (2.0 * (tempsEvalueSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
-        tau = Math.max(-1.0, Math.min(1.0, tau)); // SÉCURITÉ : Anti-dépassement des bornes du segment
+        tau = Math.max(-1.0, Math.min(1.0, tau));
         
         const x = evaluerTchebychev(seg.cx, tau);
         const y = evaluerTchebychev(seg.cy, tau);
@@ -286,4 +282,4 @@ function traiterCalculsRigoureux(params) {
         metrics: { gastDeg: gast, obliquiteDeg: obliquite, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: longSolaireDeg },
         wmm: resultatWmm
     });
-}
+        }
