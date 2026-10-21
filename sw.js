@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sentinela-v19.30';
+const CACHE_NAME = 'sentinela-v19.31';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -10,6 +10,7 @@ const ASSETS_TO_CACHE = [
     './meteo_manager.js',
     './three.min.js'
 ];
+
 // Installation du Service Worker et mise en cache des actifs
 self.addEventListener('install', (event) => {
     event.waitUntil(
@@ -35,7 +36,7 @@ self.addEventListener('activate', (event) => {
     );
 });
 
-// Interception des requêtes avec stratégie hybride (Réseau d'abord pour le code, Cache pour les ressources statiques)
+// Interception des requêtes avec stratégie hybride
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
@@ -51,7 +52,6 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
         caches.match(event.request).then((cachedResponse) => {
             if (cachedResponse) {
-                // Optionnel : onfetch met à jour le cache en arrière-plan discrètement
                 fetch(event.request).then((networkResponse) => {
                     if (networkResponse && networkResponse.status === 200) {
                         caches.open(CACHE_NAME).then((cache) => {
