@@ -134,18 +134,19 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
           
+          # 1. Récupérer d'abord les derniers changements distants pour éviter les conflits de rejet
+          git pull origin main --rebase || true
+          
+          # 2. Ajouter le fichier de flux mis à jour
           git add flux_live.json
           
-          # Vérifie s'il y a de vrais changements à commiter
+          # 3. Vérifier s'il y a de vrais changements à commiter
           if git diff --staged --quiet; then
             echo "Aucun changement détecté dans flux_live.json."
           else
             git commit -m "Mise à jour automatique du flux live journalier [skip ci]"
             
-            # Récupère les derniers changements propres
-            git pull --rebase origin main || { echo "Avertissement : Conflit de rebase détecté."; git rebase --abort; exit 1; }
-            
-            # Pousse les modifications vers le dépôt distant
+            # 4. Pousser proprement les modifications vers le dépôt distant
             git push origin main || { echo "Erreur : Échec du push."; exit 1; }
           fi
 
