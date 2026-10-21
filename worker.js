@@ -228,7 +228,8 @@ function traiterCalculsRigoureux(params) {
             }
         }
         
-        const tau = (2.0 * (tempsEvalueSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
+        let tau = (2.0 * (tempsEvalueSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
+        tau = Math.max(-1.0, Math.min(1.0, tau)); // SÉCURITÉ : Anti-dépassement des bornes du segment
         
         const x = evaluerTchebychev(seg.cx, tau);
         const y = evaluerTchebychev(seg.cy, tau);
