@@ -142,11 +142,11 @@ jobs:
           else
             git commit -m "Mise à jour automatique du flux live journalier [skip ci]"
             
-            # Récupère les derniers changements et applique un rebase propre
+            # Récupère les derniers changements propres
             git pull --rebase origin main || { echo "Avertissement : Conflit de rebase détecté."; git rebase --abort; exit 1; }
             
             # Pousse les modifications vers le dépôt distant
-            git push origin main || { echo "Erreur : Échec du push. Vérifiez les règles de protection de la branche main."; exit 1; }
+            git push origin main || { echo "Erreur : Échec du push."; exit 1; }
           fi
 
       - name: 📦 Préparation de l'artefact GitHub Pages
