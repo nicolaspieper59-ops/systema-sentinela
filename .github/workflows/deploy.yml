@@ -129,26 +129,18 @@ jobs:
           cp -f EGM2008.gfc public_site/ 2>/dev/null || true
           cp -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm WMM2025.COF public_site/ 2>/dev/null || true
 
-      - name: 🔄 Commit et sauvegarde automatique de flux_live.json
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          
-          # 1. Récupérer d'abord les derniers changements distants pour éviter les conflits de rejet
-          git pull origin main --rebase || true
-          
-          # 2. Ajouter le fichier de flux mis à jour
-          git add flux_live.json
-          
-          # 3. Vérifier s'il y a de vrais changements à commiter
-          if git diff --staged --quiet; then
-            echo "Aucun changement détecté dans flux_live.json."
-          else
-            git commit -m "Mise à jour automatique du flux live journalier [skip ci]"
-            
-            # 4. Pousser proprement les modifications vers le dépôt distant
-            git push origin main || { echo "Erreur : Échec du push."; exit 1; }
-          fi
+      - name: 🔀 Créer une Pull Request automatique pour flux_live.json
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "Mise à jour automatique du flux live journalier [skip ci]"
+          title: "🤖 Mise à jour automatique de flux_live.json"
+          body: "Cette Pull Request met à jour automatiquement le fichier `flux_live.json` généré par le moteur multiphysique DE440s."
+          branch: update-flux-live
+          delete-branch: true
+          base: main
+          add-paths: |
+            flux_live.json
 
       - name: 📦 Préparation de l'artefact GitHub Pages
         uses: actions/upload-pages-artifact@v4
