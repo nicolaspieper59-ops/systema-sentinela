@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write        # Indispensable pour autoriser le commit automatique du flux
+  pull-requests: write   # 👈 INDISPENSABLE pour autoriser la création de la Pull Request
   pages: write
   id-token: write
 
