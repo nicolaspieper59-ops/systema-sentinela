@@ -159,9 +159,10 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
     const north = -sinLat * cosLon * rhoECEF[0] - sinLat * sinLon * rhoECEF[1] + cosLat * rhoECEF[2];
     const up = cosLat * cosLon * rhoECEF[0] + cosLat * sinLon * rhoECEF[1] + sinLat * sinLon * rhoECEF[2];
 
-    const elGeom = Math.asin(up / distM) * (180.0 / Math.PI);
-    let az = (Math.atan2(east, north) * (180.0 / Math.PI) + 360.0) % 360.0;
-
+    // Protection contre les erreurs d'arrondi IEEE 754 menant à NaN
+const rapport = Math.max(-1.0, Math.min(1.0, up / distM));
+const elGeom = Math.asin(rapport) * (180.0 / Math.PI);
+    
     let elApp = elGeom;
     if (elGeom > -1.0) {
         const R_geom = (1.02 / Math.tan((elGeom + 10.3 / (elGeom + 5.11)) * (Math.PI / 180.0)));
@@ -270,6 +271,25 @@ let tempsEvalueSec = tUnixSec;
         bodiesResult["lune"].moonPhasePct = (1.0 - Math.cos(elongDeg * Math.PI / 180.0)) / 2.0 * 100.0;
         bodiesResult["lune"].moonAgeDays = (elongDeg / 360.0) * 29.530588;
     }
+
+    let seg = segments.find(s => tUnixSec >= s.t_start && tUnixSec <= s.t_end);
+let tempsEvalueSec = tUnixSec;
+
+if (!seg) {
+    if (tUnixSec < segments[0].t_start) {
+        // Fallback sécurisé sur le premier segment si le temps est antérieur
+        seg = segments[0];
+        tempsEvalueSec = seg.t_start;
+    } else {
+        // Fallback dynamique pour le futur (comportement existant corrigé)
+        seg = segments[segments.length - 1];
+        const dureeSegment = seg.t_end - seg.t_start;
+        if (dureeSegment > 0) {
+            const deltaTGlobal = tUnixSec - seg.t_end;
+            tempsEvalueSec = seg.t_start + Math.abs(deltaTGlobal % dureeSegment);
+        }
+    }
+}
 
     const resultatWmm = calculerWMM12x12Complet(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear);
 
