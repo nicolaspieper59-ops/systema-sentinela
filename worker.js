@@ -213,10 +213,8 @@ function traiterCalculsRigoureux(params) {
     for (const [nomCorps, segments] of Object.entries(jplMatrixData.DATA)) {
         if (!segments || segments.length === 0) continue;
 
-        // Détection automatique de l'échelle temporelle du JSON (J2000 vs Unix)
-        const tUnixSec = ts / 1000.0;
-        const estEchelleJ2000 = segments[0].t_start < 2e9 && segments[0].t_start > 5e8;
-        const tempsEvalueSec = estEchelleJ2000 ? (jde - 2451545.0) * 86400.0 : tUnixSec;
+        // Utilisation directe et cohérente du temps Unix en secondes (aligné avec Python)
+        const tempsEvalueSec = ts / 1000.0;
         
         let seg = segments.find(s => tempsEvalueSec >= s.t_start && tempsEvalueSec <= s.t_end);
 
@@ -271,7 +269,6 @@ function traiterCalculsRigoureux(params) {
         };
     }
 
-    // Normalisation flexible pour la clé lune / moon
     const cleLune = bodiesResult["lune"] ? "lune" : (bodiesResult["moon"] ? "moon" : null);
     const cleSoleil = bodiesResult["soleil"] ? "soleil" : (bodiesResult["sun"] ? "sun" : null);
     if (cleLune && cleSoleil) {
