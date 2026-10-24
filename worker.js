@@ -1,5 +1,5 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL SYNCHRONISÉ v19.31
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL SYNCHRONISÉ v19.32
  */
 
 let jplMatrixData = null;
@@ -159,7 +159,9 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
     const north = -sinLat * cosLon * rhoECEF[0] - sinLat * sinLon * rhoECEF[1] + cosLat * rhoECEF[2];
     const up = cosLat * cosLon * rhoECEF[0] + cosLat * sinLon * rhoECEF[1] + sinLat * sinLon * rhoECEF[2];
 
-    const elGeom = Math.asin(up / distM) * (180.0 / Math.PI);
+    // CORRECTION CRITIQUE : Clamping strict pour éviter les NaN liés aux arrondis IEEE 754
+    const rapportSinus = Math.max(-1.0, Math.min(1.0, up / distM));
+    const elGeom = Math.asin(rapportSinus) * (180.0 / Math.PI);
     let az = (Math.atan2(east, north) * (180.0 / Math.PI) + 360.0) % 360.0;
 
     let elApp = elGeom;
@@ -170,8 +172,21 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
     }
 
     const zAppDeg = 90.0 - elApp;
-    const airMass = zAppDeg < 85.0 ? 1.0 / Math.cos(zAppDeg * Math.PI / 180.0) : -1.0;
-    const irradiance = (estSoleil && elApp > 0) ? (1361.0 / (distAU * distAU)) * Math.pow(0.7, Math.max(0, airMass)) : 0.0;
+    
+    // CORRECTION PHYSIQUE : Gestion sécurisée de la masse d'air et de l'extinction à l'horizon
+    let airMass = -1.0;
+    let irradiance = 0.0;
+    
+    if (zAppDeg < 85.0) {
+        airMass = 1.0 / Math.cos(zAppDeg * Math.PI / 180.0);
+        if (estSoleil && elApp > 0) {
+            irradiance = (1361.0 / (distAU * distAU)) * Math.pow(0.7, airMass);
+        }
+    } else if (estSoleil && elApp > 0) {
+        // Modèle approché pour zénith > 85° (extinction maximale)
+        irradiance = (1361.0 / (distAU * distAU)) * 0.05; 
+    }
+
     const shadowLength = (estSoleil && elApp > 0) ? 1.0 / Math.tan(Math.max(1e-4, elApp * (Math.PI / 180.0))) : -1.0;
 
     return { 
@@ -214,12 +229,11 @@ function traiterCalculsRigoureux(params) {
         
         let seg = segments.find(s => tUnixSec >= s.t_start && tUnixSec <= s.t_end);
 
-if (!seg) {
-    // Mode strict : Pas de secours, on déclenche une erreur si le flux ne couvre pas l'instant présent
-    throw new Error(`Échec critique : Le flux JPL ne couvre pas le timestamp ${tUnixSec} pour le corps ${nomCorps}. Veuillez régénérer 'flux_live.json'.`);
-}
+        if (!seg) {
+            throw new Error(`Échec critique : Le flux JPL ne couvre pas le timestamp ${tUnixSec} pour le corps ${nomCorps}. Veuillez régénérer 'flux_live.json'.`);
+        }
 
-let tempsEvalueSec = tUnixSec;
+        let tempsEvalueSec = tUnixSec;
         
         let tau = (2.0 * (tempsEvalueSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
         tau = Math.max(-1.0, Math.min(1.0, tau)); // SÉCURITÉ : Anti-dépassement des bornes du segment
