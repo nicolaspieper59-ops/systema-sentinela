@@ -1,5 +1,5 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL SYNCHRONISÉ v19.32
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL SYNCHRONISÉ v19.33
  */
 
 let jplMatrixData = null;
@@ -157,9 +157,10 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
     const sinLat = Math.sin(phi), cosLat = Math.cos(phi), sinLon = Math.sin(lambda), cosLon = Math.cos(lambda);
     const east = -sinLon * rhoECEF[0] + cosLon * rhoECEF[1];
     const north = -sinLat * cosLon * rhoECEF[0] - sinLat * sinLon * rhoECEF[1] + cosLat * rhoECEF[2];
-    const up = cosLat * cosLon * rhoECEF[0] + cosLat * sinLon * rhoECEF[1] + sinLat * sinLon * rhoECEF[2];
+    
+    // CORRECTION MATHÉMATIQUE STRICTE : Suppression du facteur sinLon parasite sur l'axe Z (rhoECEF[2])
+    const up = cosLat * cosLon * rhoECEF[0] + cosLat * sinLon * rhoECEF[1] + sinLat * rhoECEF[2];
 
-    // CORRECTION CRITIQUE : Clamping strict pour éviter les NaN liés aux arrondis IEEE 754
     const rapportSinus = Math.max(-1.0, Math.min(1.0, up / distM));
     const elGeom = Math.asin(rapportSinus) * (180.0 / Math.PI);
     let az = (Math.atan2(east, north) * (180.0 / Math.PI) + 360.0) % 360.0;
@@ -172,21 +173,8 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
     }
 
     const zAppDeg = 90.0 - elApp;
-    
-    // CORRECTION PHYSIQUE : Gestion sécurisée de la masse d'air et de l'extinction à l'horizon
-    let airMass = -1.0;
-    let irradiance = 0.0;
-    
-    if (zAppDeg < 85.0) {
-        airMass = 1.0 / Math.cos(zAppDeg * Math.PI / 180.0);
-        if (estSoleil && elApp > 0) {
-            irradiance = (1361.0 / (distAU * distAU)) * Math.pow(0.7, airMass);
-        }
-    } else if (estSoleil && elApp > 0) {
-        // Modèle approché pour zénith > 85° (extinction maximale)
-        irradiance = (1361.0 / (distAU * distAU)) * 0.05; 
-    }
-
+    const airMass = zAppDeg < 85.0 ? 1.0 / Math.cos(zAppDeg * Math.PI / 180.0) : -1.0;
+    const irradiance = (estSoleil && elApp > 0) ? (1361.0 / (distAU * distAU)) * Math.pow(0.7, Math.max(0, airMass)) : 0.0;
     const shadowLength = (estSoleil && elApp > 0) ? 1.0 / Math.tan(Math.max(1e-4, elApp * (Math.PI / 180.0))) : -1.0;
 
     return { 
@@ -230,13 +218,11 @@ function traiterCalculsRigoureux(params) {
         let seg = segments.find(s => tUnixSec >= s.t_start && tUnixSec <= s.t_end);
 
         if (!seg) {
-            throw new Error(`Échec critique : Le flux JPL ne couvre pas le timestamp ${tUnixSec} pour le corps ${nomCorps}. Veuillez régénérer 'flux_live.json'.`);
+            throw new Error(`Échec critique : Le flux JPL ne couvre pas le timestamp ${tUnixSec} pour le corps ${nomCorps}.`);
         }
 
-        let tempsEvalueSec = tUnixSec;
-        
-        let tau = (2.0 * (tempsEvalueSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
-        tau = Math.max(-1.0, Math.min(1.0, tau)); // SÉCURITÉ : Anti-dépassement des bornes du segment
+        let tau = (2.0 * (tUnixSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
+        tau = Math.max(-1.0, Math.min(1.0, tau));
         
         const x = evaluerTchebychev(seg.cx, tau);
         const y = evaluerTchebychev(seg.cy, tau);
@@ -293,4 +279,4 @@ function traiterCalculsRigoureux(params) {
         metrics: { gastDeg: gast, obliquiteDeg: obliquite, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: longSolaireDeg },
         wmm: resultatWmm
     });
-}
+                    }
