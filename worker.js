@@ -1,5 +1,5 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL SYNCHRONISÉ v19.33
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL SYNCHRONISÉ v19.34
  */
 
 let jplMatrixData = null;
@@ -157,8 +157,6 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
     const sinLat = Math.sin(phi), cosLat = Math.cos(phi), sinLon = Math.sin(lambda), cosLon = Math.cos(lambda);
     const east = -sinLon * rhoECEF[0] + cosLon * rhoECEF[1];
     const north = -sinLat * cosLon * rhoECEF[0] - sinLat * sinLon * rhoECEF[1] + cosLat * rhoECEF[2];
-    
-    // CORRECTION MATHÉMATIQUE STRICTE : Suppression du facteur sinLon parasite sur l'axe Z (rhoECEF[2])
     const up = cosLat * cosLon * rhoECEF[0] + cosLat * sinLon * rhoECEF[1] + sinLat * rhoECEF[2];
 
     const rapportSinus = Math.max(-1.0, Math.min(1.0, up / distM));
@@ -213,27 +211,35 @@ function traiterCalculsRigoureux(params) {
     let posSoleilRA = 0.0, posLuneRA = 0.0;
 
     for (const [nomCorps, segments] of Object.entries(jplMatrixData.DATA)) {
+        if (!segments || segments.length === 0) continue;
+
+        // Détection automatique de l'échelle temporelle du JSON (J2000 vs Unix)
         const tUnixSec = ts / 1000.0;
+        const estEchelleJ2000 = segments[0].t_start < 2e9 && segments[0].t_start > 5e8;
+        const tempsEvalueSec = estEchelleJ2000 ? (jde - 2451545.0) * 86400.0 : tUnixSec;
         
-        let seg = segments.find(s => tUnixSec >= s.t_start && tUnixSec <= s.t_end);
+        let seg = segments.find(s => tempsEvalueSec >= s.t_start && tempsEvalueSec <= s.t_end);
 
         if (!seg) {
-            throw new Error(`Échec critique : Le flux JPL ne couvre pas le timestamp ${tUnixSec} pour le corps ${nomCorps}.`);
+            throw new Error(`Échec critique : Le flux JPL ne couvre pas l'instant évalué pour le corps '${nomCorps}'.`);
         }
 
-        let tau = (2.0 * (tUnixSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
+        let tau = (2.0 * (tempsEvalueSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
         tau = Math.max(-1.0, Math.min(1.0, tau));
         
         const x = evaluerTchebychev(seg.cx, tau);
         const y = evaluerTchebychev(seg.cy, tau);
         const z = evaluerTchebychev(seg.cz, tau);
         
-        const estSoleil = (nomCorps.toUpperCase() === "SOLEIL");
+        const nomUpper = nomCorps.toUpperCase();
+        const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN");
+        const estLune = (nomUpper === "LUNE" || nomUpper === "MOON");
+
         const topo = transformerECIenTopocentrique([x, y, z], coords.lat, coords.lon, coords.alt, gast, meteo, estSoleil);
         
         const raDeg = (Math.atan2(y, x) * 180.0 / Math.PI + 360.0) % 360.0;
         if (estSoleil) posSoleilRA = raDeg;
-        if (nomCorps.toUpperCase() === "LUNE") posLuneRA = raDeg;
+        if (estLune) posLuneRA = raDeg;
 
         bodiesResult[nomCorps.toLowerCase()] = {
             elevationGeometrique: topo.elevationGeometrique,
@@ -265,10 +271,13 @@ function traiterCalculsRigoureux(params) {
         };
     }
 
-    if (bodiesResult["lune"]) {
-        let elongDeg = (posLuneRA - posSoleilRA + 360.0) % 360.0;
-        bodiesResult["lune"].moonPhasePct = (1.0 - Math.cos(elongDeg * Math.PI / 180.0)) / 2.0 * 100.0;
-        bodiesResult["lune"].moonAgeDays = (elongDeg / 360.0) * 29.530588;
+    // Normalisation flexible pour la clé lune / moon
+    const cleLune = bodiesResult["lune"] ? "lune" : (bodiesResult["moon"] ? "moon" : null);
+    const cleSoleil = bodiesResult["soleil"] ? "soleil" : (bodiesResult["sun"] ? "sun" : null);
+    if (cleLune && cleSoleil) {
+        let elongDeg = (bodiesResult[cleLune].raDeg - bodiesResult[cleSoleil].raDeg + 360.0) % 360.0;
+        bodiesResult[cleLune].moonPhasePct = (1.0 - Math.cos(elongDeg * Math.PI / 180.0)) / 2.0 * 100.0;
+        bodiesResult[cleLune].moonAgeDays = (elongDeg / 360.0) * 29.530588;
     }
 
     const resultatWmm = calculerWMM12x12Complet(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear);
@@ -279,4 +288,4 @@ function traiterCalculsRigoureux(params) {
         metrics: { gastDeg: gast, obliquiteDeg: obliquite, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: longSolaireDeg },
         wmm: resultatWmm
     });
-                    }
+}
