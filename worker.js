@@ -230,6 +230,53 @@ function traiterCalculsRigoureux(params) {
         const x = evaluerTchebychev(seg.cx, tau);
         const y = evaluerTchebychev(seg.cy, tau);
         const z = evaluerTchebychev(seg.cz, tau);
+
+    function traiterCalculsRigoureux(params) {
+    if (!jplMatrixData || !jplMatrixData.DATA) return;
+    
+    const ts = params.timestampUtc;
+    const coords = params.coords;
+    const meteo = params.meteo;
+
+    const jde = (ts / 86400000.0) + 2440587.5;
+    const T = (jde - 2451545.0) / 36525.0;
+    const decimalYear = 2000.0 + (jde - 2451545.0) / 365.25;
+    
+    const eps0 = 84381.448 - 46.8150 * T - 0.00059 * T * T + 0.001813 * T * T * T;
+    const obliquite = eps0 / 3600.0;
+    const D = jde - 2451545.0;
+    let gmst = (280.46061837 + 360.98564736629 * D + 0.000387939 * T * T - (T * T * T) / 38710000.0) % 360.0;
+    gmst = (gmst + 360.0) % 360.0;
+    
+    const omega = (125.04452 - 1934.136261 * T) * (Math.PI / 180.0);
+    const L0 = (280.4665 + 36000.7698 * T) * (Math.PI / 180.0);
+    const dPsiDeg = (-17.20 * Math.sin(omega) - 1.32 * Math.sin(2 * L0)) / 3600.0;
+    const gast = (gmst + dPsiDeg * Math.cos(obliquite * Math.PI / 180.0) + 360.0) % 360.0;
+    
+    const longSolaireDeg = (L0 * 180.0 / Math.PI) % 360.0;
+    const eqTempsMin = -7.653 * Math.sin(L0) + 9.813 * Math.sin(2 * L0 + 3.585);
+
+    const bodiesResult = {};
+    let posSoleilRA = 0.0, posLuneRA = 0.0;
+
+    for (const [nomCorps, segments] of Object.entries(jplMatrixData.DATA)) {
+        if (!segments || segments.length === 0) continue;
+
+        // Utilisation directe et cohérente du temps Unix en secondes (aligné avec Python)
+        const tempsEvalueSec = ts / 1000.0;
+        
+        let seg = segments.find(s => tempsEvalueSec >= s.t_start && tempsEvalueSec <= s.t_end);
+
+        if (!seg) {
+            throw new Error(`Échec critique : Le flux JPL ne couvre pas l'instant évalué pour le corps '${nomCorps}'.`);
+        }
+
+        let tau = (2.0 * (tempsEvalueSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
+        tau = Math.max(-1.0, Math.min(1.0, tau));
+        
+        const x = evaluerTchebychev(seg.cx, tau);
+        const y = evaluerTchebychev(seg.cy, tau);
+        const z = evaluerTchebychev(seg.cz, tau);
         
         const nomUpper = nomCorps.toUpperCase();
         const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN");
@@ -271,7 +318,6 @@ function traiterCalculsRigoureux(params) {
         };
     }
 
-    // Normalisation flexible pour la clé lune / moon
     const cleLune = bodiesResult["lune"] ? "lune" : (bodiesResult["moon"] ? "moon" : null);
     const cleSoleil = bodiesResult["soleil"] ? "soleil" : (bodiesResult["sun"] ? "sun" : null);
     if (cleLune && cleSoleil) {
@@ -288,4 +334,4 @@ function traiterCalculsRigoureux(params) {
         metrics: { gastDeg: gast, obliquiteDeg: obliquite, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: longSolaireDeg },
         wmm: resultatWmm
     });
-}
+    }
