@@ -185,8 +185,7 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
 function traiterCalculsRigoureux(params) {
     if (!jplMatrixData || !jplMatrixData.DATA) return;
     
-    // Remplacez la détection d'échelle par une conversion directe du timestamp UTC reçu :
-    const tempsEvalueSec = ts / 1000.0; // Temps Unix direct en secondes
+    const ts = params.timestampUtc; // Sécurité de portée
     const coords = params.coords;
     const meteo = params.meteo;
 
