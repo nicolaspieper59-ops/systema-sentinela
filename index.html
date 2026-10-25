@@ -687,27 +687,25 @@
     
 async function chargerFluxLiveJPL() {
     try {
-        // Intégrez le paramètre de versioning/cache-busting ici :
-        const reponse = await fetch(`flux_live.json?v=${Date.now()}`, { cache: 'no-store' });
+        // Paramètre dynamique unique garantissant la purge du cache local
+        const reponse = await fetch(`flux_live.json?ts=${Date.now()}`, { cache: 'no-store' });
         if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
         
-        // Récupération de l'heure officielle du serveur via le header HTTP
         const dateServeurHeader = reponse.headers.get('Date');
         const tempsServeur = dateServeurHeader ? new Date(dateServeurHeader).getTime() : Date.now();
 
         matriceJplLive = await reponse.json();
 
-        // Vérification rigoureuse de la fraîcheur du flux
         verifierObsolescenceFlux(matriceJplLive, tempsServeur);
-
         envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
         ecrireLog("JPL : flux_live.json chargé avec succès.");
     } catch (e) {
-        document.getElementById('lbl-jpl-status').innerText = "MODE DÉGRADÉ";
+        document.getElementById('lbl-jpl-status').innerText = "ERREUR CHARGEMENT";
         document.getElementById('lbl-jpl-status').style.color = "var(--rose)";
-        ecrireLog("Avertissement : Impossible de charger flux_live.json (Flux distant indisponible).");
+        ecrireLog(`[FATAL] Échec d'acquisition du flux : ${e.message}`);
     }
     }
+    
 function verifierObsolescenceFlux(data, tempsReference) {
     const statusElement = document.getElementById('lbl-jpl-status');
     
