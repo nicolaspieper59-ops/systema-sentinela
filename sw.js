@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sentinela-v19.30';
+const CACHE_NAME = 'sentinela-cache-v19.34'; // Incrémenter à chaque version
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
