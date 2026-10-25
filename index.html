@@ -421,17 +421,17 @@
     let lignesTableauCache = {};
 
     function ecrireLog(msg) {
-        const consoleEl = document.getElementById('logConsole');
-        if (!consoleEl) return;
-        let timeStr = "--:--:--";
-        const ts = obtenirTimestampUTCExact();
-        if (ts !== null) timeStr = new Date(ts).toISOString().substring(11, 19);
-        
-        const line = document.createElement('div');
-        line.textContent = `[${timeStr}] ${msg}`;
-        consoleEl.appendChild(line);
-        consoleEl.scrollTop = consoleEl.scrollHeight;
-        while (consoleEl.children.length > 100) consoleEl.removeChild(consoleEl.firstChild);
+    const consoleEl = document.getElementById('logConsole');
+    if (!consoleEl) return;
+    let timeStr = "--:--:--";
+    const ts = obtenirTimestampUTCExact(); // 👈 Déclaration locale de 'ts'
+    if (ts !== null) timeStr = new Date(ts).toISOString().substring(11, 19);
+    
+    const line = document.createElement('div');
+    line.textContent = `[${timeStr}] ${msg}`;
+    consoleEl.appendChild(line);
+    consoleEl.scrollTop = consoleEl.scrollHeight;
+    while (consoleEl.children.length > 100) consoleEl.removeChild(consoleEl.firstChild);
     }
 
     function envoyerMessageWorkerSecurise(message) {
