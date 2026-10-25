@@ -133,7 +133,7 @@ jobs:
       - name: 🔀 Créer une Pull Request automatique pour flux_live.json
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.ACTIONS_PAT }} # 👈 Utilisation du PAT pour contourner les restrictions de main
           commit-message: "Mise à jour automatique du flux live journalier [skip ci]"
           title: "🤖 Mise à jour automatique de flux_live.json"
           body: "Cette Pull Request met à jour automatiquement le fichier `flux_live.json` généré par le moteur multiphysique DE440s."
