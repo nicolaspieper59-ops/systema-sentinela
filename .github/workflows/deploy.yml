@@ -64,9 +64,9 @@ jobs:
 
           curl -fsSL --connect-timeout 20 --retry 3 -o finals2000A.all https://datacenter.iers.org/data/latestVersion/finals2000A.all || true
 
-      - name: 🌍 Exécution de l'extracteur multiphysique Python (Fenêtre optimisée 7 jours)
+      - name: 🌍 Exécution de l'extracteur multiphysique Python (Fenêtre optimisée 30 jours)
         run: |
-          python dynamic_multiphysics_engine.py "43.284356" "5.358507" "49.81" --days 7 --out flux_live.json
+          python dynamic_multiphysics_engine.py "43.284356" "5.358507" "49.81" --days 30 --out flux_live.json
 
       - name: 📂 Préparation de la bibliothèque SOFA C / ERFA
         run: |
