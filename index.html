@@ -683,10 +683,11 @@
     
 async function chargerFluxLiveJPL() {
     try {
-        const reponse = await fetch(`flux_live.json?t=${Date.now()}`, { cache: 'no-store' });
+        // Intégrez le paramètre de versioning/cache-busting ici :
+        const reponse = await fetch(`flux_live.json?v=${Date.now()}`, { cache: 'no-store' });
         if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
         
-        // Récupération de l'heure officielle du serveur via le header HTTP (Garantie Anti-Android)
+        // Récupération de l'heure officielle du serveur via le header HTTP
         const dateServeurHeader = reponse.headers.get('Date');
         const tempsServeur = dateServeurHeader ? new Date(dateServeurHeader).getTime() : Date.now();
 
@@ -702,8 +703,7 @@ async function chargerFluxLiveJPL() {
         document.getElementById('lbl-jpl-status').style.color = "var(--rose)";
         ecrireLog("Avertissement : Impossible de charger flux_live.json (Flux distant indisponible).");
     }
-}
-
+    }
 function verifierObsolescenceFlux(data, tempsReference) {
     const statusElement = document.getElementById('lbl-jpl-status');
     
