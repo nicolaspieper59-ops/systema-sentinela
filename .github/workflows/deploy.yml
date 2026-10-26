@@ -136,8 +136,9 @@ jobs:
           token: ${{ secrets.ACTIONS_PAT }}
           commit-message: "Mise à jour automatique du flux live journalier [skip ci]"
           title: "🤖 Mise à jour automatique de flux_live.json"
-          body: "Cette Pull Request met à jour automatiquement le fichier flux_live.json généré par le moteur multiphysique DE440s."
+          body: "Cette Pull Request met à jour automatiquement le fichier `flux_live.json` généré par le moteur multiphysique DE440s."
           branch: update-flux-live
+          branch-suffix: timestamp # 👈 Indispensable : crée une branche unique (ex: update-flux-live-17182839) pour éviter tout conflit de rebase
           delete-branch: true
           base: main
           add-paths: |
