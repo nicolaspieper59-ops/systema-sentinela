@@ -1260,6 +1260,11 @@ function verifierObsolescenceFlux(data, tempsReference) {
 
     function lancerBoucleCalculSecurisee() {
         envoyerDemandeCalculWorker();
+        
+        // Cadencement haute précision pour un rafraîchissement en temps réel continu
+        setInterval(() => {
+            envoyerDemandeCalculWorker();
+        }, 250); // 250ms = 4 requêtes par seconde, fluide comme Stellarium
     }
 
     window.addEventListener('resize', () => {
