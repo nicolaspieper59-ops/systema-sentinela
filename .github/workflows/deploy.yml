@@ -165,3 +165,5 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 ```[cite: 3]
+
+### 💡 Conseils pour éviter l'err
