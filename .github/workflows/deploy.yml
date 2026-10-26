@@ -131,16 +131,17 @@ jobs:
           cp -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm WMM2025.COF public_site/ 2>/dev/null || true
 
       - name: 🔀 Créer une Pull Request automatique pour flux_live.json
-  uses: peter-evans/create-pull-request@v6
-  with:
-    token: ${{ secrets.ACTIONS_PAT }} # Utilisez un PAT si le GITHUB_TOKEN est restreint
-    commit-message: "Mise à jour automatique du flux live journalier [skip ci]"
-    title: "🤖 Mise à jour automatique de flux_live.json"
-    branch: update-flux-live
-    base: main
-    add-paths: |
-      flux_live.json
-```[cite: 3]
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.ACTIONS_PAT }}
+          commit-message: "Mise à jour automatique du flux live journalier [skip ci]"
+          title: "🤖 Mise à jour automatique de flux_live.json"
+          body: "Cette Pull Request met à jour automatiquement le fichier `flux_live.json` généré par le moteur multiphysique DE440s."
+          branch: update-flux-live
+          delete-branch: true
+          base: main
+          add-paths: |
+            flux_live.json
 
       - name: 📦 Préparation de l'artefact GitHub Pages
         uses: actions/upload-pages-artifact@v4
@@ -163,3 +164,4 @@ jobs:
       - name: 🚀 Déploiement vers GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+```[cite: 3]
