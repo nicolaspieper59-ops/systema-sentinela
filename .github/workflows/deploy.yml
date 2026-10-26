@@ -136,13 +136,13 @@ jobs:
           token: ${{ secrets.ACTIONS_PAT }}
           commit-message: "Mise à jour automatique du flux live journalier [skip ci]"
           title: "🤖 Mise à jour automatique de flux_live.json"
-          body: "Cette Pull Request met à jour automatiquement le fichier `flux_live.json` généré par le moteur multiphysique DE440s."
+          body: "Cette Pull Request met à jour automatiquement le fichier flux_live.json genere par le moteur multiphysique DE440s."
           branch: update-flux-live
           delete-branch: true
           base: main
           add-paths: |
             flux_live.json
-
+            
       - name: 📦 Préparation de l'artefact GitHub Pages
         uses: actions/upload-pages-artifact@v4
         with:
