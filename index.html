@@ -687,21 +687,21 @@
     
 async function chargerFluxLiveJPL() {
     try {
-        // Paramètre dynamique unique garantissant la purge du cache local
-        const reponse = await fetch(`flux_live.json?ts=${Date.now()}`, { cache: 'no-store' });
+        // Forçage d'une requête réseau pure avec en-têtes anti-cache stricts
+        const reponse = await fetch(`flux_live.json?ts=${Date.now()}`, { 
+            cache: 'no-store',
+            headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
+            }
+        });
         if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
         
-        const dateServeurHeader = reponse.headers.get('Date');
-        const tempsServeur = dateServeurHeader ? new Date(dateServeurHeader).getTime() : Date.now();
-
         matriceJplLive = await reponse.json();
-
-        verifierObsolescenceFlux(matriceJplLive, tempsServeur);
         envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
-        ecrireLog("JPL : flux_live.json chargé avec succès.");
+        ecrireLog("JPL : flux_live.json frais chargé directement depuis le serveur.");
     } catch (e) {
         document.getElementById('lbl-jpl-status').innerText = "ERREUR CHARGEMENT";
-        document.getElementById('lbl-jpl-status').style.color = "var(--rose)";
         ecrireLog(`[FATAL] Échec d'acquisition du flux : ${e.message}`);
     }
     }
