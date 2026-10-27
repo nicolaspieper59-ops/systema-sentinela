@@ -11,6 +11,7 @@ on:
       - '*.html'
       - 'dynamic_multiphysics_engine.py'
       - '.github/workflows/**'
+      - 'flux_live.json' # 👈
   workflow_dispatch:     # Déclenchement manuel instantané possible
 
 permissions:
