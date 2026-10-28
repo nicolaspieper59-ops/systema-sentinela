@@ -835,7 +835,7 @@ function verifierObsolescenceFlux(data, tempsReference) {
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
 
-        const workerUrl = new URL('./worker.js?v=19.30', window.location.href).href;
+        const workerUrl = new URL('./worker.js?v=19.37', window.location.href).href;
 
         astroWorker = new Worker(workerUrl); 
         astroWorker.onmessage = traiterMessageWorker;
