@@ -1,5 +1,6 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL CORRIGÉ v19.35
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL CORRIGÉ v19.36
+ * Intégration du décalage ΔT (Temps Terrestre) pour synchronisation temps réel absolu
  */
 
 let jplMatrixData = null;
@@ -207,23 +208,24 @@ function traiterCalculsRigoureux(params) {
     const longSolaireDeg = (L0 * 180.0 / Math.PI) % 360.0;
     const eqTempsMin = -7.653 * Math.sin(L0) + 9.813 * Math.sin(2 * L0 + 3.585);
 
+    const deltaTSeconds = 69.2; // Conversion Temps Terrestre (TT)
     const bodiesResult = {};
 
     for (const [nomCorps, segments] of Object.entries(jplMatrixData.DATA)) {
         if (!segments || segments.length === 0) continue;
 
-        const tUnixSec = ts / 1000.0;
+        // Temps d'éphéméride ajusté avec ΔT (en secondes)
+        const tEphemerideSec = (ts / 1000.0) + deltaTSeconds;
         
-        // Recherche robuste avec tolérance dynamique pour éviter l'échec de borne
-        let seg = segments.find(s => tUnixSec >= s.t_start && tUnixSec <= s.t_end);
+        // Recherche du segment actif avec tolérance temporelle ajustée
+        let seg = segments.find(s => tEphemerideSec >= s.t_start && tEphemerideSec <= s.t_end);
         if (!seg) {
-            // Fallback intelligent : sélection du segment le plus proche temporellement si hors bornes strictes
             seg = segments.reduce((prev, curr) => {
-                return (Math.abs(curr.t_start - tUnixSec) < Math.abs(prev.t_start - tUnixSec)) ? curr : prev;
+                return (Math.abs(curr.t_start - tEphemerideSec) < Math.abs(prev.t_start - tEphemerideSec)) ? curr : prev;
             });
         }
 
-        let tau = (2.0 * (tUnixSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
+        let tau = (2.0 * (tEphemerideSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
         tau = Math.max(-1.0, Math.min(1.0, tau));
         
         const x = evaluerTchebychev(seg.cx, tau);
@@ -232,7 +234,6 @@ function traiterCalculsRigoureux(params) {
         
         const nomUpper = nomCorps.toUpperCase();
         const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN");
-        const estLune = (nomUpper === "LUNE" || nomUpper === "MOON");
 
         const topo = transformerECIenTopocentrique([x, y, z], coords.lat, coords.lon, coords.alt, gast, meteo, estSoleil);
         const raDeg = (Math.atan2(y, x) * 180.0 / Math.PI + 360.0) % 360.0;
@@ -249,7 +250,7 @@ function traiterCalculsRigoureux(params) {
             airMass: topo.airMass,
             irradiance: topo.irradiance,
             jde: jde,
-            deltat: 69.2,
+            deltat: deltaTSeconds,
             gha: (gast - raDeg + 360.0) % 360.0,
             distanceMinMaxDisplay: `${topo.distanceAu.toFixed(6)} AU`,
             constellationDisplay: "JPL-DE440s",
@@ -283,4 +284,4 @@ function traiterCalculsRigoureux(params) {
         metrics: { gastDeg: gast, obliquiteDeg: obliquite, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: longSolaireDeg },
         wmm: resultatWmm
     });
-        }
+                                   }
