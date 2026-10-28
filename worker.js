@@ -184,6 +184,8 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
 }
 
 function traiterCalculsRigoureux(params) {
+    console.log("[DIAGNOSTIC TEMPS] Timestamp reçu par le Worker (ms):", params.timestampUtc);
+    console.log("[DIAGNOSTIC TEMPS] Date UTC équivalente:", new Date(params.timestampUtc).
     if (!jplMatrixData || !jplMatrixData.DATA) return;
     
     const ts = params.timestampUtc;
