@@ -699,12 +699,16 @@ async function chargerFluxLiveJPL() {
         
         matriceJplLive = await reponse.json();
         envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+        
+        // 🛠️ CORRECTIF : Actualisation immédiate du libellé de statut JPL dans l'IHM
+        verifierObsolescenceFlux(matriceJplLive, obtenirTimestampUTCExact());
+
         ecrireLog("JPL : flux_live.json frais chargé directement depuis le serveur.");
     } catch (e) {
         document.getElementById('lbl-jpl-status').innerText = "ERREUR CHARGEMENT";
         ecrireLog(`[FATAL] Échec d'acquisition du flux : ${e.message}`);
     }
-    }
+}
     
 function verifierObsolescenceFlux(data, tempsReference) {
     const statusElement = document.getElementById('lbl-jpl-status');
