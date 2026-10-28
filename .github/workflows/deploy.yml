@@ -131,16 +131,15 @@ jobs:
           cp -f EGM2008.gfc public_site/ 2>/dev/null || true
           cp -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm WMM2025.COF public_site/ 2>/dev/null || true
 
-      - name: 🔀 Créer une Pull Request automatique pour flux_live.json
+      - name: 🔀 Mettre à jour la Pull Request unique pour flux_live.json
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.ACTIONS_PAT }}
           commit-message: "Mise à jour automatique du flux live journalier [skip ci]"
           title: "🤖 Mise à jour automatique de flux_live.json"
-          body: "Cette Pull Request met à jour automatiquement le fichier `flux_live.json` généré par le moteur multiphysique DE440s."
+          body: "Cette Pull Request met à jour en continu le fichier `flux_live.json` généré par le moteur multiphysique DE440s."
           branch: update-flux-live
-          branch-suffix: timestamp # 👈 Indispensable : crée une branche unique (ex: update-flux-live-17182839) pour éviter tout conflit de rebase
-          delete-branch: true
+          delete-branch: false
           base: main
           add-paths: |
             flux_live.json
