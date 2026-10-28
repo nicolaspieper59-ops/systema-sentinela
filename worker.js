@@ -1,6 +1,6 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL CORRIGÉ v19.36
- * Intégration du décalage ΔT (Temps Terrestre) pour synchronisation temps réel absolu
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL CORRIGÉ v19.37
+ * Intégration du décalage ΔT (Temps Terrestre) et correction des erreurs de syntaxe
  */
 
 let jplMatrixData = null;
@@ -185,7 +185,8 @@ function transformerECIenTopocentrique(posECI_km, obsLatDeg, obsLonDeg, obsAltM,
 
 function traiterCalculsRigoureux(params) {
     console.log("[DIAGNOSTIC TEMPS] Timestamp reçu par le Worker (ms):", params.timestampUtc);
-    console.log("[DIAGNOSTIC TEMPS] Date UTC équivalente:", new Date(params.timestampUtc).
+    console.log("[DIAGNOSTIC TEMPS] Date UTC équivalente:", new Date(params.timestampUtc).toUTCString());
+
     if (!jplMatrixData || !jplMatrixData.DATA) return;
     
     const ts = params.timestampUtc;
@@ -286,4 +287,4 @@ function traiterCalculsRigoureux(params) {
         metrics: { gastDeg: gast, obliquiteDeg: obliquite, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: longSolaireDeg },
         wmm: resultatWmm
     });
-                                   }
+        }
