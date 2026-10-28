@@ -1263,14 +1263,14 @@ function verifierObsolescenceFlux(data, tempsReference) {
     }
 
     function lancerBoucleCalculSecurisee() {
+    envoyerDemandeCalculWorker();
+    
+    // Cadencement à 250ms pour un flux fluide et actualisé en temps réel absolu
+    setInterval(() => {
         envoyerDemandeCalculWorker();
-        
-        // Cadencement haute précision pour un rafraîchissement en temps réel continu
-        setInterval(() => {
-            envoyerDemandeCalculWorker();
-        }, 250); // 250ms = 4 requêtes par seconde, fluide comme Stellarium
+    }, 250);
     }
-
+    
     window.addEventListener('resize', () => {
         if (typeof globeRenderer !== 'undefined' && typeof globeCamera !== 'undefined') {
             const container = globeRenderer.domElement.parentElement;
