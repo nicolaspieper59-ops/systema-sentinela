@@ -1,12 +1,11 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL WSM / SOFA (MODE AUTONOME CORRIGÉ)
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL WSM / SOFA (ZÉRO SIMPLIFICATION)
  */
 
 let jplMatrixData = null;
 let wmmTableauCoeffs = null;
 let wasmPret = false;
 
-// 1. Définition de l'objet de configuration global attendu par Emscripten
 var Module = {
     onRuntimeInitialized: function() {
         wasmPret = true;
@@ -15,7 +14,6 @@ var Module = {
     }
 };
 
-// 2. Importation du glue script Emscripten (qui charge automatiquement wasm_astronomie.wasm)
 importScripts('./wasm_astronomie.js');
 
 self.onmessage = function (e) {
@@ -133,13 +131,13 @@ function evaluerTchebychev(coeffs, tau) {
     return somme;
 }
 
- function traiterCalculsWasmStricts(params) {
+function traiterCalculsWasmStricts(params) {
     if (!jplMatrixData || !jplMatrixData.DATA) return;
 
     const ts = params.timestampUtc;
     const coords = params.coords;
     
-    // Blindage strict des paramètres météorologiques pour éliminer tout NaN
+    // Blindage strict météo pour éliminer tout risque de NaN
     const meteo = {
         tempC: (params.meteo && typeof params.meteo.tempC === 'number' && !isNaN(params.meteo.tempC)) ? params.meteo.tempC : 15.0,
         presHpa: (params.meteo && typeof params.meteo.presHpa === 'number' && !isNaN(params.meteo.presHpa)) ? params.meteo.presHpa : 1013.25
@@ -211,7 +209,7 @@ function evaluerTchebychev(coeffs, tau) {
         const shadowLen = Module.HEAPF64[ptrF64 + 14];
         const visCode = Module.HEAP32[ptrI32 + 46];
 
-        // Correction des vérifications strictes pour éliminer les "--" injustifiés sur 0.0
+        // Sécurisation stricte de l'affichage des propriétés numériques (supportant la valeur 0.0)
         bodiesResult[nomCorps.toLowerCase()] = {
             elevationGeometrique: elevGeom,
             elevationApparente: elevRefractee,
@@ -260,4 +258,4 @@ function evaluerTchebychev(coeffs, tau) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: resultatWmm
     });
-        }           
+                          }
