@@ -1099,7 +1099,7 @@
         ctx.restore();
     }
 
-     function positionnerRadarSurGPS(lat, lon, radius) {
+    function positionnerRadarSurGPS(lat, lon, radius) {
         if (!radarGroup) return;
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lon + 180) * (Math.PI / 180);
@@ -1216,7 +1216,7 @@
             setInterval(actualiserIndiceKpRapide, 60 * 60 * 1000);
             await chargerFluxLiveJPL();
             appliquerCoordonneesSaisie();
-            ecrireLog("[DIAGNOSTIC NOYAU] Système opérationnel sans simplification.");
+            ecrireLog("[DIAGNOSTIC NOYAU] Système opérationnel en mode strict.");
             setInterval(envoyerDemandeCalculWorker, 250);
         } catch (e) {
             ecrireLog(`[FATAL] Erreur de démarrage : ${e.message}`);
@@ -1224,4 +1224,4 @@
     });
 </script>
 </body>
-</html>
+</html>.org/examples/textures/planets/earth_atmos_2048.jpg')
