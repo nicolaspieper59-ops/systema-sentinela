@@ -6,7 +6,6 @@ let jplMatrixData = null;
 let wmmTableauCoeffs = null;
 let wasmPret = false;
 
-// 1. Configuration Emscripten en mode autonome
 var Module = {
     onRuntimeInitialized: function() {
         wasmPret = true;
@@ -91,7 +90,7 @@ function calculerWMM12x12Complet(latDeg, lonDeg, altKm, decimalYear) {
                 let k = (((n - 1) * (n - 1)) - (m * m)) / ((2 * n - 1) * (2 * n - 3));
                 let sqrtK = Math.sqrt(Math.max(0, k));
                 P[n][m] = sinPhi * P[n - 1][m] - sqrtK * P[n - 2][m];
-                dP[n][m] = sinPhi * dP[n - 1][m] + cosPhi * P[n - 1][m] - sqrtK * dP[n - 2][m];
+                dP[n][m] = sinPhi * P[n - 1][m] + cosPhi * P[n - 1][m] - sqrtK * dP[n - 2][m];
             }
         }
     }
@@ -138,14 +137,12 @@ function traiterCalculsWasmStricts(params) {
     const ts = params.timestampUtc;
     const coords = params.coords;
     
-    // Blindage météo strict : Élimination totale des NaN
     const meteo = {
         tempC: (params.meteo && typeof params.meteo.tempC === 'number' && !isNaN(params.meteo.tempC)) ? params.meteo.tempC : 15.0,
         presHpa: (params.meteo && typeof params.meteo.presHpa === 'number' && !isNaN(params.meteo.presHpa)) ? params.meteo.presHpa : 1013.25
     };
 
     const timestampSec = ts / 1000.0;
-
     const metricsPtr = Module._malloc(40);
     Module._calculerParametresSiderauxEtSolaires(timestampSec, coords.lon, metricsPtr);
     
@@ -153,7 +150,6 @@ function traiterCalculsWasmStricts(params) {
     const obliquiteDeg = Module.HEAPF64[(metricsPtr >> 3) + 1];
     const sunTrueLong = Module.HEAPF64[(metricsPtr >> 3) + 2];
     const gastDeg = Module.HEAPF64[(metricsPtr >> 3) + 3];
-    const lstDeg = Module.HEAPF64[(metricsPtr >> 3) + 4];
     Module._free(metricsPtr);
 
     const jde = (ts / 86400000.0) + 2440587.5;
@@ -186,7 +182,6 @@ function traiterCalculsWasmStricts(params) {
         const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN") ? 1 : 0;
         const eraRad = gastDeg * (Math.PI / 180.0);
 
-        // Correction critique : Transmission explicite de meteo.presHpa au noyau C
         Module._calculerDepuisECEF(
             x, y, z,
             coords.lat, coords.lon, coords.alt,
@@ -196,7 +191,6 @@ function traiterCalculsWasmStricts(params) {
         );
 
         const ptrF64 = resultPtr >> 3;
-
         const azim = Module.HEAPF64[ptrF64];
         const elevGeom = Module.HEAPF64[ptrF64 + 1];
         const elevRefractee = Module.HEAPF64[ptrF64 + 2];
@@ -208,8 +202,6 @@ function traiterCalculsWasmStricts(params) {
         const ghaDeg = Module.HEAPF64[ptrF64 + 11];
         const magApp = Module.HEAPF64[ptrF64 + 13];
         const shadowLen = Module.HEAPF64[ptrF64 + 14];
-        
-        // Correctif mémoire exact pour visibiliteCode (int32_t à l'offset 184 de la struct C++)
         const visCode = Module.HEAP32[(resultPtr + 184) >> 2];
 
         bodiesResult[nomCorps.toLowerCase()] = {
@@ -260,4 +252,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: resultatWmm
     });
-        }
+                    }
