@@ -1,11 +1,12 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL WSM / SOFA (ZÉRO SIMPLIFICATION)
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA v19.30 — KERNEL WASM / SOFA (ZÉRO SIMPLIFICATION)
  */
 
 let jplMatrixData = null;
 let wmmTableauCoeffs = null;
 let wasmPret = false;
 
+// 1. Configuration Emscripten en mode autonome
 var Module = {
     onRuntimeInitialized: function() {
         wasmPret = true;
@@ -137,7 +138,7 @@ function traiterCalculsWasmStricts(params) {
     const ts = params.timestampUtc;
     const coords = params.coords;
     
-    // Blindage strict météo pour proscrire tout NaN
+    // Blindage météo strict : Élimination totale des NaN
     const meteo = {
         tempC: (params.meteo && typeof params.meteo.tempC === 'number' && !isNaN(params.meteo.tempC)) ? params.meteo.tempC : 15.0,
         presHpa: (params.meteo && typeof params.meteo.presHpa === 'number' && !isNaN(params.meteo.presHpa)) ? params.meteo.presHpa : 1013.25
@@ -185,7 +186,7 @@ function traiterCalculsWasmStricts(params) {
         const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN") ? 1 : 0;
         const eraRad = gastDeg * (Math.PI / 180.0);
 
-        // Correction : Utilisation stricte de meteo.presHpa
+        // Correction critique : Transmission explicite de meteo.presHpa au noyau C
         Module._calculerDepuisECEF(
             x, y, z,
             coords.lat, coords.lon, coords.alt,
@@ -195,7 +196,6 @@ function traiterCalculsWasmStricts(params) {
         );
 
         const ptrF64 = resultPtr >> 3;
-        const ptrI32 = resultPtr >> 2;
 
         const azim = Module.HEAPF64[ptrF64];
         const elevGeom = Module.HEAPF64[ptrF64 + 1];
@@ -209,7 +209,8 @@ function traiterCalculsWasmStricts(params) {
         const magApp = Module.HEAPF64[ptrF64 + 13];
         const shadowLen = Module.HEAPF64[ptrF64 + 14];
         
-        const visCode = Module.HEAP32[resultPtr + 184 >> 2];
+        // Correctif mémoire exact pour visibiliteCode (int32_t à l'offset 184 de la struct C++)
+        const visCode = Module.HEAP32[(resultPtr + 184) >> 2];
 
         bodiesResult[nomCorps.toLowerCase()] = {
             elevationGeometrique: elevGeom,
