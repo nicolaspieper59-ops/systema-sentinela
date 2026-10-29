@@ -243,6 +243,7 @@
             <div>JPL FLUX : <span id="lbl-jpl-status" style="color:var(--amber); font-weight:bold;">CHARGEMENT...</span></div>
             <div>WORKER : <span id="lbl-worker-status" style="color:var(--amber); font-weight:bold;">INIT...</span></div>
             <div>EPOCH UTC : <span id="lbl-epoch" class="time-utc">--</span></div>
+            <div>FLUX PÉRIODE : <span id="lbl-flux-periode" style="color:var(--sky); font-weight:bold;">CHARGEMENT...</span></div>
             <button class="btn-action" onclick="basculerModeJour()">MODE JOUR / NUIT</button>
         </div>
     </header>
@@ -707,6 +708,28 @@ async function chargerFluxLiveJPL() {
     } catch (e) {
         document.getElementById('lbl-jpl-status').innerText = "ERREUR CHARGEMENT";
         ecrireLog(`[FATAL] Échec d'acquisition du flux : ${e.message}`);
+    }
+}
+
+    // Dans chargerFluxLiveJPL ou après le chargement de matriceJplLive
+function afficherFenetreFlux(data) {
+    if (!data || !data.DATA) return;
+    
+    // Récupérer le premier corps (ex: soleil) pour lire les segments
+    const premierCorps = Object.keys(data.DATA)[0];
+    const segments = data.DATA[premierCorps];
+    
+    if (segments && segments.length > 0) {
+        const timestampDebutSec = segments[0].t_start;
+        const timestampFinSec = segments[segments.length - 1].t_end;
+        
+        const dateDebut = new Date(timestampDebutSec * 1000).toISOString().substring(0, 10);
+        const dateFin = new Date(timestampFinSec * 1000).toISOString().substring(0, 10);
+        
+        const elPeriode = document.getElementById('lbl-flux-periode');
+        if (elPeriode) {
+            elPeriode.innerText = `${dateDebut} au ${dateFin}`;
+        }
     }
 }
     
