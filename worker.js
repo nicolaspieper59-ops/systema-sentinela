@@ -1,5 +1,5 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA v19.30 — KERNEL WASM / SOFA (ZÉRO SIMPLIFICATION)
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA v19.30 — KERNEL RIGOROUS (ZERO SIMPLIFICATION / STRICT MODE)
  */
 
 let jplMatrixData = null;
@@ -10,7 +10,7 @@ var Module = {
     onRuntimeInitialized: function() {
         wasmPret = true;
         self.postMessage({ type: 'WORKER_READY' });
-        console.log("[WORKER WASM] Runtime C/SOFA initialisé avec succès.");
+        console.log("[WORKER WASM] Runtime C/SOFA initialisé avec succès (Zero-Fallback).");
     }
 };
 
@@ -23,18 +23,24 @@ self.onmessage = function (e) {
 
         switch (data.type) {
             case 'UPDATE_JPL_MATRIX':
+                if (!data.matrix || !data.matrix.DATA) {
+                    throw new Error("[FATAL WMM/JPL] Matrice JPL invalide ou corrompue.");
+                }
                 jplMatrixData = data.matrix;
                 self.postMessage({ type: 'JPL_MATRIX_UPDATED' });
                 break;
 
             case 'LOAD_WMM_COF_TEXT':
-                wmmTableauCoeffs = analyserTexteWMM(data.text);
+                wmmTableauCoeffs = analyserTexteWMMStricte(data.text);
                 self.postMessage({ type: 'WMM_LOADED', status: 'success' });
                 break;
 
             case 'COMPUTE':
                 if (!wasmPret) {
-                    throw new Error("Module Wasm encore en cours de chargement.");
+                    throw new Error("[FATAL] Module Wasm non initialisé.");
+                }
+                if (!wmmTableauCoeffs || wmmTableauCoeffs.length === 0) {
+                    throw new Error("[FATAL WMM] Coefficients WMM2025 non chargés. Impossible de calculer le champ magnétique.");
                 }
                 traiterCalculsWasmStricts(data);
                 break;
@@ -44,7 +50,10 @@ self.onmessage = function (e) {
     }
 };
 
-function analyserTexteWMM(texte) {
+function analyserTexteWMMStricte(texte) {
+    if (!texte || typeof texte !== 'string') {
+        throw new Error("[FATAL WMM] Fichier WMM2025.COF vide ou invalide.");
+    }
     const lignes = texte.split('\n');
     const coeffs = [];
     for (let ligne of lignes) {
@@ -63,11 +72,13 @@ function analyserTexteWMM(texte) {
             }
         }
     }
+    if (coeffs.length === 0) {
+        throw new Error("[FATAL WMM] Aucun coefficient valide extrait du fichier COF.");
+    }
     return coeffs;
 }
 
-function calculerWMM12x12Complet(latDeg, lonDeg, altKm, decimalYear) {
-    if (!wmmTableauCoeffs) return { declination: 0.0, inclination: 0.0, totalIntensity: 0.0 };
+function calculerWMM12x12Stricte(latDeg, lonDeg, altKm, decimalYear) {
     const dt = decimalYear - 2025.0;
     const rad = Math.PI / 180.0;
     const phi = latDeg * rad, lambda = lonDeg * rad;
@@ -90,7 +101,7 @@ function calculerWMM12x12Complet(latDeg, lonDeg, altKm, decimalYear) {
                 let k = (((n - 1) * (n - 1)) - (m * m)) / ((2 * n - 1) * (2 * n - 3));
                 let sqrtK = Math.sqrt(Math.max(0, k));
                 P[n][m] = sinPhi * P[n - 1][m] - sqrtK * P[n - 2][m];
-                dP[n][m] = sinPhi * P[n - 1][m] + cosPhi * P[n - 1][m] - sqrtK * dP[n - 2][m];
+                dP[n][m] = sinPhi * dP[n - 1][m] + cosPhi * P[n - 1][m] - sqrtK * dP[n - 2][m];
             }
         }
     }
@@ -98,8 +109,8 @@ function calculerWMM12x12Complet(latDeg, lonDeg, altKm, decimalYear) {
     let B_r = 0.0, B_theta = 0.0, B_phi = 0.0;
     for (let c of wmmTableauCoeffs) {
         if (c.n > nMax || c.m > c.n) continue;
-        const g = c.gnm + (c.dgnm || 0) * dt;
-        const h = c.hnm + (c.dhnm || 0) * dt;
+        const g = c.gnm + c.dgnm * dt;
+        const h = c.hnm + c.dhnm * dt;
         let q_pow = Math.pow(altRatio, c.n + 2);
         const cosMlam = Math.cos(c.m * lambda), sinMlam = Math.sin(c.m * lambda);
         const cos_term = g * cosMlam + h * sinMlam;
@@ -111,14 +122,19 @@ function calculerWMM12x12Complet(latDeg, lonDeg, altKm, decimalYear) {
     }
 
     const X = -B_theta, Y = B_phi, Z = -B_r;
+    let declination = Math.atan2(Y, X) * (180.0 / Math.PI);
+    
+    // Correction rigoureuse d'orientation géomagnétique
+    if (declination < 0) declination += 360.0;
+
     return {
-        declination: Math.atan2(Y, X) * (180.0 / Math.PI),
+        declination: declination,
         inclination: Math.atan2(Z, Math.hypot(X, Y)) * (180.0 / Math.PI),
         totalIntensity: Math.abs(Math.hypot(Math.hypot(X, Y), Z))
     };
 }
 
-function evaluerTchebychev(coeffs, tau) {
+function evaluerTchebychevStricte(coeffs, tau) {
     const degre = coeffs.length - 1;
     if (degre === 0) return coeffs[0];
     if (degre === 1) return coeffs[0] + coeffs[1] * tau;
@@ -132,7 +148,9 @@ function evaluerTchebychev(coeffs, tau) {
 }
 
 function traiterCalculsWasmStricts(params) {
-    if (!jplMatrixData || !jplMatrixData.DATA) return;
+    if (!jplMatrixData || !jplMatrixData.DATA) {
+        throw new Error("[FATAL] Données JPL non chargées dans le Worker.");
+    }
 
     const ts = params.timestampUtc;
     const coords = params.coords;
@@ -166,17 +184,15 @@ function traiterCalculsWasmStricts(params) {
 
         let seg = segments.find(s => tEphemerideSec >= s.t_start && tEphemerideSec <= s.t_end);
         if (!seg) {
-            seg = segments.reduce((prev, curr) => {
-                return (Math.abs(curr.t_start - tEphemerideSec) < Math.abs(prev.t_start - tEphemerideSec)) ? curr : prev;
-            });
+            throw new Error(`[FATAL JPL] Aucun segment temporel trouvé pour l'astre '${nomCorps}' au timestamp ${tEphemerideSec}. Vérifiez la validité du fichier flux_live.json.`);
         }
 
         let tau = (2.0 * (tEphemerideSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
         tau = Math.max(-1.0, Math.min(1.0, tau));
 
-        const x = evaluerTchebychev(seg.cx, tau);
-        const y = evaluerTchebychev(seg.cy, tau);
-        const z = evaluerTchebychev(seg.cz, tau);
+        const x = evaluerTchebychevStricte(seg.cx, tau);
+        const y = evaluerTchebychevStricte(seg.cy, tau);
+        const z = evaluerTchebychevStricte(seg.cz, tau);
 
         const nomUpper = nomCorps.toUpperCase();
         const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN") ? 1 : 0;
@@ -220,12 +236,12 @@ function traiterCalculsWasmStricts(params) {
             gha: ghaDeg,
             distanceMinMaxDisplay: `${distUA.toFixed(6)} AU`,
             constellationDisplay: "JPL-DE440s / SOFA",
-            perigeeDisplay: (seg.perigee_ua !== undefined && seg.perigee_ua !== null) ? `${seg.perigee_ua.toFixed(5)} AU` : "--",
-            perihelionDisplay: (seg.perihelion_ua !== undefined && seg.perihelion_ua !== null) ? `${seg.perihelion_ua.toFixed(4)} AU` : "--",
-            aphelionDisplay: (seg.aphelion_ua !== undefined && seg.aphelion_ua !== null) ? `${seg.aphelion_ua.toFixed(4)} AU` : "--",
-            orbitPeriodDisplay: (seg.period_days !== undefined && seg.period_days !== null) ? `${seg.period_days.toFixed(1)} j` : "--",
-            lengthOfDayDisplay: (seg.lod_hours !== undefined && seg.lod_hours !== null) ? `${seg.lod_hours.toFixed(1)} h` : "--",
-            orbitalVelocityDisplay: (seg.vel_kms !== undefined && seg.vel_kms !== null) ? `${seg.vel_kms.toFixed(2)} km/s` : "--",
+            perigeeDisplay: `${seg.perigee_ua.toFixed(5)} AU`,
+            perihelionDisplay: `${seg.perihelion_ua.toFixed(4)} AU`,
+            aphelionDisplay: `${seg.aphelion_ua.toFixed(4)} AU`,
+            orbitPeriodDisplay: `${seg.period_days.toFixed(1)} j`,
+            lengthOfDayDisplay: `${seg.lod_hours.toFixed(1)} h`,
+            orbitalVelocityDisplay: `${seg.vel_kms.toFixed(2)} km/s`,
             shadowLengthDisplay: (shadowLen > 0) ? `${shadowLen.toFixed(2)} m` : "N/A",
             sunrise: elevRefractee >= -0.833 ? "Visible" : "Sous horizon",
             sunset: elevRefractee < -0.833 ? "Couché" : "Au-dessus horizon",
@@ -244,7 +260,7 @@ function traiterCalculsWasmStricts(params) {
         bodiesResult[cleLune].moonAgeDays = (elongDeg / 360.0) * 29.530588;
     }
 
-    const resultatWmm = calculerWMM12x12Complet(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear);
+    const resultatWmm = calculerWMM12x12Stricte(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear);
 
     self.postMessage({
         type: 'RESULTS_COMPUTE',
@@ -252,4 +268,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: resultatWmm
     });
-                    }
+        }
