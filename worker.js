@@ -1,32 +1,22 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL ZÉRO-SIMPLIFICATION (WASM / SOFA)
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL WSM / SOFA (MODE AUTONOME)
  */
 
-let wasmModule = null;
 let jplMatrixData = null;
 let wmmTableauCoeffs = null;
+let wasmPret = false;
 
-// Importation du glue script Emscripten pour accéder aux fonctions C natives
-importScripts('./wasm_astronomie.js');
-
-// Initialisation asynchrone du module WebAssembly
-async function initialiserWasm() {
-    try {
-        const reponse = await fetch('wasm_astronomie.wasm');
-        const buffer = await reponse.arrayBuffer();
-        
-        wasmModule = await Module({
-            wasmBinary: buffer,
-            locateFile: (path) => path
-        });
-        
+// 1. Définition de l'objet de configuration global attendu par Emscripten
+var Module = {
+    onRuntimeInitialized: function() {
+        wasmPret = true;
         self.postMessage({ type: 'WORKER_READY' });
-    } catch (e) {
-        self.postMessage({ type: 'FATAL_ERROR', message: "Échec critique du chargement Wasm : " + e.message });
+        console.log("[WORKER WASM] Runtime C/SOFA initialisé avec succès.");
     }
-}
+};
 
-initialiserWasm();
+// 2. Importation du glue script Emscripten (qui charge automatiquement wasm_astronomie.wasm)
+importScripts('./wasm_astronomie.js');
 
 self.onmessage = function (e) {
     try {
@@ -45,8 +35,8 @@ self.onmessage = function (e) {
                 break;
 
             case 'COMPUTE':
-                if (!wasmModule) {
-                    throw new Error("Module Wasm non initialisé pour les calculs stricts.");
+                if (!wasmPret) {
+                    throw new Error("Module Wasm encore en cours de chargement.");
                 }
                 traiterCalculsWasmStricts(data);
                 break;
@@ -55,6 +45,7 @@ self.onmessage = function (e) {
         self.postMessage({ type: 'FATAL_ERROR', message: erreur.message });
     }
 };
+
 
 function analyserTexteWMM(texte) {
     const lignes = texte.split('\n');
