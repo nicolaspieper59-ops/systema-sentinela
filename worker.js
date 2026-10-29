@@ -133,15 +133,20 @@ function evaluerTchebychev(coeffs, tau) {
     return somme;
 }
 
-function traiterCalculsWasmStricts(params) {
+ function traiterCalculsWasmStricts(params) {
     if (!jplMatrixData || !jplMatrixData.DATA) return;
 
     const ts = params.timestampUtc;
     const coords = params.coords;
-    const meteo = params.meteo;
+    
+    // Blindage strict des paramètres météorologiques pour éliminer tout NaN
+    const meteo = {
+        tempC: (params.meteo && typeof params.meteo.tempC === 'number' && !isNaN(params.meteo.tempC)) ? params.meteo.tempC : 15.0,
+        presHpa: (params.meteo && typeof params.meteo.presHpa === 'number' && !isNaN(params.meteo.presHpa)) ? params.meteo.presHpa : 1013.25
+    };
+
     const timestampSec = ts / 1000.0;
 
-    // Allocation mémoire via l'objet global Module
     const metricsPtr = Module._malloc(40);
     Module._calculerParametresSiderauxEtSolaires(timestampSec, coords.lon, metricsPtr);
     
@@ -159,7 +164,6 @@ function traiterCalculsWasmStricts(params) {
 
     const structSize = 208;
     const resultPtr = Module._malloc(structSize);
-
     const bodiesResult = {};
 
     for (const [nomCorps, segments] of Object.entries(jplMatrixData.DATA)) {
@@ -183,11 +187,10 @@ function traiterCalculsWasmStricts(params) {
         const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN") ? 1 : 0;
         const eraRad = gastDeg * (Math.PI / 180.0);
 
-        // Appel direct de la fonction C native compilée via Module
         Module._calculerDepuisECEF(
             x, y, z,
             coords.lat, coords.lon, coords.alt,
-            eraRad, meteo.tempC, meteo.pressionBaro, 0.15,
+            eraRad, meteo.tempC, meteo.presHpa, 0.15,
             seg.mag ?? 0.0, estSoleil,
             resultPtr
         );
@@ -208,6 +211,7 @@ function traiterCalculsWasmStricts(params) {
         const shadowLen = Module.HEAPF64[ptrF64 + 14];
         const visCode = Module.HEAP32[ptrI32 + 46];
 
+        // Correction des vérifications strictes pour éliminer les "--" injustifiés sur 0.0
         bodiesResult[nomCorps.toLowerCase()] = {
             elevationGeometrique: elevGeom,
             elevationApparente: elevRefractee,
@@ -224,13 +228,13 @@ function traiterCalculsWasmStricts(params) {
             gha: ghaDeg,
             distanceMinMaxDisplay: `${distUA.toFixed(6)} AU`,
             constellationDisplay: "JPL-DE440s / SOFA",
-            perigeeDisplay: seg.perigee_ua ? `${seg.perigee_ua.toFixed(5)} AU` : "--",
-            perihelionDisplay: seg.perihelion_ua ? `${seg.perihelion_ua.toFixed(4)} AU` : "--",
-            aphelionDisplay: seg.aphelion_ua ? `${seg.aphelion_ua.toFixed(4)} AU` : "--",
-            orbitPeriodDisplay: seg.period_days ? `${seg.period_days.toFixed(1)} j` : "--",
-            lengthOfDayDisplay: seg.lod_hours ? `${seg.lod_hours.toFixed(1)} h` : "--",
-            orbitalVelocityDisplay: seg.vel_kms ? `${seg.vel_kms.toFixed(2)} km/s` : "--",
-            shadowLengthDisplay: shadowLen > 0 ? `${shadowLen.toFixed(2)} m` : "N/A",
+            perigeeDisplay: (seg.perigee_ua !== undefined && seg.perigee_ua !== null) ? `${seg.perigee_ua.toFixed(5)} AU` : "--",
+            perihelionDisplay: (seg.perihelion_ua !== undefined && seg.perihelion_ua !== null) ? `${seg.perihelion_ua.toFixed(4)} AU` : "--",
+            aphelionDisplay: (seg.aphelion_ua !== undefined && seg.aphelion_ua !== null) ? `${seg.aphelion_ua.toFixed(4)} AU` : "--",
+            orbitPeriodDisplay: (seg.period_days !== undefined && seg.period_days !== null) ? `${seg.period_days.toFixed(1)} j` : "--",
+            lengthOfDayDisplay: (seg.lod_hours !== undefined && seg.lod_hours !== null) ? `${seg.lod_hours.toFixed(1)} h` : "--",
+            orbitalVelocityDisplay: (seg.vel_kms !== undefined && seg.vel_kms !== null) ? `${seg.vel_kms.toFixed(2)} km/s` : "--",
+            shadowLengthDisplay: (shadowLen > 0) ? `${shadowLen.toFixed(2)} m` : "N/A",
             sunrise: elevRefractee >= -0.833 ? "Visible" : "Sous horizon",
             sunset: elevRefractee < -0.833 ? "Couché" : "Au-dessus horizon",
             dusk: elevRefractee < -6.0 ? "Nuit" : "Crépuscule/Jour",
@@ -256,4 +260,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: resultatWmm
     });
-}
+        }           
