@@ -123,8 +123,6 @@ function calculerWMM12x12Stricte(latDeg, lonDeg, altKm, decimalYear) {
 
     const X = -B_theta, Y = B_phi, Z = -B_r;
     let declination = Math.atan2(Y, X) * (180.0 / Math.PI);
-    
-    // Correction rigoureuse d'orientation géomagnétique
     if (declination < 0) declination += 360.0;
 
     return {
@@ -184,7 +182,7 @@ function traiterCalculsWasmStricts(params) {
 
         let seg = segments.find(s => tEphemerideSec >= s.t_start && tEphemerideSec <= s.t_end);
         if (!seg) {
-            throw new Error(`[FATAL JPL] Aucun segment temporel trouvé pour l'astre '${nomCorps}' au timestamp ${tEphemerideSec}. Vérifiez la validité du fichier flux_live.json.`);
+            throw new Error(`[FATAL JPL] Segment temporel introuvable pour '${nomCorps}' à t=${tEphemerideSec}. Le flux live JPL doit être régénéré.`);
         }
 
         let tau = (2.0 * (tEphemerideSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
@@ -268,4 +266,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: resultatWmm
     });
-        }
+                    }
