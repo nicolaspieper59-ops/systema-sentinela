@@ -36,12 +36,12 @@ export class MeteoManager {
             throw new Error("[FATAL] Aucun coefficient valide trouvé dans WMM2025.COF.");
         }
         this.wmmCoeffs = coeffs;
-        console.log(`[METEO MANAGER] WMM-2025 chargé (${coeffs.length} coefficients).`);[cite: 6]
+        console.log(`[METEO MANAGER] WMM-2025 chargé (${coeffs.length} coefficients).`);
     }
 
     computeWMM2025(latDeg, lonDeg, altKm, decimalYear) {
         if (!this.wmmCoeffs) {
-            throw new Error("[FATAL] Calcul magnétique impossible : coefficients WMM non chargés.");[cite: 6]
+            throw new Error("[FATAL] Calcul magnétique impossible : coefficients WMM non chargés.");
         }
 
         const dt = decimalYear - 2025.0;
@@ -49,17 +49,14 @@ export class MeteoManager {
         const phi = latDeg * rad;
         const lambda = lonDeg * rad;
 
-        // Paramètres géodésiques de référence WMM-2025 (WGS84)
-        const a = 6371.2; // Rayon moyen de référence (km)
+        const a = 6371.2;
         const r = a + altKm;
         const altRatio = a / r;
-
-        // Tableaux dynamiques pour les harmoniques sphériques (Degré max = 12)
         const nMax = 12;
+
         let P = Array.from({ length: nMax + 2 }, () => new Array(nMax + 2).fill(0.0));
         let dP = Array.from({ length: nMax + 2 }, () => new Array(nMax + 2).fill(0.0));
 
-        // Initialisation des fonctions de Legendre semi-normalisées de Schmidt
         P[0][0] = 1.0;
         dP[0][0] = 0.0;
 
@@ -82,10 +79,7 @@ export class MeteoManager {
             }
         }
 
-        let q = altRatio;
         let B_r = 0.0, B_theta = 0.0, B_phi = 0.0;
-
-        // Cosinus et sinus de l'ordre m * lambda
         let cosMlambda = new Array(nMax + 1);
         let sinMlambda = new Array(nMax + 1);
         cosMlambda[0] = 1.0;
@@ -102,7 +96,6 @@ export class MeteoManager {
             const h = c.h + c.dh * dt;
 
             let q_pow = Math.pow(altRatio, c.n + 2);
-
             const p_val = P[c.n][c.m];
             const dp_val = dP[c.n][c.m];
 
@@ -144,5 +137,6 @@ export class MeteoManager {
         const facteurMeteo = (presHpa / 1013.25) * (283.15 / (273.15 + tempC));
         return Math.max(0.0, (R_geom * facteurMeteo) / 60.0);
     }
+}
 
-export const meteoManager = new MeteoManager();[cite: 6]
+export const meteoManager = new MeteoManager();
