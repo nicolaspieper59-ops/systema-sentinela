@@ -90,7 +90,7 @@ function calculerWMM12x12Complet(latDeg, lonDeg, altKm, decimalYear) {
                 let k = (((n - 1) * (n - 1)) - (m * m)) / ((2 * n - 1) * (2 * n - 3));
                 let sqrtK = Math.sqrt(Math.max(0, k));
                 P[n][m] = sinPhi * P[n - 1][m] - sqrtK * P[n - 2][m];
-                dP[n][m] = sinPhi * dP[n - 1][m] + cosPhi * P[n - 1][m] - sqrtK * dP[n - 2][m];
+                dP[n][m] = sinPhi * P[n - 1][m] + cosPhi * P[n - 1][m] - sqrtK * P[n - 2][m];
             }
         }
     }
@@ -137,7 +137,7 @@ function traiterCalculsWasmStricts(params) {
     const ts = params.timestampUtc;
     const coords = params.coords;
     
-    // Blindage strict météo pour éliminer tout risque de NaN
+    // Blindage strict météo pour proscrire tout NaN
     const meteo = {
         tempC: (params.meteo && typeof params.meteo.tempC === 'number' && !isNaN(params.meteo.tempC)) ? params.meteo.tempC : 15.0,
         presHpa: (params.meteo && typeof params.meteo.presHpa === 'number' && !isNaN(params.meteo.presHpa)) ? params.meteo.presHpa : 1013.25
@@ -188,7 +188,7 @@ function traiterCalculsWasmStricts(params) {
         Module._calculerDepuisECEF(
             x, y, z,
             coords.lat, coords.lon, coords.alt,
-            eraRad, meteo.tempC, meteo.presHpa, 0.15,
+            eraRad, meteo.tempC, meteo.pressionBaro, 0.15,
             seg.mag ?? 0.0, estSoleil,
             resultPtr
         );
@@ -207,9 +207,10 @@ function traiterCalculsWasmStricts(params) {
         const ghaDeg = Module.HEAPF64[ptrF64 + 11];
         const magApp = Module.HEAPF64[ptrF64 + 13];
         const shadowLen = Module.HEAPF64[ptrF64 + 14];
-        const visCode = Module.HEAP32[ptrI32 + 46];
+        
+        // Correction de l'offset mémoire exact pour la structure AstroResult (alignement C++)
+        const visCode = Module.HEAP32[resultPtr + 184 >> 2];
 
-        // Sécurisation stricte de l'affichage des propriétés numériques (supportant la valeur 0.0)
         bodiesResult[nomCorps.toLowerCase()] = {
             elevationGeometrique: elevGeom,
             elevationApparente: elevRefractee,
@@ -258,4 +259,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: resultatWmm
     });
-                          }
+}
