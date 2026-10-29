@@ -1,5 +1,5 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL WSM / SOFA (MODE AUTONOME)
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL WSM / SOFA (MODE AUTONOME CORRIGÉ)
  */
 
 let jplMatrixData = null;
@@ -45,7 +45,6 @@ self.onmessage = function (e) {
         self.postMessage({ type: 'FATAL_ERROR', message: erreur.message });
     }
 };
-
 
 function analyserTexteWMM(texte) {
     const lignes = texte.split('\n');
@@ -93,7 +92,7 @@ function calculerWMM12x12Complet(latDeg, lonDeg, altKm, decimalYear) {
                 let k = (((n - 1) * (n - 1)) - (m * m)) / ((2 * n - 1) * (2 * n - 3));
                 let sqrtK = Math.sqrt(Math.max(0, k));
                 P[n][m] = sinPhi * P[n - 1][m] - sqrtK * P[n - 2][m];
-                dP[n][m] = sinPhi * P[n - 1][m] + cosPhi * P[n - 1][m] - sqrtK * dP[n - 2][m];
+                dP[n][m] = sinPhi * dP[n - 1][m] + cosPhi * P[n - 1][m] - sqrtK * dP[n - 2][m];
             }
         }
     }
@@ -142,25 +141,24 @@ function traiterCalculsWasmStricts(params) {
     const meteo = params.meteo;
     const timestampSec = ts / 1000.0;
 
-    // Allocation mémoire pour récupérer les métriques sidérales depuis le C natif (5 doubles)
-    const metricsPtr = wasmModule._malloc(40);
-    wasmModule._calculerParametresSiderauxEtSolaires(timestampSec, coords.lon, metricsPtr);
+    // Allocation mémoire via l'objet global Module
+    const metricsPtr = Module._malloc(40);
+    Module._calculerParametresSiderauxEtSolaires(timestampSec, coords.lon, metricsPtr);
     
-    const eqTempsMin = wasmModule.HEAPF64[metricsPtr >> 3] / 60.0;
-    const obliquiteDeg = wasmModule.HEAPF64[(metricsPtr >> 3) + 1];
-    const sunTrueLong = wasmModule.HEAPF64[(metricsPtr >> 3) + 2];
-    const gastDeg = wasmModule.HEAPF64[(metricsPtr >> 3) + 3];
-    const lstDeg = wasmModule.HEAPF64[(metricsPtr >> 3) + 4];
-    wasmModule._free(metricsPtr);
+    const eqTempsMin = Module.HEAPF64[metricsPtr >> 3] / 60.0;
+    const obliquiteDeg = Module.HEAPF64[(metricsPtr >> 3) + 1];
+    const sunTrueLong = Module.HEAPF64[(metricsPtr >> 3) + 2];
+    const gastDeg = Module.HEAPF64[(metricsPtr >> 3) + 3];
+    const lstDeg = Module.HEAPF64[(metricsPtr >> 3) + 4];
+    Module._free(metricsPtr);
 
     const jde = (ts / 86400000.0) + 2440587.5;
     const decimalYear = 2000.0 + (jde - 2451545.0) / 365.25;
-    const deltaTSeconds = 69.2; // Temps Terrestre rigoureux
+    const deltaTSeconds = 69.2; 
     const tEphemerideSec = timestampSec + deltaTSeconds;
 
-    // Allocation d'une structure AstroResult en mémoire WebAssembly (taille struct : ~200 octets)
     const structSize = 208;
-    const resultPtr = wasmModule._malloc(structSize);
+    const resultPtr = Module._malloc(structSize);
 
     const bodiesResult = {};
 
@@ -185,8 +183,8 @@ function traiterCalculsWasmStricts(params) {
         const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN") ? 1 : 0;
         const eraRad = gastDeg * (Math.PI / 180.0);
 
-        // Appel direct de la fonction C native compilée (_calculerDepuisECEF)
-        wasmModule._calculerDepuisECEF(
+        // Appel direct de la fonction C native compilée via Module
+        Module._calculerDepuisECEF(
             x, y, z,
             coords.lat, coords.lon, coords.alt,
             eraRad, meteo.tempC, meteo.pressionBaro, 0.15,
@@ -194,22 +192,21 @@ function traiterCalculsWasmStricts(params) {
             resultPtr
         );
 
-        // Lecture rigoureuse de la structure struct AstroResult retournée par le C
         const ptrF64 = resultPtr >> 3;
         const ptrI32 = resultPtr >> 2;
 
-        const azim = wasmModule.HEAPF64[ptrF64];
-        const elevGeom = wasmModule.HEAPF64[ptrF64 + 1];
-        const elevRefractee = wasmModule.HEAPF64[ptrF64 + 2];
-        const raDeg = wasmModule.HEAPF64[ptrF64 + 3];
-        const decDeg = wasmModule.HEAPF64[ptrF64 + 4];
-        const distUA = wasmModule.HEAPF64[ptrF64 + 5];
-        const airMass = wasmModule.HEAPF64[ptrF64 + 8];
-        const irradiance = wasmModule.HEAPF64[ptrF64 + 9];
-        const ghaDeg = wasmModule.HEAPF64[ptrF64 + 11];
-        const magApp = wasmModule.HEAPF64[ptrF64 + 13];
-        const shadowLen = wasmModule.HEAPF64[ptrF64 + 14];
-        const visCode = wasmModule.HEAP32[ptrI32 + 46];
+        const azim = Module.HEAPF64[ptrF64];
+        const elevGeom = Module.HEAPF64[ptrF64 + 1];
+        const elevRefractee = Module.HEAPF64[ptrF64 + 2];
+        const raDeg = Module.HEAPF64[ptrF64 + 3];
+        const decDeg = Module.HEAPF64[ptrF64 + 4];
+        const distUA = Module.HEAPF64[ptrF64 + 5];
+        const airMass = Module.HEAPF64[ptrF64 + 8];
+        const irradiance = Module.HEAPF64[ptrF64 + 9];
+        const ghaDeg = Module.HEAPF64[ptrF64 + 11];
+        const magApp = Module.HEAPF64[ptrF64 + 13];
+        const shadowLen = Module.HEAPF64[ptrF64 + 14];
+        const visCode = Module.HEAP32[ptrI32 + 46];
 
         bodiesResult[nomCorps.toLowerCase()] = {
             elevationGeometrique: elevGeom,
@@ -241,7 +238,7 @@ function traiterCalculsWasmStricts(params) {
         };
     }
 
-    wasmModule._free(resultPtr);
+    Module._free(resultPtr);
 
     const cleLune = bodiesResult["lune"] ? "lune" : (bodiesResult["moon"] ? "moon" : null);
     const cleSoleil = bodiesResult["soleil"] ? "soleil" : (bodiesResult["sun"] ? "sun" : null);
@@ -259,4 +256,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: resultatWmm
     });
-                    }
+}
