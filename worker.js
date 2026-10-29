@@ -1,5 +1,5 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA v19.30 — KERNEL RIGOROUS (ALIGNEMENT STELLARIUM JNOW)
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL RIGOROUS (ZERO SIMPLIFICATION / STRICT MODE)
  */
 
 let jplMatrixData = null;
@@ -10,7 +10,7 @@ var Module = {
     onRuntimeInitialized: function() {
         wasmPret = true;
         self.postMessage({ type: 'WORKER_READY' });
-        console.log("[WORKER WASM] Runtime C/SOFA initialisé avec succès.");
+        console.log("[WORKER WASM] Runtime C/SOFA initialisé avec succès (Zero-Fallback).");
     }
 };
 
@@ -40,7 +40,7 @@ self.onmessage = function (e) {
                     throw new Error("[FATAL] Module Wasm non initialisé.");
                 }
                 if (!wmmTableauCoeffs || wmmTableauCoeffs.length === 0) {
-                    throw new Error("[FATAL WMM] Coefficients WMM2025 non chargés.");
+                    throw new Error("[FATAL WMM] Coefficients WMM2025 non chargés. Impossible de calculer le champ magnétique.");
                 }
                 traiterCalculsWasmStricts(data);
                 break;
@@ -182,7 +182,7 @@ function traiterCalculsWasmStricts(params) {
 
         let seg = segments.find(s => tEphemerideSec >= s.t_start && tEphemerideSec <= s.t_end);
         if (!seg) {
-            throw new Error(`[FATAL JPL] Segment temporel introuvable pour '${nomCorps}' à t=${tEphemerideSec}.`);
+            throw new Error(`[FATAL JPL] Segment temporel introuvable pour '${nomCorps}' à t=${tEphemerideSec}. Le flux live JPL doit être régénéré.`);
         }
 
         let tau = (2.0 * (tEphemerideSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
@@ -266,4 +266,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: resultatWmm
     });
-}
+            }
