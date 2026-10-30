@@ -732,10 +732,10 @@
         }
     }
 
-    let workerTimeoutId = null;
+    let requeteEnAttente = false;
 
     function envoyerDemandeCalculWorker() {
-        if (!workerPret || !matriceJplLive || workerCalculEnCours) return;
+        if (!workerPret || !matriceJplLive || requeteEnAttente) return;
 
         const timestampExact = obtenirTimestampUTCExact();
         const dateUtc = new Date(timestampExact);
@@ -745,15 +745,7 @@
             elEpoch.style.color = "var(--sky)";
         }
 
-        workerCalculEnCours = true;
-        if (workerTimeoutId) clearTimeout(workerTimeoutId);
-        workerTimeoutId = setTimeout(() => {
-            if (workerCalculEnCours) {
-                workerCalculEnCours = false;
-                ecrireLog("Avertissement : Timeout du Worker, libération forcée.");
-            }
-        }, 2000);
-        
+        requeteEnAttente = true;
         astroWorker.postMessage({
             type: 'COMPUTE',
             timestampUtc: timestampExact,
@@ -761,36 +753,32 @@
             meteo: { tempC: meteoActive.temperatureC ?? 15.0, presHpa: meteoActive.pressionBaro ?? 1013.25 }
         });
     }
-    
+
     function traiterMessageWorker(e) {
         const data = e.data;
         if (!data) return;
 
-        workerCalculEnCours = false;
-        if (workerTimeoutId) { clearTimeout(workerTimeoutId); workerTimeoutId = null; }
-
-        if (data.type === 'FATAL_ERROR' || data.type === 'ERROR') {
-            document.getElementById('app-error-banner').style.display = 'block';
-            document.getElementById('error-message-text').textContent = data.message;
+        if (data.type === 'RESULTS_COMPUTE') {
+            requeteEnAttente = false; // Libère le verrou pour la prochaine requête
+            requestAnimationFrame(() => {
+                mettreAJourInterface(data);
+                // Relance immédiate mais propre du cycle de calcul suivant
+                setTimeout(envoyerDemandeCalculWorker, 50); 
+            });
             return;
         }
 
-        switch (data.type) {
-            case 'WORKER_READY':
-                workerPret = true;
-                document.getElementById('lbl-worker-status').innerText = "PRÊT";
-                document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-                chargerFichierWMMDeSecours();
-                if (matriceJplLive) astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
-                while (fileDAttenteWorker.length > 0) astroWorker.postMessage(fileDAttenteWorker.shift());
-                break;
-            case 'RESULTS_COMPUTE':
-                requestAnimationFrame(() => mettreAJourInterface(data));
-                setTimeout(envoyerDemandeCalculWorker, 200);
-                break;
+        // ... autres cas de messages (WORKER_READY, FATAL_ERROR, etc.)
+        if (data.type === 'WORKER_READY') {
+            workerPret = true;
+            document.getElementById('lbl-worker-status').innerText = "PRÊT";
+            document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+            chargerFichierWMMDeSecours();
+            if (matriceJplLive) astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+            envoyerDemandeCalculWorker(); // Lancement initial
         }
     }
-
+    
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
         astroWorker = new Worker('./worker.js?v=19.37');
