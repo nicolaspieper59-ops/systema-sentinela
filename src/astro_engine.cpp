@@ -4,6 +4,12 @@
 #include <cstdint>
 #include <cstring>
 
+// Inclusion des entêtes officiels IAU SOFA présents dans /src
+extern "C" {
+#include "sofa.h"
+#include "sofam.h"
+}
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
