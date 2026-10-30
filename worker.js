@@ -36,12 +36,8 @@ self.onmessage = function (e) {
                 break;
 
             case 'COMPUTE':
-                if (!wasmPret) {
-                    throw new Error("[FATAL] Module Wasm non initialisé.");
-                }
-                if (!wmmTableauCoeffs || wmmTableauCoeffs.length === 0) {
-                    throw new Error("[FATAL WMM] Coefficients WMM2025 non chargés.");
-                }
+                if (!wasmPret) throw new Error("[FATAL] Module Wasm non initialisé.");
+                if (!wmmTableauCoeffs || wmmTableauCoeffs.length === 0) throw new Error("[FATAL WMM] Coefficients WMM2025 non chargés.");
                 traiterCalculsWasmStricts(data);
                 break;
         }
@@ -51,9 +47,7 @@ self.onmessage = function (e) {
 };
 
 function analyserTexteWMMStricte(texte) {
-    if (!texte || typeof texte !== 'string') {
-        throw new Error("[FATAL WMM] Fichier WMM2025.COF vide ou invalide.");
-    }
+    if (!texte || typeof texte !== 'string') throw new Error("[FATAL WMM] Fichier WMM2025.COF vide ou invalide.");
     const lignes = texte.split('\n');
     const coeffs = [];
     for (let ligne of lignes) {
@@ -64,30 +58,17 @@ function analyserTexteWMMStricte(texte) {
             const n = parseInt(elements[0], 10);
             const m = parseInt(elements[1], 10);
             if (!isNaN(n) && !isNaN(m) && n <= 12) {
-                coeffs.push({
-                    n: n, m: m,
-                    gnm: parseFloat(elements[2]), hnm: parseFloat(elements[3]),
-                    dgnm: parseFloat(elements[4]), dhnm: parseFloat(elements[5])
-                });
+                coeffs.push({ n: n, m: m, gnm: parseFloat(elements[2]), hnm: parseFloat(elements[3]), dgnm: parseFloat(elements[4]), dhnm: parseFloat(elements[5]) });
             }
         }
     }
-    if (coeffs.length === 0) {
-        throw new Error("[FATAL WMM] Aucun coefficient valide extrait du fichier COF.");
-    }
+    if (coeffs.length === 0) throw new Error("[FATAL WMM] Aucun coefficient valide extrait du fichier COF.");
     return coeffs;
 }
 
-/**
- * Calcul dynamique et rigoureux de Delta-T (en secondes)
- */
 function calculerDeltaTDynamique(decimalYear) {
     const t = decimalYear - 2000.0;
-    if (decimalYear < 2015.0) {
-        return 62.92 + 0.32217 * t + 0.005589 * t * t;
-    } else {
-        return 68.3 + 0.45 * (decimalYear - 2015.0);
-    }
+    return (decimalYear < 2015.0) ? (62.92 + 0.32217 * t + 0.005589 * t * t) : (68.3 + 0.45 * (decimalYear - 2015.0));
 }
 
 function calculerWMM12x12Stricte(latDeg, lonDeg, altKm, decimalYear) {
@@ -125,12 +106,9 @@ function calculerWMM12x12Stricte(latDeg, lonDeg, altKm, decimalYear) {
         const h = c.hnm + c.dhnm * dt;
         let q_pow = Math.pow(altRatio, c.n + 2);
         const cosMlam = Math.cos(c.m * lambda), sinMlam = Math.sin(c.m * lambda);
-        const cos_term = g * cosMlam + h * sinMlam;
-        const sin_term = g * sinMlam - h * cosMlam;
-
-        B_r += q_pow * (c.n + 1) * P[c.n][c.m] * cos_term;
-        B_theta -= q_pow * dP[c.n][c.m] * cos_term;
-        if (c.m > 0) B_phi += q_pow * (c.m / cosPhi) * P[c.n][c.m] * sin_term;
+        B_r += q_pow * (c.n + 1) * P[c.n][c.m] * (g * cosMlam + h * sinMlam);
+        B_theta -= q_pow * dP[c.n][c.m] * (g * cosMlam + h * sinMlam);
+        if (c.m > 0) B_phi += q_pow * (c.m / cosPhi) * P[c.n][c.m] * (g * sinMlam - h * cosMlam);
     }
 
     const X = -B_theta, Y = B_phi, Z = -B_r;
@@ -158,21 +136,17 @@ function evaluerTchebychevStricte(coeffs, tau) {
 }
 
 function traiterCalculsWasmStricts(params) {
-    if (!jplMatrixData || !jplMatrixData.DATA) {
-        throw new Error("[FATAL] Données JPL non chargées dans le Worker.");
-    }
+    if (!jplMatrixData || !jplMatrixData.DATA) throw new Error("[FATAL] Données JPL non chargées.");
 
     const ts = params.timestampUtc;
     const coords = params.coords;
-    
     const meteo = {
-        tempC: (params.meteo && typeof params.meteo.tempC === 'number' && !isNaN(params.meteo.tempC)) ? params.meteo.tempC : 15.0,
-        presHpa: (params.meteo && typeof params.meteo.presHpa === 'number' && !isNaN(params.meteo.presHpa)) ? params.meteo.presHpa : 1013.25
+        tempC: (params.meteo && typeof params.meteo.tempC === 'number') ? params.meteo.tempC : 15.0,
+        presHpa: (params.meteo && typeof params.meteo.presHpa === 'number') ? params.meteo.presHpa : 1013.25
     };
 
     const timestampSec = ts / 1000.0;
     const metricsPtr = Module._malloc(40);
-    
     let gastDeg, obliquiteDeg, sunTrueLong, eqTempsMin;
 
     try {
@@ -187,8 +161,6 @@ function traiterCalculsWasmStricts(params) {
 
     const jde = (ts / 86400000.0) + 2440587.5;
     const decimalYear = 2000.0 + (jde - 2451545.0) / 365.25;
-    
-    // CORRECTION : Delta-T calculé dynamiquement
     const deltaTSeconds = calculerDeltaTDynamique(decimalYear); 
     const tEphemerideSec = timestampSec + deltaTSeconds;
 
@@ -199,9 +171,8 @@ function traiterCalculsWasmStricts(params) {
     try {
         for (const [nomCorps, segments] of Object.entries(jplMatrixData.DATA)) {
             if (!segments || segments.length === 0) continue;
-
             let seg = segments.find(s => tEphemerideSec >= s.t_start && tEphemerideSec <= s.t_end);
-            if (!seg) continue; // Ignore proprement si hors plage au lieu de crasher
+            if (!seg) continue;
 
             let tau = (2.0 * (tEphemerideSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
             tau = Math.max(-1.0, Math.min(1.0, tau));
@@ -214,13 +185,7 @@ function traiterCalculsWasmStricts(params) {
             const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN") ? 1 : 0;
             const eraRad = gastDeg * (Math.PI / 180.0);
 
-            Module._calculerDepuisECEF(
-                x, y, z,
-                coords.lat, coords.lon, coords.alt,
-                eraRad, meteo.tempC, meteo.presHpa, 0.15,
-                seg.mag ?? 0.0, estSoleil,
-                resultPtr
-            );
+            Module._calculerDepuisECEF(x, y, z, coords.lat, coords.lon, coords.alt, eraRad, meteo.tempC, meteo.presHpa, 0.15, seg.mag ?? 0.0, estSoleil, resultPtr);
 
             const ptrF64 = resultPtr >> 3;
             const azim = Module.HEAPF64[ptrF64];
@@ -229,12 +194,18 @@ function traiterCalculsWasmStricts(params) {
             const raDeg = Module.HEAPF64[ptrF64 + 3];
             const decDeg = Module.HEAPF64[ptrF64 + 4];
             const distUA = Module.HEAPF64[ptrF64 + 5];
+            const leverUT = Module.HEAPF64[ptrF64 + 6];
+            const coucherUT = Module.HEAPF64[ptrF64 + 7];
             const airMass = Module.HEAPF64[ptrF64 + 8];
             const irradiance = Module.HEAPF64[ptrF64 + 9];
             const ghaDeg = Module.HEAPF64[ptrF64 + 11];
             const magApp = Module.HEAPF64[ptrF64 + 13];
             const shadowLen = Module.HEAPF64[ptrF64 + 14];
+            const crepusculeUT = Module.HEAPF64[ptrF64 + 17];
+            const dureeJour = Module.HEAPF64[ptrF64 + 18];
             const visCode = Module.HEAP32[(resultPtr + 184) >> 2];
+
+            const formatH = (h) => (h < 0 || isNaN(h)) ? "N/A" : `${Math.floor(h).toString().padStart(2, '0')}:${Math.floor((h % 1) * 60).toString().padStart(2, '0')} UTC`;
 
             bodiesResult[nomCorps.toLowerCase()] = {
                 elevationGeometrique: elevGeom,
@@ -259,14 +230,13 @@ function traiterCalculsWasmStricts(params) {
                 lengthOfDayDisplay: `${seg.lod_hours.toFixed(1)} h`,
                 orbitalVelocityDisplay: `${seg.vel_kms.toFixed(2)} km/s`,
                 shadowLengthDisplay: (shadowLen > 0) ? `${shadowLen.toFixed(2)} m` : "N/A",
-                sunrise: elevRefractee >= -0.833 ? "Visible" : "Sous horizon",
-                sunset: elevRefractee < -0.833 ? "Couché" : "Au-dessus horizon",
-                dusk: elevRefractee < -6.0 ? "Nuit" : "Crépuscule/Jour",
-                daylightDuration: elevRefractee > 0 ? "Jour" : "Nuit"
+                sunrise: estSoleil ? formatH(leverUT) : (elevRefractee >= -0.833 ? "Visible" : "Sous horizon"),
+                sunset: estSoleil ? formatH(coucherUT) : (elevRefractee < -0.833 ? "Couché" : "Au-dessus horizon"),
+                dusk: estSoleil ? formatH(crepusculeUT) : (elevRefractee < -6.0 ? "Nuit" : "Crépuscule/Jour"),
+                daylightDuration: estSoleil && dureeJour > 0 ? `${dureeJour.toFixed(2)} h` : (elevRefractee > 0 ? "Jour" : "Nuit")
             };
         }
     } finally {
-        // CORRECTION CRITIQUE : Garantie absolue de libération mémoire, même en cas d'erreur
         Module._free(resultPtr);
     }
 
@@ -278,12 +248,10 @@ function traiterCalculsWasmStricts(params) {
         bodiesResult[cleLune].moonAgeDays = (elongDeg / 360.0) * 29.530588;
     }
 
-    const resultatWmm = calculerWMM12x12Stricte(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear);
-
     self.postMessage({
         type: 'RESULTS_COMPUTE',
         bodies: bodiesResult,
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
-        wmm: resultatWmm
+        wmm: calculerWMM12x12Stricte(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear)
     });
 }
