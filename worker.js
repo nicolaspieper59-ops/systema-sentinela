@@ -1,5 +1,5 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL RIGOROUS (ZERO SIMPLIFICATION / STRICT MODE)
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL RIGOROUS (ZERO REDUNDANCY MODE)
  */
 
 let jplMatrixData = null;
@@ -10,7 +10,7 @@ var Module = {
     onRuntimeInitialized: function() {
         wasmPret = true;
         self.postMessage({ type: 'WORKER_READY' });
-        console.log("[WORKER WASM] Runtime C/SOFA initialisé avec succès (Zero-Fallback).");
+        console.log("[WORKER WASM] Runtime C/SOFA initialisé avec succès (Mode Strict).");
     }
 };
 
@@ -40,7 +40,7 @@ self.onmessage = function (e) {
                     throw new Error("[FATAL] Module Wasm non initialisé.");
                 }
                 if (!wmmTableauCoeffs || wmmTableauCoeffs.length === 0) {
-                    throw new Error("[FATAL WMM] Coefficients WMM2025 non chargés. Impossible de calculer le champ magnétique.");
+                    throw new Error("[FATAL WMM] Coefficients WMM2025 non chargés.");
                 }
                 traiterCalculsWasmStricts(data);
                 break;
@@ -170,7 +170,9 @@ function traiterCalculsWasmStricts(params) {
 
     const jde = (ts / 86400000.0) + 2440587.5;
     const decimalYear = 2000.0 + (jde - 2451545.0) / 365.25;
-    const deltaTSeconds = 69.2; 
+    
+    // Delta-T dynamique (IERS)
+    const deltaTSeconds = params.deltaT || 69.2; 
     const tEphemerideSec = timestampSec + deltaTSeconds;
 
     const structSize = 208;
@@ -182,7 +184,7 @@ function traiterCalculsWasmStricts(params) {
 
         let seg = segments.find(s => tEphemerideSec >= s.t_start && tEphemerideSec <= s.t_end);
         if (!seg) {
-            throw new Error(`[FATAL JPL] Segment temporel introuvable pour '${nomCorps}' à t=${tEphemerideSec}. Le flux live JPL doit être régénéré.`);
+            throw new Error(`[FATAL JPL] Segment temporel introuvable pour '${nomCorps}' à t=${tEphemerideSec}.`);
         }
 
         let tau = (2.0 * (tEphemerideSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
