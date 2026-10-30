@@ -1199,11 +1199,12 @@
             await chargerFluxLiveJPL();
             appliquerCoordonneesSaisie();
             ecrireLog("[DIAGNOSTIC NOYAU] Système opérationnel en mode strict.");
-            setInterval(envoyerDemandeCalculWorker, 250);
+            // SUPPRIMÉ : setInterval(envoyerDemandeCalculWorker, 250); 
+            // Le flux est désormais piloté en boucle fermée par le worker (voir traiterMessageWorker)
         } catch (e) {
             ecrireLog(`[FATAL] Erreur de démarrage : ${e.message}`);
         }
     });
 </script>
 </body>
-</html>.org/examples/textures/planets/earth_atmos_2048.jpg')
+</html>
