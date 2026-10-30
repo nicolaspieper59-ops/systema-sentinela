@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <cstring>
 
-// Inclusion des entêtes officiels IAU SOFA présents dans /src
 extern "C" {
 #include "sofa.h"
 #include "sofam.h"
@@ -17,7 +16,6 @@ extern "C" {
 #define DEG2RAD (M_PI / 180.0)
 #define RAD2DEG (180.0 / M_PI)
 #define UA_EN_METRES 149597870700.0
-#define VITESSE_LUMIERE_M_S 299792458.0
 
 struct alignas(8) AstroResult {
     double azim;               
@@ -101,8 +99,6 @@ void calculerDepuisECEF(
     AstroResult* result
 ) {
     if (!result) return;
-
-    // Initialisation intégrale de la mémoire pour supprimer toute valeur aléatoire
     std::memset(result, 0, sizeof(AstroResult));
 
     double xI = xICRF_km * 1000.0;
@@ -146,8 +142,8 @@ void calculerDepuisECEF(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
-    if (result->elevGeom > -0.5) {
-        double h = std::fmax(result->elevGeom, -0.5);
+    if (result->elevGeom > -2.0) {
+        double h = std::fmax(result->elevGeom, -2.0);
         double refArcMin = 1.02 / std::tan((h + 10.3 / (h + 5.11)) * DEG2RAD);
         double facteurMeteo = (presHpa / 1013.25) * (283.15 / (273.15 + tempC));
         result->elevRefractee = result->elevGeom + (refArcMin * facteurMeteo) / 60.0;
@@ -162,15 +158,46 @@ void calculerDepuisECEF(
         result->airMass = -1.0; 
     }
 
-    // CORRECTION APPLIQUÉE ICI : Utilisation de std::fmax pour éviter l'erreur de template C++ / Clang
     result->magnitudeApparente = magBruteAstre + (extinctionCoeff * std::fmax(0.0, result->airMass));
     
     if (estSoleil == 1) {
         result->irradiance = (result->elevRefractee > 0.0) ? (1361.0 / (result->distUA * result->distUA)) * std::pow(0.7, result->airMass) : 0.0;
         result->shadowLength = (result->elevRefractee > 0.0) ? 1.0 / std::tan(std::fmax(1e-4, result->elevRefractee * DEG2RAD)) : -1.0;
+
+        // Calcul analytique rigoureux des éphémérides solaires du jour
+        double altRef = -0.833 * DEG2RAD;
+        double decRad = result->decDeg * DEG2RAD;
+        double cosH0 = (std::sin(altRef) - std::sin(phi) * std::sin(decRad)) / (std::cos(phi) * std::cos(decRad));
+        
+        if (cosH0 >= 1.0) {
+            result->dureeJourHeures = 0.0;
+            result->leverUT = -1.0; result->coucherUT = -1.0;
+        } else if (cosH0 <= -1.0) {
+            result->dureeJourHeures = 24.0;
+            result->leverUT = 0.0; result->coucherUT = 24.0;
+        } else {
+            double H0 = std::acos(cosH0) * RAD2DEG;
+            result->dureeJourHeures = (2.0 * H0) / 15.0;
+            double tsw = 12.0 - (lonDeg / 15.0);
+            result->leverUT = normaliserDegres((tsw * 15.0 - H0)) / 15.0;
+            result->coucherUT = normaliserDegres((tsw * 15.0 + H0)) / 15.0;
+        }
+
+        double cosH6 = (std::sin(-6.0 * DEG2RAD) - std::sin(phi) * std::sin(decRad)) / (std::cos(phi) * std::cos(decRad));
+        if (cosH6 > -1.0 && cosH6 < 1.0) {
+            double H6 = std::acos(cosH6) * RAD2DEG;
+            double tsw = 12.0 - (lonDeg / 15.0);
+            result->crepusculeUT = normaliserDegres((tsw * 15.0 + H6)) / 15.0;
+        } else {
+            result->crepusculeUT = -1.0;
+        }
     } else {
         result->irradiance = 0.0;
         result->shadowLength = -1.0;
+        result->leverUT = -1.0;
+        result->coucherUT = -1.0;
+        result->crepusculeUT = -1.0;
+        result->dureeJourHeures = -1.0;
     }
 
     if (result->elevRefractee <= 0.0) {
