@@ -555,7 +555,7 @@
                 }
             }
         } catch (e) {
-            ecrireLog("Avertissement : Échec de la synchronisation réseau Cloudflare (Mode local actif).");
+            ecrireLog("Échec de la synchronisation réseau Cloudflare (Horloge locale active).");
         }
         if (!synchroReussie) {
             document.getElementById('lbl-epoch').style.color = "var(--amber)";
@@ -702,7 +702,6 @@
             document.getElementById('lbl-jpl-status').style.color = "var(--neon-green)";
             ecrireLog("JPL : flux_live.json chargé avec succès.");
             
-            // Relance sécurisée si le worker est déjà prêt
             if (workerPret) {
                 envoyerDemandeCalculWorker();
             }
@@ -725,26 +724,24 @@
     }
     
     async function chargerFichierWMMDeSecours() {
-    try {
-        // Utilisation du chemin absolu basé sur l'emplacement réel de la page (compatible GitHub Pages)
-        const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
-        const wmmUrl = window.location.origin + basePath + 'WMM2025.COF';
-        
-        const reponse = await fetch(wmmUrl, { cache: 'no-store' });
-        if (!reponse.ok) throw new Error(`HTTP ${reponse.status} - Fichier WMM2025.COF introuvable.`);
-        
-        const texteCof = await reponse.text();
-        // Vérification de sécurité : s'assurer qu'on ne récupère pas une page HTML 404 par erreur
-        if (texteCof.trim().startsWith('<!DOCTYPE') || texteCof.includes('<html')) {
-            throw new Error("Le fichier WMM2025.COF renvoyé est une page HTML (Erreur 404 interceptée).");
-        }
+        try {
+            const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+            const wmmUrl = window.location.origin + basePath + 'WMM2025.COF';
+            
+            const reponse = await fetch(wmmUrl, { cache: 'no-store' });
+            if (!reponse.ok) throw new Error(`HTTP ${reponse.status} - Fichier WMM2025.COF introuvable.`);
+            
+            const texteCof = await reponse.text();
+            if (texteCof.trim().startsWith('<!DOCTYPE') || texteCof.includes('<html')) {
+                throw new Error("Le fichier WMM2025.COF renvoyé est une page HTML (Erreur 404 interceptée).");
+            }
 
-        envoyerMessageWorkerSecurise({ type: 'LOAD_WMM_COF_TEXT', text: texteCof });
-        ecrireLog("WMM : Fichier WMM2025.COF transmis au Worker avec succès.");
-    } catch (e) {
-        ecrireLog(`[FATAL WMM] Erreur de chargement du fichier de secours : ${e.message}`);
-        console.warn("Avertissement WMM :", e.message);
-    }
+            envoyerMessageWorkerSecurise({ type: 'LOAD_WMM_COF_TEXT', text: texteCof });
+            ecrireLog("WMM : Fichier WMM2025.COF transmis au Worker avec succès.");
+        } catch (e) {
+            ecrireLog(`[FATAL WMM] Erreur de chargement du fichier de secours : ${e.message}`);
+            console.warn("Avertissement WMM :", e.message);
+        }
     }
 
     function envoyerDemandeCalculWorker() {
@@ -955,8 +952,6 @@
             if (cache.daylight) cache.daylight.textContent = donneesAstre.daylightDuration ?? '--';
             if (cache.jde) cache.jde.textContent = donneesAstre.jde !== undefined ? donneesAstre.jde.toFixed(4) : '--';
             if (cache.deltat) cache.deltat.textContent = donneesAstre.deltat !== undefined ? donneesAstre.deltat.toFixed(2) : '--';
-            
-            // Correction clé GHA (ghaDeg envoyé par le Worker)
             if (cache.gha) cache.gha.textContent = donneesAstre.ghaDeg !== undefined ? donneesAstre.ghaDeg.toFixed(4) + '°' : '--';
 
             if (cache.solConst) {
@@ -1105,7 +1100,7 @@
                 const el = data.elevationApparente ?? -1;
                 if (el < 0) continue;
                 const azRad = (data.azimuth ?? 0) * Math.PI / 180.0;
-                const r = maxRadius * (1 - (el / 90.0));
+                const r = maxRadius * Math.cos(el * Math.PI / 180.0);
                 const x = cx + r * Math.sin(azRad), y = cy - r * Math.cos(azRad);
                 ctx.fillStyle = '#22863a'; ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 2 * Math.PI); ctx.fill();
                 ctx.fillStyle = modeJourActif ? '#1f2328' : '#c9d1d9'; ctx.font = 'bold 8.5px monospace'; ctx.fillText(key.toUpperCase(), x + 6, y + 3);
