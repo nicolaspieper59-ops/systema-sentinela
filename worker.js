@@ -5,7 +5,7 @@
 let jplMatrixData = null;
 let wmmTableauCoeffs = null;
 let wasmPret = false;
-let wmmPret = false; // 👈 Verrou de sécurité impératif pour le WMM
+let wmmPret = false;
 
 var Module = {
     onRuntimeInitialized: function() {
@@ -33,7 +33,7 @@ self.onmessage = function (e) {
 
             case 'LOAD_WMM_COF_TEXT':
                 wmmTableauCoeffs = analyserTexteWMMStricte(data.text);
-                wmmPret = true; // 👈 Validation du verrou WMM
+                wmmPret = true;
                 self.postMessage({ type: 'WMM_LOADED', status: 'success' });
                 break;
 
@@ -54,7 +54,6 @@ function analyserTexteWMMStricte(texte) {
     if (!texte || typeof texte !== 'string') {
         throw new Error("[FATAL WMM] Fichier WMM2025.COF vide ou invalide.");
     }
-    // Protection anti-404 : rejette si le texte est une page HTML d'erreur
     const texteTrim = texte.trim();
     if (texteTrim.startsWith('<!DOCTYPE') || texteTrim.includes('<html')) {
         throw new Error("[FATAL WMM] Le fichier WMM2025.COF récupéré est une page HTML (Erreur 404 GitHub Pages).");
@@ -89,6 +88,9 @@ function analyserTexteWMMStricte(texte) {
 
 function calculerDeltaTDynamique(decimalYear) {
     const t = decimalYear - 2000.0;
+    if (decimalYear >= 2020.0) {
+        return 69.36 + 0.1 * (decimalYear - 2020.0);
+    }
     return (decimalYear < 2015.0) ? (62.92 + 0.32217 * t + 0.005589 * t * t) : (68.3 + 0.45 * (decimalYear - 2015.0));
 }
 
@@ -103,6 +105,15 @@ function calculerWMM12x12Stricte(latDeg, lonDeg, altKm, decimalYear) {
     let dP = Array.from({ length: nMax + 1 }, () => new Array(nMax + 1).fill(0.0));
     P[0][0] = 1.0; dP[0][0] = 0.0;
     const sinPhi = Math.sin(phi), cosPhi = Math.max(1e-6, Math.cos(phi));
+
+    let schmidt = Array.from({ length: nMax + 1 }, () => new Array(nMax + 1).fill(1.0));
+    for (let n = 1; n <= nMax; n++) {
+        schmidt[n][0] = schmidt[n - 1][0] * (2.0 * n - 1.0) / n;
+        for (let m = 1; m <= n; m++) {
+            let factor = ((n - m + 1) === 1) ? 1 : 2;
+            schmidt[n][m] = schmidt[n][m - 1] * Math.sqrt((factor * (n - m + 1)) / (n + m));
+        }
+    }
 
     for (let n = 1; n <= nMax; n++) {
         for (let m = 0; m <= n; m++) {
@@ -123,8 +134,8 @@ function calculerWMM12x12Stricte(latDeg, lonDeg, altKm, decimalYear) {
     let B_r = 0.0, B_theta = 0.0, B_phi = 0.0;
     for (let c of wmmTableauCoeffs) {
         if (c.n > nMax || c.m > c.n) continue;
-        const g = c.gnm + c.dgnm * dt;
-        const h = c.hnm + c.dhnm * dt;
+        const g = (c.gnm + c.dgnm * dt) * schmidt[c.n][c.m];
+        const h = (c.hnm + c.dhnm * dt) * schmidt[c.n][c.m];
         let q_pow = Math.pow(altRatio, c.n + 2);
         const cosMlam = Math.cos(c.m * lambda), sinMlam = Math.sin(c.m * lambda);
         B_r += q_pow * (c.n + 1) * P[c.n][c.m] * (g * cosMlam + h * sinMlam);
@@ -172,7 +183,7 @@ function traiterCalculsWasmStricts(params) {
 
     try {
         Module._calculerParametresSiderauxEtSolaires(timestampSec, coords.lon, metricsPtr);
-        eqTempsMin = Module.HEAPF64[metricsPtr >> 3] / 60.0;
+        eqTempsMin = Module.HEAPF64[metricsPtr >> 3];
         obliquiteDeg = Module.HEAPF64[(metricsPtr >> 3) + 1];
         sunTrueLong = Module.HEAPF64[(metricsPtr >> 3) + 2];
         gastDeg = Module.HEAPF64[(metricsPtr >> 3) + 3];
@@ -284,4 +295,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: calculerWMM12x12Stricte(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear)
     });
-                                  }
+}
