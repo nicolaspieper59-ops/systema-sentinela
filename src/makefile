@@ -1,14 +1,14 @@
 # Makefile pour Systema Sentinela (SOFA + WASM Kernel)
 
 CC = emcc
-CFLAGS = -O3 -Wall
+CFLAGS = -O3 -Wall -flto
 TARGET = ../wasm_astronomie.js
 
 # Inclusion de tous les fichiers .c (SOFA) et du wrapper C++
 SRCS_C = $(wildcard *.c)
 SRCS_CPP = astro_engine.cpp
 
-EXPORTS = "['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_malloc','_free']"
+EXPORTS = "['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_normaliserDegres','_malloc','_free']"
 
 all: $(TARGET)
 
