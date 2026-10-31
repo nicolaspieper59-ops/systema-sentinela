@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.18)
+SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.30)
 """
 
 import argparse
@@ -9,12 +9,13 @@ import json
 import time
 import os
 import traceback
-import datetime  # <--- AJOUTEZ CETTE LIGNE ICI
+import datetime
 import numpy as np
+
 try:
     from skyfield.api import load
 except ImportError:
-    print("[FATAL] Skyfield introuvable (`pip install skyfield`).", file=sys.stderr)
+    print("[FATAL] Skyfield introuvable (`pip install skyfield numpy`).", file=sys.stderr)
     sys.exit(1)
 
 CORPS_MAP = {
@@ -155,7 +156,6 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
     if not os.path.exists(bsp_path):
         raise FileNotFoundError(f"Éphémérides JPL introuvables : {bsp_path}")
 
-    # Charge l'échelle de temps hors-ligne pour éviter tout timeout réseau IERS
     try:
         ts = load.timescale(builtin=True)
     except Exception:
@@ -165,7 +165,6 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
     earth = obtenir_astre(eph, ["earth", 399, "earth barycenter", 3])
     sun_target = obtenir_astre(eph, ["sun", 10])
 
-# Calage propre à minuit UTC pour éviter tout décalage temporel
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     midnight_utc = datetime.datetime(now_utc.year, now_utc.month, now_utc.day, tzinfo=datetime.timezone.utc)
     t_start_unix = midnight_utc.timestamp()
@@ -197,8 +196,6 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
         },
         "DATA": data_output
     }
-
-
 
     with open(fichier_sortie, "w", encoding="utf-8") as f:
         json.dump(resultat_global, f, indent=2, ensure_ascii=False)
