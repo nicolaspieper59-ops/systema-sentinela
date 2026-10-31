@@ -240,7 +240,6 @@ function traiterCalculsWasmStricts(params) {
         Module._free(resultPtr);
     }
 
-    // Calcul rigoureux unifié de la phase et de l'âge de la Lune par produit scalaire sphérique (élongation 3D)
     const cleLune = bodiesResult["lune"] ? "lune" : (bodiesResult["moon"] ? "moon" : null);
     const cleSoleil = bodiesResult["soleil"] ? "soleil" : (bodiesResult["sun"] ? "sun" : null);
     
