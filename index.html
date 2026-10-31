@@ -829,14 +829,6 @@
             const magB = dataB.magnitude ?? 99;
             if (magA !== magB) return magA - magB;
             return elB - elA;
-            if (cache.solConst && donneesAstre.distanceAu) {
-                if (nomAstreClean === 'soleil' || nomAstreClean === 'sun') {
-                    // Constante solaire ajustée par la distance héliocentrique / géocentrique
-                    cache.solConst.textContent = (1361.0 / (donneesAstre.distanceAu * donneesAstre.distanceAu)).toFixed(2);
-                } else {
-                    cache.solConst.textContent = "N/A";
-                }
-    }
         });
 
         if (Object.keys(lignesTableauCache).length === 0) {
@@ -935,19 +927,21 @@
             if (cache.deltat) cache.deltat.textContent = donneesAstre.deltat !== undefined ? donneesAstre.deltat.toFixed(2) : '--';
             if (cache.gha) cache.gha.textContent = donneesAstre.gha !== undefined ? donneesAstre.gha.toFixed(4) + '°' : '--';
 
-            if (cache.solConst && donneesAstre.distanceAu) {
-                if (nomAstreClean === 'soleil' || nomAstreClean === 'sun') {
+            // Constante solaire stricte pour le Soleil uniquement
+            if (cache.solConst) {
+                if ((nomAstreClean === 'soleil' || nomAstreClean === 'sun') && donneesAstre.distanceAu) {
                     cache.solConst.textContent = (1361.0 / (donneesAstre.distanceAu * donneesAstre.distanceAu)).toFixed(2);
                 } else {
                     cache.solConst.textContent = "N/A";
                 }
             }
+
             if (cache.am) cache.am.textContent = (donneesAstre.airMass !== undefined && donneesAstre.airMass > 0) ? donneesAstre.airMass.toFixed(4) : '--';
             if (cache.irr) cache.irr.textContent = donneesAstre.irradiance !== undefined ? donneesAstre.irradiance.toFixed(2) : '--';
             if (cache.etat) cache.etat.textContent = statutsVisibilite[donneesAstre.visibiliteCode] ?? "Inconnu";
         }
-    }
-
+    }  
+    
     function mettreAJourInterface(data) {
         if (!data) return;
         if (data.metrics) mettreAJourMetricsSolaires(data.metrics);
