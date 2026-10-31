@@ -247,6 +247,24 @@ function traiterCalculsWasmStricts(params) {
         bodiesResult[cleLune].moonPhasePct = (1.0 - Math.cos(elongDeg * Math.PI / 180.0)) / 2.0 * 100.0;
         bodiesResult[cleLune].moonAgeDays = (elongDeg / 360.0) * 29.530588;
     }
+    // Calcul rigoureux de la phase et de l'âge de la Lune par élongation spatiale 3D (ou différentiel d'ascension corrigé)
+    const cleLune = bodiesResult["lune"] ? "lune" : (bodiesResult["moon"] ? "moon" : null);
+    const cleSoleil = bodiesResult["soleil"] ? "soleil" : (bodiesResult["sun"] ? "sun" : null);
+    
+    if (cleLune && cleSoleil) {
+        const raLuneRad = bodiesResult[cleLune].raDeg * (Math.PI / 180.0);
+        const decLuneRad = bodiesResult[cleLune].decDeg * (Math.PI / 180.0);
+        const raSoleilRad = bodiesResult[cleSoleil].raDeg * (Math.PI / 180.0);
+        const decSoleilRad = bodiesResult[cleSoleil].decDeg * (Math.PI / 180.0);
+
+        // Produit scalaire sphérique pour l'élongation réelle
+        const cosElong = Math.sin(decLuneRad) * Math.sin(decSoleilRad) + 
+                         Math.cos(decLuneRad) * Math.cos(decSoleilRad) * Math.cos(raLuneRad - raSoleilRad);
+        const elongDeg = Math.acos(Math.max(-1.0, Math.min(1.0, cosElong))) * (180.0 / Math.PI);
+
+        bodiesResult[cleLune].moonPhasePct = ((1.0 - Math.cos(elongDeg * (Math.PI / 180.0))) / 2.0) * 100.0;
+        bodiesResult[cleLune].moonAgeDays = (elongDeg / 360.0) * 29.530588;
+                                                                          }
 
     self.postMessage({
         type: 'RESULTS_COMPUTE',
