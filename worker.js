@@ -5,6 +5,7 @@
 let jplMatrixData = null;
 let wmmTableauCoeffs = null;
 let wasmPret = false;
+let wmmPret = false; // 👈 Verrou de sécurité impératif pour le WMM
 
 var Module = {
     onRuntimeInitialized: function() {
@@ -32,12 +33,15 @@ self.onmessage = function (e) {
 
             case 'LOAD_WMM_COF_TEXT':
                 wmmTableauCoeffs = analyserTexteWMMStricte(data.text);
+                wmmPret = true; // 👈 Validation du verrou WMM
                 self.postMessage({ type: 'WMM_LOADED', status: 'success' });
                 break;
 
             case 'COMPUTE':
                 if (!wasmPret) throw new Error("[FATAL] Module Wasm non initialisé.");
-                if (!wmmTableauCoeffs || wmmTableauCoeffs.length === 0) throw new Error("[FATAL WMM] Coefficients WMM2025 non chargés.");
+                if (!wmmPret || !wmmTableauCoeffs || wmmTableauCoeffs.length === 0) {
+                    throw new Error("[FATAL WMM] Coefficients WMM2025 non chargés ou en attente de synchronisation.");
+                }
                 traiterCalculsWasmStricts(data);
                 break;
         }
@@ -47,7 +51,15 @@ self.onmessage = function (e) {
 };
 
 function analyserTexteWMMStricte(texte) {
-    if (!texte || typeof texte !== 'string') throw new Error("[FATAL WMM] Fichier WMM2025.COF vide ou invalide.");
+    if (!texte || typeof texte !== 'string') {
+        throw new Error("[FATAL WMM] Fichier WMM2025.COF vide ou invalide.");
+    }
+    // Protection anti-404 : rejette si le texte est une page HTML d'erreur
+    const texteTrim = texte.trim();
+    if (texteTrim.startsWith('<!DOCTYPE') || texteTrim.includes('<html')) {
+        throw new Error("[FATAL WMM] Le fichier WMM2025.COF récupéré est une page HTML (Erreur 404 GitHub Pages).");
+    }
+
     const lignes = texte.split('\n');
     const coeffs = [];
     for (let ligne of lignes) {
@@ -58,11 +70,20 @@ function analyserTexteWMMStricte(texte) {
             const n = parseInt(elements[0], 10);
             const m = parseInt(elements[1], 10);
             if (!isNaN(n) && !isNaN(m) && n <= 12) {
-                coeffs.push({ n: n, m: m, gnm: parseFloat(elements[2]), hnm: parseFloat(elements[3]), dgnm: parseFloat(elements[4]), dhnm: parseFloat(elements[5]) });
+                coeffs.push({ 
+                    n: n, 
+                    m: m, 
+                    gnm: parseFloat(elements[2]), 
+                    hnm: parseFloat(elements[3]), 
+                    dgnm: parseFloat(elements[4]), 
+                    dhnm: parseFloat(elements[5]) 
+                });
             }
         }
     }
-    if (coeffs.length === 0) throw new Error("[FATAL WMM] Aucun coefficient valide extrait du fichier COF.");
+    if (coeffs.length === 0) {
+        throw new Error("[FATAL WMM] Aucun coefficient valide extrait du fichier COF.");
+    }
     return coeffs;
 }
 
@@ -263,4 +284,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: calculerWMM12x12Stricte(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear)
     });
-}
+                                  }
