@@ -455,11 +455,8 @@
     let decalageTempsAtomiqueMs = parseFloat(localStorage.getItem('sentinela_offset') || '0');
     let manuelOffsetMs = 0;
     
-    let historiqueRttMs = [];
-    let seuilDeriveActuelMs = 2.0; 
-
     let workerPret = false;
-    let workerCalculEnCours = false;
+    let requeteEnAttente = false;
     let fileDAttenteWorker = [];
     let lignesTableauCache = {};
 
@@ -701,7 +698,14 @@
             matriceJplLive = await reponse.json();
             envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
             afficherFenetreFlux(matriceJplLive);
-            ecrireLog("JPL : flux_live.json frais chargé directement depuis le serveur.");
+            document.getElementById('lbl-jpl-status').innerText = "CHARGÉ";
+            document.getElementById('lbl-jpl-status').style.color = "var(--neon-green)";
+            ecrireLog("JPL : flux_live.json chargé avec succès.");
+            
+            // Relance sécurisée si le worker est déjà prêt
+            if (workerPret) {
+                envoyerDemandeCalculWorker();
+            }
         } catch (e) {
             document.getElementById('lbl-jpl-status').innerText = "ERREUR CHARGEMENT";
             ecrireLog(`[FATAL] Échec d'acquisition du flux : ${e.message}`);
@@ -732,8 +736,6 @@
         }
     }
 
-    let requeteEnAttente = false;
-
     function envoyerDemandeCalculWorker() {
         if (!workerPret || !matriceJplLive || requeteEnAttente) return;
 
@@ -759,23 +761,38 @@
         if (!data) return;
 
         if (data.type === 'RESULTS_COMPUTE') {
-            requeteEnAttente = false; // Libère le verrou pour la prochaine requête
+            requeteEnAttente = false;
             requestAnimationFrame(() => {
                 mettreAJourInterface(data);
-                // Relance immédiate mais propre du cycle de calcul suivant
                 setTimeout(envoyerDemandeCalculWorker, 50); 
             });
             return;
         }
 
-        // ... autres cas de messages (WORKER_READY, FATAL_ERROR, etc.)
         if (data.type === 'WORKER_READY') {
             workerPret = true;
             document.getElementById('lbl-worker-status').innerText = "PRÊT";
             document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
             chargerFichierWMMDeSecours();
-            if (matriceJplLive) astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
-            envoyerDemandeCalculWorker(); // Lancement initial
+            if (matriceJplLive) {
+                astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+                envoyerDemandeCalculWorker();
+            }
+        }
+
+        if (data.type === 'JPL_MATRIX_UPDATED') {
+            ecrireLog("Worker : Matrice JPL mise à jour avec succès.");
+        }
+
+        if (data.type === 'WMM_LOADED') {
+            ecrireLog("Worker : Coefficients WMM2025 chargés avec succès.");
+        }
+
+        if (data.type === 'FATAL_ERROR') {
+            requeteEnAttente = false;
+            ecrireLog(`[FATAL WORKER] ${data.message}`);
+            document.getElementById('app-error-banner').style.display = 'block';
+            document.getElementById('error-message-text').innerText = data.message;
         }
     }
     
@@ -784,11 +801,13 @@
         astroWorker = new Worker('./worker.js?v=19.37');
         astroWorker.onmessage = traiterMessageWorker;
         astroWorker.onerror = (err) => {
-            workerCalculEnCours = false;
             document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
             document.getElementById('lbl-worker-status').style.color = "var(--rose)";
+            ecrireLog(`[FATAL] Erreur Worker : ${err.message}`);
         };
-        if (matriceJplLive) envoyerMessageWorkerSecurise({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
+        while (fileDAttenteWorker.length > 0) {
+            astroWorker.postMessage(fileDAttenteWorker.shift());
+        }
     }
 
     function mettreAJourMetricsSolaires(m) {
@@ -925,9 +944,10 @@
             if (cache.daylight) cache.daylight.textContent = donneesAstre.daylightDuration ?? '--';
             if (cache.jde) cache.jde.textContent = donneesAstre.jde !== undefined ? donneesAstre.jde.toFixed(4) : '--';
             if (cache.deltat) cache.deltat.textContent = donneesAstre.deltat !== undefined ? donneesAstre.deltat.toFixed(2) : '--';
-            if (cache.gha) cache.gha.textContent = donneesAstre.gha !== undefined ? donneesAstre.gha.toFixed(4) + '°' : '--';
+            
+            // Correction clé GHA (ghaDeg envoyé par le Worker)
+            if (cache.gha) cache.gha.textContent = donneesAstre.ghaDeg !== undefined ? donneesAstre.ghaDeg.toFixed(4) + '°' : '--';
 
-            // Constante solaire stricte pour le Soleil uniquement
             if (cache.solConst) {
                 if ((nomAstreClean === 'soleil' || nomAstreClean === 'sun') && donneesAstre.distanceAu) {
                     cache.solConst.textContent = (1361.0 / (donneesAstre.distanceAu * donneesAstre.distanceAu)).toFixed(2);
@@ -1201,8 +1221,6 @@
             await chargerFluxLiveJPL();
             appliquerCoordonneesSaisie();
             ecrireLog("[DIAGNOSTIC NOYAU] Système opérationnel en mode strict.");
-            // SUPPRIMÉ : setInterval(envoyerDemandeCalculWorker, 250); 
-            // Le flux est désormais piloté en boucle fermée par le worker (voir traiterMessageWorker)
         } catch (e) {
             ecrireLog(`[FATAL] Erreur de démarrage : ${e.message}`);
         }
