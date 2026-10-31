@@ -240,14 +240,7 @@ function traiterCalculsWasmStricts(params) {
         Module._free(resultPtr);
     }
 
-    const cleLune = bodiesResult["lune"] ? "lune" : (bodiesResult["moon"] ? "moon" : null);
-    const cleSoleil = bodiesResult["soleil"] ? "soleil" : (bodiesResult["sun"] ? "sun" : null);
-    if (cleLune && cleSoleil) {
-        let elongDeg = (bodiesResult[cleLune].raDeg - bodiesResult[cleSoleil].raDeg + 360.0) % 360.0;
-        bodiesResult[cleLune].moonPhasePct = (1.0 - Math.cos(elongDeg * Math.PI / 180.0)) / 2.0 * 100.0;
-        bodiesResult[cleLune].moonAgeDays = (elongDeg / 360.0) * 29.530588;
-    }
-    // Calcul rigoureux de la phase et de l'âge de la Lune par élongation spatiale 3D (ou différentiel d'ascension corrigé)
+    // Calcul rigoureux unifié de la phase et de l'âge de la Lune par produit scalaire sphérique (élongation 3D)
     const cleLune = bodiesResult["lune"] ? "lune" : (bodiesResult["moon"] ? "moon" : null);
     const cleSoleil = bodiesResult["soleil"] ? "soleil" : (bodiesResult["sun"] ? "sun" : null);
     
@@ -257,14 +250,14 @@ function traiterCalculsWasmStricts(params) {
         const raSoleilRad = bodiesResult[cleSoleil].raDeg * (Math.PI / 180.0);
         const decSoleilRad = bodiesResult[cleSoleil].decDeg * (Math.PI / 180.0);
 
-        // Produit scalaire sphérique pour l'élongation réelle
+        // Produit scalaire sphérique pour l'élongation réelle tenant compte de l'inclinaison orbitale
         const cosElong = Math.sin(decLuneRad) * Math.sin(decSoleilRad) + 
                          Math.cos(decLuneRad) * Math.cos(decSoleilRad) * Math.cos(raLuneRad - raSoleilRad);
         const elongDeg = Math.acos(Math.max(-1.0, Math.min(1.0, cosElong))) * (180.0 / Math.PI);
 
         bodiesResult[cleLune].moonPhasePct = ((1.0 - Math.cos(elongDeg * (Math.PI / 180.0))) / 2.0) * 100.0;
         bodiesResult[cleLune].moonAgeDays = (elongDeg / 360.0) * 29.530588;
-                                                                          }
+    }
 
     self.postMessage({
         type: 'RESULTS_COMPUTE',
@@ -272,4 +265,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: calculerWMM12x12Stricte(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear)
     });
-}
+    }
