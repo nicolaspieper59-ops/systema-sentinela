@@ -250,7 +250,6 @@ function traiterCalculsWasmStricts(params) {
         const raSoleilRad = bodiesResult[cleSoleil].raDeg * (Math.PI / 180.0);
         const decSoleilRad = bodiesResult[cleSoleil].decDeg * (Math.PI / 180.0);
 
-        // Produit scalaire sphérique pour l'élongation réelle tenant compte de l'inclinaison orbitale
         const cosElong = Math.sin(decLuneRad) * Math.sin(decSoleilRad) + 
                          Math.cos(decLuneRad) * Math.cos(decSoleilRad) * Math.cos(raLuneRad - raSoleilRad);
         const elongDeg = Math.acos(Math.max(-1.0, Math.min(1.0, cosElong))) * (180.0 / Math.PI);
@@ -265,4 +264,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: calculerWMM12x12Stricte(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear)
     });
-    }
+}
