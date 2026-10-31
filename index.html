@@ -725,15 +725,26 @@
     }
     
     async function chargerFichierWMMDeSecours() {
-        try {
-            const wmmUrl = new URL('./WMM2025.COF', window.location.href).href;
-            const reponse = await fetch(wmmUrl);
-            if (!reponse.ok) throw new Error("Fichier WMM2025.COF introuvable.");
-            const texteCof = await reponse.text();
-            envoyerMessageWorkerSecurise({ type: 'LOAD_WMM_COF_TEXT', text: texteCof });
-        } catch (e) {
-            console.warn("Avertissement WMM :", e.message);
+    try {
+        // Utilisation du chemin absolu basé sur l'emplacement réel de la page (compatible GitHub Pages)
+        const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+        const wmmUrl = window.location.origin + basePath + 'WMM2025.COF';
+        
+        const reponse = await fetch(wmmUrl, { cache: 'no-store' });
+        if (!reponse.ok) throw new Error(`HTTP ${reponse.status} - Fichier WMM2025.COF introuvable.`);
+        
+        const texteCof = await reponse.text();
+        // Vérification de sécurité : s'assurer qu'on ne récupère pas une page HTML 404 par erreur
+        if (texteCof.trim().startsWith('<!DOCTYPE') || texteCof.includes('<html')) {
+            throw new Error("Le fichier WMM2025.COF renvoyé est une page HTML (Erreur 404 interceptée).");
         }
+
+        envoyerMessageWorkerSecurise({ type: 'LOAD_WMM_COF_TEXT', text: texteCof });
+        ecrireLog("WMM : Fichier WMM2025.COF transmis au Worker avec succès.");
+    } catch (e) {
+        ecrireLog(`[FATAL WMM] Erreur de chargement du fichier de secours : ${e.message}`);
+        console.warn("Avertissement WMM :", e.message);
+    }
     }
 
     function envoyerDemandeCalculWorker() {
