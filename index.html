@@ -829,6 +829,14 @@
             const magB = dataB.magnitude ?? 99;
             if (magA !== magB) return magA - magB;
             return elB - elA;
+            if (cache.solConst && donneesAstre.distanceAu) {
+                if (nomAstreClean === 'soleil' || nomAstreClean === 'sun') {
+                    // Constante solaire ajustée par la distance héliocentrique / géocentrique
+                    cache.solConst.textContent = (1361.0 / (donneesAstre.distanceAu * donneesAstre.distanceAu)).toFixed(2);
+                } else {
+                    cache.solConst.textContent = "N/A";
+                }
+    }
         });
 
         if (Object.keys(lignesTableauCache).length === 0) {
