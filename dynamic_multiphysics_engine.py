@@ -90,8 +90,8 @@ def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
         return round(float(-12.73 + 0.026 * alpha_clamp + 4.0e-9 * (alpha_clamp**4)), 2)
 
     modeles = {
-        "MERCURE": (-0.60, 0.0498 * alpha_deg),
-        "VENUS":   (-4.40, 0.0009 * alpha_deg),
+        "MERCURE": (-0.42, 0.0380 * alpha_deg - 0.000273 * (alpha_deg**2) + 0.000002 * (alpha_deg**3)),
+        "VENUS":   (-4.40, 0.0009 * alpha_deg + 0.000239 * (alpha_deg**2)),
         "MARS":    (-1.52, 0.016 * alpha_deg),
         "JUPITER": (-9.40, 0.005 * alpha_deg),
         "SATURNE": (-8.88, 0.013 * alpha_deg),
@@ -108,7 +108,7 @@ def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
 def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2_unix, nom_corps, degre=12):
     nodes_std = np.cos(np.pi * np.arange(degre + 1) / degre)
     t_sec_nodes = 0.5 * (t2_unix - t1_unix) * nodes_std + 0.5 * (t2_unix + t1_unix)
-    times_nodes = ts.tt_jd((t_sec_nodes / 86400.0) + 2440587.5)
+    times_nodes = ts.from_datetime([datetime.datetime.fromtimestamp(t, datetime.timezone.utc) for t in t_sec_nodes])
 
     obs = earth.at(times_nodes).observe(astre_target)
     apparent_obs = obs.apparent()
@@ -128,7 +128,7 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     cvz = [float(v) for v in np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[2], degre)]
 
     t_mid_unix = 0.5 * (t1_unix + t2_unix)
-    time_mid = ts.tt_jd((t_mid_unix / 86400.0) + 2440587.5)
+    time_mid = ts.from_datetime(datetime.datetime.fromtimestamp(t_mid_unix, datetime.timezone.utc))
     
     pos_astre_mid = earth.at(time_mid).observe(astre_target).apparent().position.km
     pos_soleil_mid = earth.at(time_mid).observe(sun_target).apparent().position.km
