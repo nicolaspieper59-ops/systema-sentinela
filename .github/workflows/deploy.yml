@@ -69,26 +69,33 @@ jobs:
         run: |
           python dynamic_multiphysics_engine.py "43.284356" "5.358507" "49.81" --days 30 --out flux_live.json
 
-      - name: 📂 Préparation de la bibliothèque SOFA C / ERFA
+      - name: 📂 Assemblage rigoureux du site Web & Vérification WMM
         run: |
-          mkdir -p lib/sofa/src
-          find . -name "*.zip" -exec unzip -o {} -d lib/sofa/src/ \; || true
-          SOFA_HEADER=$(find . -maxdepth 5 \( -name "sofa.h" -o -name "erfa.h" \) | head -n 1)
+          mkdir -p public_site
+          
+          # Copie des fichiers essentiels du site (nettoyé de meteo_manager.js)
+          cp -f index.html manifest.json sw.js worker.js three.min.js public_site/ 2>/dev/null || true
+          cp -rf textures public_site/ 2>/dev/null || true
+          cp -f EGM2008.gfc public_site/ 2>/dev/null || true
+          cp -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm public_site/ 2>/dev/null || true
 
-          if [ -n "$SOFA_HEADER" ]; then
-            SOFA_DIR=$(dirname "$SOFA_HEADER")
-            cp -r "$SOFA_DIR"/* lib/sofa/src/ 2>/dev/null || true
+          # Intégration sécurisée et explicite de WMM2025.COF
+          if [ -f "WMM2025.COF" ]; then
+            cp -f WMM2025.COF public_site/
+          elif [ -f "src/WMM2025.COF" ]; then
+            cp -f src/WMM2025.COF public_site/
           else
-            curl -fsSL -o erfa.tar.gz https://github.com/astropy/erfa/archive/refs/tags/v2.0.1.1.tar.gz
-            tar -xzf erfa.tar.gz -C lib/sofa/
-            cp -r lib/sofa/erfa-*/src/* lib/sofa/src/ 2>/dev/null || true
+            echo "⚠️ WMM2025.COF absent localement, téléchargement de secours direct dans public_site..."
+            curl -fsSL --connect-timeout 20 --retry 3 -o public_site/WMM2025.COF https://www.ngdc.noaa.gov/geomag/WMM/data/WMM2025/WMM2025.COF
           fi
 
-          if [ -f "lib/sofa/src/erfa.h" ] && [ ! -f "lib/sofa/src/sofa.h" ]; then
-            echo '#include "erfa.h"' > lib/sofa/src/sofa.h
+          # VERIFICATION DE SECURITE : Arrêt net du pipeline si WMM2025.COF est manquant ou invalide (< 1 Ko)
+          if [ ! -f "public_site/WMM2025.COF" ] || [ $(wc -c < public_site/WMM2025.COF) -lt 1000 ]; then
+            echo "❌ ERREUR CRITIQUE : Le fichier WMM2025.COF est introuvable ou corrompu dans public_site."
+            exit 1
+          else
+            echo "✅ Succès : WMM2025.COF validé et intégré dans public_site ($(wc -c < public_site/WMM2025.COF) octets)."
           fi
-
-          test -f "lib/sofa/src/sofa.h" || test -f "lib/sofa/src/erfa.h" || { echo "ERREUR CRITIQUE : SOFA/ERFA introuvable"; exit 1; }
 
       - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
         run: |
