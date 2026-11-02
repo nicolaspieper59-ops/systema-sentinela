@@ -11,7 +11,6 @@ on:
       - '*.html'
       - 'dynamic_multiphysics_engine.py'
       - '.github/workflows/**'
-      - 'flux_live.json'
   workflow_dispatch:     # Déclenchement manuel instantané possible
 
 permissions:
@@ -152,15 +151,15 @@ jobs:
             echo "✅ Succès : WMM2025.COF validé et intégré dans public_site ($(wc -c < public_site/WMM2025.COF) octets)."
           fi
 
-      - name: 🔀 Mettre à jour la Pull Request unique pour flux_live.json
+      - name: 🔀 Créer une Pull Request automatique pour flux_live.json
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.ACTIONS_PAT }}
           commit-message: "Mise à jour automatique du flux live journalier [skip ci]"
           title: "🤖 Mise à jour automatique de flux_live.json"
-          body: "Cette Pull Request met à jour en continu le fichier `flux_live.json` généré par le moteur multiphysique DE440s."
+          body: "Cette Pull Request met à jour automatiquement le fichier flux_live.json généré par le moteur multiphysique DE440s."
           branch: update-flux-live
-          delete-branch: false
+          delete-branch: true
           base: main
           add-paths: |
             flux_live.json
