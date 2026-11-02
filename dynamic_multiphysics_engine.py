@@ -89,14 +89,15 @@ def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
         alpha_clamp = np.clip(alpha_deg, 0.0, 180.0)
         return round(float(-12.73 + 0.026 * alpha_clamp + 4.0e-9 * (alpha_clamp**4)), 2)
 
+    # Modèles IAU (Mallama & Hilton)
     modeles = {
-        "MERCURE": (-0.42, 0.0380 * alpha_deg - 0.000273 * (alpha_deg**2) + 0.000002 * (alpha_deg**3)),
-        "VENUS":   (-4.40, 0.0009 * alpha_deg + 0.000239 * (alpha_deg**2)),
-        "MARS":    (-1.52, 0.016 * alpha_deg),
-        "JUPITER": (-9.40, 0.005 * alpha_deg),
-        "SATURNE": (-8.88, 0.013 * alpha_deg),
-        "URANUS":  (-7.19, 0.001 * alpha_deg),
-        "NEPTUNE": (-6.87, 0.001 * alpha_deg)
+        "MERCURE": (-0.613, 0.06328 * alpha_deg - 0.0001633 * (alpha_deg**2) + 3.36e-7 * (alpha_deg**3)),
+        "VENUS":   (-4.384, -0.00104 * alpha_deg + 0.00000368 * (alpha_deg**2) + 2.83e-13 * (alpha_deg**6)),
+        "MARS":    (-1.520, 0.016 * alpha_deg),
+        "JUPITER": (-9.400, 0.005 * alpha_deg),
+        "SATURNE": (-8.880, 0.013 * alpha_deg),
+        "URANUS":  (-7.190, 0.001 * alpha_deg),
+        "NEPTUNE": (-6.870, 0.001 * alpha_deg)
     }
 
     if nom_corps in modeles:
@@ -108,7 +109,7 @@ def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
 def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2_unix, nom_corps, degre=12):
     nodes_std = np.cos(np.pi * np.arange(degre + 1) / degre)
     t_sec_nodes = 0.5 * (t2_unix - t1_unix) * nodes_std + 0.5 * (t2_unix + t1_unix)
-    times_nodes = ts.from_datetime([datetime.datetime.fromtimestamp(t, datetime.timezone.utc) for t in t_sec_nodes])
+    times_nodes = ts.tt_jd((t_sec_nodes / 86400.0) + 2440587.5)
 
     obs = earth.at(times_nodes).observe(astre_target)
     apparent_obs = obs.apparent()
@@ -128,7 +129,7 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     cvz = [float(v) for v in np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[2], degre)]
 
     t_mid_unix = 0.5 * (t1_unix + t2_unix)
-    time_mid = ts.from_datetime(datetime.datetime.fromtimestamp(t_mid_unix, datetime.timezone.utc))
+    time_mid = ts.tt_jd((t_mid_unix / 86400.0) + 2440587.5)
     
     pos_astre_mid = earth.at(time_mid).observe(astre_target).apparent().position.km
     pos_soleil_mid = earth.at(time_mid).observe(sun_target).apparent().position.km
