@@ -19,31 +19,31 @@ extern "C" {
 #define RAYON_SOLEIL_KM 696340.0
 
 struct alignas(8) AstroResult {
-    double azim;
-    double elevGeom;
-    double elevRefractee;
-    double raDeg;
-    double decDeg;
-    double distUA;
-    double leverUT;
-    double coucherUT;
-    double airMass;
-    double irradiance;
-    double deltaT;
-    double ghaDeg;
-    double jde;
-    double magnitudeApparente;
-    double shadowLength;
-    double moonPhasePct;
-    double moonAgeDays;
-    double crepusculeUT;
-    double dureeJourHeures;
-    double angularDiamArcsec;
-    double surfaceBrightness;
-    double illuminatedFraction;
-    double radialVelocityKmS;
-    int32_t visibiliteCode;
-    int32_t seasonCode;
+    double azim;                  // 0
+    double elevGeom;              // 1
+    double elevRefractee;         // 2
+    double raDeg;                 // 3
+    double decDeg;                // 4
+    double distUA;                // 5
+    double leverUT;               // 6
+    double coucherUT;             // 7
+    double airMass;               // 8
+    double irradiance;            // 9
+    double deltaT;                // 10
+    double ghaDeg;                // 11
+    double jde;                   // 12
+    double magnitudeApparente;    // 13
+    double shadowLength;          // 14
+    double moonPhasePct;          // 15
+    double moonAgeDays;           // 16
+    double crepusculeUT;          // 17
+    double dureeJourHeures;       // 18
+    double angularDiamArcsec;     // 19
+    double surfaceBrightness;     // 20
+    double illuminatedFraction;   // 21
+    double radialVelocityKmS;     // 22
+    int32_t visibiliteCode;       // Byte offset 184 (Index 23 / INT32 offset 46)
+    int32_t seasonCode;           // Byte offset 188
 };
 
 extern "C" {
@@ -92,6 +92,7 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
 EMSCRIPTEN_KEEPALIVE
 void calculerDepuisECEF(
     double xICRF_km, double yICRF_km, double zICRF_km,
+    double vx_km_s, double vy_km_s, double vz_km_s,
     double latDeg, double lonDeg, double altM,
     double eraRad, double tempC, double presHpa, double extinctionCoeff,
     double magBruteAstre, int32_t estSoleil,
@@ -100,9 +101,15 @@ void calculerDepuisECEF(
     if (!result) return;
     std::memset(result, 0, sizeof(AstroResult));
 
-    double xI = xICRF_km * 1000.0;
-    double yI = yICRF_km * 1000.0;
-    double zI = zICRF_km * 1000.0;
+    // Correction de l'aberration avec SOFA (iauAb)
+    double p[3] = {xICRF_km, yICRF_km, zICRF_km};
+    double v[3] = {vx_km_s / 299792.458, vy_km_s / 299792.458, vz_km_s / 299792.458};
+    double pabar[3];
+    iauAb(p, v, 0.0, 0.0, pabar);
+
+    double xI = pabar[0] * 1000.0;
+    double yI = pabar[1] * 1000.0;
+    double zI = pabar[2] * 1000.0;
 
     double normICRF = std::sqrt(xI * xI + yI * yI + zI * zI);
     result->raDeg = normaliserDegres(std::atan2(yI, xI) * RAD2DEG);
@@ -146,15 +153,18 @@ void calculerDepuisECEF(
         result->angularDiamArcsec = (2.0 * std::asin((rayonAstreKm * 1000.0) / distM)) * RAD2DEG * 3600.0;
     }
 
+    // Réfraction SOFA (iauRefco)
     if (result->elevGeom > -5.0) {
-        double refArcMin = iauRefco(presHpa, tempC, 0.5, 0.55);
-        double hRad = result->elevGeom * DEG2RAD;
-        double refRad = 0.0;
-        if (result->elevGeom > 0.0) {
-            refRad = (1.02 / std::tan((result->elevGeom + 10.3 / (result->elevGeom + 5.11)) * DEG2RAD)) / 60.0 * DEG2RAD;
-            refRad *= (presHpa / 1013.25) * (283.15 / (273.15 + tempC));
+        double refa, refb;
+        iauRefco(presHpa, tempC, 50.0, 0.55, &refa, &refb);
+        double zObsRad = (90.0 - result->elevGeom) * DEG2RAD;
+        if (zObsRad > 0 && zObsRad < (M_PI / 2.0 + 0.1)) {
+            double tanZ = std::tan(zObsRad);
+            double deltaZRad = (refa * tanZ + refb * tanZ * tanZ * tanZ);
+            result->elevRefractee = result->elevGeom + (deltaZRad * RAD2DEG);
+        } else {
+            result->elevRefractee = result->elevGeom;
         }
-        result->elevRefractee = result->elevGeom + (refRad * RAD2DEG);
     } else {
         result->elevRefractee = result->elevGeom;
     }
