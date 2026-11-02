@@ -76,10 +76,16 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
              + 0.000289 * std::sin(3.0 * m * DEG2RAD);
     double sunTrueLong = normaliserDegres(l0 + c);
 
-    double raSun, decSun;
-    // CORRECTION : iauEceq (Ecliptique vers Équatorial)
-    iauEceq(sunTrueLong * DEG2RAD, 0.0, epsA, &raSun, &decSun);
-    
+    // Calcul trigonométrique sphérique direct (Écliptique vers Équatorial)
+    double lRad = sunTrueLong * DEG2RAD;
+    double sinL = std::sin(lRad);
+    double cosL = std::cos(lRad);
+    double cosEps = std::cos(epsA);
+    double sinEps = std::sin(epsA);
+
+    double raSun = std::atan2(cosEps * sinL, cosL);
+    double decSun = std::asin(std::clamp(sinEps * sinL, -1.0, 1.0));
+
     double eqTempsMin = (l0 - normaliserDegres(raSun * RAD2DEG)) * 4.0;
     if (eqTempsMin > 20.0) eqTempsMin -= 1440.0;
     if (eqTempsMin < -20.0) eqTempsMin += 1440.0;
