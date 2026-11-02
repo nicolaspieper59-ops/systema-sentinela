@@ -1,5 +1,5 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL RIGOROUS (ULTIMATE STABLE VERSION)
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL RIGOROUS (CORRIGÉ & SYNCHRONISÉ C++)
  */
 
 let jplMatrixData = null;
@@ -155,6 +155,7 @@ function calculerWMM12x12Stricte(latDeg, lonDeg, altKm, decimalYear) {
 }
 
 function evaluerTchebychevStricte(coeffs, tau) {
+    if (!coeffs || coeffs.length === 0) return 0.0;
     const degre = coeffs.length - 1;
     if (degre === 0) return coeffs[0];
     if (degre === 1) return coeffs[0] + coeffs[1] * tau;
@@ -196,7 +197,7 @@ function traiterCalculsWasmStricts(params) {
     const deltaTSeconds = calculerDeltaTDynamique(decimalYear); 
     const tEphemerideSec = timestampSec + deltaTSeconds;
 
-    const structSize = 208;
+    const structSize = 208; // 23 doubles (184 octets) + 2 int32 (8 octets) + 16 octets padding = alignement 208 octets
     const resultPtr = Module._malloc(structSize);
     const bodiesResult = {};
 
@@ -213,11 +214,23 @@ function traiterCalculsWasmStricts(params) {
             const y = evaluerTchebychevStricte(seg.cy, tau);
             const z = evaluerTchebychevStricte(seg.cz, tau);
 
+            // Évaluation exacte des composantes de vitesse
+            const vx = evaluerTchebychevStricte(seg.cvx, tau);
+            const vy = evaluerTchebychevStricte(seg.cvy, tau);
+            const vz = evaluerTchebychevStricte(seg.cvz, tau);
+
             const nomUpper = nomCorps.toUpperCase();
             const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN") ? 1 : 0;
             const eraRad = gastDeg * (Math.PI / 180.0);
 
-            Module._calculerDepuisECEF(x, y, z, coords.lat, coords.lon, coords.alt, eraRad, meteo.tempC, meteo.presHpa, 0.15, seg.mag ?? 0.0, estSoleil, resultPtr);
+            // Appel synchronisé à 16 paramètres avec astro_engine.cpp
+            Module._calculerDepuisECEF(
+                x, y, z, 
+                vx, vy, vz, 
+                coords.lat, coords.lon, coords.alt, 
+                eraRad, meteo.tempC, meteo.presHpa, 0.15, 
+                seg.mag ?? 0.0, estSoleil, resultPtr
+            );
 
             const ptrF64 = resultPtr >> 3;
             const azim = Module.HEAPF64[ptrF64];
