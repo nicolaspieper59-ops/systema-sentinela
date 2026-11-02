@@ -424,10 +424,12 @@
 <script src="three.min.js"></script>
 
 <script>
+    // Integration rigoureuse avec verificateur TTL
     class SensorCacheManager {
-        constructor(cacheKey) {
+        constructor(cacheKey, ttlMs = 24 * 60 * 60 * 1000) {
             this.cacheKey = cacheKey;
             this.storage = window.localStorage;
+            this.ttlMs = ttlMs;
         }
         enregistrerMesure(cle, valeur, elevation) {
             try {
@@ -439,7 +441,12 @@
             try {
                 const item = this.storage.getItem(`${this.cacheKey}_${cle}`);
                 if (!item) return null;
-                return JSON.parse(item);
+                const payload = JSON.parse(item);
+                if (Date.now() - payload.timestamp > this.ttlMs) {
+                    console.warn(`[CACHE SÉCURITÉ] Expération donnée '${cle}'`);
+                    return null;
+                }
+                return payload;
             } catch (e) {
                 return null;
             }
@@ -806,7 +813,7 @@
     
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
-        astroWorker = new Worker('./worker.js?v=19.37');
+        astroWorker = new Worker('./worker.js?v=19.38');
         astroWorker.onmessage = traiterMessageWorker;
         astroWorker.onerror = (err) => {
             document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
@@ -1121,7 +1128,7 @@
         radarGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), positionVecteur.clone().normalize());
     }
 
-    function initGlobe3D() {
+    unction initGlobe3D() {
         const container = document.getElementById('globeCanvas');
         if (!container || typeof THREE === 'undefined') return;
 
