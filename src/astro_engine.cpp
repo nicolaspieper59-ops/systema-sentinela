@@ -76,7 +76,7 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
              + 0.000289 * std::sin(3.0 * m * DEG2RAD);
     double sunTrueLong = normaliserDegres(l0 + c);
 
-    // Calcul trigonométrique sphérique direct (Sans dépendance ERFA externe)
+    // Conversion trigonométrique sphérique directe (Écliptique -> Équatorial)
     double lRad = sunTrueLong * DEG2RAD;
     double sinL = std::sin(lRad);
     double cosL = std::cos(lRad);
