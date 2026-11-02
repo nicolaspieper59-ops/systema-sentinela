@@ -42,7 +42,7 @@ struct alignas(8) AstroResult {
     double surfaceBrightness;     // 20
     double illuminatedFraction;   // 21
     double radialVelocityKmS;     // 22
-    int32_t visibiliteCode;       // Byte offset 184 (Index 23 / INT32 offset 46)
+    int32_t visibiliteCode;       // Byte offset 184
     int32_t seasonCode;           // Byte offset 188
 };
 
@@ -77,7 +77,9 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
     double sunTrueLong = normaliserDegres(l0 + c);
 
     double raSun, decSun;
-    iauEqec(sunTrueLong * DEG2RAD, 0.0, epsA, &raSun, &decSun);
+    // CORRECTION : iauEceq (Ecliptique vers Équatorial)
+    iauEceq(sunTrueLong * DEG2RAD, 0.0, epsA, &raSun, &decSun);
+    
     double eqTempsMin = (l0 - normaliserDegres(raSun * RAD2DEG)) * 4.0;
     if (eqTempsMin > 20.0) eqTempsMin -= 1440.0;
     if (eqTempsMin < -20.0) eqTempsMin += 1440.0;
@@ -101,7 +103,6 @@ void calculerDepuisECEF(
     if (!result) return;
     std::memset(result, 0, sizeof(AstroResult));
 
-    // Correction de l'aberration avec SOFA (iauAb)
     double p[3] = {xICRF_km, yICRF_km, zICRF_km};
     double v[3] = {vx_km_s / 299792.458, vy_km_s / 299792.458, vz_km_s / 299792.458};
     double pabar[3];
@@ -153,7 +154,6 @@ void calculerDepuisECEF(
         result->angularDiamArcsec = (2.0 * std::asin((rayonAstreKm * 1000.0) / distM)) * RAD2DEG * 3600.0;
     }
 
-    // Réfraction SOFA (iauRefco)
     if (result->elevGeom > -5.0) {
         double refa, refb;
         iauRefco(presHpa, tempC, 50.0, 0.55, &refa, &refb);
