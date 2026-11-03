@@ -76,7 +76,6 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
              + 0.000289 * std::sin(3.0 * m * DEG2RAD);
     double sunTrueLong = normaliserDegres(l0 + c);
 
-    // Conversion trigonométrique sphérique directe (Écliptique -> Équatorial)
     double lRad = sunTrueLong * DEG2RAD;
     double sinL = std::sin(lRad);
     double cosL = std::cos(lRad);
@@ -109,14 +108,10 @@ void calculerDepuisECEF(
     if (!result) return;
     std::memset(result, 0, sizeof(AstroResult));
 
-    double p[3] = {xICRF_km, yICRF_km, zICRF_km};
-    double v[3] = {vx_km_s / 299792.458, vy_km_s / 299792.458, vz_km_s / 299792.458};
-    double pabar[3];
-    iauAb(p, v, 0.0, 0.0, pabar);
-
-    double xI = pabar[0] * 1000.0;
-    double yI = pabar[1] * 1000.0;
-    double zI = pabar[2] * 1000.0;
+    // Utilisation directe des coordonnées ICRF (déjà apparentes via Skyfield)
+    double xI = xICRF_km * 1000.0;
+    double yI = yICRF_km * 1000.0;
+    double zI = zICRF_km * 1000.0;
 
     double normICRF = std::sqrt(xI * xI + yI * yI + zI * zI);
     result->raDeg = normaliserDegres(std::atan2(yI, xI) * RAD2DEG);
