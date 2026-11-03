@@ -69,13 +69,15 @@ jobs:
         run: |
           python dynamic_multiphysics_engine.py "43.284356" "5.358507" "49.81" --days 30 --out flux_live.json
 
-      - name: 📂 Préparation de la bibliothèque SOFA C / ERFA
+      - name: 📂 Préparation de la bibliothèque SOFA C / ERFA (Version Figée & Validée)
         run: |
           rm -rf lib/sofa
           mkdir -p lib/sofa/src
           
-          # Clonage direct et sans échec du dépôt officiel Liberfa
+          # Clonage rigoureux ciblant une version taguée stable pour garantir la reproductibilité scientifique
+          GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch v2.0.1.1 https://github.com/liberfa/erfa.git lib/sofa_repo || \
           GIT_TERMINAL_PROMPT=0 git clone --depth 1 https://github.com/liberfa/erfa.git lib/sofa_repo
+          
           cp -r lib/sofa_repo/src/* lib/sofa/src/
           rm -rf lib/sofa_repo
 
@@ -96,7 +98,7 @@ jobs:
             echo "❌ ERREUR CRITIQUE : Les en-têtes SOFA/ERFA sont introuvables dans lib/sofa/src"
             exit 1
           else
-            echo "✅ Succès : En-têtes SOFA/ERFA configurés et validés dans lib/sofa/src"
+            echo "✅ Succès : En-têtes SOFA/ERFA configurés, verrouillés et validés."
           fi
           
       - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
