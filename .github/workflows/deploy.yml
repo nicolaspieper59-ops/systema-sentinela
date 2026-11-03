@@ -79,13 +79,16 @@ jobs:
           cp -r lib/sofa_repo/src/* lib/sofa/src/
           rm -rf lib/sofa_repo
 
-          # Création systématique du pont sofa.h -> erfa.h indispensable pour astro_engine.cpp
+          # Création systématique des ponts sofa.h -> erfa.h et sofam.h -> erfam.h
           if [ -f "lib/sofa/src/erfa.h" ] && [ ! -f "lib/sofa/src/sofa.h" ]; then
             echo '#include "erfa.h"' > lib/sofa/src/sofa.h
           fi
+          if [ -f "lib/sofa/src/erfam.h" ] && [ ! -f "lib/sofa/src/sofam.h" ]; then
+            echo '#include "erfam.h"' > lib/sofa/src/sofam.h
+          fi
 
           # Vérification finale impérative
-          if [ ! -f "lib/sofa/src/sofa.h" ] || [ ! -f "lib/sofa/src/erfa.h" ]; then
+          if [ ! -f "lib/sofa/src/sofa.h" ] || [ ! -f "lib/sofa/src/erfa.h" ] || [ ! -f "lib/sofa/src/sofam.h" ] || [ ! -f "lib/sofa/src/erfam.h" ]; then
             echo "❌ ERREUR CRITIQUE : Les en-têtes SOFA/ERFA sont introuvables dans lib/sofa/src"
             exit 1
           else
