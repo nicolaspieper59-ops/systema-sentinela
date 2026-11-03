@@ -74,15 +74,22 @@ jobs:
           rm -rf lib/sofa
           mkdir -p lib/sofa/src
           
-          # Téléchargement et extraction directe d'ERFA (alternative standard compatible SOFA)
-          curl -fsSL -o erfa.tar.gz https://github.com/astropy/erfa/archive/refs/tags/v2.0.1.1.tar.gz
-          tar -xzf erfa.tar.gz -C lib/sofa/
-          cp -r lib/sofa/erfa-*/src/* lib/sofa/src/
-          rm -rf erfa.tar.gz lib/sofa/erfa-*
+          # Clonage direct et robuste d'ERFA via Git
+          git clone --depth 1 https://github.com/astropy/erfa.git lib/sofa_repo
+          cp -r lib/sofa_repo/src/* lib/sofa/src/
+          rm -rf lib/sofa_repo
 
           # Création systématique du pont sofa.h -> erfa.h indispensable pour astro_engine.cpp
-          if [ -f "lib/sofa/src/erfa.h" ]; then
+          if [ -f "lib/sofa/src/erfa.h" ] && [ ! -f "lib/sofa/src/sofa.h" ]; then
             echo '#include "erfa.h"' > lib/sofa/src/sofa.h
+          fi
+
+          # Vérification finale impérative
+          if [ ! -f "lib/sofa/src/sofa.h" ] && [ ! -f "lib/sofa/src/erfa.h" ]; then
+            echo "❌ ERREUR CRITIQUE : Les en-têtes SOFA/ERFA sont introuvables dans lib/sofa/src"
+            exit 1
+          else
+            echo "✅ Succès : En-têtes SOFA/ERFA configurés et validés dans lib/sofa/src"
           fi
 
           # Vérification finale impérative
