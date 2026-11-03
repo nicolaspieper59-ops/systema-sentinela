@@ -110,6 +110,8 @@ jobs:
           mkdir -p build_sofa
           for f in lib/sofa/src/*.c; do
             [ -f "$f" ] || continue
+            # Exclure erfaversion.c qui nécessite autotools/config.h
+            [[ "$f" == *"erfaversion.c"* ]] && continue
             emcc -c "$f" -O3 -I lib/sofa/src -I src/ -o "build_sofa/$(basename ${f%.c}.o)"
           done
 
