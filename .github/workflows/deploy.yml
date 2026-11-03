@@ -74,8 +74,8 @@ jobs:
           rm -rf lib/sofa
           mkdir -p lib/sofa/src
           
-          # Téléchargement robuste sans invite Git interactive
-          curl -fsSL -o erfa.zip https://github.com/astropy/erfa/archive/refs/heads/main.zip
+          # Téléchargement depuis le nouveau dépôt officiel liberfa/erfa
+          curl -fsSL -o erfa.zip https://github.com/liberfa/erfa/archive/refs/heads/main.zip
           unzip -q erfa.zip -d lib/sofa/
           cp -r lib/sofa/erfa-main/src/* lib/sofa/src/
           rm -rf erfa.zip lib/sofa/erfa-main
