@@ -69,24 +69,28 @@ jobs:
         run: |
           python dynamic_multiphysics_engine.py "43.284356" "5.358507" "49.81" --days 30 --out flux_live.json
 
-      - name: 📂 Assemblage rigoureux du site Web & Vérification WMM
+      - name: 📂 Préparation de la bibliothèque SOFA C / ERFA
         run: |
-          mkdir -p public_site
+          rm -rf lib/sofa
+          mkdir -p lib/sofa/src
           
-          # Copie des fichiers essentiels du site (nettoyé de meteo_manager.js)
-          cp -f index.html manifest.json sw.js worker.js three.min.js public_site/ 2>/dev/null || true
-          cp -rf textures public_site/ 2>/dev/null || true
-          cp -f EGM2008.gfc public_site/ 2>/dev/null || true
-          cp -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm public_site/ 2>/dev/null || true
+          # Téléchargement et extraction directe d'ERFA (alternative standard compatible SOFA)
+          curl -fsSL -o erfa.tar.gz https://github.com/astropy/erfa/archive/refs/tags/v2.0.1.1.tar.gz
+          tar -xzf erfa.tar.gz -C lib/sofa/
+          cp -r lib/sofa/erfa-*/src/* lib/sofa/src/
+          rm -rf erfa.tar.gz lib/sofa/erfa-*
 
-          # Intégration sécurisée et explicite de WMM2025.COF
-          if [ -f "WMM2025.COF" ]; then
-            cp -f WMM2025.COF public_site/
-          elif [ -f "src/WMM2025.COF" ]; then
-            cp -f src/WMM2025.COF public_site/
+          # Création systématique du pont sofa.h -> erfa.h indispensable pour astro_engine.cpp
+          if [ -f "lib/sofa/src/erfa.h" ]; then
+            echo '#include "erfa.h"' > lib/sofa/src/sofa.h
+          fi
+
+          # Vérification finale impérative
+          if [ ! -f "lib/sofa/src/sofa.h" ] || [ ! -f "lib/sofa/src/erfa.h" ]; then
+            echo "❌ ERREUR CRITIQUE : Les en-têtes SOFA/ERFA sont introuvables dans lib/sofa/src"
+            exit 1
           else
-            echo "⚠️ WMM2025.COF absent localement, téléchargement de secours direct dans public_site..."
-            curl -fsSL --connect-timeout 20 --retry 3 -o public_site/WMM2025.COF https://www.ngdc.noaa.gov/geomag/WMM/data/WMM2025/WMM2025.COF
+            echo "✅ Succès : En-têtes SOFA/ERFA configurés et validés dans lib/sofa/src"
           fi
 
           # VERIFICATION DE SECURITE : Arrêt net du pipeline si WMM2025.COF est manquant ou invalide (< 1 Ko)
