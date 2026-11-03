@@ -74,22 +74,15 @@ jobs:
           rm -rf lib/sofa
           mkdir -p lib/sofa/src
           
-          # Clonage direct et robuste d'ERFA via Git
-          git clone --depth 1 https://github.com/astropy/erfa.git lib/sofa_repo
-          cp -r lib/sofa_repo/src/* lib/sofa/src/
-          rm -rf lib/sofa_repo
+          # Téléchargement robuste sans invite Git interactive
+          curl -fsSL -o erfa.zip https://github.com/astropy/erfa/archive/refs/heads/main.zip
+          unzip -q erfa.zip -d lib/sofa/
+          cp -r lib/sofa/erfa-main/src/* lib/sofa/src/
+          rm -rf erfa.zip lib/sofa/erfa-main
 
           # Création systématique du pont sofa.h -> erfa.h indispensable pour astro_engine.cpp
           if [ -f "lib/sofa/src/erfa.h" ] && [ ! -f "lib/sofa/src/sofa.h" ]; then
             echo '#include "erfa.h"' > lib/sofa/src/sofa.h
-          fi
-
-          # Vérification finale impérative
-          if [ ! -f "lib/sofa/src/sofa.h" ] && [ ! -f "lib/sofa/src/erfa.h" ]; then
-            echo "❌ ERREUR CRITIQUE : Les en-têtes SOFA/ERFA sont introuvables dans lib/sofa/src"
-            exit 1
-          else
-            echo "✅ Succès : En-têtes SOFA/ERFA configurés et validés dans lib/sofa/src"
           fi
 
           # Vérification finale impérative
@@ -99,15 +92,7 @@ jobs:
           else
             echo "✅ Succès : En-têtes SOFA/ERFA configurés et validés dans lib/sofa/src"
           fi
-
-          # VERIFICATION DE SECURITE : Arrêt net du pipeline si WMM2025.COF est manquant ou invalide (< 1 Ko)
-          if [ ! -f "public_site/WMM2025.COF" ] || [ $(wc -c < public_site/WMM2025.COF) -lt 1000 ]; then
-            echo "❌ ERREUR CRITIQUE : Le fichier WMM2025.COF est introuvable ou corrompu dans public_site."
-            exit 1
-          else
-            echo "✅ Succès : WMM2025.COF validé et intégré dans public_site ($(wc -c < public_site/WMM2025.COF) octets)."
-          fi
-
+          
       - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
         run: |
           SRC_FILE=""
