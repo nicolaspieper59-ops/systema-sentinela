@@ -79,9 +79,13 @@ jobs:
           cp -r lib/sofa_repo/src/* lib/sofa/src/
           rm -rf lib/sofa_repo
 
-          # Création systématique des ponts sofa.h -> erfa.h et sofam.h -> erfam.h
-          if [ -f "lib/sofa/src/erfa.h" ] && [ ! -f "lib/sofa/src/sofa.h" ]; then
+          # Création du pont sofa.h -> erfa.h avec macros de compatibilité IAU -> ERA
+          if [ -f "lib/sofa/src/erfa.h" ]; then
             echo '#include "erfa.h"' > lib/sofa/src/sofa.h
+            echo '#define iauObl06 eraObl06' >> lib/sofa/src/sofa.h
+            echo '#define iauGst06a eraGst06a' >> lib/sofa/src/sofa.h
+            echo '#define iauAb eraAb' >> lib/sofa/src/sofa.h
+            echo '#define iauRefco eraRefco' >> lib/sofa/src/sofa.h
           fi
           if [ -f "lib/sofa/src/erfam.h" ] && [ ! -f "lib/sofa/src/sofam.h" ]; then
             echo '#include "erfam.h"' > lib/sofa/src/sofam.h
