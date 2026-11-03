@@ -74,11 +74,10 @@ jobs:
           rm -rf lib/sofa
           mkdir -p lib/sofa/src
           
-          # Téléchargement depuis le nouveau dépôt officiel liberfa/erfa
-          curl -fsSL -o erfa.zip https://github.com/liberfa/erfa/archive/refs/heads/main.zip
-          unzip -q erfa.zip -d lib/sofa/
-          cp -r lib/sofa/erfa-main/src/* lib/sofa/src/
-          rm -rf erfa.zip lib/sofa/erfa-main
+          # Clonage direct et sans échec du dépôt officiel Liberfa
+          GIT_TERMINAL_PROMPT=0 git clone --depth 1 https://github.com/liberfa/erfa.git lib/sofa_repo
+          cp -r lib/sofa_repo/src/* lib/sofa/src/
+          rm -rf lib/sofa_repo
 
           # Création systématique du pont sofa.h -> erfa.h indispensable pour astro_engine.cpp
           if [ -f "lib/sofa/src/erfa.h" ] && [ ! -f "lib/sofa/src/sofa.h" ]; then
