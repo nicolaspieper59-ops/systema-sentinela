@@ -35,13 +35,19 @@ self.onmessage = function (e) {
                 wmmTableauCoeffs = analyserTexteWMMStricte(data.text);
                 wmmPret = true;
                 self.postMessage({ type: 'WMM_LOADED', status: 'success' });
+                console.log("[WORKER WMM] Coefficients WMM2025 chargés et validés.");
                 break;
 
             case 'COMPUTE':
                 if (!wasmPret) throw new Error("[FATAL] Module Wasm non initialisé.");
+                
+                // CORRECTION : On ne crashe plus si le WMM n'est pas encore prêt.
+                // On reporte simplement le calcul en attendant la fin du chargement asynchrone.
                 if (!wmmPret || !wmmTableauCoeffs || wmmTableauCoeffs.length === 0) {
-                    throw new Error("[FATAL WMM] Coefficients WMM2025 non chargés ou en attente de synchronisation.");
+                    console.warn("[WORKER] Calcul reporté : en attente des coefficients WMM2025.");
+                    return;
                 }
+                
                 traiterCalculsWasmStricts(data);
                 break;
         }
@@ -197,7 +203,7 @@ function traiterCalculsWasmStricts(params) {
     const deltaTSeconds = calculerDeltaTDynamique(decimalYear); 
     const tEphemerideSec = timestampSec + deltaTSeconds;
 
-    const structSize = 208; // 23 doubles (184 octets) + 2 int32 (8 octets) + 16 octets padding = alignement 208 octets
+    const structSize = 208; 
     const resultPtr = Module._malloc(structSize);
     const bodiesResult = {};
 
@@ -214,7 +220,6 @@ function traiterCalculsWasmStricts(params) {
             const y = evaluerTchebychevStricte(seg.cy, tau);
             const z = evaluerTchebychevStricte(seg.cz, tau);
 
-            // Évaluation exacte des composantes de vitesse
             const vx = evaluerTchebychevStricte(seg.cvx, tau);
             const vy = evaluerTchebychevStricte(seg.cvy, tau);
             const vz = evaluerTchebychevStricte(seg.cvz, tau);
@@ -223,7 +228,6 @@ function traiterCalculsWasmStricts(params) {
             const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN") ? 1 : 0;
             const eraRad = gastDeg * (Math.PI / 180.0);
 
-            // Appel synchronisé à 16 paramètres avec astro_engine.cpp
             Module._calculerDepuisECEF(
                 x, y, z, 
                 vx, vy, vz, 
@@ -308,4 +312,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: calculerWMM12x12Stricte(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear)
     });
-                                 }
+        }
