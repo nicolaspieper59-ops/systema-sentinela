@@ -788,10 +788,13 @@
             workerPret = true;
             document.getElementById('lbl-worker-status').innerText = "PRÊT";
             document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+            
+            // 1. On lance le chargement du WMM
             chargerFichierWMMDeSecours();
+            
+            // 2. On transmet la matrice JPL si elle est déjà dispo, MAIS ON NE CALCULE PAS ENCORE.
             if (matriceJplLive) {
                 astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
-                envoyerDemandeCalculWorker();
             }
         }
 
@@ -801,6 +804,11 @@
 
         if (data.type === 'WMM_LOADED') {
             ecrireLog("Worker : Coefficients WMM2025 chargés avec succès.");
+            
+            // 3. ✅ CORRECTION : C'est ici, une fois que WMM ET JPL sont prêts, qu'on lance le premier calcul !
+            if (workerPret && matriceJplLive) {
+                envoyerDemandeCalculWorker();
+            }
         }
 
         if (data.type === 'FATAL_ERROR') {
