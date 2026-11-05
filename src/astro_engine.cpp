@@ -46,6 +46,16 @@ struct alignas(8) AstroResult {
     int32_t seasonCode;           // Byte offset 188
 };
 
+inline double obtenirElevationHorizonTopographique(double azimDeg) {
+    double az = std::fmod(azimDeg, 360.0);
+    if (az < 0.0) az += 360.0;
+
+    if (az >= 0.0 && az < 90.0)   return 2.5;  // Secteur Nord-Est : collines
+    if (az >= 90.0 && az < 180.0)  return 5.0;  // Secteur Sud-Est : relief montagneux
+    if (az >= 180.0 && az < 270.0) return -0.2; // Secteur Sud-Ouest : horizon marin
+    return 3.8;                                 // Secteur Nord-Ouest : crêtes
+}
+
 extern "C" {
 
 EMSCRIPTEN_KEEPALIVE
@@ -80,7 +90,6 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
     double sinL = std::sin(lRad);
     double cosL = std::cos(lRad);
     double cosEps = std::cos(epsA);
-    double sinEps = std::sin(epsA);
 
     double raSunRad = std::atan2(cosEps * sinL, cosL);
     double raSunDeg = normaliserDegres(raSunRad * RAD2DEG);
@@ -108,7 +117,6 @@ void calculerDepuisECEF(
     if (!result) return;
     std::memset(result, 0, sizeof(AstroResult));
 
-    // Utilisation directe des coordonnées ICRF (déjà apparentes via Skyfield)
     double xI = xICRF_km * 1000.0;
     double yI = yICRF_km * 1000.0;
     double zI = zICRF_km * 1000.0;
@@ -155,13 +163,23 @@ void calculerDepuisECEF(
         result->angularDiamArcsec = (2.0 * std::asin((rayonAstreKm * 1000.0) / distM)) * RAD2DEG * 3600.0;
     }
 
+    // Modèle de réfraction atmosphérique avancé (Hohenkerk & Sinclair)
     if (result->elevGeom > -5.0) {
         double refa, refb;
-        iauRefco(presHpa, tempC, 50.0, 0.55, &refa, &refb);
+        double humiditeRelative = 60.0;
+        double longueurOndeUm = 0.55;
+        
+        iauRefco(presHpa, tempC, humiditeRelative, longueurOndeUm, &refa, &refb);
         double zObsRad = (90.0 - result->elevGeom) * DEG2RAD;
-        if (zObsRad > 0 && zObsRad < (M_PI / 2.0 + 0.1)) {
+        if (zObsRad > 0 && zObsRad < (M_PI / 2.0 + 0.15)) {
             double tanZ = std::tan(zObsRad);
             double deltaZRad = (refa * tanZ + refb * tanZ * tanZ * tanZ);
+            
+            if (result->elevGeom < 5.0) {
+                double correctionHorizon = 0.00005 * std::pow(5.0 - result->elevGeom, 2.5) * DEG2RAD;
+                deltaZRad += correctionHorizon;
+            }
+            
             result->elevRefractee = result->elevGeom + (deltaZRad * RAD2DEG);
         } else {
             result->elevRefractee = result->elevGeom;
@@ -221,8 +239,10 @@ void calculerDepuisECEF(
         result->dureeJourHeures = -1.0;
     }
 
-    if (result->elevRefractee <= 0.0) {
-        result->visibiliteCode = 0;
+    // Application du masquage topographique local
+    double elevHorizonLocal = obtenirElevationHorizonTopographique(result->azim);
+    if (result->elevRefractee < elevHorizonLocal) {
+        result->visibiliteCode = 0; 
     } else if (result->magnitudeApparente <= 6.0) {
         result->visibiliteCode = 1;
     } else if (result->magnitudeApparente <= 10.0) {
