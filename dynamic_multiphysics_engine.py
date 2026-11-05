@@ -35,7 +35,7 @@ CORPS_MAP = {
 PAS_HEURES_MAP = {
     "LUNE": 1.0 / 60.0,  # 1 segment toutes les minutes (1440 segments par jour)
     "MERCURE": 0.5,      # 1 segment toutes les 30 minutes
-    "SOLEIL": 1.0,       # 1 segment par heure
+    "SOLEIL": 1.0 / 60.0,       # 1 segment par heure
     "VENUS": 1.0,        # 1 segment par heure
     "MARS": 2.0,         # 1 segment toutes les 2 heures
     "JUPITER": 4.0,      # 1 segment toutes les 4 heures
