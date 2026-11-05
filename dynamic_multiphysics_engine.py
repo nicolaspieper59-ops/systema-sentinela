@@ -31,17 +31,17 @@ CORPS_MAP = {
     "NEPTUNE": ["neptune barycenter", 8]
 }
 
-# Grille haute précision équivalente 1440 points/jour
+# Grille ultra-haute précision : 1 segment par minute pour la Lune (1440 pts/jour)
 PAS_HEURES_MAP = {
-    "LUNE": 0.5,       # 1 segment toutes les 30 min (48 segments/jour)
-    "MERCURE": 1,      # 1 segment par heure (24 segments/jour)
-    "SOLEIL": 2,       # 1 segment toutes les 2h
-    "VENUS": 2,        # 1 segment toutes les 2h
-    "MARS": 3,         # 1 segment toutes les 3h
-    "JUPITER": 6,      # 1 segment toutes les 6h
-    "SATURNE": 6,      # 1 segment toutes les 6h
-    "URANUS": 12,      # 1 segment toutes les 12h
-    "NEPTUNE": 12      # 1 segment toutes les 12h
+    "LUNE": 1.0 / 60.0,  # 1 segment toutes les minutes (1440 segments/jour)
+    "MERCURE": 0.5,    # 1 segment toutes les 30 minutes
+    "SOLEIL": 1.0 / 60.0,     # 1 segment par heure
+    "VENUS": 1.0,      # 1 segment par heure
+    "MARS": 2.0,       # 1 segment toutes les 2h
+    "JUPITER": 4.0,    # 1 segment toutes les 4h
+    "SATURNE": 4.0,    # 1 segment toutes les 4h
+    "URANUS": 6.0,     # 1 segment toutes les 6h
+    "NEPTUNE": 6.0     # 1 segment toutes les 6h
 }
 
 RAYONS_EQUATORIAUX_KM = {
