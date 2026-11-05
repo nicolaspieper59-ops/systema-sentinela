@@ -1,5 +1,5 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL RIGOROUS (CORRIGÉ & SYNCHRONISÉ C++)
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL RIGOROUS (V19.30 FULLY SYNCHRONIZED)
  */
 
 let jplMatrixData = null;
@@ -253,6 +253,9 @@ function traiterCalculsWasmStricts(params) {
             const visCode = Module.HEAP32[(resultPtr + 184) >> 2];
 
             const formatH = (h) => (h < 0 || isNaN(h)) ? "N/A" : `${Math.floor(h).toString().padStart(2, '0')}:${Math.floor((h % 1) * 60).toString().padStart(2, '0')} UTC`;
+            
+            // Constante solaire physique généralisée
+            const solarConstVal = (1361.0 / (distUA * distUA)).toFixed(2);
 
             bodiesResult[nomCorps.toLowerCase()] = {
                 elevationGeometrique: elevGeom,
@@ -268,6 +271,7 @@ function traiterCalculsWasmStricts(params) {
                 jde: jde,
                 deltat: deltaTSeconds,
                 ghaDeg: ghaDeg,
+                solarConstantVal: solarConstVal,
                 distanceMinMaxDisplay: `${distUA.toFixed(6)} AU`,
                 constellationDisplay: "JPL-DE440s / SOFA",
                 perigeeDisplay: `${seg.perigee_ua.toFixed(5)} AU`,
@@ -287,21 +291,26 @@ function traiterCalculsWasmStricts(params) {
         Module._free(resultPtr);
     }
 
-    const cleLune = bodiesResult["lune"] ? "lune" : (bodiesResult["moon"] ? "moon" : null);
     const cleSoleil = bodiesResult["soleil"] ? "soleil" : (bodiesResult["sun"] ? "sun" : null);
-    
-    if (cleLune && cleSoleil) {
-        const raLuneRad = bodiesResult[cleLune].raDeg * (Math.PI / 180.0);
-        const decLuneRad = bodiesResult[cleLune].decDeg * (Math.PI / 180.0);
+
+    // Calcul de phase étendu pour la Lune, Mercure et Vénus
+    if (cleSoleil && bodiesResult[cleSoleil]) {
         const raSoleilRad = bodiesResult[cleSoleil].raDeg * (Math.PI / 180.0);
         const decSoleilRad = bodiesResult[cleSoleil].decDeg * (Math.PI / 180.0);
 
-        const cosElong = Math.sin(decLuneRad) * Math.sin(decSoleilRad) + 
-                         Math.cos(decLuneRad) * Math.cos(decSoleilRad) * Math.cos(raLuneRad - raSoleilRad);
-        const elongDeg = Math.acos(Math.max(-1.0, Math.min(1.0, cosElong))) * (180.0 / Math.PI);
+        ["lune", "moon", "mercure", "venus"].forEach(nomKey => {
+            if (bodiesResult[nomKey]) {
+                const raRad = bodiesResult[nomKey].raDeg * (Math.PI / 180.0);
+                const decRad = bodiesResult[nomKey].decDeg * (Math.PI / 180.0);
 
-        bodiesResult[cleLune].moonPhasePct = ((1.0 - Math.cos(elongDeg * (Math.PI / 180.0))) / 2.0) * 100.0;
-        bodiesResult[cleLune].moonAgeDays = (elongDeg / 360.0) * 29.530588;
+                const cosElong = Math.sin(decRad) * Math.sin(decSoleilRad) + 
+                                 Math.cos(decRad) * Math.cos(decSoleilRad) * Math.cos(raRad - raSoleilRad);
+                const elongDeg = Math.acos(Math.max(-1.0, Math.min(1.0, cosElong))) * (180.0 / Math.PI);
+
+                bodiesResult[nomKey].moonPhasePct = ((1.0 - Math.cos(elongDeg * (Math.PI / 180.0))) / 2.0) * 100.0;
+                bodiesResult[nomKey].moonAgeDays = (elongDeg / 360.0) * 29.530588;
+            }
+        });
     }
 
     self.postMessage({
@@ -310,4 +319,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: calculerWMM12x12Stricte(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear)
     });
-                          }
+                    }
