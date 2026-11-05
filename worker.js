@@ -1,18 +1,17 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL RIGOROUS v19.35 (IERS EOP INTEGRATED)
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL RIGOROUS (CORRIGÉ & SÉCURISÉ)
  */
 
 let jplMatrixData = null;
 let wmmTableauCoeffs = null;
 let wasmPret = false;
 let wmmPret = false;
-let iersEopCourant = { xp_arcsec: 0.0, yp_arcsec: 0.0, ut1_utc_sec: -0.0547 };
 
 var Module = {
     onRuntimeInitialized: function() {
         wasmPret = true;
         self.postMessage({ type: 'WORKER_READY' });
-        console.log("[WORKER WASM] Runtime C/SOFA initialisé avec succès (Mode Sub-Arc Strict).");
+        console.log("[WORKER WASM] Runtime C/SOFA initialisé avec succès (Mode Strict).");
     }
 };
 
@@ -29,10 +28,6 @@ self.onmessage = function (e) {
                     throw new Error("[FATAL WMM/JPL] Matrice JPL invalide ou corrompue.");
                 }
                 jplMatrixData = data.matrix;
-                if (data.matrix.ALMANACH && data.matrix.ALMANACH.iers_eop) {
-                    iersEopCourant = data.matrix.ALMANACH.iers_eop;
-                    console.log("[WORKER IERS] Paramètres EOP mis à jour depuis l'Almanach :", iersEopCourant);
-                }
                 self.postMessage({ type: 'JPL_MATRIX_UPDATED' });
                 break;
 
@@ -58,10 +53,12 @@ self.onmessage = function (e) {
 };
 
 function analyserTexteWMMStricte(texte) {
-    if (!texte || typeof texte !== 'string') throw new Error("[FATAL WMM] Fichier WMM2025.COF vide ou invalide.");
+    if (!texte || typeof texte !== 'string') {
+        throw new Error("[FATAL WMM] Fichier WMM2025.COF vide ou invalide.");
+    }
     const texteTrim = texte.trim();
     if (texteTrim.startsWith('<!DOCTYPE') || texteTrim.includes('<html')) {
-        throw new Error("[FATAL WMM] Erreur 404 lors de la récupération de WMM2025.COF.");
+        throw new Error("[FATAL WMM] Le fichier WMM2025.COF récupéré est une page HTML (Erreur 404 GitHub Pages).");
     }
 
     const lignes = texte.split('\n');
@@ -82,19 +79,18 @@ function analyserTexteWMMStricte(texte) {
             }
         }
     }
-    if (coeffs.length === 0) throw new Error("[FATAL WMM] Aucun coefficient valide extrait.");
+    if (coeffs.length === 0) {
+        throw new Error("[FATAL WMM] Aucun coefficient valide extrait du fichier COF.");
+    }
     return coeffs;
 }
 
-/**
- * Calcul rigoureux de Delta T (TT - UT1) combinant IERS EOP (UT1-UTC) et TAI-UTC (37s)
- */
-function obtenirDeltaTRigoureux(timestampUtc) {
-    const taiMinusUtc = 37.0; // Période actuelle
-    const ttMinusTai = 32.184;
-    const ut1MinusUtc = iersEopCourant.ut1_utc_sec || -0.0547;
-    // ΔT = TT - UT1 = (TT - TAI) + (TAI - UTC) - (UT1 - UTC)
-    return ttMinusTai + taiMinusUtc - ut1MinusUtc;
+function calculerDeltaTDynamique(decimalYear) {
+    const t = decimalYear - 2000.0;
+    if (decimalYear >= 2020.0) {
+        return 69.36 + 0.1 * (decimalYear - 2020.0);
+    }
+    return (decimalYear < 2015.0) ? (62.92 + 0.32217 * t + 0.005589 * t * t) : (68.3 + 0.45 * (decimalYear - 2015.0));
 }
 
 function calculerWMM12x12Stricte(latDeg, lonDeg, altKm, decimalYear) {
@@ -182,6 +178,8 @@ function traiterCalculsWasmStricts(params) {
     };
 
     const timestampSec = ts / 1000.0;
+    
+    // 1. Isolation stricte de metricsPtr
     const metricsPtr = Module._malloc(40);
     let gastDeg, obliquiteDeg, sunTrueLong, eqTempsMin;
 
@@ -197,13 +195,13 @@ function traiterCalculsWasmStricts(params) {
 
     const jde = (ts / 86400000.0) + 2440587.5;
     const decimalYear = 2000.0 + (jde - 2451545.0) / 365.25;
-    const deltaTSeconds = obtenirDeltaTRigoureux(ts); 
+    const deltaTSeconds = calculerDeltaTDynamique(decimalYear); 
     const tEphemerideSec = timestampSec + deltaTSeconds;
 
     const structSize = 208; 
-    const resultPtr = Module._malloc(structSize);
     const bodiesResult = {};
 
+    // 2. Traitement itératif avec allocation/libération indépendante par corps
     try {
         for (const [nomCorps, segments] of Object.entries(jplMatrixData.DATA)) {
             if (!segments || segments.length === 0) continue;
@@ -223,67 +221,73 @@ function traiterCalculsWasmStricts(params) {
 
             const nomUpper = nomCorps.toUpperCase();
             const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN") ? 1 : 0;
-            const eraRad = (gastDeg + (iersEopCourant.ut1_utc_sec || 0.0) * (15.0 / 3600.0)) * (Math.PI / 180.0);
+            const eraRad = gastDeg * (Math.PI / 180.0);
 
-            Module._calculerDepuisECEF(
-                x, y, z, 
-                vx, vy, vz, 
-                coords.lat, coords.lon, coords.alt, 
-                eraRad, meteo.tempC, meteo.presHpa, 0.15, 
-                seg.mag ?? 0.0, estSoleil, resultPtr
-            );
+            // Allocation dédiée par astre pour éviter toute interférence mémoire
+            const resultPtr = Module._malloc(structSize);
+            try {
+                Module._calculerDepuisECEF(
+                    x, y, z, 
+                    vx, vy, vz, 
+                    coords.lat, coords.lon, coords.alt, 
+                    eraRad, meteo.tempC, meteo.presHpa, 0.15, 
+                    seg.mag ?? 0.0, estSoleil, resultPtr
+                );
 
-            const ptrF64 = resultPtr >> 3;
-            const azim = Module.HEAPF64[ptrF64];
-            const elevGeom = Module.HEAPF64[ptrF64 + 1];
-            const elevRefractee = Module.HEAPF64[ptrF64 + 2];
-            const raDeg = Module.HEAPF64[ptrF64 + 3];
-            const decDeg = Module.HEAPF64[ptrF64 + 4];
-            const distUA = Module.HEAPF64[ptrF64 + 5];
-            const leverUT = Module.HEAPF64[ptrF64 + 6];
-            const coucherUT = Module.HEAPF64[ptrF64 + 7];
-            const airMass = Module.HEAPF64[ptrF64 + 8];
-            const irradiance = Module.HEAPF64[ptrF64 + 9];
-            const ghaDeg = Module.HEAPF64[ptrF64 + 11];
-            const magApp = Module.HEAPF64[ptrF64 + 13];
-            const shadowLen = Module.HEAPF64[ptrF64 + 14];
-            const crepusculeUT = Module.HEAPF64[ptrF64 + 17];
-            const dureeJour = Module.HEAPF64[ptrF64 + 18];
-            const visCode = Module.HEAP32[(resultPtr + 184) >> 2];
+                const ptrF64 = resultPtr >> 3;
+                const azim = Module.HEAPF64[ptrF64];
+                const elevGeom = Module.HEAPF64[ptrF64 + 1];
+                const elevRefractee = Module.HEAPF64[ptrF64 + 2];
+                const raDeg = Module.HEAPF64[ptrF64 + 3];
+                const decDeg = Module.HEAPF64[ptrF64 + 4];
+                const distUA = Module.HEAPF64[ptrF64 + 5];
+                const leverUT = Module.HEAPF64[ptrF64 + 6];
+                const coucherUT = Module.HEAPF64[ptrF64 + 7];
+                const airMass = Module.HEAPF64[ptrF64 + 8];
+                const irradiance = Module.HEAPF64[ptrF64 + 9];
+                const ghaDeg = Module.HEAPF64[ptrF64 + 11];
+                const magApp = Module.HEAPF64[ptrF64 + 13];
+                const shadowLen = Module.HEAPF64[ptrF64 + 14];
+                const crepusculeUT = Module.HEAPF64[ptrF64 + 17];
+                const dureeJour = Module.HEAPF64[ptrF64 + 18];
+                const visCode = Module.HEAP32[(resultPtr + 184) >> 2];
 
-            const formatH = (h) => (h < 0 || isNaN(h)) ? "N/A" : `${Math.floor(h).toString().padStart(2, '0')}:${Math.floor((h % 1) * 60).toString().padStart(2, '0')} UTC`;
+                const formatH = (h) => (h < 0 || isNaN(h)) ? "N/A" : `${Math.floor(h).toString().padStart(2, '0')}:${Math.floor((h % 1) * 60).toString().padStart(2, '0')} UTC`;
 
-            bodiesResult[nomCorps.toLowerCase()] = {
-                elevationGeometrique: elevGeom,
-                elevationApparente: elevRefractee,
-                azimuth: azim,
-                distanceAu: distUA,
-                magnitude: magApp,
-                raDeg: raDeg,
-                decDeg: decDeg,
-                visibiliteCode: visCode,
-                airMass: airMass,
-                irradiance: irradiance,
-                jde: jde,
-                deltat: deltaTSeconds,
-                ghaDeg: ghaDeg,
-                distanceMinMaxDisplay: `${distUA.toFixed(6)} AU`,
-                constellationDisplay: "JPL-DE440s / SOFA",
-                perigeeDisplay: `${seg.perigee_ua.toFixed(5)} AU`,
-                perihelionDisplay: `${seg.perihelion_ua.toFixed(4)} AU`,
-                aphelionDisplay: `${seg.aphelion_ua.toFixed(4)} AU`,
-                orbitPeriodDisplay: `${seg.period_days.toFixed(1)} j`,
-                lengthOfDayDisplay: `${seg.lod_hours.toFixed(1)} h`,
-                orbitalVelocityDisplay: `${seg.vel_kms.toFixed(2)} km/s`,
-                shadowLengthDisplay: (shadowLen > 0) ? `${shadowLen.toFixed(2)} m` : "N/A",
-                sunrise: estSoleil ? formatH(leverUT) : (elevRefractee >= -0.833 ? "Visible" : "Sous horizon"),
-                sunset: estSoleil ? formatH(coucherUT) : (elevRefractee < -0.833 ? "Couché" : "Au-dessus horizon"),
-                dusk: estSoleil ? formatH(crepusculeUT) : (elevRefractee < -6.0 ? "Nuit" : "Crépuscule/Jour"),
-                daylightDuration: estSoleil && dureeJour > 0 ? `${dureeJour.toFixed(2)} h` : (elevRefractee > 0 ? "Jour" : "Nuit")
-            };
+                bodiesResult[nomCorps.toLowerCase()] = {
+                    elevationGeometrique: elevGeom,
+                    elevationApparente: elevRefractee,
+                    azimuth: azim,
+                    distanceAu: distUA,
+                    magnitude: magApp,
+                    raDeg: raDeg,
+                    decDeg: decDeg,
+                    visibiliteCode: visCode,
+                    airMass: airMass,
+                    irradiance: irradiance,
+                    jde: jde,
+                    deltat: deltaTSeconds,
+                    ghaDeg: ghaDeg,
+                    distanceMinMaxDisplay: `${distUA.toFixed(6)} AU`,
+                    constellationDisplay: "JPL-DE440s / SOFA",
+                    perigeeDisplay: `${seg.perigee_ua.toFixed(5)} AU`,
+                    perihelionDisplay: `${seg.perihelion_ua.toFixed(4)} AU`,
+                    aphelionDisplay: `${seg.aphelion_ua.toFixed(4)} AU`,
+                    orbitPeriodDisplay: `${seg.period_days.toFixed(1)} j`,
+                    lengthOfDayDisplay: `${seg.lod_hours.toFixed(1)} h`,
+                    orbitalVelocityDisplay: `${seg.vel_kms.toFixed(2)} km/s`,
+                    shadowLengthDisplay: (shadowLen > 0) ? `${shadowLen.toFixed(2)} m` : "N/A",
+                    sunrise: estSoleil ? formatH(leverUT) : (elevRefractee >= -0.833 ? "Visible" : "Sous horizon"),
+                    sunset: estSoleil ? formatH(coucherUT) : (elevRefractee < -0.833 ? "Couché" : "Au-dessus horizon"),
+                    dusk: estSoleil ? formatH(crepusculeUT) : (elevRefractee < -6.0 ? "Nuit" : "Crépuscule/Jour"),
+                    daylightDuration: estSoleil && dureeJour > 0 ? `${dureeJour.toFixed(2)} h` : (elevRefractee > 0 ? "Jour" : "Nuit")
+                };
+            } finally {
+                Module._free(resultPtr); // Libération immédiate par itération
+            }
         }
-    } finally {
-        Module._free(resultPtr);
+    } catch (err) {
+        throw new Error(`Erreur lors du calcul des corps célestes : ${err.message}`);
     }
 
     const cleLune = bodiesResult["lune"] ? "lune" : (bodiesResult["moon"] ? "moon" : null);
@@ -309,4 +313,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: calculerWMM12x12Stricte(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear)
     });
-    }
+}
