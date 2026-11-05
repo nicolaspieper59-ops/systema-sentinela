@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.30)
-Mode Haute Résolution Adaptative (Précision Sub-Arcsecondique ~1440 pts/j équivalents)
+SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.35)
+Mode Haute Résolution Ultra-Précis (1 segment par minute pour la Lune / 1440 pts/j)
 """
 
 import argparse
@@ -31,17 +31,17 @@ CORPS_MAP = {
     "NEPTUNE": ["neptune barycenter", 8]
 }
 
-# Grille ultra-haute précision : 1 segment par minute pour la Lune (1440 pts/jour)
+# Grille ultra-haute précision : 1 segment par minute pour la Lune (1440 segments/jour)
 PAS_HEURES_MAP = {
-    "LUNE": 1.0 / 60.0,  # 1 segment toutes les minutes (1440 segments/jour)
-    "MERCURE": 0.5,    # 1 segment toutes les 30 minutes
-    "SOLEIL": 1.0 / 60.0,     # 1 segment par heure
-    "VENUS": 1.0,      # 1 segment par heure
-    "MARS": 2.0,       # 1 segment toutes les 2h
-    "JUPITER": 4.0,    # 1 segment toutes les 4h
-    "SATURNE": 4.0,    # 1 segment toutes les 4h
-    "URANUS": 6.0,     # 1 segment toutes les 6h
-    "NEPTUNE": 6.0     # 1 segment toutes les 6h
+    "LUNE": 1.0 / 60.0,  # 1 segment toutes les minutes (1440 segments par jour)
+    "MERCURE": 0.5,      # 1 segment toutes les 30 minutes
+    "SOLEIL": 1.0,       # 1 segment par heure
+    "VENUS": 1.0,        # 1 segment par heure
+    "MARS": 2.0,         # 1 segment toutes les 2 heures
+    "JUPITER": 4.0,      # 1 segment toutes les 4 heures
+    "SATURNE": 4.0,      # 1 segment toutes les 4 heures
+    "URANUS": 6.0,       # 1 segment toutes les 6 heures
+    "NEPTUNE": 6.0       # 1 segment toutes les 6 heures
 }
 
 RAYONS_EQUATORIAUX_KM = {
@@ -49,7 +49,6 @@ RAYONS_EQUATORIAUX_KM = {
     "MARS": 3396.2, "JUPITER": 71492.0, "SATURNE": 60268.0, "URANUS": 25559.0, "NEPTUNE": 24764.0
 }
 
-# Paramètres orbitaux corrigés avec valeurs physiques réelles
 PARAMETRES_ORBITAUX = {
     "SOLEIL":  {"perihelion_ua": 0.98329, "aphelion_ua": 1.01710, "perigee_ua": 0.98329, "period_days": 365.256, "lod_hours": 609.6, "vel_kms": 0.0},
     "LUNE":    {"perihelion_ua": 0.00240, "aphelion_ua": 0.00271, "perigee_ua": 0.00243, "period_days": 27.321, "lod_hours": 655.7, "vel_kms": 1.022},
@@ -222,7 +221,7 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
 
     resultat_global = {
         "ALMANACH": {
-            "generateur": "Systema Sentinela DE440s Kernel High-Res",
+            "generateur": "Systema Sentinela DE440s Kernel High-Res (1 seg/min)",
             "date_creation_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
             "epoch_utc_ms": int(time.time() * 1000),
             "fenetre_jours": int(nb_jours),
@@ -236,7 +235,7 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
         json.dump(resultat_global, f, separators=(',', ':'), ensure_ascii=False)
 
 def main():
-    parser = argparse.ArgumentParser(description="Générateur d'éphémérides JPL DE440s Rigoureux High-Res")
+    parser = argparse.ArgumentParser(description="Générateur d'éphémérides JPL DE440s Ultra-Précis (1 seg/min)")
     parser.add_argument("lat", type=float)
     parser.add_argument("lon", type=float)
     parser.add_argument("alt", type=float)
@@ -247,7 +246,7 @@ def main():
     args = parser.parse_args()
     try:
         generer_ephemerides(args.lat, args.lon, args.alt, args.days, args.bsp, args.out)
-        print(f"[SUCCÈS] Flux généré : {args.out}")
+        print(f"[SUCCÈS] Flux généré avec succès (1 segment/min) : {args.out}")
     except Exception:
         print("[ERREUR FATALE] Échec du traitement Python :", file=sys.stderr)
         traceback.print_exc()
