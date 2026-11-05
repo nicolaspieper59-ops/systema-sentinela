@@ -178,7 +178,7 @@ jobs:
     runs-on: ubuntu-latest
     concurrency:
       group: "pages"
-      cancel-in-progress: false
+      cancel-in-progress: true  # ⬅️ Passez cette valeur à 'true'
     permissions:
       pages: write
       id-token: write
