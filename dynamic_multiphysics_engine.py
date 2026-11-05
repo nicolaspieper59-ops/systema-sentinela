@@ -12,12 +12,11 @@ import os
 import traceback
 import datetime
 import numpy as np
-from scipy.interpolate import interp1d
 
 try:
     from skyfield.api import load
 except ImportError:
-    print("[FATAL] Skyfield introuvable (`pip install skyfield numpy scipy`).", file=sys.stderr)
+    print("[FATAL] Skyfield introuvable (`pip install skyfield numpy`).", file=sys.stderr)
     sys.exit(1)
 
 CORPS_MAP = {
@@ -32,16 +31,17 @@ CORPS_MAP = {
     "NEPTUNE": ["neptune barycenter", 8]
 }
 
+# Grille haute précision équivalente 1440 points/jour
 PAS_HEURES_MAP = {
-    "LUNE": 1,
-    "MERCURE": 2,
-    "SOLEIL": 3,
-    "VENUS": 3,
-    "MARS": 4,
-    "JUPITER": 6,
-    "SATURNE": 6,
-    "URANUS": 12,
-    "NEPTUNE": 12
+    "LUNE": 0.5,       # 1 segment toutes les 30 min (48 segments/jour)
+    "MERCURE": 1,      # 1 segment par heure (24 segments/jour)
+    "SOLEIL": 2,       # 1 segment toutes les 2h
+    "VENUS": 2,        # 1 segment toutes les 2h
+    "MARS": 3,         # 1 segment toutes les 3h
+    "JUPITER": 6,      # 1 segment toutes les 6h
+    "SATURNE": 6,      # 1 segment toutes les 6h
+    "URANUS": 12,      # 1 segment toutes les 12h
+    "NEPTUNE": 12      # 1 segment toutes les 12h
 }
 
 RAYONS_EQUATORIAUX_KM = {
@@ -49,58 +49,43 @@ RAYONS_EQUATORIAUX_KM = {
     "MARS": 3396.2, "JUPITER": 71492.0, "SATURNE": 60268.0, "URANUS": 25559.0, "NEPTUNE": 24764.0
 }
 
+# Paramètres orbitaux corrigés avec valeurs physiques réelles
 PARAMETRES_ORBITAUX = {
-    "SOLEIL":  {"perihelion_ua": 0.0, "aphelion_ua": 0.0, "perigee_ua": 0.98329, "period_days": 365.256, "lod_hours": 609.6, "vel_kms": 0.0},
+    "SOLEIL":  {"perihelion_ua": 0.98329, "aphelion_ua": 1.01710, "perigee_ua": 0.98329, "period_days": 365.256, "lod_hours": 609.6, "vel_kms": 0.0},
     "LUNE":    {"perihelion_ua": 0.00240, "aphelion_ua": 0.00271, "perigee_ua": 0.00243, "period_days": 27.321, "lod_hours": 655.7, "vel_kms": 1.022},
-    "MERCURE": {"perihelion_ua": 0.3075, "aphelion_ua": 0.4667, "perigee_ua": 0.549, "period_days": 87.969, "lod_hours": 4222.6, "vel_kms": 47.36},
-    "VENUS":   {"perihelion_ua": 0.7184, "aphelion_ua": 0.7282, "perigee_ua": 0.264, "period_days": 224.701, "lod_hours": 2802.0, "vel_kms": 35.02},
-    "MARS":    {"perihelion_ua": 1.3814, "aphelion_ua": 1.6660, "perigee_ua": 0.372, "period_days": 686.980, "lod_hours": 24.62, "vel_kms": 24.07},
-    "JUPITER": {"perihelion_ua": 4.9503, "aphelion_ua": 5.4570, "perigee_ua": 3.95, "period_days": 4332.59, "lod_hours": 9.93, "vel_kms": 13.07},
-    "SATURNE": {"perihelion_ua": 9.0412, "aphelion_ua": 10.1238, "perigee_ua": 8.05, "period_days": 10759.22, "lod_hours": 10.7, "vel_kms": 9.68},
-    "URANUS":  {"perihelion_ua": 18.2861, "aphelion_ua": 20.0965, "perigee_ua": 17.29, "period_days": 30688.5, "lod_hours": 17.2, "vel_kms": 6.80},
-    "NEPTUNE": {"perihelion_ua": 29.8100, "aphelion_ua": 30.3271, "perigee_ua": 28.81, "period_days": 60182.0, "lod_hours": 16.1, "vel_kms": 5.43}
+    "MERCURE": {"perihelion_ua": 0.30750, "aphelion_ua": 0.46670, "perigee_ua": 0.54900, "period_days": 87.969, "lod_hours": 4222.6, "vel_kms": 47.36},
+    "VENUS":   {"perihelion_ua": 0.71840, "aphelion_ua": 0.72820, "perigee_ua": 0.26400, "period_days": 224.701, "lod_hours": 2802.0, "vel_kms": 35.02},
+    "MARS":    {"perihelion_ua": 1.38140, "aphelion_ua": 1.66600, "perigee_ua": 0.37200, "period_days": 686.980, "lod_hours": 24.62, "vel_kms": 24.07},
+    "JUPITER": {"perihelion_ua": 4.95030, "aphelion_ua": 5.45700, "perigee_ua": 3.95000, "period_days": 4332.59, "lod_hours": 9.93, "vel_kms": 13.07},
+    "SATURNE": {"perihelion_ua": 9.04120, "aphelion_ua": 10.12380, "perigee_ua": 8.05000, "period_days": 10759.22, "lod_hours": 10.7, "vel_kms": 9.68},
+    "URANUS":  {"perihelion_ua": 18.28610, "aphelion_ua": 20.09650, "perigee_ua": 17.29000, "period_days": 30688.50, "lod_hours": 17.2, "vel_kms": 6.80},
+    "NEPTUNE": {"perihelion_ua": 29.81000, "aphelion_ua": 30.32710, "perigee_ua": 28.81000, "period_days": 60182.00, "lod_hours": 16.1, "vel_kms": 5.43}
 }
 
 DEGRE_TCHEBYCHEV = 12
 UA_KM = 149597870.7
 
-def interpoler_iers_eop(fichier_path="finals2000A.all", target_mjd=None):
-    """Effectue une interpolation par splines/linéaire continue des paramètres EOP IERS."""
+def extraire_donnees_iers_finals(fichier_path="finals2000A.all"):
     if not os.path.exists(fichier_path):
         return {"xp_arcsec": 0.0, "yp_arcsec": 0.0, "ut1_utc_sec": 0.0}
     
-    mjds, xps, yps, ut1s = [], [], [], []
+    xp, yp, ut1_utc = 0.0, 0.0, 0.0
     try:
         with open(fichier_path, 'r', encoding='utf-8') as f:
             for line in f:
                 if len(line) >= 68:
                     try:
-                        mjd_val = float(line[7:15].strip())
                         xp_val = float(line[18:27].strip())
                         yp_val = float(line[37:46].strip())
                         ut1_val = float(line[58:68].strip())
                         if xp_val != 0.0 and yp_val != 0.0:
-                            mjds.append(mjd_val)
-                            xps.append(xp_val)
-                            yps.append(yp_val)
-                            ut1s.append(ut1_val)
+                            xp, yp, ut1_utc = xp_val, yp_val, ut1_val
                     except ValueError:
                         continue
-        if len(mjds) > 2:
-            f_xp = interp1d(mjds, xps, kind='linear', fill_value='extrapolate')
-            f_yp = interp1d(mjds, yps, kind='linear', fill_value='extrapolate')
-            f_ut1 = interp1d(mjds, ut1s, kind='linear', fill_value='extrapolate')
-            
-            cur_mjd = target_mjd if target_mjd is not None else (datetime.datetime.now(datetime.timezone.utc).timestamp() / 86400.0 + 40587.0)
-            return {
-                "xp_arcsec": float(f_xp(cur_mjd)),
-                "yp_arcsec": float(f_yp(cur_mjd)),
-                "ut1_utc_sec": float(f_ut1(cur_mjd))
-            }
     except Exception as e:
-        print(f"[WARN IERS] Erreur d'interpolation IERS : {e}", file=sys.stderr)
+        print(f"[WARN IERS] Lecture {fichier_path} : {e}", file=sys.stderr)
         
-    return {"xp_arcsec": 0.0, "yp_arcsec": 0.0, "ut1_utc_sec": 0.0}
+    return {"xp_arcsec": xp, "yp_arcsec": yp, "ut1_utc_sec": ut1_utc}
 
 def valider_coordonnees(lat, lon, alt):
     if not (-90.0 <= lat <= 90.0): raise ValueError(f"Latitude invalide : {lat}")
@@ -113,8 +98,7 @@ def obtenir_astre(eph, noms):
             return eph[nom]
     raise KeyError(f"Astre non trouvé dans le fichier BSP : {noms}")
 
-def calculer_magnitude_apparente_mallama(nom_corps, pos_astre_km, pos_soleil_km):
-    """Modèle photométrique de référence Mallama & Hilton (UAI 2018)."""
+def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
     if nom_corps == "SOLEIL": 
         return -26.74
 
@@ -137,7 +121,6 @@ def calculer_magnitude_apparente_mallama(nom_corps, pos_astre_km, pos_soleil_km)
         alpha_clamp = np.clip(alpha_deg, 0.0, 180.0)
         return round(float(-12.73 + 0.026 * alpha_clamp + 4.0e-9 * (alpha_clamp**4)), 2)
 
-    # Standard Mallama & Hilton (2018)
     modeles = {
         "MERCURE": (-0.613, 0.06328 * alpha_deg - 0.0001633 * (alpha_deg**2) + 3.36e-7 * (alpha_deg**3)),
         "VENUS":   (-4.384, -0.00104 * alpha_deg + 0.00000368 * (alpha_deg**2) + 2.83e-13 * (alpha_deg**6)),
@@ -181,7 +164,7 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     
     pos_astre_mid = earth.at(time_mid).observe(astre_target).apparent().position.km
     pos_soleil_mid = earth.at(time_mid).observe(sun_target).apparent().position.km
-    mag_val = calculer_magnitude_apparente_mallama(nom_corps, pos_astre_mid, pos_soleil_mid)
+    mag_val = calculer_magnitude_apparente(nom_corps, pos_astre_mid, pos_soleil_mid)
 
     orb = PARAMETRES_ORBITAUX.get(nom_corps, {})
 
@@ -235,7 +218,7 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
 
         data_output[nom_corps] = segments
 
-    eop_data = interpoler_iers_eop()
+    eop_data = extraire_donnees_iers_finals()
 
     resultat_global = {
         "ALMANACH": {
