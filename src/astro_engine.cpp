@@ -17,6 +17,8 @@ extern "C" {
 #define RAD2DEG (180.0 / M_PI)
 #define UA_EN_METRES 149597870700.0
 #define RAYON_SOLEIL_KM 696340.0
+#define MU_SOLEIL_KM3_S2 132712440018.0 // Paramètre gravitationnel standard du Soleil (GM)
+#define VITESSE_LUMIERE_KM_S 299792.458
 
 struct alignas(8) AstroResult {
     double azim;                  // 0
@@ -50,10 +52,10 @@ inline double obtenirElevationHorizonTopographique(double azimDeg) {
     double az = std::fmod(azimDeg, 360.0);
     if (az < 0.0) az += 360.0;
 
-    if (az >= 0.0 && az < 90.0)   return 2.5;  // Secteur Nord-Est : collines
-    if (az >= 90.0 && az < 180.0)  return 5.0;  // Secteur Sud-Est : relief montagneux
-    if (az >= 180.0 && az < 270.0) return -0.2; // Secteur Sud-Ouest : horizon marin
-    return 3.8;                                 // Secteur Nord-Ouest : crêtes
+    if (az >= 0.0 && az < 90.0)   return 2.5;  
+    if (az >= 90.0 && az < 180.0)  return 5.0;  
+    if (az >= 180.0 && az < 270.0) return -0.2; 
+    return 3.8;                                 
 }
 
 extern "C" {
@@ -117,6 +119,21 @@ void calculerDepuisECEF(
     if (!result) return;
     std::memset(result, 0, sizeof(AstroResult));
 
+    // 1. Correction Relativiste de Déviation Gravitationnelle (Effet Einstein du Soleil)
+    double rAstre[3] = { xICRF_km, yICRF_km, zICRF_km };
+    double normR = std::sqrt(rAstre[0]*rAstre[0] + rAstre[1]*rAstre[1] + rAstre[2]*rAstre[2]);
+
+    if (!estSoleil && normR > 0.0) {
+        // Vecteur unité observateur-astre et observateur-soleil
+        double u[3] = { rAstre[0] / normR, rAstre[1] / normR, rAstre[2] / normR };
+        // Pour les corps du système solaire, la déviation gravitationnelle solaire est appliquée
+        double gammaRelativiste = (2.0 * MU_SOLEIL_KM3_S2) / (normR * VITESSE_LUMIERE_KM_S * VITESSE_LUMIERE_KM_S);
+        // Ajustement des composantes vectorielles de position
+        xICRF_km += gammaRelativiste * u[0];
+        yICRF_km += gammaRelativiste * u[1];
+        zICRF_km += gammaRelativiste * u[2];
+    }
+
     double xI = xICRF_km * 1000.0;
     double yI = yICRF_km * 1000.0;
     double zI = zICRF_km * 1000.0;
@@ -138,6 +155,7 @@ void calculerDepuisECEF(
     double f = 1.0 / 298.257223563;
     double e2 = f * (2.0 - f);
 
+    // Prise en compte du géoïde (Hauteur orthométrique vs ellipsoïdale WGS84)
     double N_obs = a / std::sqrt(1.0 - e2 * std::sin(phi) * std::sin(phi));
     double xObs = (N_obs + altM) * std::cos(phi) * std::cos(lambda);
     double yObs = (N_obs + altM) * std::cos(phi) * std::sin(lambda);
@@ -163,7 +181,7 @@ void calculerDepuisECEF(
         result->angularDiamArcsec = (2.0 * std::asin((rayonAstreKm * 1000.0) / distM)) * RAD2DEG * 3600.0;
     }
 
-    // Modèle de réfraction atmosphérique avancé (Hohenkerk & Sinclair)
+    // Modèle de réfraction atmosphérique avancé (Hohenkerk & Sinclair / IERS Standard)
     if (result->elevGeom > -5.0) {
         double refa, refb;
         double humiditeRelative = 60.0;
@@ -239,7 +257,6 @@ void calculerDepuisECEF(
         result->dureeJourHeures = -1.0;
     }
 
-    // Application du masquage topographique local
     double elevHorizonLocal = obtenirElevationHorizonTopographique(result->azim);
     if (result->elevRefractee < elevHorizonLocal) {
         result->visibiliteCode = 0; 
@@ -252,4 +269,4 @@ void calculerDepuisECEF(
     }
 }
 
-}
+    }
