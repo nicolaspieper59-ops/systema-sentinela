@@ -31,17 +31,16 @@ CORPS_MAP = {
     "NEPTUNE": ["neptune barycenter", 8]
 }
 
-# Grille adaptative pour garantir la seconde d'arc sans saturer la RAM (Taille < 100 Mo)
 PAS_HEURES_MAP = {
-    "LUNE": 1,        # 1 segment/heure (24 seg/j) - capture l'accélération lunaire
-    "MERCURE": 2,     # 1 segment toutes les 2h
-    "SOLEIL": 3,      # 1 segment toutes les 3h
-    "VENUS": 3,       # 1 segment toutes les 3h
-    "MARS": 4,        # 1 segment toutes les 4h
-    "JUPITER": 6,     # 1 segment toutes les 6h
-    "SATURNE": 6,     # 1 segment toutes les 6h
-    "URANUS": 12,     # 1 segment toutes les 12h
-    "NEPTUNE": 12     # 1 segment toutes les 12h
+    "LUNE": 1,
+    "MERCURE": 2,
+    "SOLEIL": 3,
+    "VENUS": 3,
+    "MARS": 4,
+    "JUPITER": 6,
+    "SATURNE": 6,
+    "URANUS": 12,
+    "NEPTUNE": 12
 }
 
 RAYONS_EQUATORIAUX_KM = {
@@ -63,6 +62,29 @@ PARAMETRES_ORBITAUX = {
 
 DEGRE_TCHEBYCHEV = 12
 UA_KM = 149597870.7
+
+def extraire_donnees_iers_finals(fichier_path="finals2000A.all"):
+    """Extrait la dernière valeur valide de xp, yp et UT1-UTC du fichier IERS."""
+    if not os.path.exists(fichier_path):
+        return {"xp_arcsec": 0.0, "yp_arcsec": 0.0, "ut1_utc_sec": 0.0}
+    
+    xp, yp, ut1_utc = 0.0, 0.0, 0.0
+    try:
+        with open(fichier_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                if len(line) >= 68:
+                    try:
+                        xp_val = float(line[18:27].strip())
+                        yp_val = float(line[37:46].strip())
+                        ut1_val = float(line[58:68].strip())
+                        if xp_val != 0.0 and yp_val != 0.0:
+                            xp, yp, ut1_utc = xp_val, yp_val, ut1_val
+                    except ValueError:
+                        continue
+    except Exception as e:
+        print(f"[WARN IERS] Impossible d'analyser {fichier_path}: {e}", file=sys.stderr)
+        
+    return {"xp_arcsec": xp, "yp_arcsec": yp, "ut1_utc_sec": ut1_utc}
 
 def valider_coordonnees(lat, lon, alt):
     if not (-90.0 <= lat <= 90.0): raise ValueError(f"Latitude invalide : {lat}")
@@ -195,18 +217,20 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
 
         data_output[nom_corps] = segments
 
+    eop_data = extraire_donnees_iers_finals()
+
     resultat_global = {
         "ALMANACH": {
             "generateur": "Systema Sentinela DE440s Kernel High-Res",
             "date_creation_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
             "epoch_utc_ms": int(time.time() * 1000),
             "fenetre_jours": int(nb_jours),
-            "station": {"latitude": float(lat), "longitude": float(lon), "altitude_m": float(alt)}
+            "station": {"latitude": float(lat), "longitude": float(lon), "altitude_m": float(alt)},
+            "iers_eop": eop_data
         },
         "DATA": data_output
     }
 
-    # Sérialisation sans retours à la ligne inutiles pour optimiser la bande passante
     with open(fichier_sortie, "w", encoding="utf-8") as f:
         json.dump(resultat_global, f, separators=(',', ':'), ensure_ascii=False)
 
