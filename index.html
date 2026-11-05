@@ -424,7 +424,6 @@
 <script src="three.min.js"></script>
 
 <script>
-    // Integration rigoureuse avec verificateur TTL
     class SensorCacheManager {
         constructor(cacheKey, ttlMs = 24 * 60 * 60 * 1000) {
             this.cacheKey = cacheKey;
@@ -442,10 +441,7 @@
                 const item = this.storage.getItem(`${this.cacheKey}_${cle}`);
                 if (!item) return null;
                 const payload = JSON.parse(item);
-                if (Date.now() - payload.timestamp > this.ttlMs) {
-                    console.warn(`[CACHE SÉCURITÉ] Expération donnée '${cle}'`);
-                    return null;
-                }
+                if (Date.now() - payload.timestamp > this.ttlMs) return null;
                 return payload;
             } catch (e) {
                 return null;
@@ -690,7 +686,7 @@
                 elBaro.style.color = "var(--rose)";
             }
         } else { 
-            elBaro.innerText = "API ABSENTE"; 
+            elBaro.innerText = "API ABSENTE (Mode Manuel actif)"; 
             elBaro.style.color = "var(--amber)"; 
         }
     }
@@ -709,7 +705,7 @@
             document.getElementById('lbl-jpl-status').style.color = "var(--neon-green)";
             ecrireLog("JPL : flux_live.json chargé avec succès.");
             
-            if (workerPret) {
+            if (workerPret && wmmPret) {
                 envoyerDemandeCalculWorker();
             }
         } catch (e) {
@@ -747,12 +743,13 @@
             ecrireLog("WMM : Fichier WMM2025.COF transmis au Worker avec succès.");
         } catch (e) {
             ecrireLog(`[FATAL WMM] Erreur de chargement du fichier de secours : ${e.message}`);
-            console.warn("Avertissement WMM :", e.message);
         }
     }
 
+    let wmmPret = false;
+
     function envoyerDemandeCalculWorker() {
-        if (!workerPret || !matriceJplLive || requeteEnAttente) return;
+        if (!workerPret || !matriceJplLive || !wmmPret || requeteEnAttente) return;
 
         const timestampExact = obtenirTimestampUTCExact();
         const dateUtc = new Date(timestampExact);
@@ -788,24 +785,15 @@
             workerPret = true;
             document.getElementById('lbl-worker-status').innerText = "PRÊT";
             document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
-            
-            // 1. On lance le chargement du WMM
             chargerFichierWMMDeSecours();
-            
-            // 2. On transmet la matrice JPL si elle est déjà dispo, MAIS ON NE CALCULE PAS ENCORE.
             if (matriceJplLive) {
                 astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
             }
         }
 
-        if (data.type === 'JPL_MATRIX_UPDATED') {
-            ecrireLog("Worker : Matrice JPL mise à jour avec succès.");
-        }
-
         if (data.type === 'WMM_LOADED') {
+            wmmPret = true;
             ecrireLog("Worker : Coefficients WMM2025 chargés avec succès.");
-            
-            // 3. ✅ CORRECTION : C'est ici, une fois que WMM ET JPL sont prêts, qu'on lance le premier calcul !
             if (workerPret && matriceJplLive) {
                 envoyerDemandeCalculWorker();
             }
@@ -828,9 +816,6 @@
             document.getElementById('lbl-worker-status').style.color = "var(--rose)";
             ecrireLog(`[FATAL] Erreur Worker : ${err.message}`);
         };
-        while (fileDAttenteWorker.length > 0) {
-            astroWorker.postMessage(fileDAttenteWorker.shift());
-        }
     }
 
     function mettreAJourMetricsSolaires(m) {
@@ -864,12 +849,6 @@
         const astresTries = Object.entries(bodiesData).sort(([keyA, dataA], [keyB, dataB]) => {
             const elA = dataA.elevationApparente ?? -999;
             const elB = dataB.elevationApparente ?? -999;
-            const visibleA = elA > 0 ? 1 : 0;
-            const visibleB = elB > 0 ? 1 : 0;
-            if (visibleA !== visibleB) return visibleB - visibleA; 
-            const magA = dataA.magnitude ?? 99;
-            const magB = dataB.magnitude ?? 99;
-            if (magA !== magB) return magA - magB;
             return elB - elA;
         });
 
