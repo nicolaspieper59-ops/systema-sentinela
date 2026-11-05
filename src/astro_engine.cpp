@@ -46,14 +46,17 @@ struct alignas(8) AstroResult {
     int32_t seasonCode;           // Byte offset 188
 };
 
+// Masque d'horizon géographique précis pour le dôme d'observation Marseille (43.284356° N, 5.358507° E)
 inline double obtenirElevationHorizonTopographique(double azimDeg) {
     double az = std::fmod(azimDeg, 360.0);
     if (az < 0.0) az += 360.0;
 
-    if (az >= 0.0 && az < 90.0)   return 2.5;  // Collines Nord-Est
-    if (az >= 90.0 && az < 180.0)  return 5.0;  // Montagnes Sud-Est
-    if (az >= 180.0 && az < 270.0) return -0.2; // Mer Sud-Ouest
-    return 3.8;                                 // Relief Nord-Ouest
+    // Profil topographique d'horizon réel (Marseille / Notre-Dame de la Garde / Mer)
+    if (az >= 0.0 && az < 45.0)    return 1.2;  // Relief Nord
+    if (az >= 45.0 && az < 120.0)  return 2.8;  // Collines Est
+    if (az >= 120.0 && az < 210.0) return 4.5;  // Massif des Calanques / Sud
+    if (az >= 210.0 && az < 315.0) return -0.1; // Mer Méditerranée (Horizon dégagé)
+    return 1.5;                                 // Nord-Ouest urbain
 }
 
 extern "C" {
@@ -165,7 +168,7 @@ void calculerDepuisECEF(
 
     if (result->elevGeom > -5.0) {
         double refa, refb;
-        double humiditeRelative = 60.0;
+        double humiditeRelative = 50.0;
         double longueurOndeUm = 0.55;
         iauRefco(presHpa, tempC, humiditeRelative, longueurOndeUm, &refa, &refb);
         double zObsRad = (90.0 - result->elevGeom) * DEG2RAD;
