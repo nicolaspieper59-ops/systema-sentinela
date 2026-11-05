@@ -41,8 +41,6 @@ self.onmessage = function (e) {
             case 'COMPUTE':
                 if (!wasmPret) throw new Error("[FATAL] Module Wasm non initialisé.");
                 
-                // CORRECTION : On ne crashe plus si le WMM n'est pas encore prêt.
-                // On reporte simplement le calcul en attendant la fin du chargement asynchrone.
                 if (!wmmPret || !wmmTableauCoeffs || wmmTableauCoeffs.length === 0) {
                     console.warn("[WORKER] Calcul reporté : en attente des coefficients WMM2025.");
                     return;
@@ -312,4 +310,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: calculerWMM12x12Stricte(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear)
     });
-        }
+                          }
