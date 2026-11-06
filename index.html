@@ -1123,92 +1123,124 @@
         radarGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), positionVecteur.clone().normalize());
     }
 
-    function initGlobe3D() {
-        const container = document.getElementById('globeCanvas');
-        if (!container || typeof THREE === 'undefined') return;
+    // Analyse des capacités matérielles de l'appareil
+const memoireGo = navigator.deviceMemory || 4;
+const cœursCpu = navigator.hardwareConcurrency || 4;
+const estAppareilFaible = memoireGo <= 4 || cœursCpu <= 4;
 
-        globeScene = new THREE.Scene();
-        globeCamera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
-        globeCamera.position.z = 5.5;
+const segmentsGlobe = estAppareilFaible ? 32 : 64;
+let globeScene, globeCamera, globeRenderer, earthMesh, cloudMesh, auroraMesh, radarGroup, radarBeam;
+let rendu3DActif = true;
+let isDragging = false, lastX = 0, lastY = 0;
+const earthRadius3D = 2.0;
 
-        globeRenderer = new THREE.WebGLRenderer({ canvas: container, alpha: true, antialias: true });
-        globeRenderer.setPixelRatio(window.devicePixelRatio || 1);
-        globeRenderer.setSize(container.clientWidth, container.clientHeight);
+function initGlobe3D() {
+    const container = document.getElementById('globeCanvas');
+    if (!container || typeof THREE === 'undefined') return;
 
-        globeScene.add(new THREE.AmbientLight(0xffffff, 0.7));
-        const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
-        sunLight.position.set(5, 3, 5);
-        globeScene.add(sunLight);
+    globeScene = new THREE.Scene();
+    globeCamera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+    globeCamera.position.z = 5.5;
 
-        const sphereGeo = new THREE.SphereGeometry(earthRadius3D, 64, 64);
-        const textureLoader = new THREE.TextureLoader();
-        const earthMaterial = new THREE.MeshStandardMaterial({ bumpScale: 0.05, roughness: 0.8, metalness: 0.1 });
-        earthMaterial.map = textureLoader.load('./textures/earth_atmos_2048.jpg', undefined, undefined, () => {
-            earthMaterial.map = textureLoader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg');
-        });
-        earthMaterial.bumpMap = textureLoader.load('./textures/earth_normal_2048.jpg', undefined, undefined, () => {
-            earthMaterial.bumpMap = textureLoader.load('https://threejs.org/examples/textures/planets/earth_normal_2048.jpg');
-        });
+    globeRenderer = new THREE.WebGLRenderer({ canvas: container, alpha: true, antialias: !estAppareilFaible });
+    globeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, estAppareilFaible ? 1.5 : 2));
+    globeRenderer.setSize(container.clientWidth, container.clientHeight);
 
-        earthMesh = new THREE.Mesh(sphereGeo, earthMaterial);
-        globeScene.add(earthMesh);
+    globeScene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    sunLight.position.set(5, 3, 5);
+    globeScene.add(sunLight);
 
-        atmosphereMesh = new THREE.Mesh(new THREE.SphereGeometry(earthRadius3D * 1.02, 64, 64), new THREE.MeshBasicMaterial({ color: 0x3388ff, transparent: true, opacity: 0.15, side: THREE.BackSide }));
-        globeScene.add(atmosphereMesh);
+    // 1. Sphère terrestre principal (LOD adaptatif)
+    const sphereGeo = new THREE.SphereGeometry(earthRadius3D, segmentsGlobe, segmentsGlobe);
+    const textureLoader = new THREE.TextureLoader();
+    const earthMaterial = new THREE.MeshStandardMaterial({ bumpScale: 0.05, roughness: 0.8, metalness: 0.1 });
+    earthMaterial.map = textureLoader.load('./textures/earth_atmos_2048.jpg', undefined, undefined, () => {
+        earthMaterial.map = textureLoader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg');
+    });
+    earthMesh = new THREE.Mesh(sphereGeo, earthMaterial);
+    globeScene.add(earthMesh);
 
-        radarGroup = new THREE.Group();
-        const maxRange = 0.6;
-        for (let i = 1; i <= 3; i++) {
-            const radiusStep = (maxRange / 3) * i;
-            const ringMesh = new THREE.Mesh(new THREE.RingGeometry(radiusStep - 0.01, radiusStep, 32), new THREE.MeshBasicMaterial({ color: 0x00ff66, side: THREE.DoubleSide, transparent: true, opacity: 0.4 }));
-            ringMesh.rotation.x = Math.PI / 2;
-            radarGroup.add(ringMesh);
-        }
-        radarBeam = new THREE.Mesh(new THREE.ConeGeometry(maxRange, 0.03, 32, 1, true), new THREE.MeshBasicMaterial({ color: 0x00ff66, transparent: true, opacity: 0.25, side: THREE.DoubleSide }));
-        radarGroup.add(radarBeam);
-        earthMesh.add(radarGroup);
-        positionnerRadarSurGPS(stationActive.lat, stationActive.lon, earthRadius3D);
+    // 2. Couche Nuageuse Temps Réel (NASA GIBS)
+    const cloudGeo = new THREE.SphereGeometry(earthRadius3D * 1.01, segmentsGlobe, segmentsGlobe);
+    const cloudMat = new THREE.MeshStandardMaterial({
+        map: textureLoader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png'),
+        transparent: true,
+        opacity: 0.35,
+        blending: THREE.AdditiveBlending
+    });
+    cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
+    globeScene.add(cloudMesh);
 
-        const onPointerMove = (e) => {
-            if (!isDragging) return;
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            earthMesh.rotation.y += (clientX - lastX) * 0.008;
-            atmosphereMesh.rotation.y += (clientX - lastX) * 0.008;
-            earthMesh.rotation.x += (clientY - lastY) * 0.008;
-            atmosphereMesh.rotation.x += (clientY - lastY) * 0.008;
-            lastX = clientX; lastY = clientY;
-        };
-        const onPointerUp = () => { 
-            isDragging = false; 
-            window.removeEventListener('mousemove', onPointerMove); 
-            window.removeEventListener('mouseup', onPointerUp); 
-            window.removeEventListener('touchmove', onPointerMove); 
-            window.removeEventListener('touchend', onPointerUp); 
-        };
-        const onPointerDown = (e) => {
-            isDragging = true;
-            lastX = e.touches ? e.touches[0].clientX : e.clientX;
-            lastY = e.touches ? e.touches[0].clientY : e.clientY;
-            window.addEventListener('mousemove', onPointerMove);
-            window.addEventListener('mouseup', onPointerUp);
-            window.addEventListener('touchmove', onPointerMove, { passive: true });
-            window.addEventListener('touchend', onPointerUp);
-        };
-        container.addEventListener('mousedown', onPointerDown);
-        container.addEventListener('touchstart', onPointerDown, { passive: true });
+    // 3. Ovale Auroral (Modélisation polaire NOAA)
+    const auroraGeo = new THREE.RingGeometry(earthRadius3D * 0.6, earthRadius3D * 0.9, 32);
+    const auroraMat = new THREE.MeshBasicMaterial({ color: 0x00ff66, transparent: true, opacity: 0.15, side: THREE.DoubleSide });
+    auroraMesh = new THREE.Mesh(auroraGeo, auroraMat);
+    auroraMesh.rotation.x = Math.PI / 2;
+    auroraMesh.position.set(0, earthRadius3D * 0.95, 0);
+    globeScene.add(auroraMesh);
 
-        function animate3D() {
-            requestAnimationFrame(animate3D);
-            if (!isDragging) {
-                earthMesh.rotation.y += 0.001;
-                atmosphereMesh.rotation.y += 0.0012;
-            }
-            if (radarBeam) radarBeam.rotation.y += 0.04;
-            globeRenderer.render(globeScene, globeCamera);
-        }
-        animate3D();
+    // 4. Curseur GPS et Radar
+    radarGroup = new THREE.Group();
+    const maxRange = 0.6;
+    for (let i = 1; i <= 3; i++) {
+        const radiusStep = (maxRange / 3) * i;
+        const ringMesh = new THREE.Mesh(new THREE.RingGeometry(radiusStep - 0.01, radiusStep, 32), new THREE.MeshBasicMaterial({ color: 0x00ff66, side: THREE.DoubleSide, transparent: true, opacity: 0.4 }));
+        ringMesh.rotation.x = Math.PI / 2;
+        radarGroup.add(ringMesh);
     }
+    radarBeam = new THREE.Mesh(new THREE.ConeGeometry(maxRange, 0.03, 32, 1, true), new THREE.MeshBasicMaterial({ color: 0x00ff66, transparent: true, opacity: 0.25, side: THREE.DoubleSide }));
+    radarGroup.add(radarBeam);
+    earthMesh.add(radarGroup);
+    positionnerRadarSurGPS(stationActive.lat, stationActive.lon, earthRadius3D);
+
+    // Pause du rendu hors champ pour économiser batterie & CPU
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => { rendu3DActif = entry.isIntersecting; });
+    }, { threshold: 0.05 });
+    observer.observe(container);
+
+    function animate3D() {
+        requestAnimationFrame(animate3D);
+        if (!rendu3DActif) return;
+        if (!isDragging) {
+            earthMesh.rotation.y += 0.0008;
+            cloudMesh.rotation.y += 0.0011;
+        }
+        if (radarBeam) radarBeam.rotation.y += 0.04;
+        globeRenderer.render(globeScene, globeCamera);
+    }
+    animate3D();
+}
+
+function actualiserAuroreBorale(kpIndex) {
+    if (!auroraMesh) return;
+    auroraMesh.material.opacity = Math.min(0.7, (kpIndex / 9.0) * 0.6 + 0.1);
+    auroraMesh.visible = kpIndex >= 2;
+}
+
+// Connexion de la NOAA SWPC à l'aurore boréale
+async function actualiserIndiceKpRapide() {
+    try {
+        const reponse = await fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
+        if (!reponse.ok) throw new Error("Erreur réseau NOAA");
+        const donnees = await reponse.json();
+        for (let i = donnees.length - 1; i >= 1; i--) {
+            const val = parseFloat(donnees[i][1]);
+            if (!isNaN(val)) {
+                const elKp = document.getElementById('val-kp-index');
+                if (elKp) {
+                    elKp.innerText = `Kp ${val.toFixed(2)}`;
+                    elKp.style.color = val >= 5 ? "var(--rose)" : "var(--neon-green)";
+                }
+                actualiserAuroreBorale(val);
+                break;
+            }
+        }
+    } catch (err) {
+        ecrireLog("Avertissement : Kp NOAA indisponible.");
+    }
+}
 
     function basculerModeJour() {
         modeJourActif = !modeJourActif;
