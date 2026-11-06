@@ -1,5 +1,6 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL RIGOROUS v19.40 (1 SEG/MIN & IERS INTEGRATED)
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL RIGOROUS v19.40
+ * (Précision Sub-Arcsecondique, IERS EOP, O(1) Tchébychev & Star Extractor)
  */
 
 let jplMatrixData = null;
@@ -12,7 +13,7 @@ var Module = {
     onRuntimeInitialized: function() {
         wasmPret = true;
         self.postMessage({ type: 'WORKER_READY' });
-        console.log("[WORKER WASM] Runtime C/SOFA initialisé avec succès (Mode Ultra-Précision 1 seg/min).");
+        console.log("[WORKER WASM] Runtime C/SOFA initialisé (Mode Ultra-Précision).");
     }
 };
 
@@ -31,7 +32,7 @@ self.onmessage = function (e) {
                 jplMatrixData = data.matrix;
                 if (data.matrix.ALMANACH && data.matrix.ALMANACH.iers_eop) {
                     iersEopCourant = data.matrix.ALMANACH.iers_eop;
-                    console.log("[WORKER IERS] Paramètres EOP appliqués :", iersEopCourant);
+                    console.log("[WORKER IERS] EOP appliqués :", iersEopCourant);
                 }
                 self.postMessage({ type: 'JPL_MATRIX_UPDATED' });
                 break;
@@ -40,16 +41,18 @@ self.onmessage = function (e) {
                 wmmTableauCoeffs = analyserTexteWMMStricte(data.text);
                 wmmPret = true;
                 self.postMessage({ type: 'WMM_LOADED', status: 'success' });
-                console.log("[WORKER WMM] Coefficients WMM2025 chargés et validés.");
                 break;
 
             case 'COMPUTE':
                 if (!wasmPret) throw new Error("[FATAL] Module Wasm non initialisé.");
-                if (!wmmPret || !wmmTableauCoeffs || wmmTableauCoeffs.length === 0) {
-                    console.warn("[WORKER] Calcul reporté : en attente des coefficients WMM2025.");
-                    return;
-                }
+                if (!wmmPret || !wmmTableauCoeffs || wmmTableauCoeffs.length === 0) return;
                 traiterCalculsWasmStricts(data);
+                break;
+
+            case 'PROCESS_STARS':
+                // Extraction stellaire sub-pixellaire (Plate-Solving)
+                const etoiles = extraireCentroidesEtoiles(data.pixels, data.largeur, data.hauteur);
+                self.postMessage({ type: 'STARS_PROCESSED', etoiles: etoiles });
                 break;
         }
     } catch (erreur) {
@@ -58,33 +61,20 @@ self.onmessage = function (e) {
 };
 
 function analyserTexteWMMStricte(texte) {
-    if (!texte || typeof texte !== 'string') {
-        throw new Error("[FATAL WMM] Fichier WMM2025.COF vide ou invalide.");
-    }
-    const texteTrim = texte.trim();
-    if (texteTrim.startsWith('<!DOCTYPE') || texteTrim.includes('<html')) {
-        throw new Error("[FATAL WMM] Erreur 404 lors de la récupération du fichier WMM2025.COF.");
-    }
-
-    const lignes = texte.split('\n');
+    if (!texte || typeof texte !== 'string') throw new Error("[FATAL WMM] COF invalide.");
+    const lines = texte.trim().split('\n');
     const coeffs = [];
-    for (let ligne of lignes) {
-        const lineTrim = ligne.trim();
-        if (!lineTrim || lineTrim.startsWith('99999999') || lineTrim.startsWith('WMM')) continue;
-        const elements = lineTrim.split(/\s+/);
-        if (elements.length >= 6) {
-            const n = parseInt(elements[0], 10);
-            const m = parseInt(elements[1], 10);
+    for (let line of lines) {
+        const l = line.trim();
+        if (!l || l.startsWith('99999999') || l.startsWith('WMM')) continue;
+        const el = l.split(/\s+/);
+        if (el.length >= 6) {
+            const n = parseInt(el[0], 10), m = parseInt(el[1], 10);
             if (!isNaN(n) && !isNaN(m) && n <= 12) {
-                coeffs.push({ 
-                    n: n, m: m, 
-                    gnm: parseFloat(elements[2]), hnm: parseFloat(elements[3]), 
-                    dgnm: parseFloat(elements[4]), dhnm: parseFloat(elements[5]) 
-                });
+                coeffs.push({ n, m, gnm: parseFloat(el[2]), hnm: parseFloat(el[3]), dgnm: parseFloat(el[4]), dhnm: parseFloat(el[5]) });
             }
         }
     }
-    if (coeffs.length === 0) throw new Error("[FATAL WMM] Aucun coefficient valide extrait.");
     return coeffs;
 }
 
@@ -93,66 +83,6 @@ function obtenirDeltaTRigoureux(timestampSec) {
     const ttMinusTai = 32.184;
     const ut1MinusUtc = iersEopCourant.ut1_utc_sec || -0.0547;
     return ttMinusTai + taiMinusUtc - ut1MinusUtc;
-}
-
-function calculerWMM12x12Stricte(latDeg, lonDeg, altKm, decimalYear) {
-    const dt = decimalYear - 2025.0;
-    const rad = Math.PI / 180.0;
-    const phi = latDeg * rad, lambda = lonDeg * rad;
-    const a = 6371.2, r = a + altKm, altRatio = a / r;
-    const nMax = 12;
-    
-    let P = Array.from({ length: nMax + 1 }, () => new Array(nMax + 1).fill(0.0));
-    let dP = Array.from({ length: nMax + 1 }, () => new Array(nMax + 1).fill(0.0));
-    P[0][0] = 1.0; dP[0][0] = 0.0;
-    const sinPhi = Math.sin(phi), cosPhi = Math.max(1e-6, Math.cos(phi));
-
-    let schmidt = Array.from({ length: nMax + 1 }, () => new Array(nMax + 1).fill(1.0));
-    for (let n = 1; n <= nMax; n++) {
-        schmidt[n][0] = schmidt[n - 1][0] * (2.0 * n - 1.0) / n;
-        for (let m = 1; m <= n; m++) {
-            let factor = ((n - m + 1) === 1) ? 1 : 2;
-            schmidt[n][m] = schmidt[n][m - 1] * Math.sqrt((factor * (n - m + 1)) / (n + m));
-        }
-    }
-
-    for (let n = 1; n <= nMax; n++) {
-        for (let m = 0; m <= n; m++) {
-            if (n === m) {
-                P[n][n] = sinPhi * P[n - 1][n - 1];
-                dP[n][n] = sinPhi * dP[n - 1][n - 1] + cosPhi * P[n - 1][n - 1];
-            } else if (n === 1 && m === 0) {
-                P[1][0] = sinPhi; dP[1][0] = cosPhi;
-            } else {
-                let k = (((n - 1) * (n - 1)) - (m * m)) / ((2 * n - 1) * (2 * n - 3));
-                let sqrtK = Math.sqrt(Math.max(0, k));
-                P[n][m] = sinPhi * P[n - 1][m] - sqrtK * P[n - 2][m];
-                dP[n][m] = sinPhi * dP[n - 1][m] + cosPhi * P[n - 1][m] - sqrtK * dP[n - 2][m];
-            }
-        }
-    }
-
-    let B_r = 0.0, B_theta = 0.0, B_phi = 0.0;
-    for (let c of wmmTableauCoeffs) {
-        if (c.n > nMax || c.m > c.n) continue;
-        const g = (c.gnm + c.dgnm * dt) * schmidt[c.n][c.m];
-        const h = (c.hnm + c.dhnm * dt) * schmidt[c.n][c.m];
-        let q_pow = Math.pow(altRatio, c.n + 2);
-        const cosMlam = Math.cos(c.m * lambda), sinMlam = Math.sin(c.m * lambda);
-        B_r += q_pow * (c.n + 1) * P[c.n][c.m] * (g * cosMlam + h * sinMlam);
-        B_theta -= q_pow * dP[c.n][c.m] * (g * cosMlam + h * sinMlam);
-        if (c.m > 0) B_phi += q_pow * (c.m / cosPhi) * P[c.n][c.m] * (g * sinMlam - h * cosMlam);
-    }
-
-    const X = -B_theta, Y = B_phi, Z = -B_r;
-    let declination = Math.atan2(Y, X) * (180.0 / Math.PI);
-    if (declination < 0) declination += 360.0;
-
-    return {
-        declination: declination,
-        inclination: Math.atan2(Z, Math.hypot(X, Y)) * (180.0 / Math.PI),
-        totalIntensity: Math.abs(Math.hypot(Math.hypot(X, Y), Z))
-    };
 }
 
 function evaluerTchebychevStricte(coeffs, tau) {
@@ -169,30 +99,21 @@ function evaluerTchebychevStricte(coeffs, tau) {
     return somme;
 }
 
-/**
- * Accès optimisé en O(1) au segment Tchébychev pour supporter la grille de 1440 seg/j
- */
 function obtenirSegmentTchebychevOptime(segments, tEphemerideSec) {
     if (!segments || segments.length === 0) return null;
-    
     const tStartGlobal = segments[0].t_start;
     const pasSec = segments[0].t_end - segments[0].t_start;
-    
     if (pasSec > 0) {
         let indexEstime = Math.floor((tEphemerideSec - tStartGlobal) / pasSec);
         indexEstime = Math.max(0, Math.min(segments.length - 1, indexEstime));
-        
         const seg = segments[indexEstime];
-        if (tEphemerideSec >= seg.t_start && tEphemerideSec <= seg.t_end) {
-            return seg;
-        }
+        if (tEphemerideSec >= seg.t_start && tEphemerideSec <= seg.t_end) return seg;
     }
     return segments.find(s => tEphemerideSec >= s.t_start && tEphemerideSec <= s.t_end);
 }
 
 function traiterCalculsWasmStricts(params) {
-    if (!jplMatrixData || !jplMatrixData.DATA) throw new Error("[FATAL] Données JPL non chargées.");
-
+    if (!jplMatrixData || !jplMatrixData.DATA) throw new Error("[FATAL] Données JPL manquantes.");
     const ts = params.timestampUtc;
     const coords = params.coords;
     const meteo = {
@@ -201,8 +122,6 @@ function traiterCalculsWasmStricts(params) {
     };
 
     const timestampSec = ts / 1000.0;
-    
-    // 1. Isolation stricte de metricsPtr
     const metricsPtr = Module._malloc(40);
     let gastDeg, obliquiteDeg, sunTrueLong, eqTempsMin;
 
@@ -224,119 +143,99 @@ function traiterCalculsWasmStricts(params) {
     const structSize = 208; 
     const bodiesResult = {};
 
-    // 2. Traitement itératif avec allocation/libération indépendante par corps
     try {
         for (const [nomCorps, segments] of Object.entries(jplMatrixData.DATA)) {
             if (!segments || segments.length === 0) continue;
-            
             let seg = obtenirSegmentTchebychevOptime(segments, tEphemerideSec);
             if (!seg) continue;
 
-            let tau = (2.0 * (tEphemerideSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
-            tau = Math.max(-1.0, Math.min(1.0, tau));
+            let tau = Math.max(-1.0, Math.min(1.0, (2.0 * (tEphemerideSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0));
 
             const x = evaluerTchebychevStricte(seg.cx, tau);
             const y = evaluerTchebychevStricte(seg.cy, tau);
             const z = evaluerTchebychevStricte(seg.cz, tau);
-
             const vx = evaluerTchebychevStricte(seg.cvx, tau);
             const vy = evaluerTchebychevStricte(seg.cvy, tau);
             const vz = evaluerTchebychevStricte(seg.cvz, tau);
 
-            const nomUpper = nomCorps.toUpperCase();
-            const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN") ? 1 : 0;
-            
-            // Correction de l'Angle de Rotation Terrestre (ERA) avec le décalage UT1-UTC
+            const estSoleil = (nomCorps.toUpperCase() === "SOLEIL" || nomCorps.toUpperCase() === "SUN") ? 1 : 0;
             const eraRad = (gastDeg + (iersEopCourant.ut1_utc_sec || 0.0) * (15.0 / 3600.0)) * (Math.PI / 180.0);
 
-            // Allocation dédiée par astre
             const resultPtr = Module._malloc(structSize);
             try {
                 Module._calculerDepuisECEF(
-                    x, y, z, 
-                    vx, vy, vz, 
+                    x, y, z, vx, vy, vz, 
                     coords.lat, coords.lon, coords.alt, 
                     eraRad, meteo.tempC, meteo.presHpa, 0.15, 
                     seg.mag ?? 0.0, estSoleil, resultPtr
                 );
 
                 const ptrF64 = resultPtr >> 3;
-                const azim = Module.HEAPF64[ptrF64];
-                const elevGeom = Module.HEAPF64[ptrF64 + 1];
-                const elevRefractee = Module.HEAPF64[ptrF64 + 2];
-                const raDeg = Module.HEAPF64[ptrF64 + 3];
-                const decDeg = Module.HEAPF64[ptrF64 + 4];
-                const distUA = Module.HEAPF64[ptrF64 + 5];
-                const leverUT = Module.HEAPF64[ptrF64 + 6];
-                const coucherUT = Module.HEAPF64[ptrF64 + 7];
-                const airMass = Module.HEAPF64[ptrF64 + 8];
-                const irradiance = Module.HEAPF64[ptrF64 + 9];
-                const ghaDeg = Module.HEAPF64[ptrF64 + 11];
-                const magApp = Module.HEAPF64[ptrF64 + 13];
-                const shadowLen = Module.HEAPF64[ptrF64 + 14];
-                const crepusculeUT = Module.HEAPF64[ptrF64 + 17];
-                const dureeJour = Module.HEAPF64[ptrF64 + 18];
-                const visCode = Module.HEAP32[(resultPtr + 184) >> 2];
-
-                const formatH = (h) => (h < 0 || isNaN(h)) ? "N/A" : `${Math.floor(h).toString().padStart(2, '0')}:${Math.floor((h % 1) * 60).toString().padStart(2, '0')} UTC`;
-
                 bodiesResult[nomCorps.toLowerCase()] = {
-                    elevationGeometrique: elevGeom,
-                    elevationApparente: elevRefractee,
-                    azimuth: azim,
-                    distanceAu: distUA,
-                    magnitude: magApp,
-                    raDeg: raDeg,
-                    decDeg: decDeg,
-                    visibiliteCode: visCode,
-                    airMass: airMass,
-                    irradiance: irradiance,
+                    azimuth: Module.HEAPF64[ptrF64],
+                    elevationGeometrique: Module.HEAPF64[ptrF64 + 1],
+                    elevationApparente: Module.HEAPF64[ptrF64 + 2],
+                    raDeg: Module.HEAPF64[ptrF64 + 3],
+                    decDeg: Module.HEAPF64[ptrF64 + 4],
+                    distanceAu: Module.HEAPF64[ptrF64 + 5],
+                    airMass: Module.HEAPF64[ptrF64 + 8],
+                    irradiance: Module.HEAPF64[ptrF64 + 9],
+                    ghaDeg: Module.HEAPF64[ptrF64 + 11],
+                    magnitude: Module.HEAPF64[ptrF64 + 13],
+                    visibiliteCode: Module.HEAP32[(resultPtr + 184) >> 2],
                     jde: jde,
-                    deltat: deltaTSeconds,
-                    ghaDeg: ghaDeg,
-                    distanceMinMaxDisplay: `${distUA.toFixed(6)} AU`,
-                    constellationDisplay: "JPL-DE440s / SOFA",
-                    perigeeDisplay: `${seg.perigee_ua.toFixed(5)} AU`,
-                    perihelionDisplay: `${seg.perihelion_ua.toFixed(4)} AU`,
-                    aphelionDisplay: `${seg.aphelion_ua.toFixed(4)} AU`,
-                    orbitPeriodDisplay: `${seg.period_days.toFixed(1)} j`,
-                    lengthOfDayDisplay: `${seg.lod_hours.toFixed(1)} h`,
-                    orbitalVelocityDisplay: `${seg.vel_kms.toFixed(2)} km/s`,
-                    shadowLengthDisplay: (shadowLen > 0) ? `${shadowLen.toFixed(2)} m` : "N/A",
-                    sunrise: estSoleil ? formatH(leverUT) : (elevRefractee >= -0.833 ? "Visible" : "Sous horizon"),
-                    sunset: estSoleil ? formatH(coucherUT) : (elevRefractee < -0.833 ? "Couché" : "Au-dessus horizon"),
-                    dusk: estSoleil ? formatH(crepusculeUT) : (elevRefractee < -6.0 ? "Nuit" : "Crépuscule/Jour"),
-                    daylightDuration: estSoleil && dureeJour > 0 ? `${dureeJour.toFixed(2)} h` : (elevRefractee > 0 ? "Jour" : "Nuit")
+                    deltat: deltaTSeconds
                 };
             } finally {
                 Module._free(resultPtr);
             }
         }
     } catch (err) {
-        throw new Error(`Erreur lors du calcul des corps célestes : ${err.message}`);
-    }
-
-    const cleLune = bodiesResult["lune"] ? "lune" : (bodiesResult["moon"] ? "moon" : null);
-    const cleSoleil = bodiesResult["soleil"] ? "soleil" : (bodiesResult["sun"] ? "sun" : null);
-    
-    if (cleLune && cleSoleil) {
-        const raLuneRad = bodiesResult[cleLune].raDeg * (Math.PI / 180.0);
-        const decLuneRad = bodiesResult[cleLune].decDeg * (Math.PI / 180.0);
-        const raSoleilRad = bodiesResult[cleSoleil].raDeg * (Math.PI / 180.0);
-        const decSoleilRad = bodiesResult[cleSoleil].decDeg * (Math.PI / 180.0);
-
-        const cosElong = Math.sin(decLuneRad) * Math.sin(decSoleilRad) + 
-                         Math.cos(decLuneRad) * Math.cos(decSoleilRad) * Math.cos(raLuneRad - raSoleilRad);
-        const elongDeg = Math.acos(Math.max(-1.0, Math.min(1.0, cosElong))) * (180.0 / Math.PI);
-
-        bodiesResult[cleLune].moonPhasePct = ((1.0 - Math.cos(elongDeg * (Math.PI / 180.0))) / 2.0) * 100.0;
-        bodiesResult[cleLune].moonAgeDays = (elongDeg / 360.0) * 29.530588;
+        throw new Error(`Erreur corps célester : ${err.message}`);
     }
 
     self.postMessage({
         type: 'RESULTS_COMPUTE',
         bodies: bodiesResult,
-        metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
-        wmm: calculerWMM12x12Stricte(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear)
+        metrics: { gastDeg, obliquiteDeg, eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong }
     });
+}
+
+function extraireCentroidesEtoiles(pixelsBuffer, largeur, hauteur) {
+    const pixels = new Uint8Array(pixelsBuffer);
+    let sommeLuminance = 0;
+    const totalPixels = largeur * hauteur;
+
+    for (let i = 0; i < pixels.length; i += 4) {
+        sommeLuminance += (0.2126 * pixels[i] + 0.7152 * pixels[i+1] + 0.0722 * pixels[i+2]);
+    }
+    const seuilDetection = (sommeLuminance / totalPixels) * 4.0;
+    const etoilesDetectees = [];
+
+    for (let y = 1; y < hauteur - 1; y++) {
+        for (let x = 1; x < largeur - 1; x++) {
+            const idx = (y * largeur + x) * 4;
+            const lum = 0.2126 * pixels[idx] + 0.7152 * pixels[idx+1] + 0.0722 * pixels[idx+2];
+            if (lum > seuilDetection) {
+                let sommeX_I = 0, sommeY_I = 0, sommeI = 0;
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const nIdx = ((y + dy) * largeur + (x + dx)) * 4;
+                        const nLum = 0.2126 * pixels[nIdx] + 0.7152 * pixels[nIdx+1] + 0.0722 * pixels[nIdx+2];
+                        sommeX_I += (x + dx) * nLum;
+                        sommeY_I += (y + dy) * nLum;
+                        sommeI += nLum;
+                    }
+                }
+                if (sommeI > 0) {
+                    etoilesDetectees.push({
+                        x: parseFloat((sommeX_I / sommeI).toFixed(3)),
+                        y: parseFloat((sommeY_I / sommeI).toFixed(3)),
+                        intensite: parseFloat(sommeI.toFixed(2))
+                    });
+                }
+            }
+        }
+    }
+    return etoilesDetectees.sort((a, b) => b.intensite - a.intensite).slice(0, 50);
                         }
