@@ -1,17 +1,18 @@
 /**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL RIGOROUS (CORRIGÉ & SÉCURISÉ)
+ * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL RIGOROUS v19.40 (1 SEG/MIN & IERS INTEGRATED)
  */
 
 let jplMatrixData = null;
 let wmmTableauCoeffs = null;
 let wasmPret = false;
 let wmmPret = false;
+let iersEopCourant = { xp_arcsec: 0.0, yp_arcsec: 0.0, ut1_utc_sec: -0.0547 };
 
 var Module = {
     onRuntimeInitialized: function() {
         wasmPret = true;
         self.postMessage({ type: 'WORKER_READY' });
-        console.log("[WORKER WASM] Runtime C/SOFA initialisé avec succès (Mode Strict).");
+        console.log("[WORKER WASM] Runtime C/SOFA initialisé avec succès (Mode Ultra-Précision 1 seg/min).");
     }
 };
 
@@ -28,6 +29,10 @@ self.onmessage = function (e) {
                     throw new Error("[FATAL WMM/JPL] Matrice JPL invalide ou corrompue.");
                 }
                 jplMatrixData = data.matrix;
+                if (data.matrix.ALMANACH && data.matrix.ALMANACH.iers_eop) {
+                    iersEopCourant = data.matrix.ALMANACH.iers_eop;
+                    console.log("[WORKER IERS] Paramètres EOP appliqués :", iersEopCourant);
+                }
                 self.postMessage({ type: 'JPL_MATRIX_UPDATED' });
                 break;
 
@@ -58,7 +63,7 @@ function analyserTexteWMMStricte(texte) {
     }
     const texteTrim = texte.trim();
     if (texteTrim.startsWith('<!DOCTYPE') || texteTrim.includes('<html')) {
-        throw new Error("[FATAL WMM] Le fichier WMM2025.COF récupéré est une page HTML (Erreur 404 GitHub Pages).");
+        throw new Error("[FATAL WMM] Erreur 404 lors de la récupération du fichier WMM2025.COF.");
     }
 
     const lignes = texte.split('\n');
@@ -79,18 +84,15 @@ function analyserTexteWMMStricte(texte) {
             }
         }
     }
-    if (coeffs.length === 0) {
-        throw new Error("[FATAL WMM] Aucun coefficient valide extrait du fichier COF.");
-    }
+    if (coeffs.length === 0) throw new Error("[FATAL WMM] Aucun coefficient valide extrait.");
     return coeffs;
 }
 
-function calculerDeltaTDynamique(decimalYear) {
-    const t = decimalYear - 2000.0;
-    if (decimalYear >= 2020.0) {
-        return 69.36 + 0.1 * (decimalYear - 2020.0);
-    }
-    return (decimalYear < 2015.0) ? (62.92 + 0.32217 * t + 0.005589 * t * t) : (68.3 + 0.45 * (decimalYear - 2015.0));
+function obtenirDeltaTRigoureux(timestampSec) {
+    const taiMinusUtc = 37.0; 
+    const ttMinusTai = 32.184;
+    const ut1MinusUtc = iersEopCourant.ut1_utc_sec || -0.0547;
+    return ttMinusTai + taiMinusUtc - ut1MinusUtc;
 }
 
 function calculerWMM12x12Stricte(latDeg, lonDeg, altKm, decimalYear) {
@@ -167,6 +169,27 @@ function evaluerTchebychevStricte(coeffs, tau) {
     return somme;
 }
 
+/**
+ * Accès optimisé en O(1) au segment Tchébychev pour supporter la grille de 1440 seg/j
+ */
+function obtenirSegmentTchebychevOptime(segments, tEphemerideSec) {
+    if (!segments || segments.length === 0) return null;
+    
+    const tStartGlobal = segments[0].t_start;
+    const pasSec = segments[0].t_end - segments[0].t_start;
+    
+    if (pasSec > 0) {
+        let indexEstime = Math.floor((tEphemerideSec - tStartGlobal) / pasSec);
+        indexEstime = Math.max(0, Math.min(segments.length - 1, indexEstime));
+        
+        const seg = segments[indexEstime];
+        if (tEphemerideSec >= seg.t_start && tEphemerideSec <= seg.t_end) {
+            return seg;
+        }
+    }
+    return segments.find(s => tEphemerideSec >= s.t_start && tEphemerideSec <= s.t_end);
+}
+
 function traiterCalculsWasmStricts(params) {
     if (!jplMatrixData || !jplMatrixData.DATA) throw new Error("[FATAL] Données JPL non chargées.");
 
@@ -195,7 +218,7 @@ function traiterCalculsWasmStricts(params) {
 
     const jde = (ts / 86400000.0) + 2440587.5;
     const decimalYear = 2000.0 + (jde - 2451545.0) / 365.25;
-    const deltaTSeconds = calculerDeltaTDynamique(decimalYear); 
+    const deltaTSeconds = obtenirDeltaTRigoureux(timestampSec); 
     const tEphemerideSec = timestampSec + deltaTSeconds;
 
     const structSize = 208; 
@@ -205,7 +228,8 @@ function traiterCalculsWasmStricts(params) {
     try {
         for (const [nomCorps, segments] of Object.entries(jplMatrixData.DATA)) {
             if (!segments || segments.length === 0) continue;
-            let seg = segments.find(s => tEphemerideSec >= s.t_start && tEphemerideSec <= s.t_end);
+            
+            let seg = obtenirSegmentTchebychevOptime(segments, tEphemerideSec);
             if (!seg) continue;
 
             let tau = (2.0 * (tEphemerideSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
@@ -221,9 +245,11 @@ function traiterCalculsWasmStricts(params) {
 
             const nomUpper = nomCorps.toUpperCase();
             const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN") ? 1 : 0;
-            const eraRad = gastDeg * (Math.PI / 180.0);
+            
+            // Correction de l'Angle de Rotation Terrestre (ERA) avec le décalage UT1-UTC
+            const eraRad = (gastDeg + (iersEopCourant.ut1_utc_sec || 0.0) * (15.0 / 3600.0)) * (Math.PI / 180.0);
 
-            // Allocation dédiée par astre pour éviter toute interférence mémoire
+            // Allocation dédiée par astre
             const resultPtr = Module._malloc(structSize);
             try {
                 Module._calculerDepuisECEF(
@@ -283,7 +309,7 @@ function traiterCalculsWasmStricts(params) {
                     daylightDuration: estSoleil && dureeJour > 0 ? `${dureeJour.toFixed(2)} h` : (elevRefractee > 0 ? "Jour" : "Nuit")
                 };
             } finally {
-                Module._free(resultPtr); // Libération immédiate par itération
+                Module._free(resultPtr);
             }
         }
     } catch (err) {
@@ -313,4 +339,4 @@ function traiterCalculsWasmStricts(params) {
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong },
         wmm: calculerWMM12x12Stricte(coords.lat, coords.lon, coords.alt / 1000.0, decimalYear)
     });
-}
+                        }
