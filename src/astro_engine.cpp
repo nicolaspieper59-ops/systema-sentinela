@@ -189,11 +189,18 @@ void calculerDepuisECEF(
     }
 
     if (result->elevRefractee > 0.0) {
-        double sinH = std::sin(result->elevRefractee * DEG2RAD);
-        result->airMass = 1.0 / (sinH + 0.025 * std::exp(-11.0 * sinH));
+        double elevRad = result->elevRefractee * DEG2RAD;
+        double hDeg = result->elevRefractee;
+        
+        // Modèle de Kasten & Young (1989) pour la masse d'air standard
+        double airMassStd = 1.0 / (std::sin(elevRad) + 0.50572 * std::pow(6.07995 + std::fmax(0.0, hDeg), -1.6364));
+        
+        // Correction barométrique rigoureuse : proportionnelle à la pression locale (hPa) par rapport à la référence (1013.25 hPa)
+        double facteurPression = presHpa / 1013.25;
+        result->airMass = airMassStd * facteurPression;
     } else {
         result->airMass = -1.0; 
-    }
+}
 
     result->magnitudeApparente = magBruteAstre + (extinctionCoeff * std::fmax(0.0, result->airMass));
     
