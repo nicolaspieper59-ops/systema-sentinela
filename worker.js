@@ -284,3 +284,94 @@ function extraireCentroidesEtoiles(pixelsBuffer, largeur, hauteur) {
     etoilesDetectees.sort((a, b) => b.intensite - a.intensite);
     return etoilesDetectees.slice(0, 50);
         }
+
+function calculerLueurFondCiel(hauteurSoleilDeg, hauteurLuneDeg, phaseLunePct) {
+    // 1. Si le Soleil est au-dessus de -18°, c'est le Soleil qui pilote la lueur crépusculaire
+    if (hauteurSoleilDeg > -18.0) {
+        return { source: "SOLEIL", intensite: estimerLueurSolaire(hauteurSoleilDeg) };
+    }
+
+    // 2. Si la nuit est noire, on vérifie si la Lune est levée et assez brillante
+    if (hauteurLuneDeg >= 0.0 && phaseLunePct >= 50.0) {
+        // La Lune crée un "crépuscule lunaire" proportionnel à sa phase et sa hauteur
+        let intensiteLunaire = (phaseLunePct / 100.0) * Math.sin(hauteurLuneDeg * Math.PI / 180.0);
+        if (intensiteLunaire > 0.05) {
+            return { source: "LUNE", intensite: intensiteLunaire };
+        }
+    }
+
+    // 3. Sinon : Nuit noire complète
+    return { source: "AUCUNE", intensite: 0.0 };
+}
+/**
+ * Calcule les paramètres astronomiques et temporels adaptés pour un corps donné
+ * @param {string} nomAstre - Nom de l'astre ('SOLEIL', 'LUNE', 'VENUS', etc.)
+ * @param {number} jde - Jour Julian en dynamique (JDE)
+ * @param {Object} station - Coordonnées de l'observateur { lat, lon, alt }
+ * @returns {Object} Paramètres formatés pour l'affichage
+ */
+function calculerParametresAvancesAstre(nomAstre, jde, station) {
+    // Si c'est le Soleil, on utilise les formules classiques de référence terrestre
+    if (nomAstre === 'SOLEIL') {
+        const T = (jde - 2451545.0) / 36525.0;
+        
+        // Obliquité moyenne de l'écliptique (formule IAU)
+        const obliquite = 23.4392911 - (0.0130042 * T);
+        
+        // Excentricité de l'orbite terrestre
+        const excentricite = 0.016708634 - (0.000042037 * T);
+        
+        // Longitude écliptique solaire approchée (en degrés)
+        const L0 = 280.46646 + 36000.76983 * T;
+        const M = 357.52911 + 35999.05029 * T;
+        const lonSolaire = (L0 + 1.914602 * Math.sin(M * Math.PI / 180)) % 360;
+
+        // Équation du temps (en minutes)
+        const y = Math.tan((obliquite / 2) * (Math.PI / 180));
+        const y2 = y * y;
+        const M_rad = M * (Math.PI / 180);
+        const L0_rad = (L0 - 2.828) * (Math.PI / 180);
+        const eqTempsMin = 4 * (y2 * Math.sin(2 * L0_rad) - 2 * excentricite * Math.sin(M_rad) + 
+                            4 * excentricite * y2 * Math.sin(M_rad) * Math.cos(2 * L0_rad) - 
+                            0.5 * y2 * y2 * Math.sin(4 * L0_rad) - 1.25 * excentricite * excentricite * Math.sin(2 * M_rad)) * (180 / Math.PI);
+
+        return {
+            equationDuTemps: eqTempsMin.toFixed(4) + " min",
+            excentricite: excentricite.toFixed(8),
+            obliquite: obliquite.toFixed(4) + "°",
+            longitude: lonSolaire.toFixed(4) + "°",
+            typeTemps: "Solaire (TSM / TSV)"
+        };
+    } 
+    
+    // Pour les Planètes et la Lune : Adaptation généralisée
+    else {
+        // Paramètres orbitaux propres (valeurs moyennes ou issues du noyau JPL Wasm)
+        const orbitalParams = obtenirParamsPlanetaireWasm(nomAstre); 
+
+        return {
+            equationDuTemps: orbitalParams.eqTemps ? orbitalParams.eqTemps.toFixed(4) + " min" : "N/A (Synchrone/Non-Solaire)",
+            excentricite: orbitalParams.excentricite ? orbitalParams.excentricite.toFixed(6) : "0.0000",
+            obliquite: orbitalParams.obliquite ? orbitalParams.obliquite.toFixed(2) + "°" : "N/A",
+            longitude: orbitalParams.longitudeVraie ? orbitalParams.longitudeVraie.toFixed(4) + "°" : "0.00°",
+            typeTemps: nomAstre === 'LUNE' ? "Angle Horaire Séléno-centrique" : "Temps Solaire Local Planétaire (Sol)"
+        };
+    }
+}
+
+/**
+ * Fonction fictive d'interfaçage avec le noyau C++/Wasm pour récupérer les constantes propres
+ */
+function obtenirParamsPlanetaireWasm(nomAstre) {
+    const baseDonneesPlanetes = {
+        'LUNE':    { excentricite: 0.054900, obliquite: 1.54, longitudeVraie: 203.50 },
+        'VENUS':   { excentricite: 0.006772, obliquite: 177.36, longitudeVraie: 200.34 },
+        'MARS':    { excentricite: 0.093394, obliquite: 25.19, longitudeVraie: 144.52 },
+        'JUPITER': { excentricite: 0.048498, obliquite: 3.13, longitudeVraie: 147.24 },
+        'SATURNE': { excentricite: 0.055548, obliquite: 26.73, longitudeVraie: 8.87 },
+        'URANUS':  { excentricite: 0.046857, obliquite: 97.77, longitudeVraie: 62.08 },
+        'NEPTUNE': { excentricite: 0.008954, obliquite: 28.32, longitudeVraie: 2.01 },
+        'MERCURE': { excentricite: 0.205630, obliquite: 0.03, longitudeVraie: 215.83 }
+    };
+    return baseDonneesPlanetes[nomAstre] || { excentricite: 0.0, obliquite: 0.0, longitudeVraie: 0.0 };
+}
