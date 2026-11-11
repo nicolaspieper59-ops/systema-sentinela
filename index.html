@@ -811,6 +811,22 @@
             document.getElementById('error-message-text').innerText = data.message;
         }
     }
+    // À insérer dans `traiterMessageWorker(e)` :
+if (data.type === 'STARS_PROCESSED') {
+    const etoiles = data.etoiles;
+    if (etoiles && etoiles.length > 0) {
+        ecrireLog(`[SECOURS OPTIQUE] ${etoiles.length} centroïdes stellaires extraits (Sub-pixellaire validé).`);
+        document.getElementById('val-camera-statut').innerText = `FIXE (${etoiles.length} étoiles)`;
+        document.getElementById('val-camera-statut').style.color = "var(--neon-green)";
+        
+        // Ici, les coordonnées sub-pixellaires (etoiles[0].x, etoiles[0].y, etc.) 
+        // peuvent être injectées dans votre algorithme d'appariement pour recaler l'heure ou la position.
+    } else {
+        document.getElementById('val-camera-statut').innerText = "AUCUNE ÉTOILE DÉTECTÉE";
+        document.getElementById('val-camera-statut').style.color = "var(--amber)";
+    }
+    return;
+        }
     
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
@@ -1249,6 +1265,92 @@ async function actualiserIndiceKpRapide() {
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
+    function capturerEtTraiterCiel(videoElement) {
+    if (!astroWorker || !workerPret) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 320; canvas.height = 240;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(videoElement, 0, 0, 320, 240);
+    const imgData = ctx.getImageData(0, 0, 320, 240);
+
+    // Envoi sécurisé sans copie mémoire au Worker
+    astroWorker.postMessage({
+        type: 'PROCESS_STARS',
+        pixels: imgData.data.buffer,
+        largeur: 320,
+        hauteur: 240
+    }, [imgData.data.buffer]);
+}
+
+    let mediaStreamCamera = null;
+let intervalleCaptureId = null;
+
+async function basculerCameraSecours() {
+    const videoEl = document.getElementById('stellaireVideo');
+    const lblStatut = document.getElementById('val-camera-statut');
+    const btnCam = document.getElementById('btn-toggle-camera');
+
+    if (mediaStreamCamera) {
+        // Arrêt de la caméra
+        mediaStreamCamera.getTracks().forEach(track => track.stop());
+        mediaStreamCamera = null;
+        if (intervalleCaptureId) clearInterval(intervalleCaptureId);
+        videoEl.style.display = 'none';
+        btnCam.innerText = "ACTIVER CAMÉRA SECOURS";
+        btnCam.style.borderColor = "var(--sky)";
+        lblStatut.innerText = "INACTIF";
+        lblStatut.style.color = "var(--amber)";
+        ecrireLog("Caméra de secours optique désactivée.");
+    } else {
+        try {
+            // Demande d'accès à la caméra arrière (idéal pour viser le ciel)
+            mediaStreamCamera = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: "environment" }, width: { ideal: 320 }, height: { ideal: 240 } },
+                audio: false
+            });
+            videoEl.srcObject = mediaStreamCamera;
+            videoEl.style.display = 'block';
+            btnCam.innerText = "ARRÊTER CAMÉRA SECOURS";
+            btnCam.style.borderColor = "var(--rose)";
+            btnCam.style.color = "var(--rose)";
+            lblStatut.innerText = "ACQUISITION EN COURS";
+            lblStatut.style.color = "var(--neon-green)";
+            ecrireLog("Caméra de secours optique activée avec succès.");
+
+            // Capture et analyse d'une frame toutes les 2 secondes pour préserver la batterie
+            intervalleCaptureId = setInterval(() => {
+                capturerEtTraiterCiel(videoEl);
+            }, 2000);
+
+    } catch (err) {
+            ecrireLog(`[ERREUR CAMÉRA] Impossible d'accéder au flux optique : ${err.message}`);
+            lblStatut.innerText = "ERREUR ACCÈS";
+            lblStatut.style.color = "var(--rose)";
+        }
+    }
+}
+
+function capturerEtTraiterCiel(videoElement) {
+    if (!astroWorker || !workerPret || !videoElement) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 320;
+    canvas.height = 240;
+    const ctx = canvas.getContext('2d');
+    
+    // Dessin de la vidéo courante dans le canvas temporaire
+    ctx.drawImage(videoElement, 0, 0, 320, 240);
+    const imgData = ctx.getImageData(0, 0, 320, 240);
+
+    // Transfert sans copie mémoire (Zero-copy Transferable Objects) vers le Worker Wasm/JS
+    astroWorker.postMessage({
+        type: 'PROCESS_STARS',
+        pixels: imgData.data.buffer,
+        largeur: 320,
+        hauteur: 240
+    }, [imgData.data.buffer]);
+    }
+    
     window.addEventListener('load', async () => {
         // Restauration des dernières coordonnées connues
         const savedLat = localStorage.getItem('sentinela_last_lat') || '43.284356';
