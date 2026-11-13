@@ -1217,7 +1217,11 @@ function initGlobe3D() {
         entries.forEach(entry => { rendu3DActif = entry.isIntersecting; });
     }, { threshold: 0.05 });
     observer.observe(container);
-
+const memoireGo = navigator.deviceMemory || 4;
+const cœursCpu = navigator.hardwareConcurrency || 4;
+const estAppareilFaible = memoireGo <= 4 || cœursCpu <= 4;
+const segmentsGlobe = estAppareilFaible ? 32 : 64;
+    
     function animate3D() {
         requestAnimationFrame(animate3D);
         if (!rendu3DActif) return;
@@ -1233,11 +1237,12 @@ function initGlobe3D() {
     function chargerNuagesTempsReelNASA() {
     const textureLoader = new THREE.TextureLoader();
     
-    // Obtention de la date UTC courante au format YYYY-MM-DD
-    const maintenant = new Date();
-    const annee = maintenant.getUTCFullYear();
-    const mois = String(maintenant.getUTCMonth() + 1).padStart(2, '0');
-    const jour = String(maintenant.getUTCDate() - 1).padStart(2, '0'); // -1 jour pour s'assurer que les mosaïques mondiales sont complètes
+    // Correction rigoureuse : ajustement de la date UTC pour éviter le bug du 1er du mois (ex: "2026-11-00")
+    const dateAjustee = new Date();
+    dateAjustee.setUTCDate(dateAjustee.getUTCDate() - 1);
+    const annee = dateAjustee.getUTCFullYear();
+    const mois = String(dateAjustee.getUTCMonth() + 1).padStart(2, '0');
+    const jour = String(dateAjustee.getUTCDate()).padStart(2, '0');
     const dateStr = `${annee}-${mois}-${jour}`;
 
     // URL officielle du flux NASA GIBS (niveau de zoom global)
