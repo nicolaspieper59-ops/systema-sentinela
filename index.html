@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYSTEMA SENTINELA v19.30 — KERNEL RIGOROUS REPOSITORY</title>
+    <title>SYSTEMA SENTINELA v19.40 — KERNEL RIGOROUS REPOSITORY</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#f0f2f5">
@@ -238,7 +238,7 @@
 
 <div class="container">
     <header class="master-header">
-        <div class="brand">SYSTEMA SENTINELA v19.30 — KERNEL RIGOROUS REPOSITORY</div>
+        <div class="brand">SYSTEMA SENTINELA v19.40 — KERNEL RIGOROUS REPOSITORY</div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <div>JPL FLUX : <span id="lbl-jpl-status" style="color:var(--amber); font-weight:bold;">CHARGEMENT...</span></div>
             <div>WORKER : <span id="lbl-worker-status" style="color:var(--amber); font-weight:bold;">INIT...</span></div>
@@ -413,6 +413,16 @@
             </div>
         </div>
 
+        <!-- SECOURS OPTIQUE (CAMÉRA) -->
+        <div class="panel">
+            <h3 class="panel-title">SECOURS OPTIQUE (PLATE-SOLVING)</h3>
+            <div style="font-size: 10px; margin-bottom: 6px;">
+                STATUT CAMÉRA : <span id="val-camera-statut" style="color:var(--amber)">INACTIF</span>
+            </div>
+            <video id="stellaireVideo" autoplay playsinline style="display:none; width:100%; max-height:120px; border:1px solid var(--border-dim); border-radius:4px; object-fit:cover; margin-bottom:6px;"></video>
+            <button id="btn-toggle-camera" class="btn-action" style="width: 100%;" onclick="basculerCameraSecours()">ACTIVER CAMÉRA SECOURS</button>
+        </div>
+
         <!-- 6. CONSOLE -->
         <div class="panel" style="grid-column: 1 / -1; margin-bottom: 0;">
             <h3 class="panel-title" style="margin-bottom: 6px;">6. CONSOLE KERNEL EXÉCUTION</h3>
@@ -532,8 +542,14 @@
     let astroWorker = null;
     let derniersResultatsAstres = {};
 
-    let globeScene, globeCamera, globeRenderer, earthMesh, atmosphereMesh, radarGroup, radarBeam;
-    let isDragging = false, lastX = 0, lastY = 0;
+    // Déclarations globales et LOD matérielles placées en amont pour éviter les erreurs de scope
+    const memoireGo = navigator.deviceMemory || 4;
+    const cœursCpu = navigator.hardwareConcurrency || 4;
+    const estAppareilFaible = memoireGo <= 4 || cœursCpu <= 4;
+    const segmentsGlobe = estAppareilFaible ? 32 : 64;
+
+    let globeScene, globeCamera, globeRenderer, earthMesh, cloudMesh, auroraMesh, radarGroup, radarBeam;
+    let rendu3DActif = true;
     const earthRadius3D = 2.0;
 
     async function synchroniserHeureAtomique() {
@@ -578,6 +594,7 @@
                         elKp.innerText = `Kp ${val.toFixed(2)}`;
                         elKp.style.color = val >= 5 ? "var(--rose)" : "var(--neon-green)";
                     }
+                    actualiserAuroreBorale(val);
                     break;
                 }
             }
@@ -804,6 +821,19 @@
             }
         }
 
+        if (data.type === 'STARS_PROCESSED') {
+            const etoiles = data.etoiles;
+            if (etoiles && etoiles.length > 0) {
+                ecrireLog(`[SECOURS OPTIQUE] ${etoiles.length} centroïdes stellaires extraits (Sub-pixellaire validé).`);
+                document.getElementById('val-camera-statut').innerText = `FIXE (${etoiles.length} étoiles)`;
+                document.getElementById('val-camera-statut').style.color = "var(--neon-green)";
+            } else {
+                document.getElementById('val-camera-statut').innerText = "AUCUNE ÉTOILE DÉTECTÉE";
+                document.getElementById('val-camera-statut').style.color = "var(--amber)";
+            }
+            return;
+        }
+
         if (data.type === 'FATAL_ERROR') {
             requeteEnAttente = false;
             ecrireLog(`[FATAL WORKER] ${data.message}`);
@@ -811,26 +841,10 @@
             document.getElementById('error-message-text').innerText = data.message;
         }
     }
-    // À insérer dans `traiterMessageWorker(e)` :
-if (data.type === 'STARS_PROCESSED') {
-    const etoiles = data.etoiles;
-    if (etoiles && etoiles.length > 0) {
-        ecrireLog(`[SECOURS OPTIQUE] ${etoiles.length} centroïdes stellaires extraits (Sub-pixellaire validé).`);
-        document.getElementById('val-camera-statut').innerText = `FIXE (${etoiles.length} étoiles)`;
-        document.getElementById('val-camera-statut').style.color = "var(--neon-green)";
-        
-        // Ici, les coordonnées sub-pixellaires (etoiles[0].x, etoiles[0].y, etc.) 
-        // peuvent être injectées dans votre algorithme d'appariement pour recaler l'heure ou la position.
-    } else {
-        document.getElementById('val-camera-statut').innerText = "AUCUNE ÉTOILE DÉTECTÉE";
-        document.getElementById('val-camera-statut').style.color = "var(--amber)";
-    }
-    return;
-        }
     
     function initialiserWorkerAstronomie() {
         if (typeof Worker === 'undefined') return;
-        astroWorker = new Worker('./worker.js?v=19.38');
+        astroWorker = new Worker('./worker.js?v=19.40');
         astroWorker.onmessage = traiterMessageWorker;
         astroWorker.onerror = (err) => {
             document.getElementById('lbl-worker-status').innerText = "ERREUR WORKER";
@@ -959,9 +973,7 @@ if (data.type === 'STARS_PROCESSED') {
             if (cache.lod) cache.lod.textContent = donneesAstre.lengthOfDayDisplay ?? '--';
             if (cache.vel) cache.vel.textContent = donneesAstre.orbitalVelocityDisplay ?? '--';
             if (cache.shadow) cache.shadow.textContent = donneesAstre.shadowLengthDisplay ?? '--';
-            // Dans la boucle de mise à jour des cellules du tableau (index.html)
-if (cache.moonPhase) cache.moonPhase.textContent = donneesAstre.illuminatedFraction !== undefined ? `${(donneesAstre.illuminatedFraction * 100.0).toFixed(1)}%` : 'N/A';
-    
+            if (cache.moonPhase) cache.moonPhase.textContent = donneesAstre.illuminatedFraction !== undefined ? `${(donneesAstre.illuminatedFraction * 100.0).toFixed(1)}%` : 'N/A';
             if (cache.moonAge) cache.moonAge.textContent = (nomAstreClean === 'lune' && donneesAstre.moonAgeDays !== undefined) ? `${donneesAstre.moonAgeDays.toFixed(1)} j` : 'N/A';
             if (cache.rise) cache.rise.textContent = donneesAstre.sunrise ?? '--';
             if (cache.set) cache.set.textContent = donneesAstre.sunset ?? '--';
@@ -1141,152 +1153,112 @@ if (cache.moonPhase) cache.moonPhase.textContent = donneesAstre.illuminatedFract
         radarGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), positionVecteur.clone().normalize());
     }
 
-    // Analyse des capacités matérielles de l'appareil
-const memoireGo = navigator.deviceMemory || 4;
-const cœursCpu = navigator.hardwareConcurrency || 4;
-const estAppareilFaible = memoireGo <= 4 || cœursCpu <= 4;
+    function initGlobe3D() {
+        const container = document.getElementById('globeCanvas');
+        if (!container || typeof THREE === 'undefined') return;
 
-const segmentsGlobe = estAppareilFaible ? 32 : 64;
-let globeScene, globeCamera, globeRenderer, earthMesh, cloudMesh, auroraMesh, radarGroup, radarBeam;
-let rendu3DActif = true;
-let isDragging = false, lastX = 0, lastY = 0;
-const earthRadius3D = 2.0;
+        globeScene = new THREE.Scene();
+        globeCamera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+        globeCamera.position.z = 5.5;
 
-function initGlobe3D() {
-    const container = document.getElementById('globeCanvas');
-    if (!container || typeof THREE === 'undefined') return;
+        globeRenderer = new THREE.WebGLRenderer({ canvas: container, alpha: true, antialias: !estAppareilFaible });
+        globeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, estAppareilFaible ? 1.5 : 2));
+        globeRenderer.setSize(container.clientWidth, container.clientHeight);
 
-    globeScene = new THREE.Scene();
-    globeCamera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
-    globeCamera.position.z = 5.5;
+        globeScene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        sunLight.position.set(5, 3, 5);
+        globeScene.add(sunLight);
 
-    globeRenderer = new THREE.WebGLRenderer({ canvas: container, alpha: true, antialias: !estAppareilFaible });
-    globeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, estAppareilFaible ? 1.5 : 2));
-    globeRenderer.setSize(container.clientWidth, container.clientHeight);
+        // 1. Sphère terrestre principale (utilise segmentsGlobe défini globalement en haut)
+        const sphereGeo = new THREE.SphereGeometry(earthRadius3D, segmentsGlobe, segmentsGlobe);
+        const textureLoader = new THREE.TextureLoader();
+        const earthMaterial = new THREE.MeshStandardMaterial({ bumpScale: 0.05, roughness: 0.8, metalness: 0.1 });
+        earthMaterial.map = textureLoader.load('./textures/earth_atmos_2048.jpg', undefined, undefined, () => {
+            earthMaterial.map = textureLoader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg');
+        });
+        earthMesh = new THREE.Mesh(sphereGeo, earthMaterial);
+        globeScene.add(earthMesh);
 
-    globeScene.add(new THREE.AmbientLight(0xffffff, 0.7));
-    const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
-    sunLight.position.set(5, 3, 5);
-    globeScene.add(sunLight);
+        // 2. Couche Nuageuse Temps Réel (NASA GIBS)
+        const cloudGeo = new THREE.SphereGeometry(earthRadius3D * 1.01, segmentsGlobe, segmentsGlobe);
+        const cloudMat = new THREE.MeshStandardMaterial({
+            map: textureLoader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png'),
+            transparent: true,
+            opacity: 0.35,
+            blending: THREE.AdditiveBlending
+        });
+        cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
+        globeScene.add(cloudMesh);
 
-    // 1. Sphère terrestre principal (LOD adaptatif)
-    const sphereGeo = new THREE.SphereGeometry(earthRadius3D, segmentsGlobe, segmentsGlobe);
-    const textureLoader = new THREE.TextureLoader();
-    const earthMaterial = new THREE.MeshStandardMaterial({ bumpScale: 0.05, roughness: 0.8, metalness: 0.1 });
-    earthMaterial.map = textureLoader.load('./textures/earth_atmos_2048.jpg', undefined, undefined, () => {
-        earthMaterial.map = textureLoader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg');
-    });
-    earthMesh = new THREE.Mesh(sphereGeo, earthMaterial);
-    globeScene.add(earthMesh);
+        // 3. Ovale Auroral (Modélisation polaire NOAA)
+        const auroraGeo = new THREE.RingGeometry(earthRadius3D * 0.6, earthRadius3D * 0.9, 32);
+        const auroraMat = new THREE.MeshBasicMaterial({ color: 0x00ff66, transparent: true, opacity: 0.15, side: THREE.DoubleSide });
+        auroraMesh = new THREE.Mesh(auroraGeo, auroraMat);
+        auroraMesh.rotation.x = Math.PI / 2;
+        auroraMesh.position.set(0, earthRadius3D * 0.95, 0);
+        globeScene.add(auroraMesh);
 
-    // 2. Couche Nuageuse Temps Réel (NASA GIBS)
-    const cloudGeo = new THREE.SphereGeometry(earthRadius3D * 1.01, segmentsGlobe, segmentsGlobe);
-    const cloudMat = new THREE.MeshStandardMaterial({
-        map: textureLoader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png'),
-        transparent: true,
-        opacity: 0.35,
-        blending: THREE.AdditiveBlending
-    });
-    cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
-    globeScene.add(cloudMesh);
+        // 4. Curseur GPS et Radar
+        radarGroup = new THREE.Group();
+        const maxRange = 0.6;
+        for (let i = 1; i <= 3; i++) {
+            const radiusStep = (maxRange / 3) * i;
+            const ringMesh = new THREE.Mesh(new THREE.RingGeometry(radiusStep - 0.01, radiusStep, 32), new THREE.MeshBasicMaterial({ color: 0x00ff66, side: THREE.DoubleSide, transparent: true, opacity: 0.4 }));
+            ringMesh.rotation.x = Math.PI / 2;
+            radarGroup.add(ringMesh);
+        }
+        radarBeam = new THREE.Mesh(new THREE.ConeGeometry(maxRange, 0.03, 32, 1, true), new THREE.MeshBasicMaterial({ color: 0x00ff66, transparent: true, opacity: 0.25, side: THREE.DoubleSide }));
+        radarGroup.add(radarBeam);
+        earthMesh.add(radarGroup);
+        positionnerRadarSurGPS(stationActive.lat, stationActive.lon, earthRadius3D);
 
-    // 3. Ovale Auroral (Modélisation polaire NOAA)
-    const auroraGeo = new THREE.RingGeometry(earthRadius3D * 0.6, earthRadius3D * 0.9, 32);
-    const auroraMat = new THREE.MeshBasicMaterial({ color: 0x00ff66, transparent: true, opacity: 0.15, side: THREE.DoubleSide });
-    auroraMesh = new THREE.Mesh(auroraGeo, auroraMat);
-    auroraMesh.rotation.x = Math.PI / 2;
-    auroraMesh.position.set(0, earthRadius3D * 0.95, 0);
-    globeScene.add(auroraMesh);
+        // Pause du rendu hors champ pour économiser batterie & CPU
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => { rendu3DActif = entry.isIntersecting; });
+        }, { threshold: 0.05 });
+        observer.observe(container);
 
-    // 4. Curseur GPS et Radar
-    radarGroup = new THREE.Group();
-    const maxRange = 0.6;
-    for (let i = 1; i <= 3; i++) {
-        const radiusStep = (maxRange / 3) * i;
-        const ringMesh = new THREE.Mesh(new THREE.RingGeometry(radiusStep - 0.01, radiusStep, 32), new THREE.MeshBasicMaterial({ color: 0x00ff66, side: THREE.DoubleSide, transparent: true, opacity: 0.4 }));
-        ringMesh.rotation.x = Math.PI / 2;
-        radarGroup.add(ringMesh);
-    }
-    radarBeam = new THREE.Mesh(new THREE.ConeGeometry(maxRange, 0.03, 32, 1, true), new THREE.MeshBasicMaterial({ color: 0x00ff66, transparent: true, opacity: 0.25, side: THREE.DoubleSide }));
-    radarGroup.add(radarBeam);
-    earthMesh.add(radarGroup);
-    positionnerRadarSurGPS(stationActive.lat, stationActive.lon, earthRadius3D);
-
-    // Pause du rendu hors champ pour économiser batterie & CPU
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => { rendu3DActif = entry.isIntersecting; });
-    }, { threshold: 0.05 });
-    observer.observe(container);
-const memoireGo = navigator.deviceMemory || 4;
-const cœursCpu = navigator.hardwareConcurrency || 4;
-const estAppareilFaible = memoireGo <= 4 || cœursCpu <= 4;
-const segmentsGlobe = estAppareilFaible ? 32 : 64;
-    
-    function animate3D() {
-        requestAnimationFrame(animate3D);
-        if (!rendu3DActif) return;
-        if (!isDragging) {
+        function animate3D() {
+            requestAnimationFrame(animate3D);
+            if (!rendu3DActif) return;
             earthMesh.rotation.y += 0.0008;
             cloudMesh.rotation.y += 0.0011;
+            if (radarBeam) radarBeam.rotation.y += 0.04;
+            globeRenderer.render(globeScene, globeCamera);
         }
-        if (radarBeam) radarBeam.rotation.y += 0.04;
-        globeRenderer.render(globeScene, globeCamera);
+        animate3D();
     }
-    animate3D();
-}
+
     function chargerNuagesTempsReelNASA() {
-    const textureLoader = new THREE.TextureLoader();
-    
-    // Correction rigoureuse : ajustement de la date UTC pour éviter le bug du 1er du mois (ex: "2026-11-00")
-    const dateAjustee = new Date();
-    dateAjustee.setUTCDate(dateAjustee.getUTCDate() - 1);
-    const annee = dateAjustee.getUTCFullYear();
-    const mois = String(dateAjustee.getUTCMonth() + 1).padStart(2, '0');
-    const jour = String(dateAjustee.getUTCDate()).padStart(2, '0');
-    const dateStr = `${annee}-${mois}-${jour}`;
+        const textureLoader = new THREE.TextureLoader();
+        
+        // Correction rigoureuse du bug du 1er du mois
+        const dateAjustee = new Date();
+        dateAjustee.setUTCDate(dateAjustee.getUTCDate() - 1);
+        const annee = dateAjustee.getUTCFullYear();
+        const mois = String(dateAjustee.getUTCMonth() + 1).padStart(2, '0');
+        const jour = String(dateAjustee.getUTCDate()).padStart(2, '0');
+        const dateStr = `${annee}-${mois}-${jour}`;
 
-    // URL officielle du flux NASA GIBS (niveau de zoom global)
-    const urlNuagesReels = `https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${dateStr}/250m/latlon_degrees/3/3/3.jpg`;
+        const urlNuagesReels = `https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${dateStr}/250m/latlon_degrees/3/3/3.jpg`;
 
-    textureLoader.load(urlNuagesReels, (texture) => {
-        if (cloudMesh && cloudMesh.material) {
-            cloudMesh.material.map = texture;
-            cloudMesh.material.needsUpdate = true;
-            ecrireLog(`Nuages réels chargés : données NASA GIBS du ${dateStr}.`);
-        }
-    }, undefined, (err) => {
-        ecrireLog("Avertissement : Flux nuageux NASA indisponible, maintien de la texture de repli locale.");
-    });
-    }
-
-function actualiserAuroreBorale(kpIndex) {
-    if (!auroraMesh) return;
-    auroraMesh.material.opacity = Math.min(0.7, (kpIndex / 9.0) * 0.6 + 0.1);
-    auroraMesh.visible = kpIndex >= 2;
-}
-
-// Connexion de la NOAA SWPC à l'aurore boréale
-async function actualiserIndiceKpRapide() {
-    try {
-        const reponse = await fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
-        if (!reponse.ok) throw new Error("Erreur réseau NOAA");
-        const donnees = await reponse.json();
-        for (let i = donnees.length - 1; i >= 1; i--) {
-            const val = parseFloat(donnees[i][1]);
-            if (!isNaN(val)) {
-                const elKp = document.getElementById('val-kp-index');
-                if (elKp) {
-                    elKp.innerText = `Kp ${val.toFixed(2)}`;
-                    elKp.style.color = val >= 5 ? "var(--rose)" : "var(--neon-green)";
-                }
-                actualiserAuroreBorale(val);
-                break;
+        textureLoader.load(urlNuagesReels, (texture) => {
+            if (cloudMesh && cloudMesh.material) {
+                cloudMesh.material.map = texture;
+                cloudMesh.material.needsUpdate = true;
+                ecrireLog(`Nuages réels chargés : données NASA GIBS du ${dateStr}.`);
             }
-        }
-    } catch (err) {
-        ecrireLog("Avertissement : Kp NOAA indisponible.");
+        }, undefined, (err) => {
+            ecrireLog("Avertissement : Flux nuageux NASA indisponible, maintien de la texture de repli locale.");
+        });
     }
-}
+
+    function actualiserAuroreBorale(kpIndex) {
+        if (!auroraMesh) return;
+        auroraMesh.material.opacity = Math.min(0.7, (kpIndex / 9.0) * 0.6 + 0.1);
+        auroraMesh.visible = kpIndex >= 2;
+    }
 
     function basculerModeJour() {
         modeJourActif = !modeJourActif;
@@ -1295,94 +1267,70 @@ async function actualiserIndiceKpRapide() {
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
-    function capturerEtTraiterCiel(videoElement) {
-    if (!astroWorker || !workerPret) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = 320; canvas.height = 240;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(videoElement, 0, 0, 320, 240);
-    const imgData = ctx.getImageData(0, 0, 320, 240);
-
-    // Envoi sécurisé sans copie mémoire au Worker
-    astroWorker.postMessage({
-        type: 'PROCESS_STARS',
-        pixels: imgData.data.buffer,
-        largeur: 320,
-        hauteur: 240
-    }, [imgData.data.buffer]);
-}
-
     let mediaStreamCamera = null;
-let intervalleCaptureId = null;
+    let intervalleCaptureId = null;
 
-async function basculerCameraSecours() {
-    const videoEl = document.getElementById('stellaireVideo');
-    const lblStatut = document.getElementById('val-camera-statut');
-    const btnCam = document.getElementById('btn-toggle-camera');
+    async function basculerCameraSecours() {
+        const videoEl = document.getElementById('stellaireVideo');
+        const lblStatut = document.getElementById('val-camera-statut');
+        const btnCam = document.getElementById('btn-toggle-camera');
 
-    if (mediaStreamCamera) {
-        // Arrêt de la caméra
-        mediaStreamCamera.getTracks().forEach(track => track.stop());
-        mediaStreamCamera = null;
-        if (intervalleCaptureId) clearInterval(intervalleCaptureId);
-        videoEl.style.display = 'none';
-        btnCam.innerText = "ACTIVER CAMÉRA SECOURS";
-        btnCam.style.borderColor = "var(--sky)";
-        lblStatut.innerText = "INACTIF";
-        lblStatut.style.color = "var(--amber)";
-        ecrireLog("Caméra de secours optique désactivée.");
-    } else {
-        try {
-            // Demande d'accès à la caméra arrière (idéal pour viser le ciel)
-            mediaStreamCamera = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { ideal: "environment" }, width: { ideal: 320 }, height: { ideal: 240 } },
-                audio: false
-            });
-            videoEl.srcObject = mediaStreamCamera;
-            videoEl.style.display = 'block';
-            btnCam.innerText = "ARRÊTER CAMÉRA SECOURS";
-            btnCam.style.borderColor = "var(--rose)";
-            btnCam.style.color = "var(--rose)";
-            lblStatut.innerText = "ACQUISITION EN COURS";
-            lblStatut.style.color = "var(--neon-green)";
-            ecrireLog("Caméra de secours optique activée avec succès.");
+        if (mediaStreamCamera) {
+            mediaStreamCamera.getTracks().forEach(track => track.stop());
+            mediaStreamCamera = null;
+            if (intervalleCaptureId) clearInterval(intervalleCaptureId);
+            videoEl.style.display = 'none';
+            btnCam.innerText = "ACTIVER CAMÉRA SECOURS";
+            btnCam.style.borderColor = "var(--sky)";
+            lblStatut.innerText = "INACTIF";
+            lblStatut.style.color = "var(--amber)";
+            ecrireLog("Caméra de secours optique désactivée.");
+        } else {
+            try {
+                mediaStreamCamera = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { ideal: "environment" }, width: { ideal: 320 }, height: { ideal: 240 } },
+                    audio: false
+                });
+                videoEl.srcObject = mediaStreamCamera;
+                videoEl.style.display = 'block';
+                btnCam.innerText = "ARRÊTER CAMÉRA SECOURS";
+                btnCam.style.borderColor = "var(--rose)";
+                btnCam.style.color = "var(--rose)";
+                lblStatut.innerText = "ACQUISITION EN COURS";
+                lblStatut.style.color = "var(--neon-green)";
+                ecrireLog("Caméra de secours optique activée avec succès.");
 
-            // Capture et analyse d'une frame toutes les 2 secondes pour préserver la batterie
-            intervalleCaptureId = setInterval(() => {
-                capturerEtTraiterCiel(videoEl);
-            }, 2000);
-
-    } catch (err) {
-            ecrireLog(`[ERREUR CAMÉRA] Impossible d'accéder au flux optique : ${err.message}`);
-            lblStatut.innerText = "ERREUR ACCÈS";
-            lblStatut.style.color = "var(--rose)";
+                intervalleCaptureId = setInterval(() => {
+                    capturerEtTraiterCiel(videoEl);
+                }, 2000);
+            } catch (err) {
+                ecrireLog(`[ERREUR CAMÉRA] Impossible d'accéder au flux optique : ${err.message}`);
+                lblStatut.innerText = "ERREUR ACCÈS";
+                lblStatut.style.color = "var(--rose)";
+            }
         }
     }
-}
 
-function capturerEtTraiterCiel(videoElement) {
-    if (!astroWorker || !workerPret || !videoElement) return;
+    function capturerEtTraiterCiel(videoElement) {
+        if (!astroWorker || !workerPret || !videoElement) return;
 
-    const canvas = document.createElement('canvas');
-    canvas.width = 320;
-    canvas.height = 240;
-    const ctx = canvas.getContext('2d');
-    
-    // Dessin de la vidéo courante dans le canvas temporaire
-    ctx.drawImage(videoElement, 0, 0, 320, 240);
-    const imgData = ctx.getImageData(0, 0, 320, 240);
+        const canvas = document.createElement('canvas');
+        canvas.width = 320;
+        canvas.height = 240;
+        const ctx = canvas.getContext('2d');
+        
+        ctx.drawImage(videoElement, 0, 0, 320, 240);
+        const imgData = ctx.getImageData(0, 0, 320, 240);
 
-    // Transfert sans copie mémoire (Zero-copy Transferable Objects) vers le Worker Wasm/JS
-    astroWorker.postMessage({
-        type: 'PROCESS_STARS',
-        pixels: imgData.data.buffer,
-        largeur: 320,
-        hauteur: 240
-    }, [imgData.data.buffer]);
+        astroWorker.postMessage({
+            type: 'PROCESS_STARS',
+            pixels: imgData.data.buffer,
+            largeur: 320,
+            hauteur: 240
+        }, [imgData.data.buffer]);
     }
     
     window.addEventListener('load', async () => {
-        // Restauration des dernières coordonnées connues
         const savedLat = localStorage.getItem('sentinela_last_lat') || '43.284356';
         const savedLon = localStorage.getItem('sentinela_last_lon') || '5.358507';
         const savedAlt = localStorage.getItem('sentinela_last_alt') || '49.8100';
@@ -1398,6 +1346,7 @@ function capturerEtTraiterCiel(videoElement) {
             actualiserIndiceKpRapide().catch(err => console.warn("Kp ignoré:", err));
             setInterval(actualiserIndiceKpRapide, 60 * 60 * 1000);
             await chargerFluxLiveJPL();
+            chargerNuagesTempsReelNASA();
             appliquerCoordonneesSaisie();
             ecrireLog("[DIAGNOSTIC NOYAU] Système opérationnel en mode strict.");
         } catch (e) {
@@ -1407,3 +1356,4 @@ function capturerEtTraiterCiel(videoElement) {
 </script>
 </body>
 </html>
+      
