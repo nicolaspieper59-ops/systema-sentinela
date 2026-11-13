@@ -131,6 +131,9 @@ function traiterCalculsWasmStricts(params) {
     };
     const timestampSec = ts / 1000.0;
     
+    // Définition de l'utilitaire de formatage horaire pour éliminer l'erreur
+    const formatH = (h) => (h < 0 || isNaN(h)) ? "N/A" : `${Math.floor(h).toString().padStart(2, '0')}:${Math.floor((h % 1) * 60).toString().padStart(2, '0')} UTC`;
+
     const metricsPtr = Module._malloc(40);
     let gastDeg, obliquiteDeg, sunTrueLong, eqTempsMin;
 
@@ -143,6 +146,7 @@ function traiterCalculsWasmStricts(params) {
     } finally {
         Module._free(metricsPtr);
     }
+    // ... suite de la fonction de calcul
 
     const jde = (ts / 86400000.0) + 2440587.5;
     const decimalYear = 2000.0 + (jde - 2451545.0) / 365.25;
