@@ -959,7 +959,9 @@ if (data.type === 'STARS_PROCESSED') {
             if (cache.lod) cache.lod.textContent = donneesAstre.lengthOfDayDisplay ?? '--';
             if (cache.vel) cache.vel.textContent = donneesAstre.orbitalVelocityDisplay ?? '--';
             if (cache.shadow) cache.shadow.textContent = donneesAstre.shadowLengthDisplay ?? '--';
-            if (cache.moonPhase) cache.moonPhase.textContent = (nomAstreClean === 'lune' && donneesAstre.moonPhasePct !== undefined) ? `${donneesAstre.moonPhasePct.toFixed(1)}%` : 'N/A';
+            // Dans la boucle de mise à jour des cellules du tableau (index.html)
+if (cache.moonPhase) cache.moonPhase.textContent = donneesAstre.illuminatedFraction !== undefined ? `${(donneesAstre.illuminatedFraction * 100.0).toFixed(1)}%` : 'N/A';
+    
             if (cache.moonAge) cache.moonAge.textContent = (nomAstreClean === 'lune' && donneesAstre.moonAgeDays !== undefined) ? `${donneesAstre.moonAgeDays.toFixed(1)} j` : 'N/A';
             if (cache.rise) cache.rise.textContent = donneesAstre.sunrise ?? '--';
             if (cache.set) cache.set.textContent = donneesAstre.sunset ?? '--';
