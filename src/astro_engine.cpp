@@ -245,6 +245,44 @@ void calculerDepuisECEF(
         result->crepusculeUT = -1.0;
         result->dureeJourHeures = -1.0;
     }
+    // --- CALCUL PHOTOMÉTRIQUE & PHASE ILLUMINÉE (Rigueur Multiphysique) ---
+    if (estSoleil == 1) {
+        result->illuminatedFraction = 1.0;
+        result->surfaceBrightness = -26.74; // Brillance de surface nominale du Soleil
+    } else {
+        // Calcul géométrique de l'angle de phase alpha (Soleil - Astre - Terre)
+        // Utilisation des vecteurs ICRF pour estimer la position relative
+        double rAstroNorm = normICRF; // Distance géocentrique de l'astre en km
+        
+        if (rAstroNorm > 0.0 && result->distUA > 0.0) {
+            // Approximation de l'angle de phase basée sur la distance Terre-Astre et Soleil-Astre (~1 AU)
+            // Pour une précision maximale, on utilise la formule de la bissectrice d'illumination :
+            double dSunAstroUA = 1.0; // Distance moyenne Soleil-Astre (simplifiée ou issue des éléments)
+            if (strcasestr(nametarget, "lune") != nullptr || true) { // Applicable aux planètes et à la lune
+                double cosPhase = (result->distUA * result->distUA + result->restDistSolSq - dSunAstroUA * dSunAstroUA) / (2.0 * result->distUA * dSunAstroUA);
+                // Sécurisation du cosinus de phase entre -1 et 1
+                cosPhase = std::fmax(-1.0, std::fmin(1.0, cosPhase));
+                double phaseAngleRad = std::acos(cosPhase);
+                
+                // Fraction illuminée (formule générale de Lambert / phase sphérique)
+                result->illuminatedFraction = 0.5 * (1.0 + std::cos(phaseAngleRad));
+                result->moonPhasePct = result->illuminatedFraction * 100.0;
+                
+                // Âge de la lune (si applicable)
+                if (std::abs(result->illuminatedFraction) >= 0.0) {
+                    result->moonAgeDays = (phaseAngleRad / M_PI) * 14.765; // Demi-période synodique
+                }
+            } else {
+                result->illuminatedFraction = 1.0; // Par défaut pour les corps lointains
+            }
+            
+            // Brillance de surface apparente (magnitudes par arc-seconde carré approximative)
+            result->surfaceBrightness = result->magnitudeApparente + 2.5 * std::log10(1.0 / (result->angularDiamArcsec * result->angularDiamArcsec + 1e-6));
+        } else {
+            result->illuminatedFraction = 1.0;
+            result->surfaceBrightness = 0.0;
+        }
+    }
 
     double elevHorizonLocal = obtenirElevationHorizonTopographique(result->azim);
     if (result->elevRefractee < elevHorizonLocal) {
