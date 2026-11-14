@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.35)
-Mode Haute Résolution Ultra-Précis (1 segment par minute pour la Lune / 1440 pts/j)
+SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.40)
+Mode Haute Résolution Ultra-Précis (1 segment par minute pour la Lune et le Soleil / 1440 pts/j)
 """
 
 import argparse
@@ -31,17 +31,16 @@ CORPS_MAP = {
     "NEPTUNE": ["neptune barycenter", 8]
 }
 
-# Grille ultra-haute précision : 1 segment par minute (1440 segments/jour)
 PAS_HEURES_MAP = {
-    "SOLEIL": 1.0 / 60.0,   # 1 segment toutes les 60 secondes
-    "LUNE": 1.0 / 60.0,     # 1 segment toutes les 60 secondes
-    "MERCURE": 0.25,        # 1 segment toutes les 15 min
-    "VENUS": 0.5,           # 1 segment toutes les 30 min
-    "MARS": 1.0,            # 1 segment par heure
-    "JUPITER": 2.0,         # 1 segment toutes les 2 heures
-    "SATURNE": 2.0,         # 1 segment toutes les 2 heures
-    "URANUS": 4.0,          # 1 segment toutes les 4 heures
-    "NEPTUNE": 4.0          # 1 segment toutes les 4 heures
+    "SOLEIL": 1.0 / 60.0,
+    "LUNE": 1.0 / 60.0,
+    "MERCURE": 0.25,
+    "VENUS": 0.5,
+    "MARS": 1.0,
+    "JUPITER": 2.0,
+    "SATURNE": 2.0,
+    "URANUS": 4.0,
+    "NEPTUNE": 4.0
 }
 
 RAYONS_EQUATORIAUX_KM = {
@@ -67,7 +66,6 @@ UA_KM = 149597870.7
 def extraire_donnees_iers_finals(fichier_path="finals2000A.all"):
     if not os.path.exists(fichier_path):
         return {"xp_arcsec": 0.0, "yp_arcsec": 0.0, "ut1_utc_sec": 0.0}
-    
     xp, yp, ut1_utc = 0.0, 0.0, 0.0
     try:
         with open(fichier_path, 'r', encoding='utf-8') as f:
@@ -83,7 +81,6 @@ def extraire_donnees_iers_finals(fichier_path="finals2000A.all"):
                         continue
     except Exception as e:
         print(f"[WARN IERS] Lecture {fichier_path} : {e}", file=sys.stderr)
-        
     return {"xp_arcsec": xp, "yp_arcsec": yp, "ut1_utc_sec": ut1_utc}
 
 def valider_coordonnees(lat, lon, alt):
@@ -100,19 +97,14 @@ def obtenir_astre(eph, noms):
 def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
     if nom_corps == "SOLEIL": 
         return -26.74
-
     r_AE = -pos_astre_km
     r_AS = pos_soleil_km - pos_astre_km
-    
     norm_AE = np.linalg.norm(r_AE)
     norm_AS = np.linalg.norm(r_AS)
-
     if norm_AE == 0 or norm_AS == 0: 
         return 0.0
-
     delta_ua = norm_AE / UA_KM
     r_ua = norm_AS / UA_KM
-
     cos_alpha = np.dot(r_AE, r_AS) / (norm_AE * norm_AS)
     alpha_deg = np.degrees(np.arccos(np.clip(cos_alpha, -1.0, 1.0)))
 
@@ -129,11 +121,9 @@ def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
         "URANUS":  (-7.190, 0.001 * alpha_deg),
         "NEPTUNE": (-6.870, 0.001 * alpha_deg)
     }
-
     if nom_corps in modeles:
         v_0, corr = modeles[nom_corps]
         return round(float(v_0 + 5.0 * np.log10(r_ua * delta_ua) + corr), 2)
-
     return 0.0
 
 def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2_unix, nom_corps, degre=12):
@@ -186,7 +176,6 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
     valider_coordonnees(lat, lon, alt)
     if not os.path.exists(bsp_path):
         raise FileNotFoundError(f"Éphémérides JPL introuvables : {bsp_path}")
-
     try:
         ts = load.timescale(builtin=True)
     except Exception:
@@ -199,7 +188,6 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     midnight_utc = datetime.datetime(now_utc.year, now_utc.month, now_utc.day, tzinfo=datetime.timezone.utc)
     t_start_unix = midnight_utc.timestamp()
-    
     t_end_unix = t_start_unix + (nb_jours * 86400)
     data_output = {}
 
@@ -208,17 +196,14 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
         pas_sec = PAS_HEURES_MAP.get(nom_corps, 6) * 3600.0
         segments = []
         curr_t = t_start_unix
-
         while curr_t < t_end_unix:
             next_t = min(curr_t + pas_sec, t_end_unix)
             seg = calculer_segment_tchebychev(earth, astre, sun_target, ts, curr_t, next_t, nom_corps, DEGRE_TCHEBYCHEV)
             segments.append(seg)
             curr_t = next_t
-
         data_output[nom_corps] = segments
 
     eop_data = extraire_donnees_iers_finals()
-
     resultat_global = {
         "ALMANACH": {
             "generateur": "Systema Sentinela DE440s Kernel High-Res (1 seg/min)",
@@ -230,23 +215,21 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
         },
         "DATA": data_output
     }
-
     with open(fichier_sortie, "w", encoding="utf-8") as f:
         json.dump(resultat_global, f, separators=(',', ':'), ensure_ascii=False)
 
 def main():
-    parser = argparse.ArgumentParser(description="Générateur d'éphémérides JPL DE440s Ultra-Précis (1 seg/min)")
+    parser = argparse.ArgumentParser(description="Générateur d'éphémérides JPL DE440s Ultra-Précis")
     parser.add_argument("lat", type=float)
     parser.add_argument("lon", type=float)
     parser.add_argument("alt", type=float)
     parser.add_argument("--days", type=int, default=7)
     parser.add_argument("--bsp", type=str, default="de440s.bsp")
     parser.add_argument("--out", type=str, default="flux_live.json")
-
     args = parser.parse_args()
     try:
         generer_ephemerides(args.lat, args.lon, args.alt, args.days, args.bsp, args.out)
-        print(f"[SUCCÈS] Flux généré avec succès (1 segment/min) : {args.out}")
+        print(f"[SUCCÈS] Flux généré avec succès : {args.out}")
     except Exception:
         print("[ERREUR FATALE] Échec du traitement Python :", file=sys.stderr)
         traceback.print_exc()
