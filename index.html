@@ -388,7 +388,7 @@
             <canvas id="radarCanvas" width="280" height="280" aria-label="Radar orientation des astres"></canvas>
         </div>
 
-        <!-- 5. ECEF 3D & MÉTÉO MANUELLE (MODE SPÉLÉO) -->
+                <!-- 5. ECEF 3D & MÉTÉO MANUELLE (MODE SPÉLÉO) -->
         <div class="panel">
             <h3 class="panel-title">5. VECTEUR XYZ (ECEF) &amp; MÉTÉO MANUELLE (MODE SPÉLÉO)</h3>
             <div style="font-size: 10px; background: rgba(0,0,0,0.03); padding: 6px; border-radius: 4px; border: 1px solid var(--border-dim); margin-bottom: 6px;">
@@ -434,32 +434,6 @@
 <script src="three.min.js"></script>
 
 <script>
-    class SensorCacheManager {
-        constructor(cacheKey, ttlMs = 24 * 60 * 60 * 1000) {
-            this.cacheKey = cacheKey;
-            this.storage = window.localStorage;
-            this.ttlMs = ttlMs;
-        }
-        enregistrerMesure(cle, valeur, elevation) {
-            try {
-                const payload = { valeur, elevation, timestamp: Date.now() };
-                this.storage.setItem(`${this.cacheKey}_${cle}`, JSON.stringify(payload));
-            } catch (e) {}
-        }
-        obtenirSecours(cle) {
-            try {
-                const item = this.storage.getItem(`${this.cacheKey}_${cle}`);
-                if (!item) return null;
-                const payload = JSON.parse(item);
-                if (Date.now() - payload.timestamp > this.ttlMs) return null;
-                return payload;
-            } catch (e) {
-                return null;
-            }
-        }
-    }
-
-    const sentinelaCache = new SensorCacheManager('sentinela_sensor_cache_v2');
     let currentEqTempsMin = 0;
     let modeJourActif = true;
     
@@ -469,9 +443,11 @@
     let manuelOffsetMs = 0;
     
     let workerPret = false;
+    let wmmPret = false;
     let requeteEnAttente = false;
     let fileDAttenteWorker = [];
     let lignesTableauCache = {};
+    let wmmForceManuel = false;
 
     function ecrireLog(msg) {
         const consoleEl = document.getElementById('logConsole');
@@ -527,7 +503,12 @@
         ecrireLog(`Heure principale ajustée manuellement (UTC) à : ${heureString}`);
     }
 
-    let stationActive = { lat: parseFloat(localStorage.getItem('sentinela_last_lat') || '43.284356'), lon: parseFloat(localStorage.getItem('sentinela_last_lon') || '5.358507'), altMeters: parseFloat(localStorage.getItem('sentinela_last_alt') || '49.8100'), nom: 'INITIALISATION (FLUX LIVE)' };
+    let stationActive = {
+        lat: parseFloat(localStorage.getItem('sentinela_last_lat') || '43.284356'),
+        lon: parseFloat(localStorage.getItem('sentinela_last_lon') || '5.358507'),
+        altMeters: parseFloat(localStorage.getItem('sentinela_last_alt') || '49.8100'),
+        nom: 'INITIALISATION (FLUX LIVE)'
+    };
     let meteoActive = { temperatureC: 15.0, humiditePct: 50.0, pressionBaro: 1013.25 };
     
     let capteursActifs = false;
@@ -542,7 +523,6 @@
     let astroWorker = null;
     let derniersResultatsAstres = {};
 
-    // Déclarations globales et LOD matérielles placées en amont pour éviter les erreurs de scope
     const memoireGo = navigator.deviceMemory || 4;
     const cœursCpu = navigator.hardwareConcurrency || 4;
     const estAppareilFaible = memoireGo <= 4 || cœursCpu <= 4;
@@ -618,6 +598,7 @@
             ecrireLog("Capteurs désactivés.");
         } else {
             capteursActifs = true;
+            wmmForceManuel = false;
             if (btn) { btn.innerText = "DÉSACTIVER CAPTEURS AUTO"; btn.style.borderColor = "var(--rose)"; btn.style.color = "var(--rose)"; }
             ecrireLog("Activation GPS, IMU et Baromètre...");
             acquerirPositionGPS();
@@ -674,8 +655,8 @@
 
     function mettreAJourCapBrut(capVal, estNordVrai = false) {
         capVraiActuel = estNordVrai ? (capVal + 360.0) % 360.0 : (capVal + resultatWmmCourant.declination + 360.0) % 360.0;
-        document.getElementById('val-cap-brut').innerText = `${capVal.toFixed(6)}°`;
-        document.getElementById('val-cap-net').innerText = `${capVraiActuel.toFixed(6)}°`;
+        document.getElementById('val-cap-brut').innerText = `${capVal.toFixed(2)}°`;
+        document.getElementById('val-cap-net').innerText = `${capVraiActuel.toFixed(2)}°`;
         dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
     }
 
@@ -763,8 +744,6 @@
         }
     }
 
-    let wmmPret = false;
-
     function envoyerDemandeCalculWorker() {
         if (!workerPret || !matriceJplLive || !wmmPret || requeteEnAttente) return;
 
@@ -802,6 +781,9 @@
             workerPret = true;
             document.getElementById('lbl-worker-status').innerText = "PRÊT";
             document.getElementById('lbl-worker-status').style.color = "var(--neon-green)";
+            while (fileDAttenteWorker.length > 0) {
+                astroWorker.postMessage(fileDAttenteWorker.shift());
+            }
             chargerFichierWMMDeSecours();
             if (matriceJplLive) {
                 astroWorker.postMessage({ type: 'UPDATE_JPL_MATRIX', matrix: matriceJplLive });
@@ -811,11 +793,6 @@
         if (data.type === 'WMM_LOADED') {
             wmmPret = true;
             ecrireLog("Worker : Coefficients WMM2025 chargés avec succès.");
-            if (!capteursActifs) {
-                capVraiActuel = (0.0 + resultatWmmCourant.declination + 360.0) % 360.0;
-                document.getElementById('val-cap-brut').innerText = "0.00° (Repli)";
-                document.getElementById('val-cap-net').innerText = `${capVraiActuel.toFixed(2)}° (Nord Vrai WMM)`;
-            }
             if (workerPret && matriceJplLive) {
                 envoyerDemandeCalculWorker();
             }
@@ -974,7 +951,7 @@
             if (cache.vel) cache.vel.textContent = donneesAstre.orbitalVelocityDisplay ?? '--';
             if (cache.shadow) cache.shadow.textContent = donneesAstre.shadowLengthDisplay ?? '--';
             if (cache.moonPhase) cache.moonPhase.textContent = donneesAstre.illuminatedFraction !== undefined ? `${(donneesAstre.illuminatedFraction * 100.0).toFixed(1)}%` : 'N/A';
-            if (cache.moonAge) cache.moonAge.textContent = (nomAstreClean === 'lune' && donneesAstre.moonAgeDays !== undefined) ? `${donneesAstre.moonAgeDays.toFixed(1)} j` : 'N/A';
+            if (cache.moonAge) cache.moonAge.textContent = (nomAstreClean === 'lune' && donneesAstre.moonAgeDays !== undefined && donneesAstre.moonAgeDays >= 0) ? `${donneesAstre.moonAgeDays.toFixed(1)} j` : 'N/A';
             if (cache.rise) cache.rise.textContent = donneesAstre.sunrise ?? '--';
             if (cache.set) cache.set.textContent = donneesAstre.sunset ?? '--';
             if (cache.dusk) cache.dusk.textContent = donneesAstre.dusk ?? '--';
@@ -1005,11 +982,16 @@
             mettreAJourTableauAstres(data.bodies);
             dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
         }
-        if (data.wmm) {
+        if (data.wmm && !wmmForceManuel) {
             resultatWmmCourant = data.wmm;
             document.getElementById('val-dec-wmm').innerText = `${data.wmm.declination.toFixed(2)}°`;
             document.getElementById('val-inc-wmm').innerText = `${data.wmm.inclination.toFixed(2)}°`;
             document.getElementById('val-intensity-wmm').innerText = `${data.wmm.totalIntensity.toFixed(0)} nT`;
+            if (!capteursActifs) {
+                capVraiActuel = (0.0 + resultatWmmCourant.declination + 360.0) % 360.0;
+                document.getElementById('val-cap-brut').innerText = "0.00° (Repli)";
+                document.getElementById('val-cap-net').innerText = `${capVraiActuel.toFixed(2)}° (Nord Vrai WMM)`;
+            }
         }
     }
 
@@ -1039,6 +1021,7 @@
     }
 
     function appliquerGeomagnetismeManuel() {
+        wmmForceManuel = true;
         const capVal = parseFloat(document.getElementById('input-manual-cap').value.replace(',', '.'));
         const decVal = parseFloat(document.getElementById('input-manual-dec').value.replace(',', '.'));
         const incVal = parseFloat(document.getElementById('input-manual-inc').value.replace(',', '.'));
@@ -1170,7 +1153,6 @@
         sunLight.position.set(5, 3, 5);
         globeScene.add(sunLight);
 
-        // 1. Sphère terrestre principale (utilise segmentsGlobe défini globalement en haut)
         const sphereGeo = new THREE.SphereGeometry(earthRadius3D, segmentsGlobe, segmentsGlobe);
         const textureLoader = new THREE.TextureLoader();
         const earthMaterial = new THREE.MeshStandardMaterial({ bumpScale: 0.05, roughness: 0.8, metalness: 0.1 });
@@ -1180,7 +1162,6 @@
         earthMesh = new THREE.Mesh(sphereGeo, earthMaterial);
         globeScene.add(earthMesh);
 
-        // 2. Couche Nuageuse Temps Réel (NASA GIBS)
         const cloudGeo = new THREE.SphereGeometry(earthRadius3D * 1.01, segmentsGlobe, segmentsGlobe);
         const cloudMat = new THREE.MeshStandardMaterial({
             map: textureLoader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png'),
@@ -1191,7 +1172,6 @@
         cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
         globeScene.add(cloudMesh);
 
-        // 3. Ovale Auroral (Modélisation polaire NOAA)
         const auroraGeo = new THREE.RingGeometry(earthRadius3D * 0.6, earthRadius3D * 0.9, 32);
         const auroraMat = new THREE.MeshBasicMaterial({ color: 0x00ff66, transparent: true, opacity: 0.15, side: THREE.DoubleSide });
         auroraMesh = new THREE.Mesh(auroraGeo, auroraMat);
@@ -1199,7 +1179,6 @@
         auroraMesh.position.set(0, earthRadius3D * 0.95, 0);
         globeScene.add(auroraMesh);
 
-        // 4. Curseur GPS et Radar
         radarGroup = new THREE.Group();
         const maxRange = 0.6;
         for (let i = 1; i <= 3; i++) {
@@ -1213,7 +1192,6 @@
         earthMesh.add(radarGroup);
         positionnerRadarSurGPS(stationActive.lat, stationActive.lon, earthRadius3D);
 
-        // Pause du rendu hors champ pour économiser batterie & CPU
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => { rendu3DActif = entry.isIntersecting; });
         }, { threshold: 0.05 });
@@ -1232,8 +1210,6 @@
 
     function chargerNuagesTempsReelNASA() {
         const textureLoader = new THREE.TextureLoader();
-        
-        // Correction rigoureuse du bug du 1er du mois
         const dateAjustee = new Date();
         dateAjustee.setUTCDate(dateAjustee.getUTCDate() - 1);
         const annee = dateAjustee.getUTCFullYear();
@@ -1249,7 +1225,7 @@
                 cloudMesh.material.needsUpdate = true;
                 ecrireLog(`Nuages réels chargés : données NASA GIBS du ${dateStr}.`);
             }
-        }, undefined, (err) => {
+        }, undefined, () => {
             ecrireLog("Avertissement : Flux nuageux NASA indisponible, maintien de la texture de repli locale.");
         });
     }
@@ -1356,4 +1332,3 @@
 </script>
 </body>
 </html>
-      
