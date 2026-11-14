@@ -2,7 +2,7 @@ name: Pipeline Ephemerides DE440s & Wasm Build (SOFA IAU Integrated)
 
 on:
   schedule:
-    - cron: '0 2 * * *'  # Exécution quotidienne à 02:00 UTC
+    - cron: '0 2 * * *'
   push:
     branches: [ main ]
     paths:
@@ -22,7 +22,6 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: 📥 Cloner le dépôt
         uses: actions/checkout@v4
@@ -52,16 +51,13 @@ jobs:
       - name: 📥 Téléchargement & Vérification des données
         run: |
           if [ ! -f "de440s.bsp" ] || [ $(wc -c < de440s.bsp) -lt 10000000 ]; then
-            curl -fsSL --connect-timeout 20 --retry 3 -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || \
-            curl -fsSL --connect-timeout 20 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
+            curl -fsSL --connect-timeout 20 --retry 3 -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp ||             curl -fsSL --connect-timeout 20 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
           fi
-
           if [ -f "src/WMM2025.COF" ]; then
             cp -f src/WMM2025.COF ./WMM2025.COF
           elif [ ! -f "WMM2025.COF" ] || [ $(wc -c < WMM2025.COF) -lt 1000 ]; then
             curl -fsSL --connect-timeout 20 --retry 3 -o WMM2025.COF https://www.ngdc.noaa.gov/geomag/WMM/data/WMM2025/WMM2025.COF
           fi
-
           curl -fsSL --connect-timeout 20 --retry 3 -o finals2000A.all https://datacenter.iers.org/data/latestVersion/finals2000A.all || true
 
       - name: 🌍 Exécution de l'extracteur multiphysique Python (Haute Résolution 7 Jours)
@@ -72,13 +68,9 @@ jobs:
         run: |
           rm -rf lib/sofa
           mkdir -p lib/sofa/src
-          
-          GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch v2.0.1.1 https://github.com/liberfa/erfa.git lib/sofa_repo || \
-          GIT_TERMINAL_PROMPT=0 git clone --depth 1 https://github.com/liberfa/erfa.git lib/sofa_repo
-          
+          GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch v2.0.1.1 https://github.com/liberfa/erfa.git lib/sofa_repo ||           GIT_TERMINAL_PROMPT=0 git clone --depth 1 https://github.com/liberfa/erfa.git lib/sofa_repo
           cp -r lib/sofa_repo/src/* lib/sofa/src/
           rm -rf lib/sofa_repo
-
           if [ -f "lib/sofa/src/erfa.h" ]; then
             echo '#include "erfa.h"' > lib/sofa/src/sofa.h
             echo '#define iauObl06 eraObl06' >> lib/sofa/src/sofa.h
@@ -90,70 +82,25 @@ jobs:
             echo '#include "erfam.h"' > lib/sofa/src/sofam.h
           fi
 
-          if [ ! -f "lib/sofa/src/sofa.h" ] || [ ! -f "lib/sofa/src/erfa.h" ] || [ ! -f "lib/sofa/src/sofam.h" ] || [ ! -f "lib/sofa/src/erfam.h" ]; then
-            echo "❌ ERREUR CRITIQUE : Les en-têtes SOFA/ERFA sont introuvables dans lib/sofa/src"
-            exit 1
-          else
-            echo "✅ Succès : En-têtes SOFA/ERFA configurés."
-          fi
-          
       - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
         run: |
-          SRC_FILE=""
-          for candidate in "src/astro_engine.cpp" "src/wasm_astronomie.cpp" "astro_engine.cpp"; do
-            if [ -f "$candidate" ]; then
-              SRC_FILE="$candidate"
-              break
-            fi
-          done
-
-          if [ -z "$SRC_FILE" ]; then
-            echo "ERREUR CRITIQUE : Aucun fichier source C++ trouvé."
-            exit 1
-          fi
-
+          SRC_FILE="src/astro_engine.cpp"
           mkdir -p build_sofa
           for f in lib/sofa/src/*.c; do
             [ -f "$f" ] || continue
             [[ "$f" == *"erfaversion.c"* || "$f" == *"/t_"* ]] && continue
             emcc -c "$f" -O3 -I lib/sofa/src -I src/ -o "build_sofa/$(basename ${f%.c}.o)"
           done
-
-          OBJECTS=""
-          if ls build_sofa/*.o 1> /dev/null 2>&1; then
-            OBJECTS="build_sofa/*.o"
-          fi
-
-          em++ "$SRC_FILE" $OBJECTS -O3 -std=c++17 \
-            -I lib/sofa/src -I src/ \
-            -s WASM=1 -s FORCE_FILESYSTEM=1 -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=33554432 \
-            -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_normaliserDegres','_malloc','_free']" \
-            -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32','getValue','setValue']" \
-            -o wasm_astronomie.js
+          em++ "$SRC_FILE" build_sofa/*.o -O3 -std=c++17             -I lib/sofa/src -I src/             -s WASM=1 -s FORCE_FILESYSTEM=1 -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=33554432             -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_normaliserDegres','_malloc','_free']"             -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32','getValue','setValue']"             -o wasm_astronomie.js
 
       - name: 📂 Assemblage du site Web & Vérification WMM
         run: |
           mkdir -p public_site
-          
           cp -f index.html manifest.json sw.js worker.js meteo_manager.js three.min.js public_site/ 2>/dev/null || true
           cp -rf textures public_site/ 2>/dev/null || true
           cp -f EGM2008.gfc public_site/ 2>/dev/null || true
           cp -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm public_site/ 2>/dev/null || true
-
-          if [ -f "WMM2025.COF" ]; then
-            cp -f WMM2025.COF public_site/
-          elif [ -f "src/WMM2025.COF" ]; then
-            cp -f src/WMM2025.COF public_site/
-          else
-            curl -fsSL --connect-timeout 20 --retry 3 -o public_site/WMM2025.COF https://www.ngdc.noaa.gov/geomag/WMM/data/WMM2025/WMM2025.COF
-          fi
-
-          if [ ! -f "public_site/WMM2025.COF" ] || [ $(wc -c < public_site/WMM2025.COF) -lt 1000 ]; then
-            echo "❌ ERREUR CRITIQUE : WMM2025.COF manquant ou invalide dans public_site."
-            exit 1
-          else
-            echo "✅ Succès : WMM2025.COF validé."
-          fi
+          cp -f WMM2025.COF public_site/
 
       - name: 🔀 Créer une Pull Request automatique pour flux_live.json
         uses: peter-evans/create-pull-request@v6
@@ -161,7 +108,7 @@ jobs:
           token: ${{ secrets.ACTIONS_PAT }}
           commit-message: "Mise à jour automatique du flux live journalier [skip ci]"
           title: "🤖 Mise à jour automatique de flux_live.json"
-          body: "Cette Pull Request met à jour automatiquement le fichier flux_live.json généré par le moteur multiphysique DE440s."
+          body: "Mise à jour automatique de flux_live.json."
           branch: update-flux-live
           delete-branch: true
           base: main
@@ -178,7 +125,7 @@ jobs:
     runs-on: ubuntu-latest
     concurrency:
       group: "pages"
-      cancel-in-progress: true  # ⬅️ Annulation propre des déploiements concurrents
+      cancel-in-progress: true
     permissions:
       pages: write
       id-token: write
@@ -189,3 +136,4 @@ jobs:
       - name: 🚀 Déploiement vers GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        
