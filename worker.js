@@ -1,6 +1,6 @@
 /**
  * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL RIGOROUS v19.40
- * Multi-Physique, IERS EOP, Isolation Mémoire & Star Extraction
+ * Multi-Physique, IERS EOP, WMM-2025 Harmoniques Sphériques, Isolation Mémoire & Star Extraction
  */
 
 let jplMatrixData = null;
@@ -86,6 +86,109 @@ function analyserTexteWMMStricte(texte) {
     return coeffs;
 }
 
+/**
+ * Évaluation complète du modèle géomagnétique WMM-2025 (12 degrés x 12 ordres, semi-normalisation de Schmidt)
+ */
+function evaluerWMM2025Complet(coeffs, latDeg, lonDeg, altKm, decYear) {
+    if (!coeffs || coeffs.length === 0) {
+        return { declination: 1.79, inclination: 61.15, totalIntensity: 45000 };
+    }
+
+    const dt = decYear - 2025.0;
+    const maxDeg = 12;
+    const g = Array.from({ length: maxDeg + 1 }, () => new Float64Array(maxDeg + 1));
+    const h = Array.from({ length: maxDeg + 1 }, () => new Float64Array(maxDeg + 1));
+
+    for (const c of coeffs) {
+        if (c.n <= maxDeg && c.m <= c.n) {
+            g[c.n][c.m] = c.gnm + c.dgnm * dt;
+            h[c.n][c.m] = c.hnm + c.dhnm * dt;
+        }
+    }
+
+    // Conversion géodésique WGS84 -> géocentrique sphérique
+    const a = 6378.137;
+    const f = 1.0 / 298.257223563;
+    const e2 = f * (2.0 - f);
+    const rRef = 6371.2;
+
+    const phi = latDeg * (Math.PI / 180.0);
+    const lambda = lonDeg * (Math.PI / 180.0);
+    const sinPhi = Math.sin(phi);
+    const cosPhi = Math.cos(phi);
+
+    const rc = a / Math.sqrt(1.0 - e2 * sinPhi * sinPhi);
+    const xp = (rc + altKm) * cosPhi;
+    const zp = (rc * (1.0 - e2) + altKm) * sinPhi;
+    const r = Math.sqrt(xp * xp + zp * zp);
+
+    const sinPhiGc = zp / r;
+    const cosPhiGc = xp / r;
+    const psi = Math.asin(sinPhiGc) - phi;
+
+    // Polynômes associés de Legendre semi-normalisés de Schmidt P[n][m] et dérivées dP[n][m]
+    const P = Array.from({ length: maxDeg + 1 }, () => new Float64Array(maxDeg + 1));
+    const dP = Array.from({ length: maxDeg + 1 }, () => new Float64Array(maxDeg + 1));
+    P[0][0] = 1.0;
+
+    for (let n = 1; n <= maxDeg; n++) {
+        for (let m = 0; m <= n; m++) {
+            if (n === m) {
+                const factor = Math.sqrt(1.0 - (m === 1 ? 0.0 : 1.0 / (2.0 * m)));
+                P[n][m] = factor * cosPhiGc * P[n - 1][m - 1];
+                dP[n][m] = factor * (cosPhiGc * dP[n - 1][m - 1] - sinPhiGc * P[n - 1][m - 1]);
+            } else if (n === 1 && m === 0) {
+                P[1][0] = sinPhiGc * P[0][0];
+                dP[1][0] = sinPhiGc * dP[0][0] + cosPhiGc * P[0][0];
+            } else {
+                const k = ((n - 1) * (n - 1) - m * m) / ((2 * n - 1) * (2 * n - 3));
+                P[n][m] = sinPhiGc * P[n - 1][m] - k * P[n - 2][m];
+                dP[n][m] = sinPhiGc * dP[n - 1][m] + cosPhiGc * P[n - 1][m] - k * dP[n - 2][m];
+            }
+        }
+    }
+
+    const cosM = new Float64Array(maxDeg + 1);
+    const sinM = new Float64Array(maxDeg + 1);
+    for (let m = 0; m <= maxDeg; m++) {
+        cosM[m] = Math.cos(m * lambda);
+        sinM[m] = Math.sin(m * lambda);
+    }
+
+    let Br = 0.0, Btheta = 0.0, Bphi = 0.0;
+    let ratioPow = (rRef / r) * (rRef / r); // (a/r)^2
+
+    for (let n = 1; n <= maxDeg; n++) {
+        ratioPow *= (rRef / r); // (a/r)^(n+2)
+        for (let m = 0; m <= n; m++) {
+            const gCosPlusHSin = g[n][m] * cosM[m] + h[n][m] * sinM[m];
+            const gSinMinusHCos = g[n][m] * sinM[m] - h[n][m] * cosM[m];
+
+            Br += ratioPow * (n + 1) * gCosPlusHSin * P[n][m];
+            Btheta -= ratioPow * gCosPlusHSin * dP[n][m];
+            if (cosPhiGc > 1e-10) {
+                Bphi += (ratioPow * m * gSinMinusHCos * P[n][m]) / cosPhiGc;
+            }
+        }
+    }
+
+    // Rotation géocentrique -> repère géodésique local (Nord X, Est Y, Bas Z)
+    const X = -Btheta * Math.cos(psi) - Br * Math.sin(psi);
+    const Y = Bphi;
+    const Z = Btheta * Math.sin(psi) - Br * Math.cos(psi);
+
+    const H = Math.sqrt(X * X + Y * Y);
+    const F = Math.sqrt(H * H + Z * Z);
+    const D = Math.atan2(Y, X) * (180.0 / Math.PI);
+    const I = Math.atan2(Z, H) * (180.0 / Math.PI);
+
+    return {
+        declination: parseFloat(D.toFixed(2)),
+        inclination: parseFloat(I.toFixed(2)),
+        totalIntensity: parseFloat(F.toFixed(0))
+    };
+}
+
 function obtenirDeltaTRigoureux(timestampSec) {
     const taiMinusUtc = 37.0; 
     const ttMinusTai = 32.184;
@@ -120,6 +223,22 @@ function evaluerTchebychevStricte(coeffs, tau) {
     return somme;
 }
 
+function evaluerPositionCorpsAuTemps(segments, tEphemerideSec) {
+    const seg = obtenirSegmentTchebychevOptime(segments, tEphemerideSec);
+    if (!seg) return null;
+    let tau = (2.0 * (tEphemerideSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
+    tau = Math.max(-1.0, Math.min(1.0, tau));
+    return {
+        seg: seg,
+        x: evaluerTchebychevStricte(seg.cx, tau),
+        y: evaluerTchebychevStricte(seg.cy, tau),
+        z: evaluerTchebychevStricte(seg.cz, tau),
+        vx: evaluerTchebychevStricte(seg.cvx, tau),
+        vy: evaluerTchebychevStricte(seg.cvy, tau),
+        vz: evaluerTchebychevStricte(seg.cvz, tau)
+    };
+}
+
 function traiterCalculsWasmStricts(params) {
     if (!jplMatrixData || !jplMatrixData.DATA) throw new Error("[FATAL] Données JPL non chargées.");
 
@@ -130,8 +249,6 @@ function traiterCalculsWasmStricts(params) {
         presHpa: (params.meteo && typeof params.meteo.presHpa === 'number') ? params.meteo.presHpa : 1013.25
     };
     const timestampSec = ts / 1000.0;
-    
-    // Définition de l'utilitaire de formatage horaire pour éliminer l'erreur
     const formatH = (h) => (h < 0 || isNaN(h)) ? "N/A" : `${Math.floor(h).toString().padStart(2, '0')}:${Math.floor((h % 1) * 60).toString().padStart(2, '0')} UTC`;
 
     const metricsPtr = Module._malloc(40);
@@ -146,7 +263,6 @@ function traiterCalculsWasmStricts(params) {
     } finally {
         Module._free(metricsPtr);
     }
-    // ... suite de la fonction de calcul
 
     const jde = (ts / 86400000.0) + 2440587.5;
     const decimalYear = 2000.0 + (jde - 2451545.0) / 365.25;
@@ -154,26 +270,29 @@ function traiterCalculsWasmStricts(params) {
     const tEphemerideSec = timestampSec + deltaTSeconds;
     const structSize = 208; 
     const bodiesResult = {};
+    const UA_KM = 149597870.7;
+
+    // Évaluation préalable de la position géocentrique du Soleil pour les triangles Soleil-Terre-Astre
+    const sunSegments = jplMatrixData.DATA["SOLEIL"] || jplMatrixData.DATA["SUN"];
+    const sunPos = evaluerPositionCorpsAuTemps(sunSegments, tEphemerideSec);
+    const dSunEarthUA = sunPos ? (Math.hypot(sunPos.x, sunPos.y, sunPos.z) / UA_KM) : 1.0;
 
     try {
         for (const [nomCorps, segments] of Object.entries(jplMatrixData.DATA)) {
             if (!segments || segments.length === 0) continue;
-            let seg = obtenirSegmentTchebychevOptime(segments, tEphemerideSec);
-            if (!seg) continue;
+            const posData = evaluerPositionCorpsAuTemps(segments, tEphemerideSec);
+            if (!posData) continue;
 
-            let tau = (2.0 * (tEphemerideSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
-            tau = Math.max(-1.0, Math.min(1.0, tau));
-
-            const x = evaluerTchebychevStricte(seg.cx, tau);
-            const y = evaluerTchebychevStricte(seg.cy, tau);
-            const z = evaluerTchebychevStricte(seg.cz, tau);
-            const vx = evaluerTchebychevStricte(seg.cvx, tau);
-            const vy = evaluerTchebychevStricte(seg.cvy, tau);
-            const vz = evaluerTchebychevStricte(seg.cvz, tau);
-
+            const { seg, x, y, z, vx, vy, vz } = posData;
             const nomUpper = nomCorps.toUpperCase();
             const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN") ? 1 : 0;
             const eraRad = (gastDeg + (iersEopCourant.ut1_utc_sec || 0.0) * (15.0 / 3600.0)) * (Math.PI / 180.0);
+
+            // Distance héliocentrique exacte (Soleil -> Astre) en UA
+            let dSunAstroUA = 1.0;
+            if (!estSoleil && sunPos) {
+                dSunAstroUA = Math.hypot(x - sunPos.x, y - sunPos.y, z - sunPos.z) / UA_KM;
+            }
 
             const resultPtr = Module._malloc(structSize);
             try {
@@ -181,69 +300,65 @@ function traiterCalculsWasmStricts(params) {
                     x, y, z, vx, vy, vz, 
                     coords.lat, coords.lon, coords.alt, 
                     eraRad, meteo.tempC, meteo.presHpa, 0.15, 
-                    seg.mag ?? 0.0, estSoleil, resultPtr
+                    seg.mag ?? 0.0, estSoleil,
+                    dSunAstroUA, dSunEarthUA, seg.rayon_km ?? 0.0,
+                    resultPtr
                 );
 
-                // --- EXTRACTION DEPUIS LE NOYAU WASM (traiterCalculsWasmStricts dans worker.js) ---
-const ptrF64 = resultPtr >> 3;
+                const ptrF64 = resultPtr >> 3;
+                const azim = Module.HEAPF64[ptrF64];
+                const elevGeom = Module.HEAPF64[ptrF64 + 1];
+                const elevRefractee = Module.HEAPF64[ptrF64 + 2];
+                const raDeg = Module.HEAPF64[ptrF64 + 3];
+                const decDeg = Module.HEAPF64[ptrF64 + 4];
+                const distUA = Module.HEAPF64[ptrF64 + 5];
+                const leverUT = Module.HEAPF64[ptrF64 + 6];
+                const coucherUT = Module.HEAPF64[ptrF64 + 7];
+                const airMass = Module.HEAPF64[ptrF64 + 8];
+                const irradiance = Module.HEAPF64[ptrF64 + 9];
+                const ghaDeg = Module.HEAPF64[ptrF64 + 11];
+                const magApp = Module.HEAPF64[ptrF64 + 13];
+                const shadowLen = Module.HEAPF64[ptrF64 + 14];
+                const moonPhasePct = Module.HEAPF64[ptrF64 + 15];
+                const moonAgeDays = Module.HEAPF64[ptrF64 + 16];
+                const crepusculeUT = Module.HEAPF64[ptrF64 + 17];
+                const dureeJour = Module.HEAPF64[ptrF64 + 18];
+                const surfaceBrightness = Module.HEAPF64[ptrF64 + 20];
+                const illuminatedFraction = Module.HEAPF64[ptrF64 + 21];
+                const visCode = Module.HEAP32[(resultPtr + 184) >> 2];
 
-const azim = Module.HEAPF64[ptrF64];
-const elevGeom = Module.HEAPF64[ptrF64 + 1];
-const elevRefractee = Module.HEAPF64[ptrF64 + 2];
-const raDeg = Module.HEAPF64[ptrF64 + 3];
-const decDeg = Module.HEAPF64[ptrF64 + 4];
-const distUA = Module.HEAPF64[ptrF64 + 5];
-const leverUT = Module.HEAPF64[ptrF64 + 6];
-const coucherUT = Module.HEAPF64[ptrF64 + 7];
-const airMass = Module.HEAPF64[ptrF64 + 8];
-const irradiance = Module.HEAPF64[ptrF64 + 9];
-const ghaDeg = Module.HEAPF64[ptrF64 + 11];
-const magApp = Module.HEAPF64[ptrF64 + 13];
-const shadowLen = Module.HEAPF64[ptrF64 + 14];
-const moonPhasePct = Module.HEAPF64[ptrF64 + 15];
-const moonAgeDays = Module.HEAPF64[ptrF64 + 16];
-const crepusculeUT = Module.HEAPF64[ptrF64 + 17];
-const dureeJour = Module.HEAPF64[ptrF64 + 18];
-
-// Nouveaux champs photométriques extraits du pointeur Wasm (Offsets 20 et 21)
-const surfaceBrightness = Module.HEAPF64[ptrF64 + 20];
-const illuminatedFraction = Module.HEAPF64[ptrF64 + 21];
-
-const visCode = Module.HEAP32[(resultPtr + 184) >> 2];
-
-// Formatage et transmission dans l'objet de résultat pour l'UI
-bodiesResult[nomCorps.toLowerCase()] = {
-    elevationGeometrique: elevGeom,
-    elevationApparente: elevRefractee,
-    azimuth: azim,
-    distanceAu: distUA,
-    magnitude: magApp,
-    raDeg: raDeg,
-    decDeg: decDeg,
-    visibiliteCode: visCode,
-    airMass: airMass,
-    irradiance: irradiance,
-    jde: jde,
-    deltat: deltaTSeconds,
-    ghaDeg: ghaDeg,
-    illuminatedFraction: illuminatedFraction,
-    moonPhasePct: (nomUpper === "LUNE") ? moonPhasePct : (illuminatedFraction * 100.0),
-    moonAgeDays: moonAgeDays,
-    surfaceBrightness: surfaceBrightness,
-    distanceMinMaxDisplay: `${distUA.toFixed(6)} AU`,
-    constellationDisplay: "JPL-DE440s / SOFA",
-    perigeeDisplay: `${seg.perigee_ua.toFixed(5)} AU`,
-    perihelionDisplay: `${seg.perihelion_ua.toFixed(4)} AU`,
-    aphelionDisplay: `${seg.aphelion_ua.toFixed(4)} AU`,
-    orbitPeriodDisplay: `${seg.period_days.toFixed(1)} j`,
-    lengthOfDayDisplay: `${seg.lod_hours.toFixed(1)} h`,
-    orbitalVelocityDisplay: `${seg.vel_kms.toFixed(2)} km/s`,
-    shadowLengthDisplay: (shadowLen > 0) ? `${shadowLen.toFixed(2)} m` : "N/A",
-    sunrise: estSoleil ? formatH(leverUT) : (elevRefractee >= -0.833 ? "Visible" : "Sous horizon"),
-    sunset: estSoleil ? formatH(coucherUT) : (elevRefractee < -0.833 ? "Couché" : "Au-dessus horizon"),
-    dusk: estSoleil ? formatH(crepusculeUT) : (elevRefractee < -6.0 ? "Nuit" : "Crépuscule/Jour"),
-    daylightDuration: estSoleil && dureeJour > 0 ? `${dureeJour.toFixed(2)} h` : (elevRefractee > 0 ? "Jour" : "Nuit")
-};
+                bodiesResult[nomCorps.toLowerCase()] = {
+                    elevationGeometrique: elevGeom,
+                    elevationApparente: elevRefractee,
+                    azimuth: azim,
+                    distanceAu: distUA,
+                    magnitude: magApp,
+                    raDeg: raDeg,
+                    decDeg: decDeg,
+                    visibiliteCode: visCode,
+                    airMass: airMass,
+                    irradiance: irradiance,
+                    jde: jde,
+                    deltat: deltaTSeconds,
+                    ghaDeg: ghaDeg,
+                    illuminatedFraction: illuminatedFraction,
+                    moonPhasePct: moonPhasePct,
+                    moonAgeDays: moonAgeDays,
+                    surfaceBrightness: surfaceBrightness,
+                    distanceMinMaxDisplay: `${distUA.toFixed(6)} AU`,
+                    constellationDisplay: "JPL-DE440s / SOFA",
+                    perigeeDisplay: `${seg.perigee_ua.toFixed(5)} AU`,
+                    perihelionDisplay: `${seg.perihelion_ua.toFixed(4)} AU`,
+                    aphelionDisplay: `${seg.aphelion_ua.toFixed(4)} AU`,
+                    orbitPeriodDisplay: `${seg.period_days.toFixed(1)} j`,
+                    lengthOfDayDisplay: `${seg.lod_hours.toFixed(1)} h`,
+                    orbitalVelocityDisplay: `${seg.vel_kms.toFixed(2)} km/s`,
+                    shadowLengthDisplay: (shadowLen > 0) ? `${shadowLen.toFixed(2)} m` : "N/A",
+                    sunrise: estSoleil ? formatH(leverUT) : (elevRefractee >= -0.833 ? "Visible" : "Sous horizon"),
+                    sunset: estSoleil ? formatH(coucherUT) : (elevRefractee < -0.833 ? "Couché" : "Au-dessus horizon"),
+                    dusk: estSoleil ? formatH(crepusculeUT) : (elevRefractee < -6.0 ? "Nuit" : "Crépuscule/Jour"),
+                    daylightDuration: estSoleil && dureeJour > 0 ? `${dureeJour.toFixed(2)} h` : (elevRefractee > 0 ? "Jour" : "Nuit")
+                };
             } finally {
                 Module._free(resultPtr);
             }
@@ -252,10 +367,19 @@ bodiesResult[nomCorps.toLowerCase()] = {
         throw new Error(`Erreur corps célestes : ${err.message}`);
     }
 
+    const resultatWmm = evaluerWMM2025Complet(wmmTableauCoeffs, coords.lat, coords.lon, (coords.alt || 0) / 1000.0, decimalYear);
+
     self.postMessage({
         type: 'RESULTS_COMPUTE',
         bodies: bodiesResult,
-        metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, excentricite: 0.01671022, longSolaireDeg: sunTrueLong }
+        wmm: resultatWmm,
+        metrics: {
+            gastDeg: gastDeg,
+            obliquiteDeg: obliquiteDeg,
+            eqTempsMin: eqTempsMin,
+            excentricite: 0.01671022,
+            longSolaireDeg: sunTrueLong
+        }
     });
 }
 
@@ -300,94 +424,4 @@ function extraireCentroidesEtoiles(pixelsBuffer, largeur, hauteur) {
     etoilesDetectees.sort((a, b) => b.intensite - a.intensite);
     return etoilesDetectees.slice(0, 50);
         }
-
-function calculerLueurFondCiel(hauteurSoleilDeg, hauteurLuneDeg, phaseLunePct) {
-    // 1. Si le Soleil est au-dessus de -18°, c'est le Soleil qui pilote la lueur crépusculaire
-    if (hauteurSoleilDeg > -18.0) {
-        return { source: "SOLEIL", intensite: estimerLueurSolaire(hauteurSoleilDeg) };
-    }
-
-    // 2. Si la nuit est noire, on vérifie si la Lune est levée et assez brillante
-    if (hauteurLuneDeg >= 0.0 && phaseLunePct >= 50.0) {
-        // La Lune crée un "crépuscule lunaire" proportionnel à sa phase et sa hauteur
-        let intensiteLunaire = (phaseLunePct / 100.0) * Math.sin(hauteurLuneDeg * Math.PI / 180.0);
-        if (intensiteLunaire > 0.05) {
-            return { source: "LUNE", intensite: intensiteLunaire };
-        }
-    }
-
-    // 3. Sinon : Nuit noire complète
-    return { source: "AUCUNE", intensite: 0.0 };
-}
-/**
- * Calcule les paramètres astronomiques et temporels adaptés pour un corps donné
- * @param {string} nomAstre - Nom de l'astre ('SOLEIL', 'LUNE', 'VENUS', etc.)
- * @param {number} jde - Jour Julian en dynamique (JDE)
- * @param {Object} station - Coordonnées de l'observateur { lat, lon, alt }
- * @returns {Object} Paramètres formatés pour l'affichage
- */
-function calculerParametresAvancesAstre(nomAstre, jde, station) {
-    // Si c'est le Soleil, on utilise les formules classiques de référence terrestre
-    if (nomAstre === 'SOLEIL') {
-        const T = (jde - 2451545.0) / 36525.0;
-        
-        // Obliquité moyenne de l'écliptique (formule IAU)
-        const obliquite = 23.4392911 - (0.0130042 * T);
-        
-        // Excentricité de l'orbite terrestre
-        const excentricite = 0.016708634 - (0.000042037 * T);
-        
-        // Longitude écliptique solaire approchée (en degrés)
-        const L0 = 280.46646 + 36000.76983 * T;
-        const M = 357.52911 + 35999.05029 * T;
-        const lonSolaire = (L0 + 1.914602 * Math.sin(M * Math.PI / 180)) % 360;
-
-        // Équation du temps (en minutes)
-        const y = Math.tan((obliquite / 2) * (Math.PI / 180));
-        const y2 = y * y;
-        const M_rad = M * (Math.PI / 180);
-        const L0_rad = (L0 - 2.828) * (Math.PI / 180);
-        const eqTempsMin = 4 * (y2 * Math.sin(2 * L0_rad) - 2 * excentricite * Math.sin(M_rad) + 
-                            4 * excentricite * y2 * Math.sin(M_rad) * Math.cos(2 * L0_rad) - 
-                            0.5 * y2 * y2 * Math.sin(4 * L0_rad) - 1.25 * excentricite * excentricite * Math.sin(2 * M_rad)) * (180 / Math.PI);
-
-        return {
-            equationDuTemps: eqTempsMin.toFixed(4) + " min",
-            excentricite: excentricite.toFixed(8),
-            obliquite: obliquite.toFixed(4) + "°",
-            longitude: lonSolaire.toFixed(4) + "°",
-            typeTemps: "Solaire (TSM / TSV)"
-        };
-    } 
-    
-    // Pour les Planètes et la Lune : Adaptation généralisée
-    else {
-        // Paramètres orbitaux propres (valeurs moyennes ou issues du noyau JPL Wasm)
-        const orbitalParams = obtenirParamsPlanetaireWasm(nomAstre); 
-
-        return {
-            equationDuTemps: orbitalParams.eqTemps ? orbitalParams.eqTemps.toFixed(4) + " min" : "N/A (Synchrone/Non-Solaire)",
-            excentricite: orbitalParams.excentricite ? orbitalParams.excentricite.toFixed(6) : "0.0000",
-            obliquite: orbitalParams.obliquite ? orbitalParams.obliquite.toFixed(2) + "°" : "N/A",
-            longitude: orbitalParams.longitudeVraie ? orbitalParams.longitudeVraie.toFixed(4) + "°" : "0.00°",
-            typeTemps: nomAstre === 'LUNE' ? "Angle Horaire Séléno-centrique" : "Temps Solaire Local Planétaire (Sol)"
-        };
-    }
-}
-
-/**
- * Fonction fictive d'interfaçage avec le noyau C++/Wasm pour récupérer les constantes propres
- */
-function obtenirParamsPlanetaireWasm(nomAstre) {
-    const baseDonneesPlanetes = {
-        'LUNE':    { excentricite: 0.054900, obliquite: 1.54, longitudeVraie: 203.50 },
-        'VENUS':   { excentricite: 0.006772, obliquite: 177.36, longitudeVraie: 200.34 },
-        'MARS':    { excentricite: 0.093394, obliquite: 25.19, longitudeVraie: 144.52 },
-        'JUPITER': { excentricite: 0.048498, obliquite: 3.13, longitudeVraie: 147.24 },
-        'SATURNE': { excentricite: 0.055548, obliquite: 26.73, longitudeVraie: 8.87 },
-        'URANUS':  { excentricite: 0.046857, obliquite: 97.77, longitudeVraie: 62.08 },
-        'NEPTUNE': { excentricite: 0.008954, obliquite: 28.32, longitudeVraie: 2.01 },
-        'MERCURE': { excentricite: 0.205630, obliquite: 0.03, longitudeVraie: 215.83 }
-    };
-    return baseDonneesPlanetes[nomAstre] || { excentricite: 0.0, obliquite: 0.0, longitudeVraie: 0.0 };
-}
+            
