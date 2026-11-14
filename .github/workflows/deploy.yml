@@ -91,7 +91,7 @@ jobs:
             [[ "$f" == *"erfaversion.c"* || "$f" == *"/t_"* ]] && continue
             emcc -c "$f" -O3 -I lib/sofa/src -I src/ -o "build_sofa/$(basename ${f%.c}.o)"
           done
-          em++ "$SRC_FILE" build_sofa/*.o -O3 -std=c++17             -I lib/sofa/src -I src/             -s WASM=1 -s FORCE_FILESYSTEM=1 -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=33554432             -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_normaliserDegres','_malloc','_free']"             -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32','getValue','setValue']"             -o wasm_astronomie.js
+          em++ "$SRC_FILE" build_sofa/*.o -O3 -std=c++17             -I lib/sofa/src -I src/             -s WASM=1 -s FORCE_FILESYSTEM=1 -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=33554432             -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_evaluerOccultationsEtEclipses','_calculerOndulationGeoideEGM','_normaliserDegres','_malloc','_free']"             -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32','getValue','setValue']"             -o wasm_astronomie.js
 
       - name: 📂 Assemblage du site Web & Vérification WMM
         run: |
