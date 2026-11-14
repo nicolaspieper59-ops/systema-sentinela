@@ -51,7 +51,6 @@ inline double obtenirElevationHorizonTopographique(double azimDeg) {
     double az = std::fmod(azimDeg, 360.0);
     if (az < 0.0) az += 360.0;
 
-    // Profil topographique d'horizon réel (Marseille / Notre-Dame de la Garde / Mer)
     if (az >= 0.0 && az < 45.0)    return 1.2;  // Relief Nord
     if (az >= 45.0 && az < 120.0)  return 2.8;  // Collines Est
     if (az >= 120.0 && az < 210.0) return 4.5;  // Massif des Calanques / Sud
@@ -115,6 +114,7 @@ void calculerDepuisECEF(
     double latDeg, double lonDeg, double altM,
     double eraRad, double tempC, double presHpa, double extinctionCoeff,
     double magBruteAstre, int32_t estSoleil,
+    double dSunAstroUA, double dSunEarthUA, double rayonAstreKm,
     AstroResult* result
 ) {
     if (!result) return;
@@ -161,9 +161,9 @@ void calculerDepuisECEF(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
 
-    if (result->distUA > 0.0) {
-        double rayonAstreKm = estSoleil ? RAYON_SOLEIL_KM : 1737.4;
-        result->angularDiamArcsec = (2.0 * std::asin((rayonAstreKm * 1000.0) / distM)) * RAD2DEG * 3600.0;
+    double rKm = (rayonAstreKm > 0.0) ? rayonAstreKm : (estSoleil ? RAYON_SOLEIL_KM : 1737.4);
+    if (distM > 0.0) {
+        result->angularDiamArcsec = (2.0 * std::asin(std::fmin(1.0, (rKm * 1000.0) / distM))) * RAD2DEG * 3600.0;
     }
 
     if (result->elevGeom > -5.0) {
@@ -191,7 +191,6 @@ void calculerDepuisECEF(
     if (result->elevRefractee > 0.0) {
         double elevRad = result->elevRefractee * DEG2RAD;
         double hDeg = result->elevRefractee;
-        
         double airMassStd = 1.0 / (std::sin(elevRad) + 0.50572 * std::pow(6.07995 + std::fmax(0.0, hDeg), -1.6364));
         double facteurPression = presHpa / 1013.25;
         result->airMass = airMassStd * facteurPression;
@@ -243,38 +242,33 @@ void calculerDepuisECEF(
         result->dureeJourHeures = -1.0;
     }
 
-    // --- CALCUL PHOTOMÉTRIQUE & PHASE ILLUMINÉE (Rigueur Multiphysique) ---
+    // --- CALCUL PHOTOMÉTRIQUE & PHASE ILLUMINÉE (Généralisé à tous les astres via DE440s) ---
     if (estSoleil == 1) {
         result->illuminatedFraction = 1.0;
+        result->moonPhasePct = 100.0;
+        result->moonAgeDays = -1.0;
         result->surfaceBrightness = -26.74;
-    } else {
-        double rAstroNorm = normICRF;
-        
-        if (rAstroNorm > 0.0 && result->distUA > 0.0) {
-            double dSunAstroUA = 1.0; 
-            
-            // Heuristique robuste : si la distance est < 0.05 AU, c'est la Lune (évite nametarget)
-            if (result->distUA < 0.05) { 
-                double restDistSolSq = 1.0; // Carré de la distance Terre-Soleil (~1.0 AU²)
-                double cosPhase = (result->distUA * result->distUA + restDistSolSq - dSunAstroUA * dSunAstroUA) / (2.0 * result->distUA * dSunAstroUA);
-                cosPhase = std::fmax(-1.0, std::fmin(1.0, cosPhase));
-                double phaseAngleRad = std::acos(cosPhase);
-                
-                result->illuminatedFraction = 0.5 * (1.0 + std::cos(phaseAngleRad));
-                result->moonPhasePct = result->illuminatedFraction * 100.0;
-                
-                if (std::abs(result->illuminatedFraction) >= 0.0) {
-                    result->moonAgeDays = (phaseAngleRad / M_PI) * 14.765;
-                }
-            } else {
-                result->illuminatedFraction = 1.0; 
-            }
-            
-            result->surfaceBrightness = result->magnitudeApparente + 2.5 * std::log10(1.0 / (result->angularDiamArcsec * result->angularDiamArcsec + 1e-6));
+    } else if (result->distUA > 0.0 && dSunAstroUA > 0.0 && dSunEarthUA > 0.0) {
+        double cosPhase = (result->distUA * result->distUA + dSunAstroUA * dSunAstroUA - dSunEarthUA * dSunEarthUA) 
+                        / (2.0 * result->distUA * dSunAstroUA);
+        cosPhase = std::fmax(-1.0, std::fmin(1.0, cosPhase));
+        double phaseAngleRad = std::acos(cosPhase);
+
+        result->illuminatedFraction = 0.5 * (1.0 + std::cos(phaseAngleRad));
+        result->moonPhasePct = result->illuminatedFraction * 100.0;
+
+        if (result->distUA < 0.05) {
+            result->moonAgeDays = (phaseAngleRad / M_PI) * 14.765;
         } else {
-            result->illuminatedFraction = 1.0;
-            result->surfaceBrightness = 0.0;
+            result->moonAgeDays = -1.0;
         }
+
+        result->surfaceBrightness = result->magnitudeApparente + 2.5 * std::log10(1.0 / (result->angularDiamArcsec * result->angularDiamArcsec + 1e-6));
+    } else {
+        result->illuminatedFraction = 1.0;
+        result->moonPhasePct = 100.0;
+        result->moonAgeDays = -1.0;
+        result->surfaceBrightness = 0.0;
     }
 
     double elevHorizonLocal = obtenirElevationHorizonTopographique(result->azim);
