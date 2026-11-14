@@ -192,15 +192,12 @@ void calculerDepuisECEF(
         double elevRad = result->elevRefractee * DEG2RAD;
         double hDeg = result->elevRefractee;
         
-        // Modèle de Kasten & Young (1989) pour la masse d'air standard
         double airMassStd = 1.0 / (std::sin(elevRad) + 0.50572 * std::pow(6.07995 + std::fmax(0.0, hDeg), -1.6364));
-        
-        // Correction barométrique rigoureuse : proportionnelle à la pression locale (hPa) par rapport à la référence (1013.25 hPa)
         double facteurPression = presHpa / 1013.25;
         result->airMass = airMassStd * facteurPression;
     } else {
         result->airMass = -1.0; 
-}
+    }
 
     result->magnitudeApparente = magBruteAstre + (extinctionCoeff * std::fmax(0.0, result->airMass));
     
@@ -245,38 +242,34 @@ void calculerDepuisECEF(
         result->crepusculeUT = -1.0;
         result->dureeJourHeures = -1.0;
     }
+
     // --- CALCUL PHOTOMÉTRIQUE & PHASE ILLUMINÉE (Rigueur Multiphysique) ---
     if (estSoleil == 1) {
         result->illuminatedFraction = 1.0;
-        result->surfaceBrightness = -26.74; // Brillance de surface nominale du Soleil
+        result->surfaceBrightness = -26.74;
     } else {
-        // Calcul géométrique de l'angle de phase alpha (Soleil - Astre - Terre)
-        // Utilisation des vecteurs ICRF pour estimer la position relative
-        double rAstroNorm = normICRF; // Distance géocentrique de l'astre en km
+        double rAstroNorm = normICRF;
         
         if (rAstroNorm > 0.0 && result->distUA > 0.0) {
-            // Approximation de l'angle de phase basée sur la distance Terre-Astre et Soleil-Astre (~1 AU)
-            // Pour une précision maximale, on utilise la formule de la bissectrice d'illumination :
-            double dSunAstroUA = 1.0; // Distance moyenne Soleil-Astre (simplifiée ou issue des éléments)
-            if (strcasestr(nametarget, "lune") != nullptr || true) { // Applicable aux planètes et à la lune
-                double cosPhase = (result->distUA * result->distUA + result->restDistSolSq - dSunAstroUA * dSunAstroUA) / (2.0 * result->distUA * dSunAstroUA);
-                // Sécurisation du cosinus de phase entre -1 et 1
+            double dSunAstroUA = 1.0; 
+            
+            // Heuristique robuste : si la distance est < 0.05 AU, c'est la Lune (évite nametarget)
+            if (result->distUA < 0.05) { 
+                double restDistSolSq = 1.0; // Carré de la distance Terre-Soleil (~1.0 AU²)
+                double cosPhase = (result->distUA * result->distUA + restDistSolSq - dSunAstroUA * dSunAstroUA) / (2.0 * result->distUA * dSunAstroUA);
                 cosPhase = std::fmax(-1.0, std::fmin(1.0, cosPhase));
                 double phaseAngleRad = std::acos(cosPhase);
                 
-                // Fraction illuminée (formule générale de Lambert / phase sphérique)
                 result->illuminatedFraction = 0.5 * (1.0 + std::cos(phaseAngleRad));
                 result->moonPhasePct = result->illuminatedFraction * 100.0;
                 
-                // Âge de la lune (si applicable)
                 if (std::abs(result->illuminatedFraction) >= 0.0) {
-                    result->moonAgeDays = (phaseAngleRad / M_PI) * 14.765; // Demi-période synodique
+                    result->moonAgeDays = (phaseAngleRad / M_PI) * 14.765;
                 }
             } else {
-                result->illuminatedFraction = 1.0; // Par défaut pour les corps lointains
+                result->illuminatedFraction = 1.0; 
             }
             
-            // Brillance de surface apparente (magnitudes par arc-seconde carré approximative)
             result->surfaceBrightness = result->magnitudeApparente + 2.5 * std::log10(1.0 / (result->angularDiamArcsec * result->angularDiamArcsec + 1e-6));
         } else {
             result->illuminatedFraction = 1.0;
