@@ -17,6 +17,7 @@ extern "C" {
 #define RAD2DEG (180.0 / M_PI)
 #define UA_EN_METRES 149597870700.0
 #define RAYON_SOLEIL_KM 696340.0
+#define RAYON_TERRE_KM 6378.137
 
 struct alignas(8) AstroResult {
     double azim;                  // 0
@@ -42,20 +43,48 @@ struct alignas(8) AstroResult {
     double surfaceBrightness;     // 20
     double illuminatedFraction;   // 21
     double radialVelocityKmS;     // 22
-    int32_t visibiliteCode;       // Byte offset 184
-    int32_t seasonCode;           // Byte offset 188
+    double occultationPct;        // 23 (Nouveau : % d'éclipse ou d'occultation)
+    int32_t visibiliteCode;       // Byte offset 192
+    int32_t occultationCode;      // Byte offset 196 (0: Aucune, 1: Éclipse Sol., 2: Éclipse Lun. Ombre, 3: Éclipse Lun. Pénombre, 4: Occulté par Lune/Planète)
 };
 
-// Masque d'horizon géographique précis pour le dôme d'observation Marseille (43.284356° N, 5.358507° E)
+// Calcul de l'aire d'intersection de deux cercles de rayons r1 et r2 séparés par une distance d
+inline double calculerFractionRecouvrementDisques(double d, double r1, double r2) {
+    if (d >= r1 + r2) return 0.0;
+    if (d <= std::abs(r1 - r2)) {
+        double rMin = std::min(r1, r2);
+        return (rMin * rMin) / (r1 * r1);
+    }
+    double r1_2 = r1 * r1;
+    double r2_2 = r2 * r2;
+    double d_2  = d * d;
+
+    double alpha = std::acos(std::fmax(-1.0, std::fmin(1.0, (d_2 + r1_2 - r2_2) / (2.0 * d * r1))));
+    double beta  = std::acos(std::fmax(-1.0, std::fmin(1.0, (d_2 + r2_2 - r1_2) / (2.0 * d * r2))));
+
+    double aireIntersection = r1_2 * alpha + r2_2 * beta 
+                            - 0.5 * std::sqrt(std::fmax(0.0, (-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2)));
+    double aireCible = M_PI * r1_2;
+    return std::fmax(0.0, std::fmin(1.0, aireIntersection / aireCible));
+}
+
+// Séparation angulaire sphérique en arcsecondes
+inline double separationAngulaireArcsec(double ra1Deg, double dec1Deg, double ra2Deg, double dec2Deg) {
+    double a1 = ra1Deg * DEG2RAD, d1 = dec1Deg * DEG2RAD;
+    double a2 = ra2Deg * DEG2RAD, d2 = dec2Deg * DEG2RAD;
+    double cosSep = std::sin(d1) * std::sin(d2) + std::cos(d1) * std::cos(d2) * std::cos(a1 - a2);
+    cosSep = std::fmax(-1.0, std::fmin(1.0, cosSep));
+    return std::acos(cosSep) * RAD2DEG * 3600.0;
+}
+
 inline double obtenirElevationHorizonTopographique(double azimDeg) {
     double az = std::fmod(azimDeg, 360.0);
     if (az < 0.0) az += 360.0;
-
-    if (az >= 0.0 && az < 45.0)    return 1.2;  // Relief Nord
-    if (az >= 45.0 && az < 120.0)  return 2.8;  // Collines Est
-    if (az >= 120.0 && az < 210.0) return 4.5;  // Massif des Calanques / Sud
-    if (az >= 210.0 && az < 315.0) return -0.1; // Mer Méditerranée (Horizon dégagé)
-    return 1.5;                                 // Nord-Ouest urbain
+    if (az >= 0.0 && az < 45.0)    return 1.2;
+    if (az >= 45.0 && az < 120.0)  return 2.8;
+    if (az >= 120.0 && az < 210.0) return 4.5;
+    if (az >= 210.0 && az < 315.0) return -0.1;
+    return 1.5;
 }
 
 extern "C" {
@@ -89,11 +118,7 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
     double sunTrueLong = normaliserDegres(l0 + c);
 
     double lRad = sunTrueLong * DEG2RAD;
-    double sinL = std::sin(lRad);
-    double cosL = std::cos(lRad);
-    double cosEps = std::cos(epsA);
-
-    double raSunRad = std::atan2(cosEps * sinL, cosL);
+    double raSunRad = std::atan2(std::cos(epsA) * std::sin(lRad), std::cos(lRad));
     double raSunDeg = normaliserDegres(raSunRad * RAD2DEG);
 
     double eqTempsMin = (l0 - raSunDeg) * 4.0;
@@ -129,6 +154,11 @@ void calculerDepuisECEF(
     result->decDeg = (normICRF > 0.0) ? std::asin(std::fmax(-1.0, std::min(1.0, zI / normICRF))) * RAD2DEG : 0.0;
     result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
 
+    // Vitesse radiale géocentrique Doppler (km/s)
+    if (normICRF > 0.0) {
+        result->radialVelocityKmS = (xICRF_km * vx_km_s + yICRF_km * vy_km_s + zICRF_km * vz_km_s) / (normICRF / 1000.0);
+    }
+
     double cosERA = std::cos(eraRad);
     double sinERA = std::sin(eraRad);
     double xECEF =  xI * cosERA + yI * sinERA;
@@ -159,7 +189,8 @@ void calculerDepuisECEF(
 
     result->azim = normaliserDegres(std::atan2(E, N_top) * RAD2DEG);
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
-    result->elevGeom = std::atan2(U, rhoHorizontal) * RAD2DEG;
+    // Correctif strict de normalisation de l'élévation topocentrique [-90°, +90°]
+    result->elevGeom = std::fmax(-90.0, std::fmin(90.0, std::atan2(U, rhoHorizontal) * RAD2DEG));
 
     double rKm = (rayonAstreKm > 0.0) ? rayonAstreKm : (estSoleil ? RAYON_SOLEIL_KM : 1737.4);
     if (distM > 0.0) {
@@ -168,19 +199,15 @@ void calculerDepuisECEF(
 
     if (result->elevGeom > -5.0) {
         double refa, refb;
-        double humiditeRelative = 50.0;
-        double longueurOndeUm = 0.55;
-        iauRefco(presHpa, tempC, humiditeRelative, longueurOndeUm, &refa, &refb);
+        iauRefco(presHpa, tempC, 50.0, 0.55, &refa, &refb);
         double zObsRad = (90.0 - result->elevGeom) * DEG2RAD;
         if (zObsRad > 0 && zObsRad < (M_PI / 2.0 + 0.15)) {
             double tanZ = std::tan(zObsRad);
             double deltaZRad = (refa * tanZ + refb * tanZ * tanZ * tanZ);
-            
             if (result->elevGeom < 5.0) {
-                double correctionHorizon = 0.00005 * std::pow(5.0 - result->elevGeom, 2.5) * DEG2RAD;
-                deltaZRad += correctionHorizon;
+                deltaZRad += 0.00005 * std::pow(5.0 - result->elevGeom, 2.5) * DEG2RAD;
             }
-            result->elevRefractee = result->elevGeom + (deltaZRad * RAD2DEG);
+            result->elevRefractee = std::fmax(-90.0, std::fmin(90.0, result->elevGeom + (deltaZRad * RAD2DEG)));
         } else {
             result->elevRefractee = result->elevGeom;
         }
@@ -190,10 +217,8 @@ void calculerDepuisECEF(
 
     if (result->elevRefractee > 0.0) {
         double elevRad = result->elevRefractee * DEG2RAD;
-        double hDeg = result->elevRefractee;
-        double airMassStd = 1.0 / (std::sin(elevRad) + 0.50572 * std::pow(6.07995 + std::fmax(0.0, hDeg), -1.6364));
-        double facteurPression = presHpa / 1013.25;
-        result->airMass = airMassStd * facteurPression;
+        double airMassStd = 1.0 / (std::sin(elevRad) + 0.50572 * std::pow(6.07995 + std::fmax(0.0, result->elevRefractee), -1.6364));
+        result->airMass = airMassStd * (presHpa / 1013.25);
     } else {
         result->airMass = -1.0; 
     }
@@ -210,13 +235,9 @@ void calculerDepuisECEF(
         double cosH0 = (std::sin(altRef) - std::sin(phi) * std::sin(decRad)) / (std::cos(phi) * std::cos(decRad));
         
         if (cosH0 >= 1.0) {
-            result->dureeJourHeures = 0.0;
-            result->leverUT = -1.0; 
-            result->coucherUT = -1.0;
+            result->dureeJourHeures = 0.0; result->leverUT = -1.0; result->coucherUT = -1.0;
         } else if (cosH0 <= -1.0) {
-            result->dureeJourHeures = 24.0;
-            result->leverUT = 0.0; 
-            result->coucherUT = 24.0;
+            result->dureeJourHeures = 24.0; result->leverUT = 0.0; result->coucherUT = 24.0;
         } else {
             double H0 = std::acos(cosH0) * RAD2DEG;
             result->dureeJourHeures = (2.0 * H0) / 15.0;
@@ -242,7 +263,6 @@ void calculerDepuisECEF(
         result->dureeJourHeures = -1.0;
     }
 
-    // --- CALCUL PHOTOMÉTRIQUE & PHASE ILLUMINÉE (Généralisé à tous les astres via DE440s) ---
     if (estSoleil == 1) {
         result->illuminatedFraction = 1.0;
         result->moonPhasePct = 100.0;
@@ -256,13 +276,7 @@ void calculerDepuisECEF(
 
         result->illuminatedFraction = 0.5 * (1.0 + std::cos(phaseAngleRad));
         result->moonPhasePct = result->illuminatedFraction * 100.0;
-
-        if (result->distUA < 0.05) {
-            result->moonAgeDays = (phaseAngleRad / M_PI) * 14.765;
-        } else {
-            result->moonAgeDays = -1.0;
-        }
-
+        result->moonAgeDays = (result->distUA < 0.05) ? (phaseAngleRad / M_PI) * 14.765 : -1.0;
         result->surfaceBrightness = result->magnitudeApparente + 2.5 * std::log10(1.0 / (result->angularDiamArcsec * result->angularDiamArcsec + 1e-6));
     } else {
         result->illuminatedFraction = 1.0;
@@ -280,6 +294,90 @@ void calculerDepuisECEF(
         result->visibiliteCode = 2;
     } else {
         result->visibiliteCode = 3;
+    }
+}
+
+// Évaluation croisée globale des éclipses solaires, éclipses lunaires (ombre/pénombre) et occultations planétaires
+EMSCRIPTEN_KEEPALIVE
+void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int32_t idxSoleil, int32_t idxLune) {
+    if (!resultsArray || count <= 0) return;
+
+    AstroResult* soleil = (idxSoleil >= 0 && idxSoleil < count) ? &resultsArray[idxSoleil] : nullptr;
+    AstroResult* lune   = (idxLune >= 0 && idxLune < count)     ? &resultsArray[idxLune]   : nullptr;
+
+    // 1. Éclipse Solaire (Lune devant le Soleil)
+    if (soleil && lune) {
+        double sepSolLuneArcsec = separationAngulaireArcsec(soleil->raDeg, soleil->decDeg, lune->raDeg, lune->decDeg);
+        double rSolArcsec = soleil->angularDiamArcsec * 0.5;
+        double rLuneArcsec = lune->angularDiamArcsec * 0.5;
+
+        if (sepSolLuneArcsec < (rSolArcsec + rLuneArcsec)) {
+            double frac = calculerFractionRecouvrementDisques(sepSolLuneArcsec, rSolArcsec, rLuneArcsec);
+            soleil->occultationPct = frac * 100.0;
+            soleil->occultationCode = 1; // Éclipse solaire
+            // Réduction proportionnelle de l'irradiance solaire
+            soleil->irradiance *= (1.0 - frac);
+        }
+
+        // 2. Éclipse Lunaire (Lune dans le cône d'ombre / pénombre terrestre antisolaire)
+        double raAntiSol = normaliserDegres(soleil->raDeg + 180.0);
+        double decAntiSol = -soleil->decDeg;
+        double sepLuneOmbreArcsec = separationAngulaireArcsec(lune->raDeg, lune->decDeg, raAntiSol, decAntiSol);
+
+        double distLuneKm = lune->distUA * (UA_EN_METRES / 1000.0);
+        double distSolKm  = soleil->distUA * (UA_EN_METRES / 1000.0);
+
+        if (distLuneKm > 0.0 && distSolKm > 0.0) {
+            // Parallaxes horizontales et rayons angulaires du cône d'ombre (élargissement Danjon +2%)
+            double piLuneRad = std::asin(std::fmin(1.0, RAYON_TERRE_KM / distLuneKm));
+            double piSolRad  = std::asin(std::fmin(1.0, RAYON_TERRE_KM / distSolKm));
+            double sSolRad   = (rSolArcsec / 3600.0) * DEG2RAD;
+
+            double rOmbreArcsec    = 1.02 * (piLuneRad + piSolRad - sSolRad) * RAD2DEG * 3600.0;
+            double rPenombreArcsec = 1.02 * (piLuneRad + piSolRad + sSolRad) * RAD2DEG * 3600.0;
+
+            if (sepLuneOmbreArcsec < (rOmbreArcsec + rLuneArcsec)) {
+                double fracOmbre = calculerFractionRecouvrementDisques(sepLuneOmbreArcsec, rLuneArcsec, rOmbreArcsec);
+                lune->occultationPct = fracOmbre * 100.0;
+                lune->occultationCode = 2; // Éclipse de Lune (Ombre)
+            } else if (sepLuneOmbreArcsec < (rPenombreArcsec + rLuneArcsec)) {
+                double fracPenombre = calculerFractionRecouvrementDisques(sepLuneOmbreArcsec, rLuneArcsec, rPenombreArcsec);
+                lune->occultationPct = fracPenombre * 100.0;
+                lune->occultationCode = 3; // Éclipse de Lune (Pénombre)
+            }
+        }
+    }
+
+    // 3. Occultations des planètes par la Lune ou conjonctions serrés/occultations mutuelles
+    for (int32_t i = 0; i < count; ++i) {
+        if (i == idxSoleil || i == idxLune) continue;
+        AstroResult* astre = &resultsArray[i];
+        double rAstreArcsec = astre->angularDiamArcsec * 0.5;
+
+        // Test d'occultation par la Lune
+        if (lune) {
+            double sep = separationAngulaireArcsec(astre->raDeg, astre->decDeg, lune->raDeg, lune->decDeg);
+            double rLune = lune->angularDiamArcsec * 0.5;
+            if (sep < (rLune + rAstreArcsec)) {
+                astre->occultationPct = calculerFractionRecouvrementDisques(sep, rAstreArcsec, rLune) * 100.0;
+                astre->occultationCode = 4; // Occulté par la Lune
+                continue;
+            }
+        }
+
+        // Test d'occultation mutuelle entre planètes
+        for (int32_t j = 0; j < count; ++j) {
+            if (i == j || j == idxSoleil || j == idxLune) continue;
+            AstroResult* autre = &resultsArray[j];
+            if (autre->distUA < astre->distUA) {
+                double sepMut = separationAngulaireArcsec(astre->raDeg, astre->decDeg, autre->raDeg, autre->decDeg);
+                double rAutre = autre->angularDiamArcsec * 0.5;
+                if (sepMut < (rAutre + rAstreArcsec)) {
+                    astre->occultationPct = calculerFractionRecouvrementDisques(sepMut, rAstreArcsec, rAutre) * 100.0;
+                    astre->occultationCode = 4; // Occultation planétaire mutuelle
+                }
+            }
+        }
     }
 }
 
