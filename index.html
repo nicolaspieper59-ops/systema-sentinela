@@ -397,8 +397,18 @@
 
         <!-- 4. RADAR -->
         <div class="panel">
-            <h3 class="panel-title">4. RADAR D'ORIENTATION VRAIE</h3>
-            <canvas id="radarCanvas" width="280" height="280" aria-label="Radar orientation des astres"></canvas>
+    <h3 class="panel-title">
+        <span>4. PLANÉTARIUM &amp; RADAR ASTROMÉTRIQUE</span>
+        <span id="planetariumClock" class="time-utc">--:--:-- UTC</span>
+    </h3>
+    <div style="position: relative; width: 100%; max-width: 280px; margin: 0 auto;">
+        <canvas id="scientificPlanetariumCanvas" width="280" height="280" aria-label="Planétarium azimutal des astres"></canvas>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 8px; font-size: 9px; text-align: center; color: var(--text-muted);">
+        <div style="background: var(--bg-card); padding: 3px; border-radius: 3px; border: 1px solid var(--border-dim);">Zénith = Centre (90°)</div>
+        <div style="background: var(--bg-card); padding: 3px; border-radius: 3px; border: 1px solid var(--border-dim);">Alt 45° = Cercle inter.</div>
+        <div style="background: var(--bg-card); padding: 3px; border-radius: 3px; border: 1px solid var(--border-dim);">Horizon = Bord (0°)</div>
+    </div>
         </div>
 
         <!-- 5. ECEF 3D & MÉTÉO MANUELLE (MODE SPÉLÉO) -->
@@ -1181,7 +1191,7 @@
         positionnerRadarSurGPS(lat, lon, earthRadius3D);
     }
 
-    function dessinerRadarAstres(astresData, cap = 0) {
+    function dessinerPlanetariumScientifique(derniersResultatsAstres, capVraiActuel); 
         const canvas = document.getElementById('radarCanvas');
         if (!canvas) return;
         const ctx = canvas.getContext('2d'), dpr = window.devicePixelRatio || 1, size = 280;
