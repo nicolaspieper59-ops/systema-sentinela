@@ -410,6 +410,16 @@
         <div style="background: var(--bg-card); padding: 3px; border-radius: 3px; border: 1px solid var(--border-dim);">Horizon = Bord (0°)</div>
     </div>
         </div>
+        <!-- Option Balise / Magnétite IRL -->
+<div style="margin-top: 8px; padding: 6px; background: var(--bg-card); border: 1px solid var(--border-dim); border-radius: 4px; font-size: 10px;">
+    <div style="color: var(--amber); font-weight: bold; margin-bottom: 3px;">BALISE MAGNÉTITIQUE (WAYPOINT) :</div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 4px;">
+        <input type="number" id="input-waypoint-lat" placeholder="Lat cible" step="0.0001" style="background:var(--bg-base); color:var(--neon-green); border:1px solid var(--border-dim); padding:2px;">
+        <input type="number" id="input-waypoint-lon" placeholder="Lon cible" step="0.0001" style="background:var(--bg-base); color:var(--neon-green); border:1px solid var(--border-dim); padding:2px;">
+    </div>
+    <button class="btn-action" style="width:100%; padding:3px;" onclick="calculerCapWaypoint()">VERROUILLER LA MAGNÉTITE</button>
+    <div style="margin-top: 4px; color: var(--sky);">CAP CIBLE : <span id="val-waypoint-az" style="font-weight:bold;">--°</span> | DIST : <span id="val-waypoint-dist" style="font-weight:bold;">-- km</span></div>
+</div>
 
         <!-- 5. ECEF 3D & MÉTÉO MANUELLE (MODE SPÉLÉO) -->
         <div class="panel">
@@ -1070,18 +1080,22 @@
         }
     }  
     
-    function mettreAJourInterface(data) {
-        if (!data) return;
-        if (data.metrics) mettreAJourMetricsSolaires(data.metrics);
-        if (data.geoidOndulationM !== undefined) {
-            const elGeoid = document.getElementById('val-geoid-n');
-            if (elGeoid) elGeoid.innerText = `${data.geoidOndulationM >= 0 ? '+' : ''}${data.geoidOndulationM.toFixed(2)} m (EGM)`;
-        }
-        if (data.bodies) {
-            derniersResultatsAstres = data.bodies;
-            mettreAJourTableauAstres(data.bodies);
-            dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
-        }
+    // --- CORRECTION DANS mettreAJourInterface ---
+function mettreAJourInterface(data) {
+    if (!data) return;
+    if (data.metrics) mettreAJourMetricsSolaires(data.metrics);
+    if (data.geoidOndulationM !== undefined) {
+        const elGeoid = document.getElementById('val-geoid-n');
+        if (elGeoid) elGeoid.innerText = `${data.geoidOndulationM >= 0 ? '+' : ''}${data.geoidOndulationM.toFixed(2)} m (EGM)`;
+    }
+    if (data.bodies) {
+        derniersResultatsAstres = data.bodies;
+        mettreAJourTableauAstres(data.bodies);
+        
+        // CORRECTION : Appel du nouveau Planétarium Scientifique à la place du radar obsolète
+        dessinerPlanetariumScientifique(derniersResultatsAstres, capVraiActuel);
+    }
+
         if (data.wmm && !wmmForceManuel) {
             resultatWmmCourant = data.wmm;
             document.getElementById('val-dec-wmm').innerText = `${data.wmm.declination.toFixed(2)}°`;
@@ -1293,6 +1307,34 @@ function dessinerPlanetariumScientifique(astresData, cap = 0) {
     ctx.restore();
 }
 
+    function calculerCapWaypoint() {
+    const latCible = parseFloat(document.getElementById('input-waypoint-lat').value);
+    const lonCible = parseFloat(document.getElementById('input-waypoint-lon').value);
+    if (isNaN(latCible) || isNaN(lonCible)) {
+        alert("Coordonnées de balise invalides.");
+        return;
+    }
+    const phi1 = stationActive.lat * (Math.PI / 180);
+    const phi2 = latCible * (Math.PI / 180);
+    const dLambda = (lonCible - stationActive.lon) * (Math.PI / 180);
+
+    const y = Math.sin(dLambda) * Math.cos(phi2);
+    const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
+    let azRad = Math.atan2(y, x);
+    let azDeg = (azRad * (180 / Math.PI) + 360) % 360;
+
+    // Calcul de la distance orthodromique (Haversine)
+    const R_terre = 6371.0; // km
+    const dPhi = phi2 - phi1;
+    const a = Math.sin(dPhi / 2)**2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLambda / 2)**2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distanceKm = R_terre * c;
+
+    document.getElementById('val-waypoint-az').innerText = `${azDeg.toFixed(2)}°`;
+    document.getElementById('val-waypoint-dist').innerText = `${distanceKm.toFixed(2)} km`;
+    ecrireLog(`Balise magnétite verrouillée : Azimut ${azDeg.toFixed(2)}°, Distance ${distanceKm.toFixed(2)} km.`);
+    }
+    
     function positionnerRadarSurGPS(lat, lon, radius) {
         if (!radarGroup) return;
         const phi = (90 - lat) * (Math.PI / 180);
@@ -1405,11 +1447,14 @@ function dessinerPlanetariumScientifique(astresData, cap = 0) {
         auroraMesh.visible = kpIndex >= 2;
     }
 
-    function basculerModeJour() {
-        modeJourActif = !modeJourActif;
-        document.getElementById('html-root').classList.toggle('day-mode', modeJourActif);
-        document.querySelector('meta[name="theme-color"]').setAttribute('content', modeJourActif ? '#f0f2f5' : '#02040a');
-        dessinerRadarAstres(derniersResultatsAstres, capVraiActuel);
+    // --- CORRECTION DANS basculerModeJour ---
+function basculerModeJour() {
+    modeJourActif = !modeJourActif;
+    document.getElementById('html-root').classList.toggle('day-mode', modeJourActif);
+    document.querySelector('meta[name="theme-color"]').setAttribute('content', modeJourActif ? '#f0f2f5' : '#02040a');
+    
+    // CORRECTION : Remplacement de l'appel radar par le planétarium
+    dessinerPlanetariumScientifique(derniersResultatsAstres, capVraiActuel);
     }
 
     let mediaStreamCamera = null;
