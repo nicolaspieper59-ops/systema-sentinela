@@ -176,22 +176,27 @@ void calculerDepuisECEF(
         result->radialVelocityKmS = (xICRF_km * vx_km_s + yICRF_km * vy_km_s + zICRF_km * vz_km_s) / (normICRF / 1000.0);
     }
 
-    double xpRad = 0.0; // À lier aux flux IERS EOP si disponibles dynamiquement
-double ypRad = 0.0;
-double rpom[3][3];
-iauPom(xpRad, ypRad, rpom);
+    double xpRad = 0.0; // Lié aux flux IERS EOP
+    double ypRad = 0.0;
+    double rpom[3][3];
 
-// Rotation de l'angle de rotation de la Terre (ERA) autour de l'axe Z
-double cosERA = std::cos(eraRad);
-double sinERA = std::sin(eraRad);
-double xTmp =  xI * cosERA + yI * sinERA;
-double yTmp = -xI * sinERA + yI * cosERA;
-double zTmp =  zI;
+#ifdef eraPom
+    eraPom(xpRad, ypRad, rpom);
+#else
+    iauPom(xpRad, ypRad, rpom);
+#endif
 
-// Projection finale dans le repère terrestre TRS (ECEF) corrigé du mouvement du pôle
-double xECEF = rpom[0][0] * xTmp + rpom[0][1] * yTmp + rpom[0][2] * zTmp;
-double yECEF = rpom[1][0] * xTmp + rpom[1][1] * yTmp + rpom[1][2] * zTmp;
-double zECEF = rpom[2][0] * xTmp + rpom[2][1] * yTmp + rpom[2][2] * zTmp;
+    // Rotation de l'angle de rotation de la Terre (ERA) autour de l'axe Z
+    double cosERA = std::cos(eraRad);
+    double sinERA = std::sin(eraRad);
+    double xTmp =  xI * cosERA + yI * sinERA;
+    double yTmp = -xI * sinERA + yI * cosERA;
+    double zTmp =  zI;
+
+    // Projection finale dans le repère terrestre TRS (ECEF) corrigé du mouvement du pôle
+    double xECEF = rpom[0][0] * xTmp + rpom[0][1] * yTmp + rpom[0][2] * zTmp;
+    double yECEF = rpom[1][0] * xTmp + rpom[1][1] * yTmp + rpom[1][2] * zTmp;
+    double zECEF = rpom[2][0] * xTmp + rpom[2][1] * yTmp + rpom[2][2] * zTmp;
 
     double phi = latDeg * DEG2RAD;
     double lambda = lonDeg * DEG2RAD;
