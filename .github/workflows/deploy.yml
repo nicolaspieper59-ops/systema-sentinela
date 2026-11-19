@@ -91,14 +91,28 @@ jobs:
           done
           em++ "$SRC_FILE" build_sofa/*.o -O3 -std=c++17             -I lib/sofa/src -I src/             -s WASM=1 -s FORCE_FILESYSTEM=1 -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=33554432             -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_evaluerOccultationsEtEclipses','_calculerOndulationGeoideEGM','_normaliserDegres','_malloc','_free']"             -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32','getValue','setValue']"             -o wasm_astronomie.js
 
-      - name: 📂 Assemblage du site Web & Vérification WMM
+      - name: 📂 Préparation de la bibliothèque SOFA C / ERFA
         run: |
-          mkdir -p public_site
-          cp -f index.html manifest.json sw.js worker.js meteo_manager.js three.min.js public_site/ 2>/dev/null || true
-          cp -rf textures public_site/ 2>/dev/null || true
-          cp -f EGM2008.gfc public_site/ 2>/dev/null || true
-          cp -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm public_site/ 2>/dev/null || true
-          cp -f WMM2025.COF public_site/
+          rm -rf lib/sofa
+          mkdir -p lib/sofa/src
+          GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch v2.0.1.1 https://github.com/liberfa/erfa.git lib/sofa_repo || \
+          GIT_TERMINAL_PROMPT=0 git clone --depth 1 https://github.com/liberfa/erfa.git lib/sofa_repo
+          cp -r lib/sofa_repo/src/* lib/sofa/src/
+          rm -rf lib/sofa_repo
+          if [ -f "lib/sofa/src/erfa.h" ]; then
+            echo '#include "erfa.h"' > lib/sofa/src/sofa.h
+            echo '#define iauObl06 eraObl06' >> lib/sofa/src/sofa.h
+            echo '#define iauGst06a eraGst06a' >> lib/sofa/src/sofa.h
+            echo '#define iauAb eraAb' >> lib/sofa/src/sofa.h
+            echo '#define iauRefco eraRefco' >> lib/sofa/src/sofa.h
+            echo '#define iauPom eraPom' >> lib/sofa/src/sofa.h
+          fi
+          # --- AJOUTER CE BLOC POUR L'ALIAS ERFAM / SOFAM ---
+          if [ -f "lib/sofa/src/erfam.h" ]; then
+            echo '#include "erfam.h"' > lib/sofa/src/sofam.h
+          elif [ ! -f "lib/sofa/src/sofam.h" ]; then
+            touch lib/sofa/src/sofam.h
+          fi
 
       - name: 🔀 Créer une Pull Request automatique pour flux_live.json
         uses: peter-evans/create-pull-request@v6
