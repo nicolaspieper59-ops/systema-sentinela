@@ -606,7 +606,7 @@
         lon: parseFloat(localStorage.getItem('sentinela_last_lon') || '5.358507'),
         altMeters: parseFloat(localStorage.getItem('sentinela_last_alt') || '49.81'),
         nom: 'STATION FIXE (INITIALISATION)',
-        modePrecision: 'MANUAL_FIXED', // 'MANUAL_FIXED' (6 déc.) ou 'GPS_MOBILE' (5 déc.)
+        modePrecision: 'MANUAL_FIXED',
         accuracyM: 0
     };
 
@@ -621,7 +621,7 @@
         nebulositePct: 0,
         ventKmh: 0,
         source: 'ISA 1976 / DÉFAUT',
-        certLevel: 'ISA_DEFAULT' // 'STATION_CERTIFIED', 'AROME_LIVE', 'MEMS_RAW', 'HYPSOMETRIC_MODEL', 'ISA_DEFAULT'
+        certLevel: 'ISA_DEFAULT'
     };
     
     let capteursActifs = false;
@@ -636,7 +636,6 @@
     let astroWorker = null;
     let derniersResultatsAstres = {};
 
-    // Étoiles de fond procédurales pour le planétarium (densité réaliste)
     const etoilesPlanisphere = Array.from({ length: 90 }, (_, i) => ({
         angle: (i * 137.508 * Math.PI) / 180,
         dist: 0.12 + ((i * 31) % 85) / 100,
@@ -669,7 +668,6 @@
         while (consoleEl.children.length > 120) consoleEl.removeChild(consoleEl.firstChild);
     }
 
-    // Surveillance état réseau (Online / Offline / Mode Spéléo)
     function actualiserStatutReseau() {
         const elNet = document.getElementById('lbl-net-status');
         if (!elNet) return;
@@ -724,7 +722,6 @@
         ecrireLog(`Heure principale ajustée manuellement (UTC) à : ${heureString}`);
     }
 
-    // --- CAMÉRA DE SECOURS (PLATE-SOLVING OPTIQUE) ---
     async function basculerCameraSecours() {
         const btn = document.getElementById('btn-toggle-camera');
         const videoEl = document.getElementById('stellaireVideo');
@@ -787,7 +784,6 @@
                 statutEl.innerText = "FLUX ACTIF (VISÉE)";
                 statutEl.style.color = "var(--neon-green)";
             }
-            // Estimation du pointage zénithal/cap courant en attente d'astrométrie stellaire
             const zenithDec = stationActive.lat;
             const lstDeg = parseFloat((document.getElementById('val-gast')?.innerText.split('/')[1] || '0').replace('°', '')) || 0;
             if (coordsEl) coordsEl.innerText = `RA ${lstDeg.toFixed(2)}° / DEC ${zenithDec.toFixed(2)}°`;
@@ -801,8 +797,6 @@
         }
     }
 
-    // --- MÉTÉOROLOGIE CERTIFIÉE & INCERTITUDES GUM ---
-    // Calcul thermodynamique du point de rosée (Magnus-Tetens), arrondi à 0 décimale selon GUM (±2-5% HR)
     function calculerPointRoseeGUM(T, HR) {
         const hrClamped = Math.max(1, Math.min(100, HR));
         const a = 17.27;
@@ -812,14 +806,13 @@
         return Math.round(Td);
     }
 
-    // Repli hypsométrique barométrique (ISA 1976) selon altitude ellipsoïdale/orthométrique
     function calculerPressionHypsometrique(altM, tempC = 15.0) {
         const P0 = 1013.25;
         const T0 = 288.15;
         const L = 0.0065;
         const exp = 5.25588;
         const pQfe = P0 * Math.pow(Math.max(0.1, 1.0 - (L * altM) / T0), exp);
-        return Math.round(pQfe); // 0 décimale selon GUM (±5-10 hPa d'incertitude modèle)
+        return Math.round(pQfe);
     }
 
     function convertirQFEversQNH(pQfe, altM) {
@@ -836,28 +829,21 @@
         const elVv = document.getElementById('val-vv');
         const elDewRisk = document.getElementById('val-dew-risk');
 
-        // Formatage strict selon le niveau de certification (norme GUM)
         let pStr = "";
-        let tStr = "";
         if (meteoActive.certLevel === 'STATION_CERTIFIED') {
             pStr = `${meteoActive.pressionBaroQFE.toFixed(2)} hPa`;
-            tStr = `${meteoActive.temperatureC.toFixed(1)}°C`;
             if (elSource) { elSource.innerText = "STATION CERTIFIÉE (±0.1 hPa)"; elSource.style.color = "var(--neon-green)"; }
         } else if (meteoActive.certLevel === 'AROME_LIVE') {
             pStr = `${meteoActive.pressionBaroQFE.toFixed(1)} hPa`;
-            tStr = `${meteoActive.temperatureC.toFixed(1)}°C`;
             if (elSource) { elSource.innerText = "AROME / OPEN-METEO (±1.5 hPa)"; elSource.style.color = "var(--sky)"; }
         } else if (meteoActive.certLevel === 'MEMS_RAW') {
             pStr = `${meteoActive.pressionBaroQFE.toFixed(1)} hPa`;
-            tStr = `${Math.round(meteoActive.temperatureC)}°C`;
             if (elSource) { elSource.innerText = "CAPTEUR MEMS BRUT (±1.0 hPa)"; elSource.style.color = "var(--sky)"; }
         } else if (meteoActive.certLevel === 'HYPSOMETRIC_MODEL') {
             pStr = `${Math.round(meteoActive.pressionBaroQFE)} hPa`;
-            tStr = `${Math.round(meteoActive.temperatureC)}°C`;
             if (elSource) { elSource.innerText = "MODÈLE HYPSOMÉTRIQUE (±8 hPa)"; elSource.style.color = "var(--amber)"; }
         } else {
             pStr = `${Math.round(meteoActive.pressionBaroQFE)} hPa`;
-            tStr = `${Math.round(meteoActive.temperatureC)}°C`;
             if (elSource) { elSource.innerText = "ISA 1976 / DÉFAUT"; elSource.style.color = "var(--amber)"; }
         }
 
@@ -866,21 +852,17 @@
         if (elTd) elTd.innerText = `${meteoActive.pointRoseeC} °C (HR ${meteoActive.humiditePct}%)`;
         if (elVv) elVv.innerText = `${meteoActive.visibiliteKm} km / ${meteoActive.nebulositePct}%`;
 
-        // Calcul du risque de buée sur l'optique (T - Td)
         const ecartRosee = meteoActive.temperatureC - meteoActive.pointRoseeC;
         if (elDewRisk) {
             if (ecartRosee <= 1.5) {
                 elDewRisk.innerText = `CRITIQUE (ΔT ${ecartRosee.toFixed(1)}°C)`;
                 elDewRisk.style.color = "var(--rose)";
-                if (elTd) elTd.style.color = "var(--rose)";
             } else if (ecartRosee <= 3.5) {
                 elDewRisk.innerText = `MODÉRÉ (ΔT ${ecartRosee.toFixed(1)}°C)`;
                 elDewRisk.style.color = "var(--amber)";
-                if (elTd) elTd.style.color = "var(--amber)";
             } else {
                 elDewRisk.innerText = `FAIBLE (ΔT ${ecartRosee.toFixed(1)}°C)`;
                 elDewRisk.style.color = "var(--neon-green)";
-                if (elTd) elTd.style.color = "var(--sky)";
             }
         }
     }
@@ -929,10 +911,8 @@
         dessinerPlanetariumScientifique(derniersResultatsAstres, capVraiActuel);
     }
 
-    // Connecteur Météo Haute Résolution AROME / Open-Meteo (sans clé API, avec cache hors-ligne)
     async function synchroniserMeteoLiveAROME() {
         const elSource = document.getElementById('val-meteo-source');
-        // Restauration du cache localStorage en cas d'absence de réseau
         const cacheMeteo = localStorage.getItem('sentinela_meteo_cache');
         if (!navigator.onLine && cacheMeteo) {
             try {
@@ -955,7 +935,6 @@
             const c = json.current;
             const t = parseFloat(c.temperature_2m);
             const hr = Math.round(parseFloat(c.relative_humidity_2m));
-            // Si le baromètre MEMS matériel est actif, on conserve sa mesure QFE brute
             const pQfe = (capteursActifs && instanceBarometre) ? meteoActive.pressionBaroQFE : parseFloat(c.surface_pressure);
             const td = Math.round(parseFloat(c.dew_point_2m));
             const vvKm = Math.round((parseFloat(c.visibility) || 25000) / 1000);
@@ -977,7 +956,6 @@
 
             localStorage.setItem('sentinela_meteo_cache', JSON.stringify(meteoActive));
 
-            // Mise à jour des champs du formulaire pour cohérence visuelle
             document.getElementById('input-temp').value = t.toFixed(1);
             document.getElementById('input-pres').value = pQfe.toFixed(1);
             document.getElementById('input-humidity').value = hr;
@@ -986,7 +964,7 @@
 
             actualiserAffichageMeteoGUM();
             dessinerPlanetariumScientifique(derniersResultatsAstres, capVraiActuel);
-            ecrireLog(`[MÉTÉO AROME] T=${t.toFixed(1)}°C, QFE=${pQfe.toFixed(1)}hPa, HR=${hr}%, Td=${td}°C, VV=${vvKm}km, Nuages=${clouds}%, Vent=${vent}km/h.`);
+            ecrireLog(`[MÉTÉO AROME] T=${t.toFixed(1)}°C, QFE=${pQfe.toFixed(1)}hPa, HR=${hr}%, Td=${td}°C, VV=${vvKm}km, Nuages=${clouds}%.`);
         } catch (err) {
             ecrireLog(`[MÉTÉO] Échec synchro AROME (${err.message}). Repli hypsométrique actif.`);
             if (meteoActive.certLevel === 'ISA_DEFAULT') {
@@ -1045,7 +1023,7 @@
             if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
             
             const texteCsv = await reponse.text();
-            const lignes = texteCsv.trim().split('\\n');
+            const lignes = texteCsv.trim().split('\n');
             const dateAujourdhui = new Date(obtenirTimestampUTCExact());
             const annee = dateAujourdhui.getUTCFullYear();
             const mois = dateAujourdhui.getUTCMonth() + 1;
@@ -1149,7 +1127,6 @@
                 const alt = pos.coords.altitude !== null ? pos.coords.altitude : 0.0;
                 const accuracy = pos.coords.accuracy || 10;
                 
-                // Norme GUM : 5 décimales pour Lat/Lon (~1.1 m) et 1 décimale pour Alt en mode GPS mobile
                 document.getElementById('input-lat').value = lat.toFixed(5);
                 document.getElementById('input-lon').value = lon.toFixed(5);
                 document.getElementById('input-alt').value = alt.toFixed(1);
@@ -1184,7 +1161,6 @@
 
     function mettreAJourCapBrut(capVal, estNordVrai = false) {
         capVraiActuel = estNordVrai ? (capVal + 360.0) % 360.0 : (capVal + resultatWmmCourant.declination + 360.0) % 360.0;
-        // Norme GUM : 1 décimale (0.1°) sur magnétomètre MEMS smartphone
         document.getElementById('val-cap-brut').innerText = `${capVal.toFixed(1)}°`;
         document.getElementById('val-cap-net').innerText = `${capVraiActuel.toFixed(1)}°`;
         dessinerPlanetariumScientifique(derniersResultatsAstres, capVraiActuel);
@@ -1199,7 +1175,6 @@
                 instanceBarometre.addEventListener('reading', () => {
                     if (!capteursActifs) return;
                     const p = instanceBarometre.pressure;
-                    // Norme GUM : Pression MEMS limitée à 1 décimale max (±1.0 hPa)
                     elBaro.innerText = `${p.toFixed(1)} hPa (MEMS)`;
                     elBaro.style.color = "var(--neon-green)";
                     
@@ -1353,8 +1328,6 @@
         if (!tbody) return;
         const statutsVisibilite = ["Invisible", "Œil nu", "Jumelles", "Télescope"];
         const astresTries = Object.entries(bodiesData).sort(([, dataA], [, dataB]) => (dataB.elevationApparente ?? -999) - (dataA.elevationApparente ?? -999));
-
-        // Propagation de la précision GUM : 4 décimales en station géodésique fixe, 2 décimales en GPS mobile
         const decAstro = stationActive.modePrecision === 'GPS_MOBILE' ? 2 : 4;
 
         if (Object.keys(lignesTableauCache).length === 0) {
@@ -1482,7 +1455,6 @@
             if (cache.irr) cache.irr.textContent = donneesAstre.irradiance !== undefined ? donneesAstre.irradiance.toFixed(1) : '--';
             if (cache.rms) cache.rms.textContent = donneesAstre.rmsArcsecDisplay ?? '--';
             if (cache.etat) {
-                // Prise en compte de la nébulosité dans le statut de visibilité terrain
                 const statutBase = statutsVisibilite[donneesAstre.visibiliteCode] ?? "Inconnu";
                 cache.etat.textContent = (meteoActive.nebulositePct >= 85 && donneesAstre.visibiliteCode > 0) ? `${statutBase} (Couvert)` : statutBase;
             }
@@ -1524,7 +1496,6 @@
             alert("ERREUR : Coordonnées invalides.");
             return;
         }
-        // Saisie manuelle = station géodésique fixe (6 décimales Lat/Lon, 2 décimales Alt)
         mettreAJourCoordonneesStation(lat, lon, altM, 'STATION FIXE (Manuelle)', 'MANUAL_FIXED', 0);
     }
 
@@ -1576,7 +1547,6 @@
         const Y_km = ((N + altM) * Math.cos(phi) * Math.sin(lambda)) / 1000.0;
         const Z_km = ((N * (1.0 - e2) + altM) * Math.sin(phi)) / 1000.0;
 
-        // Norme GUM : 3 décimales (1 m) en GPS mobile, 4 décimales (0.1 m) en station fixe
         const decXyz = modePrecision === 'GPS_MOBILE' ? 3 : 4;
         document.getElementById('val-xyz-x').innerText = X_km.toFixed(decXyz);
         document.getElementById('val-xyz-y').innerText = Y_km.toFixed(decXyz);
@@ -1600,7 +1570,6 @@
             elGumMode.style.color = modePrecision === 'GPS_MOBILE' ? "var(--sky)" : "var(--neon-green)";
         }
 
-        // Si aucune météo certifiée ou AROME n'est chargée, mise à jour automatique par repli hypsométrique selon l'altitude
         if (meteoActive.certLevel === 'ISA_DEFAULT' || meteoActive.certLevel === 'HYPSOMETRIC_MODEL') {
             meteoActive.pressionBaroQFE = calculerPressionHypsometrique(altM, meteoActive.temperatureC);
             meteoActive.certLevel = 'HYPSOMETRIC_MODEL';
@@ -1613,7 +1582,6 @@
         if (waypointActif) calculerCapWaypoint(true);
     }
 
-    // --- PLANÉTARIUM SCIENTIFIQUE TEMPS RÉEL UTC (STYLE HORLOGE ASTRONOMIQUE IRL SANS SIMULATION) ---
     function basculerRayonsXCiel() {
         rayonsXCielActif = !rayonsXCielActif;
         const btn = document.getElementById('btn-xray-sky');
@@ -1635,7 +1603,6 @@
     }
 
     function calculerPaletteCielIRL(altSoleilDeg, meteo) {
-        // Palettes crépusculaires IRL inspirées de horloge_astronomique_minecraft_compl_te_2.html
         const night  = { top: [3, 6, 14],    mid: [8, 13, 28],   hor: [15, 23, 42] };
         const astro  = { top: [8, 12, 30],   mid: [18, 28, 62],  hor: [49, 46, 129] };
         const nautic = { top: [15, 23, 58],  mid: [49, 46, 129], hor: [157, 23, 77] };
@@ -1662,7 +1629,6 @@
         let midRgb = interpolerCouleur(p1.mid, p2.mid, t);
         let horRgb = interpolerCouleur(p1.hor, p2.hor, t);
 
-        // Diffusion atmosphérique de Mie (humidité + visibilité de Koschmieder)
         const facteurBrume = Math.max(0, Math.min(1, ((meteo.humiditePct - 30) / 70) * 0.5 + (1 - Math.min(50, meteo.visibiliteKm) / 50) * 0.5));
         if (facteurBrume > 0.15 && altSoleilDeg > -12) {
             const voileMie = [210, 220, 232];
@@ -1670,14 +1636,11 @@
             midRgb = interpolerCouleur(midRgb, voileMie, facteurBrume * 0.25);
         }
 
-        // Facteur de densité Rayleigh (pression QFE normalisée à 1013.25 hPa)
         const ratioPression = Math.max(0.2, Math.min(1.1, meteo.pressionBaroQFE / 1013.25));
         if (ratioPression < 0.75 && altSoleilDeg > 0) {
-            // En haute altitude / basse pression, le zénith devient bleu nuit profond
             topRgb = interpolerCouleur([4, 10, 28], topRgb, ratioPression);
         }
 
-        // Visibilité des étoiles modulée par crépuscule, brume et nébulosité réelle
         let starAlpha = altSoleilDeg >= 2 ? 0 : Math.max(0, Math.min(1, (-altSoleilDeg + 2) / 18));
         starAlpha *= (1 - facteurBrume * 0.65) * (1 - (meteo.nebulositePct || 0) / 100);
 
@@ -1690,26 +1653,7 @@
         };
     }
 
-    
-        if (meteoActive.nebulositePct > 5) {
-            ctx.beginPath();
-            ctx.arc(0, 0, R, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(148, 163, 184, ${(meteoActive.nebulositePct / 100) * 0.42})`;
-            ctx.fill();
-        }
-
-        // 4. Cercles de visée azimutale (Alt 45° = R/2 et Horizon = R)
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.arc(0, 0, R * 0.5, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-
-                
-        function dessinerPlanetariumScientifique(astresData, cap = 0) {
+    function dessinerPlanetariumScientifique(astresData, cap = 0) {
         const canvas = document.getElementById('scientificPlanetariumCanvas');
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
@@ -1727,7 +1671,6 @@
         ctx.scale(dpr, dpr);
         const cx = size / 2, cy = size / 2, R = 116;
 
-        // Sécurisation de l'élévation du soleil avec validation numérique stricte
         const sunData = astresData && (astresData.sun || astresData.SUN);
         const altSoleil = (sunData && Number.isFinite(sunData.elevationApparente)) ? sunData.elevationApparente : -20;
         const sky = calculerPaletteCielIRL(altSoleil, meteoActive);
@@ -1738,7 +1681,6 @@
         ctx.clearRect(0, 0, size, size);
         ctx.translate(cx, cy);
 
-        // 1. Disque Céleste & Dégradé Atmosphérique IRL sécurisé
         ctx.beginPath();
         ctx.arc(0, 0, R, 0, Math.PI * 2);
         const safeR = Math.max(1, R);
@@ -1749,7 +1691,6 @@
         ctx.fillStyle = skyGrad;
         ctx.fill();
 
-        // 2. Étoiles de fond modulées par crépuscule, brume et nébulosité
         if (sky.starAlpha > 0.02) {
             etoilesPlanisphere.forEach(s => {
                 const sx = Math.cos(s.angle) * s.dist * R;
@@ -1763,7 +1704,6 @@
             });
         }
 
-        // 3. Voile nuageux réaliste si nébulosité > 0%
         if (meteoActive.nebulositePct > 5) {
             ctx.beginPath();
             ctx.arc(0, 0, R, 0, Math.PI * 2);
@@ -1771,7 +1711,6 @@
             ctx.fill();
         }
 
-        // 4. Cercles de visée azimutale
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
         ctx.lineWidth = 1;
         ctx.setLineDash([3, 3]);
@@ -1780,14 +1719,12 @@
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Croix cardinale
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
         ctx.beginPath();
         ctx.moveTo(0, -R); ctx.lineTo(0, R);
         ctx.moveTo(-R, 0); ctx.lineTo(R, 0);
         ctx.stroke();
 
-        // Points cardinaux
         ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
         ctx.font = 'bold 8.5px monospace';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1796,7 +1733,6 @@
         ctx.fillText('E', R - 9, 0);
         ctx.fillText('O', -R + 9, 0);
 
-        // 5. Vecteur Cap Vrai & Balise Magnétique Waypoint
         if (Number.isFinite(cap)) {
             const capRad = cap * Math.PI / 180.0;
             ctx.strokeStyle = '#f85149';
@@ -1822,7 +1758,6 @@
             }
         }
 
-        // 6. Projection des Astres JPL DE440s avec garde-fous finis
         if (astresData) {
             for (const [key, data] of Object.entries(astresData)) {
                 if (!data || !Number.isFinite(data.elevationApparente) || !Number.isFinite(data.azimuth)) continue;
@@ -1873,7 +1808,6 @@
             }
         }
 
-        // 7. Boîtier extérieur fixe
         ctx.beginPath();
         ctx.arc(0, 0, R, 0, Math.PI * 2);
         ctx.strokeStyle = '#38bdf8';
@@ -1881,7 +1815,7 @@
         ctx.stroke();
 
         ctx.restore();
-                    }
+    }
 
     function calculerCapWaypoint(silencieux = false) {
         const latCible = parseFloat(document.getElementById('input-waypoint-lat').value.replace(',', '.'));
@@ -1963,7 +1897,6 @@
         positionnerRadarSurGPS(stationActive.lat, stationActive.lon, earthRadius3D);
         centrerGlobeSurCoordonnees(stationActive.lat, stationActive.lon);
 
-        // Contrôle tactile et souris pour manipuler le globe 3D sans annuler le centrage
         container.addEventListener('pointerdown', (e) => {
             globeIsDragging = true;
             globePrevMouse = { x: e.clientX, y: e.clientY };
@@ -1991,7 +1924,6 @@
 
         function animate3D() {
             requestAnimationFrame(animate3D);
-            // Rotation lente uniquement sur la couche nuageuse pour préserver le verrouillage sur la station
             cloudMesh.rotation.y += 0.0005;
             if (radarBeam) radarBeam.rotation.y += 0.04;
             globeRenderer.render(globeScene, globeCamera);
