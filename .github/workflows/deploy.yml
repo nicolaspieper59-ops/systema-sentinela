@@ -104,6 +104,15 @@ jobs:
             -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32','getValue','setValue']" \
             -o wasm_astronomie.js
 
+      - name: 📂 Assemblage du site Web & Préparation de l'artefact
+        run: |
+          mkdir -p public_site
+          cp -f index.html manifest.json sw.js worker.js three.min.js public_site/ 2>/dev/null || true
+          cp -rf textures public_site/ 2>/dev/null || true
+          cp -f EGM2008.gfc public_site/ 2>/dev/null || true
+          cp -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm public_site/ 2>/dev/null || true
+          cp -f WMM2025.COF public_site/ 2>/dev/null || true
+
       - name: 🔀 Créer une Pull Request automatique pour flux_live.json
         uses: peter-evans/create-pull-request@v6
         with:
