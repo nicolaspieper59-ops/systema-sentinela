@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.40)
-Mode Haute Résolution Ultra-Précis (1 segment par minute pour la Lune et le Soleil / 1440 pts/j)
+SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.55)
 """
 
 import argparse
@@ -34,13 +33,8 @@ CORPS_MAP = {
 PAS_HEURES_MAP = {
     "SOLEIL": 1.0 / 60.0,
     "LUNE": 1.0 / 60.0,
-    "MERCURE": 1.0,
-    "VENUS": 1.0,
-    "MARS": 1.0,
-    "JUPITER": 1.0,
-    "SATURNE": 1.0,
-    "URANUS": 1.0,
-    "NEPTUNE": 1.0
+    "MERCURE": 1.0, "VENUS": 1.0, "MARS": 1.0,
+    "JUPITER": 1.0, "SATURNE": 1.0, "URANUS": 1.0, "NEPTUNE": 1.0
 }
 
 RAYONS_EQUATORIAUX_KM = {
@@ -65,20 +59,17 @@ UA_KM = 149597870.7
 
 def extraire_donnees_iers_finals(fichier_path="finals2000A.all"):
     if not os.path.exists(fichier_path):
-        return {"xp_arcsec": 0.0, "yp_arcsec": 0.0, "ut1_utc_sec": 0.0}
-    xp, yp, ut1_utc = 0.0, 0.0, 0.0
+        return {"xp_arcsec": 0.05, "yp_arcsec": 0.12, "ut1_utc_sec": -0.0547}
+    xp, yp, ut1_utc = 0.05, 0.12, -0.0547
     try:
         with open(fichier_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                if len(line) >= 68:
-                    try:
-                        xp_val = float(line[18:27].strip())
-                        yp_val = float(line[37:46].strip())
-                        ut1_val = float(line[58:68].strip())
-                        if xp_val != 0.0 and yp_val != 0.0:
-                            xp, yp, ut1_utc = xp_val, yp_val, ut1_val
-                    except ValueError:
-                        continue
+            lines = f.readlines()
+            if lines:
+                last_line = lines[-1]
+                if len(last_line) >= 68:
+                    xp = float(last_line[18:27].strip())
+                    yp = float(last_line[37:46].strip())
+                    ut1_utc = float(last_line[58:68].strip())
     except Exception as e:
         print(f"[WARN IERS] Lecture {fichier_path} : {e}", file=sys.stderr)
     return {"xp_arcsec": xp, "yp_arcsec": yp, "ut1_utc_sec": ut1_utc}
@@ -237,4 +228,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-        
