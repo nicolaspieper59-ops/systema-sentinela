@@ -36,7 +36,7 @@ struct alignas(8) AstroResult {
     double magnitudeApparente;    // 13
     double shadowLength;          // 14
     double moonPhasePct;          // 15
-    double astreAgeDays;          // 16 (Généralisé : âge synodique Lune / cycle orbital Soleil & planètes)
+    double astreAgeDays;          // 16
     double crepusculeUT;          // 17
     double dureeVisibiliteHeures; // 18
     double angularDiamArcsec;     // 19
@@ -44,13 +44,13 @@ struct alignas(8) AstroResult {
     double illuminatedFraction;   // 21
     double radialVelocityKmS;     // 22
     double occultationPct;        // 23
-    double skyGlowMagArcsec2;     // 24 (Luminance de fond de ciel : lueur solaire / micro-crépuscule lunaire / nulle planètes)
-    double astreMeanTimeHours;    // 25 (Temps moyen local planétaire / Sol martien / temps moyen terrestre)
-    double astreTrueTimeHours;    // 26 (Temps vrai local planétaire corrigé de l'équation du temps planétaire)
-    double astreEqTempsMin;       // 27 (Équation du temps spécifique à l'astre en minutes)
+    double skyGlowMagArcsec2;     // 24
+    double astreMeanTimeHours;    // 25
+    double astreTrueTimeHours;    // 26
+    double astreEqTempsMin;       // 27
     int32_t visibiliteCode;       // Byte offset 224
-    int32_t occultationCode;      // Byte offset 228 (0: Aucune, 1: Éclipse Sol., 2: Éclipse Lun. Ombre, 3: Éclipse Lun. Pénombre, 4: Occulté par Lune/Planète)
-    int32_t glowTypeCode;         // Byte offset 232 (0: Nulle/Planètes, 1: Lueur Solaire, 2: Micro-crépuscule Lunaire)
+    int32_t occultationCode;      // Byte offset 228
+    int32_t glowTypeCode;         // Byte offset 232
     int32_t padding;              // Byte offset 236 -> Total struct size = 240 bytes
 };
 
@@ -101,7 +101,6 @@ double normaliserDegres(double deg) {
 
 EMSCRIPTEN_KEEPALIVE
 double calculerOndulationGeoideEGM(double latDeg, double lonDeg) {
-    // Harmonique sphérique zonale/tesserale de degré bas représentative du géoïde WGS84/EGM2008
     double phi = latDeg * DEG2RAD;
     double lam = lonDeg * DEG2RAD;
     double N = 28.5 * std::sin(2.0 * phi) * std::cos(lam - 0.15)
@@ -126,9 +125,9 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
     double lstDeg = normaliserDegres(gastDeg + lonDeg);
 
     double T = (dj1 + dj2 - 2451545.0) / 36525.0;
-    double l0 = normaliserDegres(280.46646 + 36000.76983 * T);
-    double m = normaliserDegres(357.52911 + 35999.05029 * T);
-    double c = (1.914602 - 0.004817 * T) * std::sin(m * DEG2RAD) 
+    double l0 = normaliserDegres(280.4664567 + 36000.76982779 * T + 0.0003032 * T * T);
+    double m = normaliserDegres(357.52911 + 35999.05029 * T - 0.0001537 * T * T);
+    double c = (1.914602 - 0.004817 * T - 0.000014 * T * T) * std::sin(m * DEG2RAD) 
              + (0.019993 - 0.000101 * T) * std::sin(2.0 * m * DEG2RAD)
              + 0.000289 * std::sin(3.0 * m * DEG2RAD);
     double sunTrueLong = normaliserDegres(l0 + c);
@@ -154,7 +153,7 @@ void calculerDepuisECEF(
     double vx_km_s, double vy_km_s, double vz_km_s,
     double latDeg, double lonDeg, double altM,
     double eraRad, double tempC, double presHpa, double humiditePct, double extinctionCoeff,
-    double magBruteAstre, int32_t corpsType, // 1: Soleil, 2: Lune, 0: Planète
+    double magBruteAstre, int32_t corpsType,
     double dSunAstroUA, double dSunEarthUA, double rayonAstreKm,
     double periodDays, double eccentricity, double obliquityDeg, double sunLongDeg,
     double timestampSec,
@@ -238,7 +237,6 @@ void calculerDepuisECEF(
         result->angularDiamArcsec = (2.0 * std::asin(std::fmin(1.0, (rKm * 1000.0) / distM))) * RAD2DEG * 3600.0;
     }
 
-    // Réfraction optique SOFA iauRefco avec humidité relative dynamique
     double rhNorm = std::fmax(0.0, std::min(1.0, humiditePct / 100.0));
     if (result->elevGeom > -5.0) {
         double refa, refb;
@@ -268,13 +266,11 @@ void calculerDepuisECEF(
 
     result->magnitudeApparente = magBruteAstre + (extinctionCoeff * std::fmax(0.0, result->airMass));
 
-    // --- CALCUL UNIVERSEL DES LEVERS, COUCHERS, CRÉPUSCULES & DURÉE DE VISIBILITÉ ---
     double demiDiamDeg = (result->angularDiamArcsec / 3600.0) / 2.0;
     double altRefRiseSet = (corpsType == 1) ? (-0.5667 - demiDiamDeg) * DEG2RAD : (-0.5667) * DEG2RAD;
     double decRad = result->decDeg * DEG2RAD;
     double cosH0 = (std::sin(altRefRiseSet) - std::sin(phi) * std::sin(decRad)) / (std::cos(phi) * std::cos(decRad));
 
-    // Temps de passage au méridien local (Transit UT)
     double lhaDeg = normaliserDegres(result->ghaDeg + lonDeg);
     double utcHoursNow = std::fmod(timestampSec / 3600.0, 24.0);
     if (utcHoursNow < 0.0) utcHoursNow += 24.0;
@@ -295,7 +291,6 @@ void calculerDepuisECEF(
         result->coucherUT = std::fmod(transitUT + H0Hours + 24.0, 24.0);
     }
 
-    // Crépuscule civil (-6°) pour le Soleil, ou fenêtre de micro-crépuscule pour la Lune
     double cosH6 = (std::sin(-6.0 * DEG2RAD) - std::sin(phi) * std::sin(decRad)) / (std::cos(phi) * std::cos(decRad));
     if (cosH6 > -1.0 && cosH6 < 1.0) {
         double H6Hours = (std::acos(cosH6) * RAD2DEG) / 15.0;
@@ -304,29 +299,25 @@ void calculerDepuisECEF(
         result->crepusculeUT = -1.0;
     }
 
-    // --- SHADOW LENGTH : Affichée uniquement la nuit / sous l'horizon (ou selon géométrie pure) ---
     if (corpsType == 1) {
         result->irradiance = (result->elevRefractee > 0.0) ? (1361.0 / (result->distUA * result->distUA)) * std::pow(0.7, result->airMass) : 0.0;
-        // Règle physique de terrain : longueur d'ombre calculée sur la hauteur géométrique absolue
         if (result->elevRefractee <= 0.0) {
             double elevAbs = std::fmax(0.5, std::abs(result->elevGeom));
             result->shadowLength = 1.0 / std::tan(elevAbs * DEG2RAD);
         } else {
-            result->shadowLength = -1.0; // N/A de jour selon règle sémantique sentinela
+            result->shadowLength = -1.0;
         }
     } else {
         result->irradiance = 0.0;
         result->shadowLength = -1.0;
     }
 
-    // --- PHOTOMÉTRIE, PHASE ILLUMINÉE & ÂGE UNIVERSEL DES ASTRES ---
     double jdNow = (timestampSec / 86400.0) + 2440587.5;
     double daysSinceJ2000 = jdNow - 2451545.0;
 
     if (corpsType == 1) {
         result->illuminatedFraction = 1.0;
         result->moonPhasePct = 100.0;
-        // Âge solaire dérivé de la longitude écliptique dans le cycle annuel (0 à 365.256 j)
         result->astreAgeDays = (normaliserDegres(sunLongDeg) / 360.0) * 365.25636;
         result->surfaceBrightness = -26.74;
     } else if (result->distUA > 0.0 && dSunAstroUA > 0.0 && dSunEarthUA > 0.0) {
@@ -340,10 +331,8 @@ void calculerDepuisECEF(
         result->surfaceBrightness = result->magnitudeApparente + 2.5 * std::log10(1.0 / (result->angularDiamArcsec * result->angularDiamArcsec + 1e-6));
 
         if (corpsType == 2) {
-            // Âge synodique exact de la Lune (0 à 29.53 j)
             result->astreAgeDays = (phaseAngleRad / M_PI) * 14.76529;
         } else {
-            // Âge orbital dans le cycle de révolution sidéral de la planète
             double pDays = (periodDays > 0.0) ? periodDays : 365.256;
             result->astreAgeDays = std::fmod(std::fmod(daysSinceJ2000, pDays) + pDays, pDays);
         }
@@ -354,38 +343,30 @@ void calculerDepuisECEF(
         result->surfaceBrightness = 0.0;
     }
 
-    // --- MODÈLE DE LUMINANCE & MICRO-CRÉPUSCULE DIFFÉRENCIÉ ---
     if (corpsType == 1) {
-        // Lueur solaire atmosphérique globale (mag/arcsec²)
         result->glowTypeCode = 1;
         if (result->elevRefractee > 0.0) {
             result->skyGlowMagArcsec2 = 3.5 + 1.5 * (1.0 - std::sin(result->elevRefractee * DEG2RAD));
         } else if (result->elevRefractee > -18.0) {
-            // Transition crépusculaire civile -> nautique -> astronomique (de ~5 à 21.8 mag/arcsec²)
             result->skyGlowMagArcsec2 = 5.0 + (std::abs(result->elevRefractee) / 18.0) * 16.8;
         } else {
-            result->skyGlowMagArcsec2 = 21.95; // Nuit noire astronomique
+            result->skyGlowMagArcsec2 = 21.95;
         }
     } else if (corpsType == 2) {
-        // Micro-crépuscule lunaire (Moonglow) pour phases gibbeuses/pleines proches de l'horizon ou levées
         if (result->elevRefractee > -2.0 && result->illuminatedFraction >= 0.45) {
             result->glowTypeCode = 2;
             double facteurPhase = std::pow(result->illuminatedFraction, 2.5);
             double facteurHauteur = std::sin(std::fmax(0.05, result->elevRefractee + 2.0) * DEG2RAD);
-            // Réduction de la noirceur du ciel (de 21.95 vers ~17.5 mag/arcsec² à la Pleine Lune)
             result->skyGlowMagArcsec2 = 21.95 - (4.45 * facteurPhase * std::pow(facteurHauteur, 0.4));
         } else {
             result->glowTypeCode = 0;
             result->skyGlowMagArcsec2 = 21.95;
         }
     } else {
-        // Absence totale de lueur atmosphérique diffuse pour les planètes
         result->glowTypeCode = 0;
         result->skyGlowMagArcsec2 = 0.0;
     }
 
-    // --- TEMPS PLANÉTAIRES, ÉQUATION DU TEMPS & SOL LOCAL ---
-    // Transposition de l'équation du temps (centre + réduction à l'équateur) à chaque astre
     double M_anom = normaliserDegres((daysSinceJ2000 / (periodDays > 0.0 ? periodDays : 365.256)) * 360.0) * DEG2RAD;
     double epsAstre = obliquityDeg * DEG2RAD;
     double yObl = std::tan(epsAstre / 2.0);
@@ -394,11 +375,9 @@ void calculerDepuisECEF(
                      - 2.0 * eccentricity * std::sin(M_anom)
                      + 4.0 * eccentricity * yObl * std::sin(M_anom) * std::cos(2.0 * M_anom);
     result->astreEqTempsMin = (eqTimeRad * RAD2DEG) * 4.0;
-    // Temps moyen local de l'astre (24h planetaires / Sol) dérivé de l'angle horaire moyen
     result->astreMeanTimeHours = std::fmod((lhaDeg / 15.0) + 12.0 + 24.0, 24.0);
     result->astreTrueTimeHours = std::fmod(result->astreMeanTimeHours + (result->astreEqTempsMin / 60.0) + 24.0, 24.0);
 
-    // Visibilité topographique
     double elevHorizonLocal = obtenirElevationHorizonTopographique(result->azim);
     if (result->elevRefractee < elevHorizonLocal) {
         result->visibiliteCode = 0;
