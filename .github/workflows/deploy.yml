@@ -68,16 +68,25 @@ jobs:
         run: |
           rm -rf lib/sofa
           mkdir -p lib/sofa/src
-          GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch v2.0.1.1 https://github.com/liberfa/erfa.git lib/sofa_repo ||           GIT_TERMINAL_PROMPT=0 git clone --depth 1 https://github.com/liberfa/erfa.git lib/sofa_repo
+          GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch v2.0.1.1 https://github.com/liberfa/erfa.git lib/sofa_repo || \
+          GIT_TERMINAL_PROMPT=0 git clone --depth 1 https://github.com/liberfa/erfa.git lib/sofa_repo
           cp -r lib/sofa_repo/src/* lib/sofa/src/
           rm -rf lib/sofa_repo
+          
+          # Génération des en-têtes de compatibilité SOFA / ERFA
           if [ -f "lib/sofa/src/erfa.h" ]; then
             echo '#include "erfa.h"' > lib/sofa/src/sofa.h
             echo '#define iauObl06 eraObl06' >> lib/sofa/src/sofa.h
             echo '#define iauGst06a eraGst06a' >> lib/sofa/src/sofa.h
             echo '#define iauAb eraAb' >> lib/sofa/src/sofa.h
             echo '#define iauRefco eraRefco' >> lib/sofa/src/sofa.h
-            echo '#define iauPom eraPom' >> lib/sofa/src/sofa.h   # <-- AJOUTER CETTE LIGNE
+            echo '#define iauPom eraPom' >> lib/sofa/src/sofa.h
+          fi
+          
+          if [ -f "lib/sofa/src/erfam.h" ]; then
+            echo '#include "erfam.h"' > lib/sofa/src/sofam.h
+          else
+            touch lib/sofa/src/sofam.h
           fi
 
       - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
