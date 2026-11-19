@@ -34,13 +34,13 @@ CORPS_MAP = {
 PAS_HEURES_MAP = {
     "SOLEIL": 1.0 / 60.0,
     "LUNE": 1.0 / 60.0,
-    "MERCURE": 0.25,
-    "VENUS": 0.5,
+    "MERCURE": 1.0,
+    "VENUS": 1.0,
     "MARS": 1.0,
-    "JUPITER": 2.0,
-    "SATURNE": 2.0,
-    "URANUS": 4.0,
-    "NEPTUNE": 4.0
+    "JUPITER": 1.0,
+    "SATURNE": 1.0,
+    "URANUS": 1.0,
+    "NEPTUNE": 1.0
 }
 
 RAYONS_EQUATORIAUX_KM = {
