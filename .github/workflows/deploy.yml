@@ -77,9 +77,7 @@ jobs:
             echo '#define iauGst06a eraGst06a' >> lib/sofa/src/sofa.h
             echo '#define iauAb eraAb' >> lib/sofa/src/sofa.h
             echo '#define iauRefco eraRefco' >> lib/sofa/src/sofa.h
-          fi
-          if [ -f "lib/sofa/src/erfam.h" ] && [ ! -f "lib/sofa/src/sofam.h" ]; then
-            echo '#include "erfam.h"' > lib/sofa/src/sofam.h
+            echo '#define iauPom eraPom' >> lib/sofa/src/sofa.h   # <-- AJOUTER CETTE LIGNE
           fi
 
       - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
