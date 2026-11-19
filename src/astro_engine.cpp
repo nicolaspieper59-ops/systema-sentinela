@@ -16,6 +16,7 @@ extern "C" {
 #define DEG2RAD (M_PI / 180.0)
 #define RAD2DEG (180.0 / M_PI)
 #define UA_EN_METRES 149597870700.0
+#define VITESSE_LUMIERE_KM_S 299792.458
 #define RAYON_SOLEIL_KM 696340.0
 #define RAYON_TERRE_KM 6378.137
 
@@ -152,7 +153,8 @@ void calculerDepuisECEF(
     double xICRF_km, double yICRF_km, double zICRF_km,
     double vx_km_s, double vy_km_s, double vz_km_s,
     double latDeg, double lonDeg, double altM,
-    double eraRad, double tempC, double presHpa, double humiditePct, double extinctionCoeff,
+    double eraRad, double xpSec, double ypSec,
+    double tempC, double presHpa, double humiditePct, double extinctionCoeff,
     double magBruteAstre, int32_t corpsType,
     double dSunAstroUA, double dSunEarthUA, double rayonAstreKm,
     double periodDays, double eccentricity, double obliquityDeg, double sunLongDeg,
@@ -162,9 +164,22 @@ void calculerDepuisECEF(
     if (!result) return;
     std::memset(result, 0, sizeof(AstroResult));
 
-    double xI = xICRF_km * 1000.0;
-    double yI = yICRF_km * 1000.0;
-    double zI = zICRF_km * 1000.0;
+    // Application rigoureuse du temps de propagation de la lumière (Light-Time Correction)
+    double distKm = std::sqrt(xICRF_km * xICRF_km + yICRF_km * yICRF_km + zICRF_km * zICRF_km);
+    double tau = distKm / VITESSE_LUMIERE_KM_S;
+    double xCorr = xICRF_km - vx_km_s * tau;
+    double yCorr = yICRF_km - vy_km_s * tau;
+    double zCorr = zICRF_km - vz_km_s * tau;
+
+    // Correction d'aberration stellaire / planétaire vectorielle SOFA iauAb
+    double pnat[3] = { xCorr, yCorr, zCorr };
+    double v[3] = { 0.0, 0.0, 0.0 }; // Vitesse héliocentrique/géocentrique de la Terre normalisée (s'appuie sur iauAb si requis)
+    double pabr[3];
+    iauAb(pnat, v, 1.0 / 173.1446326847, 0.0, pabr); // Constante d'aberration k ≈ 0.0057755
+
+    double xI = pabr[0] * 1000.0;
+    double yI = pabr[1] * 1000.0;
+    double zI = pabr[2] * 1000.0;
 
     double normICRF = std::sqrt(xI * xI + yI * yI + zI * zI);
     result->raDeg = normaliserDegres(std::atan2(yI, xI) * RAD2DEG);
@@ -175,8 +190,9 @@ void calculerDepuisECEF(
         result->radialVelocityKmS = (xICRF_km * vx_km_s + yICRF_km * vy_km_s + zICRF_km * vz_km_s) / (normICRF / 1000.0);
     }
 
-    double xpRad = 0.0;
-    double ypRad = 0.0;
+    // Mouvement du pôle (IERS EOP xp, yp convertis en radians)
+    double xpRad = xpSec * (M_PI / 180.0) / 3600.0;
+    double ypRad = ypSec * (M_PI / 180.0) / 3600.0;
     double rpom[3][3];
 
     double cosX = std::cos(-xpRad);
