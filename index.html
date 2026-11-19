@@ -1690,7 +1690,26 @@
         };
     }
 
-    function dessinerPlanetariumScientifique(astresData, cap = 0) {
+    
+        if (meteoActive.nebulositePct > 5) {
+            ctx.beginPath();
+            ctx.arc(0, 0, R, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(148, 163, 184, ${(meteoActive.nebulositePct / 100) * 0.42})`;
+            ctx.fill();
+        }
+
+        // 4. Cercles de visée azimutale (Alt 45° = R/2 et Horizon = R)
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.arc(0, 0, R * 0.5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+
+                
+        function dessinerPlanetariumScientifique(astresData, cap = 0) {
         const canvas = document.getElementById('scientificPlanetariumCanvas');
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
@@ -1708,9 +1727,9 @@
         ctx.scale(dpr, dpr);
         const cx = size / 2, cy = size / 2, R = 116;
 
-        // Élévation réelle du Soleil depuis le Worker JPL
+        // Sécurisation de l'élévation du soleil avec validation numérique stricte
         const sunData = astresData && (astresData.sun || astresData.SUN);
-        const altSoleil = sunData && sunData.elevationApparente !== undefined ? sunData.elevationApparente : -20;
+        const altSoleil = (sunData && Number.isFinite(sunData.elevationApparente)) ? sunData.elevationApparente : -20;
         const sky = calculerPaletteCielIRL(altSoleil, meteoActive);
 
         const elBadgeSky = document.getElementById('badge-sky-state');
@@ -1719,10 +1738,11 @@
         ctx.clearRect(0, 0, size, size);
         ctx.translate(cx, cy);
 
-        // 1. Disque Céleste & Dégradé Atmosphérique IRL (Rayleigh + Mie)
+        // 1. Disque Céleste & Dégradé Atmosphérique IRL sécurisé
         ctx.beginPath();
         ctx.arc(0, 0, R, 0, Math.PI * 2);
-        const skyGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, R);
+        const safeR = Math.max(1, R);
+        const skyGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, safeR);
         skyGrad.addColorStop(0, sky.top);
         skyGrad.addColorStop(0.58, sky.mid);
         skyGrad.addColorStop(1, sky.hor);
@@ -1734,10 +1754,12 @@
             etoilesPlanisphere.forEach(s => {
                 const sx = Math.cos(s.angle) * s.dist * R;
                 const sy = Math.sin(s.angle) * s.dist * R;
-                ctx.beginPath();
-                ctx.arc(sx, sy, s.size, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(248, 250, 252, ${s.alpha * sky.starAlpha})`;
-                ctx.fill();
+                if (Number.isFinite(sx) && Number.isFinite(sy)) {
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, s.size, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(248, 250, 252, ${s.alpha * sky.starAlpha})`;
+                    ctx.fill();
+                }
             });
         }
 
@@ -1749,7 +1771,7 @@
             ctx.fill();
         }
 
-        // 4. Cercles de visée azimutale (Alt 45° = R/2 et Horizon = R)
+        // 4. Cercles de visée azimutale
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
         ctx.lineWidth = 1;
         ctx.setLineDash([3, 3]);
@@ -1765,7 +1787,7 @@
         ctx.moveTo(-R, 0); ctx.lineTo(R, 0);
         ctx.stroke();
 
-        // Points cardinaux complets (N, E, S, O)
+        // Points cardinaux
         ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
         ctx.font = 'bold 8.5px monospace';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1774,57 +1796,64 @@
         ctx.fillText('E', R - 9, 0);
         ctx.fillText('O', -R + 9, 0);
 
-        // 5. Vecteur Cap Vrai (Rouge) & Balise Magnétique Waypoint (Ambre)
-        const capRad = cap * Math.PI / 180.0;
-        ctx.strokeStyle = '#f85149';
-        ctx.lineWidth = 1.8;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(R * Math.sin(capRad), -R * Math.cos(capRad));
-        ctx.stroke();
+        // 5. Vecteur Cap Vrai & Balise Magnétique Waypoint
+        if (Number.isFinite(cap)) {
+            const capRad = cap * Math.PI / 180.0;
+            ctx.strokeStyle = '#f85149';
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(R * Math.sin(capRad), -R * Math.cos(capRad));
+            ctx.stroke();
+        }
 
-        if (waypointActif) {
+        if (waypointActif && Number.isFinite(waypointActif.azimut)) {
             const wpRad = waypointActif.azimut * Math.PI / 180.0;
             const wx = R * Math.sin(wpRad);
             const wy = -R * Math.cos(wpRad);
-            ctx.strokeStyle = '#fbbf24';
-            ctx.lineWidth = 1.6;
-            ctx.setLineDash([4, 3]);
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(wx, wy); ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.fillStyle = '#fbbf24';
-            ctx.beginPath(); ctx.arc(wx, wy, 4.5, 0, 2 * Math.PI); ctx.fill();
+            if (Number.isFinite(wx) && Number.isFinite(wy)) {
+                ctx.strokeStyle = '#fbbf24';
+                ctx.lineWidth = 1.6;
+                ctx.setLineDash([4, 3]);
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(wx, wy); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = '#fbbf24';
+                ctx.beginPath(); ctx.arc(wx, wy, 4.5, 0, 2 * Math.PI); ctx.fill();
+            }
         }
 
-        // 6. Projection des Astres JPL DE440s à l'échelle angulaire réelle
+        // 6. Projection des Astres JPL DE440s avec garde-fous finis
         if (astresData) {
             for (const [key, data] of Object.entries(astresData)) {
-                if (!data || data.elevationApparente === undefined) continue;
+                if (!data || !Number.isFinite(data.elevationApparente) || !Number.isFinite(data.azimuth)) continue;
                 const el = data.elevationApparente;
-                // Masquage des astres sous l'horizon sauf si mode Rayons X activé
                 if (el < 0 && !rayonsXCielActif) continue;
 
                 const rPos = Math.min(R * 0.96, (Math.abs(90 - el) / 90) * R);
-                const azRad = (data.azimuth ?? 0) * Math.PI / 180.0;
+                const azRad = data.azimuth * Math.PI / 180.0;
                 const x = rPos * Math.sin(azRad);
                 const y = -rPos * Math.cos(azRad);
+
+                if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+
                 const nomUpper = key.toUpperCase();
-
-                ctx.save();
-                if (el < 0) ctx.globalAlpha = 0.42; // Effet Rayons X sous l'horizon
-
-                // Taille proportionnelle au diamètre angulaire apparent réel (Soleil/Lune ~1900" vs Planètes)
                 let rayonAstre = 3.4;
-                if (data.angularDiamArcsec) {
+                if (Number.isFinite(data.angularDiamArcsec)) {
                     rayonAstre = Math.max(2.6, Math.min(9.5, (data.angularDiamArcsec / 1920.0) * 9.0 + 2.2));
                 }
 
+                ctx.save();
+                if (el < 0) ctx.globalAlpha = 0.42;
+
                 if (nomUpper === 'SUN' || nomUpper === 'SOLEIL') {
-                    const sGlow = ctx.createRadialGradient(x, y, 2, x, y, rayonAstre * 2.4);
-                    sGlow.addColorStop(0, 'rgba(253, 224, 71, 0.95)');
-                    sGlow.addColorStop(1, 'rgba(245, 158, 11, 0)');
-                    ctx.fillStyle = sGlow;
-                    ctx.beginPath(); ctx.arc(x, y, rayonAstre * 2.4, 0, Math.PI * 2); ctx.fill();
+                    const safeGlowRadius = Math.max(1, rayonAstre * 2.4);
+                    if (Number.isFinite(safeGlowRadius)) {
+                        const sGlow = ctx.createRadialGradient(x, y, 2, x, y, safeGlowRadius);
+                        sGlow.addColorStop(0, 'rgba(253, 224, 71, 0.95)');
+                        sGlow.addColorStop(1, 'rgba(245, 158, 11, 0)');
+                        ctx.fillStyle = sGlow;
+                        ctx.beginPath(); ctx.arc(x, y, safeGlowRadius, 0, Math.PI * 2); ctx.fill();
+                    }
                     ctx.fillStyle = '#fde047';
                 } else if (nomUpper === 'MOON' || nomUpper === 'LUNE') {
                     ctx.fillStyle = '#e2e8f0';
@@ -1852,7 +1881,7 @@
         ctx.stroke();
 
         ctx.restore();
-    }
+                    }
 
     function calculerCapWaypoint(silencieux = false) {
         const latCible = parseFloat(document.getElementById('input-waypoint-lat').value.replace(',', '.'));
