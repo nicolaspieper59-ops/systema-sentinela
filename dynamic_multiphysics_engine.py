@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.60)
+SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.61)
 """
 
 import argparse
@@ -126,14 +126,10 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
 
     earth_at = earth.at(times_nodes)
     obs = earth_at.observe(astre_target)
-    apparent_obs = obs.apparent()
-    pos_km = apparent_obs.position.km
-
-    try:
-        vel_kms = apparent_obs.velocity.km_per_s
-    except Exception:
-        vel_kms = obs.velocity.km_per_s
-
+    
+    # Utilisation des positions et vitesses géométriques astrométriques pures pour laisser SOFA gérer l'aberration
+    pos_km = obs.position.km
+    vel_kms = obs.velocity.km_per_s
     earth_vel_kms = earth_at.velocity.km_per_s
 
     cx = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[0], degre)]
@@ -160,7 +156,7 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     return {
         "t_start": float(t1_unix),
         "t_end": float(t2_unix),
-        "pre_corrected_ab": 1,
+        "pre_corrected_ab": 0,
         "rayon_km": float(RAYONS_EQUATORIAUX_KM.get(nom_corps, 0.0)),
         "cx": cx, "cy": cy, "cz": cz,
         "cvx": cvx, "cvy": cvy, "cvz": cvz,
@@ -208,7 +204,7 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
     eop_data = extraire_donnees_iers_finals()
     resultat_global = {
         "ALMANACH": {
-            "generateur": "Systema Sentinela DE440s Kernel High-Res (1 seg/min)",
+            "generateur": "Systema Sentinela DE440s Kernel High-Res (Rigorous)",
             "date_creation_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
             "epoch_utc_ms": int(time.time() * 1000),
             "fenetre_jours": int(nb_jours),
@@ -221,7 +217,7 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
         json.dump(resultat_global, f, separators=(',', ':'), ensure_ascii=False)
 
 def main():
-    parser = argparse.ArgumentParser(description="Générateur d'éphémérides JPL DE440s Ultra-Précis")
+    parser = argparse.ArgumentParser(description="Générateur d'éphémérides JPL DE440s Rigoureux")
     parser.add_argument("lat", type=float)
     parser.add_argument("lon", type=float)
     parser.add_argument("alt", type=float)
@@ -239,4 +235,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
