@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.55)
+SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.60)
 """
 
 import argparse
@@ -56,6 +56,7 @@ PARAMETRES_ORBITAUX = {
 
 DEGRE_TCHEBYCHEV = 12
 UA_KM = 149597870.7
+LUNE_DIST_MOYENNE_KM = 384400.0
 
 def extraire_donnees_iers_finals(fichier_path="finals2000A.all"):
     if not os.path.exists(fichier_path):
@@ -101,7 +102,8 @@ def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
 
     if nom_corps == "LUNE":
         alpha_clamp = np.clip(alpha_deg, 0.0, 180.0)
-        return round(float(-12.73 + 0.026 * alpha_clamp + 4.0e-9 * (alpha_clamp**4)), 2)
+        dist_corr = 5.0 * np.log10(norm_AE / LUNE_DIST_MOYENNE_KM)
+        return round(float(-12.73 + 0.026 * alpha_clamp + 4.0e-9 * (alpha_clamp**4) + dist_corr), 2)
 
     modeles = {
         "MERCURE": (-0.613, 0.06328 * alpha_deg - 0.0001633 * (alpha_deg**2) + 3.36e-7 * (alpha_deg**3)),
@@ -122,7 +124,8 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     t_sec_nodes = 0.5 * (t2_unix - t1_unix) * nodes_std + 0.5 * (t2_unix + t1_unix)
     times_nodes = ts.tt_jd((t_sec_nodes / 86400.0) + 2440587.5)
 
-    obs = earth.at(times_nodes).observe(astre_target)
+    earth_at = earth.at(times_nodes)
+    obs = earth_at.observe(astre_target)
     apparent_obs = obs.apparent()
     pos_km = apparent_obs.position.km
 
@@ -131,6 +134,8 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     except Exception:
         vel_kms = obs.velocity.km_per_s
 
+    earth_vel_kms = earth_at.velocity.km_per_s
+
     cx = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[0], degre)]
     cy = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[1], degre)]
     cz = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[2], degre)]
@@ -138,6 +143,10 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     cvx = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[0], degre)]
     cvy = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[1], degre)]
     cvz = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[2], degre)]
+
+    evx = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, earth_vel_kms[0], degre)]
+    evy = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, earth_vel_kms[1], degre)]
+    evz = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, earth_vel_kms[2], degre)]
 
     t_mid_unix = 0.5 * (t1_unix + t2_unix)
     time_mid = ts.tt_jd((t_mid_unix / 86400.0) + 2440587.5)
@@ -151,9 +160,11 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     return {
         "t_start": float(t1_unix),
         "t_end": float(t2_unix),
+        "pre_corrected_ab": 1,
         "rayon_km": float(RAYONS_EQUATORIAUX_KM.get(nom_corps, 0.0)),
         "cx": cx, "cy": cy, "cz": cz,
         "cvx": cvx, "cvy": cvy, "cvz": cvz,
+        "evx": evx, "evy": evy, "evz": evz,
         "mag": float(mag_val),
         "perihelion_ua": float(orb.get("perihelion_ua", 0.0)),
         "aphelion_ua": float(orb.get("aphelion_ua", 0.0)),
@@ -228,3 +239,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
