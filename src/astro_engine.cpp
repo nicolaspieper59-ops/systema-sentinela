@@ -152,6 +152,7 @@ EMSCRIPTEN_KEEPALIVE
 void calculerDepuisECEF(
     double xICRF_km, double yICRF_km, double zICRF_km,
     double vx_km_s, double vy_km_s, double vz_km_s,
+    double earthVx_km_s, double earthVy_km_s, double earthVz_km_s,
     double latDeg, double lonDeg, double altM,
     double eraRad, double xpSec, double ypSec,
     double tempC, double presHpa, double humiditePct, double extinctionCoeff,
@@ -164,6 +165,7 @@ void calculerDepuisECEF(
     if (!result) return;
     std::memset(result, 0, sizeof(AstroResult));
 
+    // Correction rigoureuse du temps de parcours de la lumière
     double distKm = std::sqrt(xICRF_km * xICRF_km + yICRF_km * yICRF_km + zICRF_km * zICRF_km);
     double tau = distKm / VITESSE_LUMIERE_KM_S;
     double xCorr = xICRF_km - vx_km_s * tau;
@@ -171,9 +173,34 @@ void calculerDepuisECEF(
     double zCorr = zICRF_km - vz_km_s * tau;
 
     double pnat[3] = { xCorr, yCorr, zCorr };
-    double v[3] = { 0.0, 0.0, 0.0 };
+
+    // Calcul de la position géodésique et de la vitesse diurne de la station
+    double phi = latDeg * DEG2RAD;
+    double lambda = lonDeg * DEG2RAD;
+    double a = 6378137.0;
+    double f = 1.0 / 298.257223563;
+    double e2 = f * (2.0 - f);
+
+    double N_obs = a / std::sqrt(1.0 - e2 * std::sin(phi) * std::sin(phi));
+    double xObs = (N_obs + altM) * std::cos(phi) * std::cos(lambda);
+    double yObs = (N_obs + altM) * std::cos(phi) * std::sin(lambda);
+    double zObs = (N_obs * (1.0 - e2) + altM) * std::sin(phi);
+
+    // Vitesse angulaire de la Terre (~7.292115e-5 rad/s)
+    double omegaEarth = 7.292115e-5;
+    double vx_diurne = -omegaEarth * (yObs / 1000.0);
+    double vy_diurne =  omegaEarth * (xObs / 1000.0);
+    double vz_diurne =  0.0;
+
+    // Combinaison de la vitesse orbitale de la Terre et de la vitesse diurne de l'observateur
+    double v[3] = {
+        (earthVx_km_s + vx_diurne) / VITESSE_LUMIERE_KM_S,
+        (earthVy_km_s + vy_diurne) / VITESSE_LUMIERE_KM_S,
+        (earthVz_km_s + vz_diurne) / VITESSE_LUMIERE_KM_S
+    };
+
     double pabr[3];
-    iauAb(pnat, v, 1.0 / 173.1446326847, 0.0, pabr);
+    iauAb(pnat, v, 1.0, 0.0, pabr);
 
     double xI = pabr[0] * 1000.0;
     double yI = pabr[1] * 1000.0;
@@ -218,17 +245,6 @@ void calculerDepuisECEF(
     double xECEF = rpom[0][0] * xTmp + rpom[0][1] * yTmp + rpom[0][2] * zTmp;
     double yECEF = rpom[1][0] * xTmp + rpom[1][1] * yTmp + rpom[1][2] * zTmp;
     double zECEF = rpom[2][0] * xTmp + rpom[2][1] * yTmp + rpom[2][2] * zTmp;
-
-    double phi = latDeg * DEG2RAD;
-    double lambda = lonDeg * DEG2RAD;
-    double a = 6378137.0;
-    double f = 1.0 / 298.257223563;
-    double e2 = f * (2.0 - f);
-
-    double N_obs = a / std::sqrt(1.0 - e2 * std::sin(phi) * std::sin(phi));
-    double xObs = (N_obs + altM) * std::cos(phi) * std::cos(lambda);
-    double yObs = (N_obs + altM) * std::cos(phi) * std::sin(lambda);
-    double zObs = (N_obs * (1.0 - e2) + altM) * std::sin(phi);
 
     double dx = xECEF - xObs;
     double dy = yECEF - yObs;
