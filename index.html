@@ -1289,10 +1289,11 @@
         }
     }
     
-    function initialiserWorkerAstronomie() {
-        if (typeof Worker === 'undefined') return;
-        astroWorker = new Worker('./worker.js?v=19.50');
-        astroWorker.onmessage = traiterMessageWorker;
+function initialiserWorkerAstronomie() {
+    if (typeof Worker === 'undefined') return;
+    // MODIFICATION ICI : Ajoutez un suffixe dynamique pour éviter le cache du Worker
+    astroWorker = new Worker(`./worker.js?v=${Date.now()}`);
+    astroWorker.onmessage = traiterMessageWorker;
     }
 
     function mettreAJourMetricsSolaires(m) {
