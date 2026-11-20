@@ -20,6 +20,39 @@ extern "C" {
 #define RAYON_SOLEIL_KM 696340.0
 #define RAYON_TERRE_KM 6378.137
 
+struct alignas(8) AstroInput {
+    double xICRF_km;          // 0
+    double yICRF_km;          // 1
+    double zICRF_km;          // 2
+    double vx_km_s;           // 3
+    double vy_km_s;           // 4
+    double vz_km_s;           // 5
+    double vxEarth_km_s;      // 6
+    double vyEarth_km_s;      // 7
+    double vzEarth_km_s;      // 8
+    double latDeg;            // 9
+    double lonDeg;            // 10
+    double altM;              // 11
+    double eraRad;            // 12
+    double xpSec;             // 13
+    double ypSec;             // 14
+    double tempC;             // 15
+    double presHpa;           // 16
+    double humiditePct;       // 17
+    double extinctionCoeff;   // 18
+    double magBruteAstre;     // 19
+    double dSunAstroUA;       // 20
+    double dSunEarthUA;       // 21
+    double rayonAstreKm;      // 22
+    double periodDays;        // 23
+    double eccentricity;      // 24
+    double obliquityDeg;      // 25
+    double sunLongDeg;        // 26
+    double timestampSec;      // 27
+    int32_t corpsType;        // Byte offset 224
+    int32_t preCorrectedAb;   // Byte offset 228
+};
+
 struct alignas(8) AstroResult {
     double azim;                  // 0
     double elevGeom;              // 1
@@ -55,6 +88,9 @@ struct alignas(8) AstroResult {
     int32_t padding;              // Byte offset 236 -> Total struct size = 240 bytes
 };
 
+static double g_horizonProfile[360] = {0.0};
+static bool g_horizonProfileLoaded = false;
+
 inline double calculerFractionRecouvrementDisques(double d, double r1, double r2) {
     if (d >= r1 + r2) return 0.0;
     if (d <= std::abs(r1 - r2)) {
@@ -85,14 +121,27 @@ inline double separationAngulaireArcsec(double ra1Deg, double dec1Deg, double ra
 inline double obtenirElevationHorizonTopographique(double azimDeg) {
     double az = std::fmod(azimDeg, 360.0);
     if (az < 0.0) az += 360.0;
-    if (az >= 0.0 && az < 45.0)    return 1.2;
-    if (az >= 45.0 && az < 120.0)  return 2.8;
-    if (az >= 120.0 && az < 210.0) return 4.5;
-    if (az >= 210.0 && az < 315.0) return -0.1;
-    return 1.5;
+    if (!g_horizonProfileLoaded) return 0.0;
+    int idx0 = static_cast<int>(std::floor(az)) % 360;
+    int idx1 = (idx0 + 1) % 360;
+    double frac = az - std::floor(az);
+    return g_horizonProfile[idx0] * (1.0 - frac) + g_horizonProfile[idx1] * frac;
 }
 
 extern "C" {
+
+EMSCRIPTEN_KEEPALIVE
+void definirProfilHorizonTopographique(const double* profile360) {
+    if (!profile360) {
+        g_horizonProfileLoaded = false;
+        std::memset(g_horizonProfile, 0, sizeof(g_horizonProfile));
+        return;
+    }
+    for (int i = 0; i < 360; ++i) {
+        g_horizonProfile[i] = profile360[i];
+    }
+    g_horizonProfileLoaded = true;
+}
 
 EMSCRIPTEN_KEEPALIVE
 double normaliserDegres(double deg) {
@@ -149,33 +198,40 @@ void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, do
 }
 
 EMSCRIPTEN_KEEPALIVE
-void calculerDepuisECEF(
-    double xICRF_km, double yICRF_km, double zICRF_km,
-    double vx_km_s, double vy_km_s, double vz_km_s,
-    double latDeg, double lonDeg, double altM,
-    double eraRad, double xpSec, double ypSec,
-    double tempC, double presHpa, double humiditePct, double extinctionCoeff,
-    double magBruteAstre, int32_t corpsType,
-    double dSunAstroUA, double dSunEarthUA, double rayonAstreKm,
-    double periodDays, double eccentricity, double obliquityDeg, double sunLongDeg,
-    double timestampSec,
-    AstroResult* result
-) {
-    if (!result) return;
+void calculerDepuisECEFStruct(const AstroInput* input, AstroResult* result) {
+    if (!input || !result) return;
     std::memset(result, 0, sizeof(AstroResult));
 
-    // Application rigoureuse du temps de propagation de la lumière (Light-Time Correction)
-    double distKm = std::sqrt(xICRF_km * xICRF_km + yICRF_km * yICRF_km + zICRF_km * zICRF_km);
-    double tau = distKm / VITESSE_LUMIERE_KM_S;
-    double xCorr = xICRF_km - vx_km_s * tau;
-    double yCorr = yICRF_km - vy_km_s * tau;
-    double zCorr = zICRF_km - vz_km_s * tau;
+    double xCorr = input->xICRF_km;
+    double yCorr = input->yICRF_km;
+    double zCorr = input->zICRF_km;
+    double pabr[3] = { xCorr, yCorr, zCorr };
 
-    // Correction d'aberration stellaire / planétaire vectorielle SOFA iauAb
-    double pnat[3] = { xCorr, yCorr, zCorr };
-    double v[3] = { 0.0, 0.0, 0.0 }; // Vitesse héliocentrique/géocentrique de la Terre normalisée (s'appuie sur iauAb si requis)
-    double pabr[3];
-    iauAb(pnat, v, 1.0 / 173.1446326847, 0.0, pabr); // Constante d'aberration k ≈ 0.0057755
+    if (input->preCorrectedAb == 0) {
+        double distKm = std::sqrt(xCorr * xCorr + yCorr * yCorr + zCorr * zCorr);
+        double tau = distKm / VITESSE_LUMIERE_KM_S;
+        xCorr -= input->vx_km_s * tau;
+        yCorr -= input->vy_km_s * tau;
+        zCorr -= input->vz_km_s * tau;
+
+        double normP = std::sqrt(xCorr * xCorr + yCorr * yCorr + zCorr * zCorr);
+        if (normP > 0.0) {
+            double pnat[3] = { xCorr / normP, yCorr / normP, zCorr / normP };
+            double v[3] = {
+                input->vxEarth_km_s / VITESSE_LUMIERE_KM_S,
+                input->vyEarth_km_s / VITESSE_LUMIERE_KM_S,
+                input->vzEarth_km_s / VITESSE_LUMIERE_KM_S
+            };
+            double v2 = v[0]*v[0] + v[1]*v[1] + v[2]*v[2];
+            double bm1 = std::sqrt(std::fmax(0.0, 1.0 - v2));
+            double s = input->dSunEarthUA > 0.0 ? input->dSunEarthUA : 1.0;
+            double pDir[3];
+            iauAb(pnat, v, s, bm1, pDir);
+            pabr[0] = pDir[0] * normP;
+            pabr[1] = pDir[1] * normP;
+            pabr[2] = pDir[2] * normP;
+        }
+    }
 
     double xI = pabr[0] * 1000.0;
     double yI = pabr[1] * 1000.0;
@@ -184,15 +240,14 @@ void calculerDepuisECEF(
     double normICRF = std::sqrt(xI * xI + yI * yI + zI * zI);
     result->raDeg = normaliserDegres(std::atan2(yI, xI) * RAD2DEG);
     result->decDeg = (normICRF > 0.0) ? std::asin(std::fmax(-1.0, std::min(1.0, zI / normICRF))) * RAD2DEG : 0.0;
-    result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
+    result->ghaDeg = normaliserDegres((input->eraRad * RAD2DEG) - result->raDeg);
 
     if (normICRF > 0.0) {
-        result->radialVelocityKmS = (xICRF_km * vx_km_s + yICRF_km * vy_km_s + zICRF_km * vz_km_s) / (normICRF / 1000.0);
+        result->radialVelocityKmS = (input->xICRF_km * input->vx_km_s + input->yICRF_km * input->vy_km_s + input->zICRF_km * input->vz_km_s) / (normICRF / 1000.0);
     }
 
-    // Mouvement du pôle (IERS EOP xp, yp convertis en radians)
-    double xpRad = xpSec * (M_PI / 180.0) / 3600.0;
-    double ypRad = ypSec * (M_PI / 180.0) / 3600.0;
+    double xpRad = input->xpSec * (M_PI / 180.0) / 3600.0;
+    double ypRad = input->ypSec * (M_PI / 180.0) / 3600.0;
     double rpom[3][3];
 
     double cosX = std::cos(-xpRad);
@@ -212,8 +267,8 @@ void calculerDepuisECEF(
     rpom[2][1] = -sinY;
     rpom[2][2] = cosY * cosX;
 
-    double cosERA = std::cos(eraRad);
-    double sinERA = std::sin(eraRad);
+    double cosERA = std::cos(input->eraRad);
+    double sinERA = std::sin(input->eraRad);
     double xTmp =  xI * cosERA + yI * sinERA;
     double yTmp = -xI * sinERA + yI * cosERA;
     double zTmp =  zI;
@@ -222,16 +277,16 @@ void calculerDepuisECEF(
     double yECEF = rpom[1][0] * xTmp + rpom[1][1] * yTmp + rpom[1][2] * zTmp;
     double zECEF = rpom[2][0] * xTmp + rpom[2][1] * yTmp + rpom[2][2] * zTmp;
 
-    double phi = latDeg * DEG2RAD;
-    double lambda = lonDeg * DEG2RAD;
+    double phi = input->latDeg * DEG2RAD;
+    double lambda = input->lonDeg * DEG2RAD;
     double a = 6378137.0;
     double f = 1.0 / 298.257223563;
     double e2 = f * (2.0 - f);
 
     double N_obs = a / std::sqrt(1.0 - e2 * std::sin(phi) * std::sin(phi));
-    double xObs = (N_obs + altM) * std::cos(phi) * std::cos(lambda);
-    double yObs = (N_obs + altM) * std::cos(phi) * std::sin(lambda);
-    double zObs = (N_obs * (1.0 - e2) + altM) * std::sin(phi);
+    double xObs = (N_obs + input->altM) * std::cos(phi) * std::cos(lambda);
+    double yObs = (N_obs + input->altM) * std::cos(phi) * std::sin(lambda);
+    double zObs = (N_obs * (1.0 - e2) + input->altM) * std::sin(phi);
 
     double dx = xECEF - xObs;
     double dy = yECEF - yObs;
@@ -248,15 +303,15 @@ void calculerDepuisECEF(
     double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
     result->elevGeom = std::fmax(-90.0, std::fmin(90.0, std::atan2(U, rhoHorizontal) * RAD2DEG));
 
-    double rKm = (rayonAstreKm > 0.0) ? rayonAstreKm : (corpsType == 1 ? RAYON_SOLEIL_KM : 1737.4);
+    double rKm = (input->rayonAstreKm > 0.0) ? input->rayonAstreKm : (input->corpsType == 1 ? RAYON_SOLEIL_KM : 1737.4);
     if (distM > 0.0) {
         result->angularDiamArcsec = (2.0 * std::asin(std::fmin(1.0, (rKm * 1000.0) / distM))) * RAD2DEG * 3600.0;
     }
 
-    double rhNorm = std::fmax(0.0, std::min(1.0, humiditePct / 100.0));
+    double rhNorm = std::fmax(0.0, std::min(1.0, input->humiditePct / 100.0));
     if (result->elevGeom > -5.0) {
         double refa, refb;
-        iauRefco(presHpa, tempC, rhNorm, 0.55, &refa, &refb);
+        iauRefco(input->presHpa, input->tempC, rhNorm, 0.55, &refa, &refb);
         double zObsRad = (90.0 - result->elevGeom) * DEG2RAD;
         if (zObsRad > 0 && zObsRad < (M_PI / 2.0 + 0.15)) {
             double tanZ = std::tan(zObsRad);
@@ -275,20 +330,20 @@ void calculerDepuisECEF(
     if (result->elevRefractee > 0.0) {
         double elevRad = result->elevRefractee * DEG2RAD;
         double airMassStd = 1.0 / (std::sin(elevRad) + 0.50572 * std::pow(6.07995 + std::fmax(0.0, result->elevRefractee), -1.6364));
-        result->airMass = airMassStd * (presHpa / 1013.25);
+        result->airMass = airMassStd * (input->presHpa / 1013.25);
     } else {
         result->airMass = -1.0; 
     }
 
-    result->magnitudeApparente = magBruteAstre + (extinctionCoeff * std::fmax(0.0, result->airMass));
+    result->magnitudeApparente = input->magBruteAstre + (input->extinctionCoeff * std::fmax(0.0, result->airMass));
 
     double demiDiamDeg = (result->angularDiamArcsec / 3600.0) / 2.0;
-    double altRefRiseSet = (corpsType == 1) ? (-0.5667 - demiDiamDeg) * DEG2RAD : (-0.5667) * DEG2RAD;
+    double altRefRiseSet = (input->corpsType == 1) ? (-0.5667 - demiDiamDeg) * DEG2RAD : (-0.5667) * DEG2RAD;
     double decRad = result->decDeg * DEG2RAD;
     double cosH0 = (std::sin(altRefRiseSet) - std::sin(phi) * std::sin(decRad)) / (std::cos(phi) * std::cos(decRad));
 
-    double lhaDeg = normaliserDegres(result->ghaDeg + lonDeg);
-    double utcHoursNow = std::fmod(timestampSec / 3600.0, 24.0);
+    double lhaDeg = normaliserDegres(result->ghaDeg + input->lonDeg);
+    double utcHoursNow = std::fmod(input->timestampSec / 3600.0, 24.0);
     if (utcHoursNow < 0.0) utcHoursNow += 24.0;
     double transitUT = std::fmod(utcHoursNow - (lhaDeg <= 180.0 ? lhaDeg : lhaDeg - 360.0) / 15.0 + 24.0, 24.0);
 
@@ -315,7 +370,7 @@ void calculerDepuisECEF(
         result->crepusculeUT = -1.0;
     }
 
-    if (corpsType == 1) {
+    if (input->corpsType == 1) {
         result->irradiance = (result->elevRefractee > 0.0) ? (1361.0 / (result->distUA * result->distUA)) * std::pow(0.7, result->airMass) : 0.0;
         if (result->elevRefractee <= 0.0) {
             double elevAbs = std::fmax(0.5, std::abs(result->elevGeom));
@@ -328,17 +383,17 @@ void calculerDepuisECEF(
         result->shadowLength = -1.0;
     }
 
-    double jdNow = (timestampSec / 86400.0) + 2440587.5;
+    double jdNow = (input->timestampSec / 86400.0) + 2440587.5;
     double daysSinceJ2000 = jdNow - 2451545.0;
 
-    if (corpsType == 1) {
+    if (input->corpsType == 1) {
         result->illuminatedFraction = 1.0;
         result->moonPhasePct = 100.0;
-        result->astreAgeDays = (normaliserDegres(sunLongDeg) / 360.0) * 365.25636;
+        result->astreAgeDays = (normaliserDegres(input->sunLongDeg) / 360.0) * 365.25636;
         result->surfaceBrightness = -26.74;
-    } else if (result->distUA > 0.0 && dSunAstroUA > 0.0 && dSunEarthUA > 0.0) {
-        double cosPhase = (result->distUA * result->distUA + dSunAstroUA * dSunAstroUA - dSunEarthUA * dSunEarthUA) 
-                        / (2.0 * result->distUA * dSunAstroUA);
+    } else if (result->distUA > 0.0 && input->dSunAstroUA > 0.0 && input->dSunEarthUA > 0.0) {
+        double cosPhase = (result->distUA * result->distUA + input->dSunAstroUA * input->dSunAstroUA - input->dSunEarthUA * input->dSunEarthUA) 
+                        / (2.0 * result->distUA * input->dSunAstroUA);
         cosPhase = std::fmax(-1.0, std::fmin(1.0, cosPhase));
         double phaseAngleRad = std::acos(cosPhase);
 
@@ -346,10 +401,10 @@ void calculerDepuisECEF(
         result->moonPhasePct = result->illuminatedFraction * 100.0;
         result->surfaceBrightness = result->magnitudeApparente + 2.5 * std::log10(1.0 / (result->angularDiamArcsec * result->angularDiamArcsec + 1e-6));
 
-        if (corpsType == 2) {
+        if (input->corpsType == 2) {
             result->astreAgeDays = (phaseAngleRad / M_PI) * 14.76529;
         } else {
-            double pDays = (periodDays > 0.0) ? periodDays : 365.256;
+            double pDays = (input->periodDays > 0.0) ? input->periodDays : 365.256;
             result->astreAgeDays = std::fmod(std::fmod(daysSinceJ2000, pDays) + pDays, pDays);
         }
     } else {
@@ -359,7 +414,7 @@ void calculerDepuisECEF(
         result->surfaceBrightness = 0.0;
     }
 
-    if (corpsType == 1) {
+    if (input->corpsType == 1) {
         result->glowTypeCode = 1;
         if (result->elevRefractee > 0.0) {
             result->skyGlowMagArcsec2 = 3.5 + 1.5 * (1.0 - std::sin(result->elevRefractee * DEG2RAD));
@@ -368,7 +423,7 @@ void calculerDepuisECEF(
         } else {
             result->skyGlowMagArcsec2 = 21.95;
         }
-    } else if (corpsType == 2) {
+    } else if (input->corpsType == 2) {
         if (result->elevRefractee > -2.0 && result->illuminatedFraction >= 0.45) {
             result->glowTypeCode = 2;
             double facteurPhase = std::pow(result->illuminatedFraction, 2.5);
@@ -383,13 +438,18 @@ void calculerDepuisECEF(
         result->skyGlowMagArcsec2 = 0.0;
     }
 
-    double M_anom = normaliserDegres((daysSinceJ2000 / (periodDays > 0.0 ? periodDays : 365.256)) * 360.0) * DEG2RAD;
-    double epsAstre = obliquityDeg * DEG2RAD;
+    double pDaysSafe = (input->periodDays > 0.0) ? input->periodDays : 365.256;
+    double M_anom = normaliserDegres((daysSinceJ2000 / pDaysSafe) * 360.0) * DEG2RAD;
+    double obliquiteSane = input->obliquityDeg;
+    if (std::abs(obliquiteSane) > 90.0) {
+        obliquiteSane = 180.0 - std::abs(obliquiteSane);
+    }
+    double epsAstre = obliquiteSane * DEG2RAD;
     double yObl = std::tan(epsAstre / 2.0);
     yObl *= yObl;
     double eqTimeRad = yObl * std::sin(2.0 * M_anom) 
-                     - 2.0 * eccentricity * std::sin(M_anom)
-                     + 4.0 * eccentricity * yObl * std::sin(M_anom) * std::cos(2.0 * M_anom);
+                     - 2.0 * input->eccentricity * std::sin(M_anom)
+                     + 4.0 * input->eccentricity * yObl * std::sin(M_anom) * std::cos(2.0 * M_anom);
     result->astreEqTempsMin = (eqTimeRad * RAD2DEG) * 4.0;
     result->astreMeanTimeHours = std::fmod((lhaDeg / 15.0) + 12.0 + 24.0, 24.0);
     result->astreTrueTimeHours = std::fmod(result->astreMeanTimeHours + (result->astreEqTempsMin / 60.0) + 24.0, 24.0);
