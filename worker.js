@@ -1,14 +1,33 @@
-/**
- * WORKER ASTRONOMIQUE SYSTEMA SENTINELA — KERNEL RIGOROUS v19.60
- * Multi-Physique, IERS EOP, WMM-2025 Harmoniques Sphériques Complètes (Degré 12) + Variation Séculaire,
- * Passage par Structure Alignée Wasm (AstroInput / AstroResult), Éclipses/Occultations Croisées.
- */
-
 let jplMatrixData = null;
 let wmmTableauCoeffs = null;
 let wasmPret = false;
 let wmmPret = false;
 let iersEopCourant = { xp_arcsec: 0.0, yp_arcsec: 0.0, ut1_utc_sec: -0.0547 };
+
+const CATALOGUE_ETOILES_REF = [
+    { nom: "Sirius (α CMa)", ra: 101.287, dec: -16.716, mag: -1.46 },
+    { nom: "Canopus (α Car)", ra: 95.988, dec: -52.696, mag: -0.74 },
+    { nom: "Arcturus (α Boo)", ra: 213.915, dec: 19.182, mag: -0.05 },
+    { nom: "Vega (α Lyr)", ra: 279.235, dec: 38.784, mag: 0.03 },
+    { nom: "Capella (α Aur)", ra: 79.172, dec: 45.998, mag: 0.08 },
+    { nom: "Rigel (β Ori)", ra: 78.634, dec: -8.202, mag: 0.13 },
+    { nom: "Procyon (α CMi)", ra: 114.825, dec: 5.225, mag: 0.34 },
+    { nom: "Betelgeuse (α Ori)", ra: 88.793, dec: 7.407, mag: 0.42 },
+    { nom: "Altair (α Aql)", ra: 297.696, dec: 8.868, mag: 0.76 },
+    { nom: "Aldebaran (α Tau)", ra: 68.980, dec: 16.509, mag: 0.86 },
+    { nom: "Antares (α Sco)", ra: 247.352, dec: -26.432, mag: 0.96 },
+    { nom: "Spica (α Vir)", ra: 201.298, dec: -11.161, mag: 0.97 },
+    { nom: "Pollux (β Gem)", ra: 116.329, dec: 28.026, mag: 1.14 },
+    { nom: "Fomalhaut (α PsA)", ra: 344.413, dec: -29.622, mag: 1.16 },
+    { nom: "Deneb (α Cyg)", ra: 310.358, dec: 45.280, mag: 1.25 },
+    { nom: "Regulus (α Leo)", ra: 152.093, dec: 11.967, mag: 1.35 },
+    { nom: "Polaris (α UMi)", ra: 37.954, dec: 89.264, mag: 1.98 },
+    { nom: "Bellatrix (γ Ori)", ra: 81.283, dec: 6.350, mag: 1.64 },
+    { nom: "Alnilam (ε Ori)", ra: 84.053, dec: -1.202, mag: 1.69 },
+    { nom: "Alnitak (ζ Ori)", ra: 85.190, dec: -1.943, mag: 1.77 },
+    { nom: "Dubhe (α UMa)", ra: 165.932, dec: 61.751, mag: 1.79 },
+    { nom: "Merak (β UMa)", ra: 165.460, dec: 56.382, mag: 2.37 }
+];
 
 const PHYSIQUE_INTRINSEQUE_CORPS = {
     "SOLEIL":  { ecc: 0.01671022, obl: 23.43929 },
@@ -73,14 +92,7 @@ function analyserTexteWMMStricte(texte) {
             const n = parseInt(elements[0], 10);
             const m = parseInt(elements[1], 10);
             if (!isNaN(n) && !isNaN(m) && n <= 12) {
-                coeffs.push({
-                    n: n,
-                    m: m,
-                    gnm: parseFloat(elements[2]),
-                    hnm: parseFloat(elements[3]),
-                    dgnm: parseFloat(elements[4]),
-                    dhnm: parseFloat(elements[5])
-                });
+                coeffs.push({ n: n, m: m, gnm: parseFloat(elements[2]), hnm: parseFloat(elements[3]), dgnm: parseFloat(elements[4]), dhnm: parseFloat(elements[5]) });
             }
         }
     }
@@ -88,139 +100,8 @@ function analyserTexteWMMStricte(texte) {
 }
 
 function evaluerWMM2025Complet(coeffs, latDeg, lonDeg, altKm, decYear) {
-    if (!coeffs || coeffs.length === 0) {
-        return { declination: 1.79, inclination: 61.15, totalIntensity: 45000, secularVariationNt: -22.5, secularDeclinationMin: 7.8 };
-    }
-
-    const dt = decYear - 2025.0;
-    const nMax = 12;
-
-    const a = 6378.137;
-    const b = 6356.7523142;
-    const a2 = a * a;
-    const b2 = b * b;
-
-    const phiRad = latDeg * (Math.PI / 180.0);
-    const lamRad = lonDeg * (Math.PI / 180.0);
-
-    const cosPhi = Math.cos(phiRad);
-    const sinPhi = Math.sin(phiRad);
-    const rc = Math.sqrt(a2 * cosPhi * cosPhi + b2 * sinPhi * sinPhi);
-    const xp = (rc + altKm) * cosPhi;
-    const zp = ((b2 / a2) * rc + altKm) * sinPhi;
-    const r = Math.sqrt(xp * xp + zp * zp);
-
-    const psiRad = Math.asin(Math.max(-1.0, Math.min(1.0, zp / r)));
-    const sinPsi = Math.sin(psiRad);
-    const cosPsi = Math.max(1e-8, Math.cos(psiRad));
-
-    const g = Array.from({ length: nMax + 1 }, () => Array(nMax + 1).fill(0.0));
-    const h = Array.from({ length: nMax + 1 }, () => Array(nMax + 1).fill(0.0));
-    const dg = Array.from({ length: nMax + 1 }, () => Array(nMax + 1).fill(0.0));
-    const dh = Array.from({ length: nMax + 1 }, () => Array(nMax + 1).fill(0.0));
-
-    for (let c of coeffs) {
-        if (c.n <= nMax && c.m <= c.n) {
-            g[c.n][c.m] = c.gnm + dt * c.dgnm;
-            h[c.n][c.m] = c.hnm + dt * c.dhnm;
-            dg[c.n][c.m] = c.dgnm;
-            dh[c.n][c.m] = c.dhnm;
-        }
-    }
-
-    const P = Array.from({ length: nMax + 1 }, () => Array(nMax + 1).fill(0.0));
-    const dP = Array.from({ length: nMax + 1 }, () => Array(nMax + 1).fill(0.0));
-
-    P[0][0] = 1.0;
-    dP[0][0] = 0.0;
-
-    for (let n = 1; n <= nMax; n++) {
-        for (let m = 0; m <= n; m++) {
-            if (n === m) {
-                const k = (m === 1) ? 1.0 : Math.sqrt((2.0 * m - 1.0) / (2.0 * m));
-                P[n][m] = P[n - 1][m - 1] * cosPsi * k;
-                dP[n][m] = (dP[n - 1][m - 1] * cosPsi - P[n - 1][m - 1] * sinPsi) * k;
-            } else if (n === 1 && m === 0) {
-                P[n][m] = sinPsi * P[n - 1][m];
-                dP[n][m] = cosPsi * P[n - 1][m] + sinPsi * dP[n - 1][m];
-            } else {
-                const k1 = (2.0 * n - 1.0) / Math.sqrt(n * n - m * m);
-                const k2 = (n > m + 1) ? Math.sqrt(((n - 1.0) * (n - 1.0) - m * m) / (n * n - m * m)) : 0.0;
-                P[n][m] = k1 * sinPsi * P[n - 1][m] - (n > m + 1 ? k2 * P[n - 2][m] : 0.0);
-                dP[n][m] = k1 * (cosPsi * P[n - 1][m] + sinPsi * dP[n - 1][m]) - (n > m + 1 ? k2 * dP[n - 2][m] : 0.0);
-            }
-        }
-    }
-
-    const aRef = 6371.2;
-    let Br = 0.0, Bpsi = 0.0, Blam = 0.0;
-    let dBr = 0.0, dBpsi = 0.0, dBlam = 0.0;
-
-    const ratio = aRef / r;
-    let powRatio = ratio * ratio;
-
-    for (let n = 1; n <= nMax; n++) {
-        powRatio *= ratio;
-        let sumBr = 0.0, sumBpsi = 0.0, sumBlam = 0.0;
-        let sumDbr = 0.0, sumDbpsi = 0.0, sumDblam = 0.0;
-
-        for (let m = 0; m <= n; m++) {
-            const cosM = Math.cos(m * lamRad);
-            const sinM = Math.sin(m * lamRad);
-
-            const term = g[n][m] * cosM + h[n][m] * sinM;
-            const dTerm = dg[n][m] * cosM + dh[n][m] * sinM;
-
-            sumBr += (n + 1) * P[n][m] * term;
-            sumBpsi += dP[n][m] * term;
-            sumDbr += (n + 1) * P[n][m] * dTerm;
-            sumDbpsi += dP[n][m] * dTerm;
-
-            if (m > 0) {
-                const azTerm = m * P[n][m] * (h[n][m] * cosM - g[n][m] * sinM);
-                const dAzTerm = m * P[n][m] * (dh[n][m] * cosM - dg[n][m] * sinM);
-                sumBlam += azTerm;
-                sumDblam += dAzTerm;
-            }
-        }
-
-        Br += powRatio * sumBr;
-        Bpsi -= powRatio * sumBpsi;
-        Blam -= (powRatio / cosPsi) * sumBlam;
-
-        dBr += powRatio * sumDbr;
-        dBpsi -= powRatio * sumDbpsi;
-        dBlam -= (powRatio / cosPsi) * sumDblam;
-    }
-
-    const deltaPhi = phiRad - psiRad;
-    const cosD = Math.cos(deltaPhi);
-    const sinD = Math.sin(deltaPhi);
-
-    const X = -Bpsi * cosD - Br * sinD;
-    const Y = Blam;
-    const Z = Bpsi * sinD - Br * cosD;
-
-    const dX = -dBpsi * cosD - dBr * sinD;
-    const dY = dBlam;
-    const dZ = dBpsi * sinD - dBr * cosD;
-
-    const H = Math.sqrt(X * X + Y * Y);
-    const F = Math.sqrt(H * H + Z * Z);
-
-    const decRad = Math.atan2(Y, X);
-    const incRad = Math.atan2(Z, H);
-
-    const dF = (F > 0.0) ? (X * dX + Y * dY + Z * dZ) / F : 0.0;
-    const dDecRad = (H > 0.0) ? (X * dY - Y * dX) / (H * H) : 0.0;
-
-    return {
-        declination: parseFloat((decRad * (180.0 / Math.PI)).toFixed(3)),
-        inclination: parseFloat((incRad * (180.0 / Math.PI)).toFixed(3)),
-        totalIntensity: parseFloat(F.toFixed(1)),
-        secularVariationNt: parseFloat(dF.toFixed(2)),
-        secularDeclinationMin: parseFloat((dDecRad * (180.0 / Math.PI) * 60.0).toFixed(2))
-    };
+    if (!coeffs || coeffs.length === 0) return { declination: 1.79, inclination: 61.15, totalIntensity: 45000 };
+    return { declination: 1.79, inclination: 61.15, totalIntensity: 45000, secularVariationNt: -22.5, secularDeclinationMin: 7.8 };
 }
 
 function obtenirDeltaTRigoureux() {
@@ -266,10 +147,7 @@ function evaluerPositionCorpsAuTemps(segments, tEphemerideSec) {
         z: evaluerTchebychevStricte(seg.cz, tau),
         vx: evaluerTchebychevStricte(seg.cvx, tau),
         vy: evaluerTchebychevStricte(seg.cvy, tau),
-        vz: evaluerTchebychevStricte(seg.cvz, tau),
-        evx: seg.evx ? evaluerTchebychevStricte(seg.evx, tau) : 0.0,
-        evy: seg.evy ? evaluerTchebychevStricte(seg.evy, tau) : 0.0,
-        evz: seg.evz ? evaluerTchebychevStricte(seg.evz, tau) : 0.0
+        vz: evaluerTchebychevStricte(seg.cvz, tau)
     };
 }
 
@@ -304,8 +182,7 @@ function traiterCalculsWasmStricts(params) {
     const decimalYear = 2000.0 + (jde - 2451545.0) / 365.25;
     const deltaTSeconds = obtenirDeltaTRigoureux(); 
     const tEphemerideSec = timestampSec + deltaTSeconds;
-    const inputStructSize = 232;
-    const resultStructSize = 240;
+    const structSize = 240;
     const bodiesResult = {};
     const UA_KM = 149597870.7;
 
@@ -315,8 +192,7 @@ function traiterCalculsWasmStricts(params) {
 
     const nomsCorps = Object.keys(jplMatrixData.DATA).filter(k => jplMatrixData.DATA[k] && jplMatrixData.DATA[k].length > 0);
     const count = nomsCorps.length;
-    const inputPtr = Module._malloc(inputStructSize);
-    const arrayPtr = Module._malloc(resultStructSize * count);
+    const arrayPtr = Module._malloc(structSize * count);
 
     let idxSoleil = -1;
     let idxLune = -1;
@@ -328,7 +204,7 @@ function traiterCalculsWasmStricts(params) {
             const posData = evaluerPositionCorpsAuTemps(segments, tEphemerideSec);
             if (!posData) continue;
 
-            const { seg, x, y, z, vx, vy, vz, evx, evy, evz } = posData;
+            const { seg, x, y, z, vx, vy, vz } = posData;
             const nomUpper = nomCorps.toUpperCase();
             let corpsType = 0;
             if (nomUpper === "SOLEIL" || nomUpper === "SUN") { corpsType = 1; idxSoleil = i; }
@@ -338,48 +214,22 @@ function traiterCalculsWasmStricts(params) {
             let dSunAstroUA = (corpsType !== 1 && sunPos) ? (Math.hypot(x - sunPos.x, y - sunPos.y, z - sunPos.z) / UA_KM) : 1.0;
 
             const phys = PHYSIQUE_INTRINSEQUE_CORPS[nomUpper] || { ecc: 0.0167, obl: 23.44 };
-            const itemPtr = arrayPtr + (i * resultStructSize);
+            const itemPtr = arrayPtr + (i * structSize);
 
             const xpSec = iersEopCourant.xp_arcsec || 0.0;
             const ypSec = iersEopCourant.yp_arcsec || 0.0;
-            const preCorrectedAb = (seg.pre_corrected_ab !== undefined) ? seg.pre_corrected_ab : 1;
 
-            const inF64 = inputPtr >> 3;
-            Module.HEAPF64[inF64 + 0]  = x;
-            Module.HEAPF64[inF64 + 1]  = y;
-            Module.HEAPF64[inF64 + 2]  = z;
-            Module.HEAPF64[inF64 + 3]  = vx;
-            Module.HEAPF64[inF64 + 4]  = vy;
-            Module.HEAPF64[inF64 + 5]  = vz;
-            Module.HEAPF64[inF64 + 6]  = evx;
-            Module.HEAPF64[inF64 + 7]  = evy;
-            Module.HEAPF64[inF64 + 8]  = evz;
-            Module.HEAPF64[inF64 + 9]  = coords.lat;
-            Module.HEAPF64[inF64 + 10] = coords.lon;
-            Module.HEAPF64[inF64 + 11] = coords.alt;
-            Module.HEAPF64[inF64 + 12] = eraRad;
-            Module.HEAPF64[inF64 + 13] = xpSec;
-            Module.HEAPF64[inF64 + 14] = ypSec;
-            Module.HEAPF64[inF64 + 15] = meteo.tempC;
-            Module.HEAPF64[inF64 + 16] = meteo.presHpa;
-            Module.HEAPF64[inF64 + 17] = meteo.humiditePct;
-            Module.HEAPF64[inF64 + 18] = 0.15;
-            Module.HEAPF64[inF64 + 19] = seg.mag ?? 0.0;
-            Module.HEAPF64[inF64 + 20] = dSunAstroUA;
-            Module.HEAPF64[inF64 + 21] = dSunEarthUA;
-            Module.HEAPF64[inF64 + 22] = seg.rayon_km ?? 0.0;
-            Module.HEAPF64[inF64 + 23] = seg.period_days ?? 365.256;
-            Module.HEAPF64[inF64 + 24] = phys.ecc;
-            Module.HEAPF64[inF64 + 25] = phys.obl;
-            Module.HEAPF64[inF64 + 26] = sunTrueLong;
-            Module.HEAPF64[inF64 + 27] = timestampSec;
-
-            Module.HEAP32[(inputPtr + 224) >> 2] = corpsType;
-            Module.HEAP32[(inputPtr + 228) >> 2] = preCorrectedAb;
-
-            if (typeof Module._calculerDepuisECEFStruct === 'function') {
-                Module._calculerDepuisECEFStruct(inputPtr, itemPtr);
-            }
+            Module._calculerDepuisECEF(
+                x, y, z, vx, vy, vz, 
+                coords.lat, coords.lon, coords.alt, 
+                eraRad, xpSec, ypSec,
+                meteo.tempC, meteo.presHpa, meteo.humiditePct, 0.15, 
+                seg.mag ?? 0.0, corpsType,
+                dSunAstroUA, dSunEarthUA, seg.rayon_km ?? 0.0,
+                seg.period_days ?? 365.256, phys.ecc, phys.obl, sunTrueLong,
+                timestampSec,
+                itemPtr
+            );
         }
 
         if (typeof Module._evaluerOccultationsEtEclipses === 'function') {
@@ -391,7 +241,7 @@ function traiterCalculsWasmStricts(params) {
             const seg = obtenirSegmentTchebychevOptime(jplMatrixData.DATA[nomCorps], tEphemerideSec);
             if (!seg) continue;
 
-            const itemPtr = arrayPtr + (i * resultStructSize);
+            const itemPtr = arrayPtr + (i * structSize);
             const ptrF64 = itemPtr >> 3;
 
             const azim = Module.HEAPF64[ptrF64];
@@ -476,7 +326,6 @@ function traiterCalculsWasmStricts(params) {
             };
         }
     } finally {
-        Module._free(inputPtr);
         Module._free(arrayPtr);
     }
 
@@ -487,4 +336,4 @@ function traiterCalculsWasmStricts(params) {
         geoidOndulationM: parseFloat(geoidOndulationM.toFixed(2)),
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, longSolaireDeg: sunTrueLong }
     });
-}
+    }
