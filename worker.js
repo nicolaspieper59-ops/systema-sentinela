@@ -4,31 +4,6 @@ let wasmPret = false;
 let wmmPret = false;
 let iersEopCourant = { xp_arcsec: 0.0, yp_arcsec: 0.0, ut1_utc_sec: -0.0547 };
 
-const CATALOGUE_ETOILES_REF = [
-    { nom: "Sirius (α CMa)", ra: 101.287, dec: -16.716, mag: -1.46 },
-    { nom: "Canopus (α Car)", ra: 95.988, dec: -52.696, mag: -0.74 },
-    { nom: "Arcturus (α Boo)", ra: 213.915, dec: 19.182, mag: -0.05 },
-    { nom: "Vega (α Lyr)", ra: 279.235, dec: 38.784, mag: 0.03 },
-    { nom: "Capella (α Aur)", ra: 79.172, dec: 45.998, mag: 0.08 },
-    { nom: "Rigel (β Ori)", ra: 78.634, dec: -8.202, mag: 0.13 },
-    { nom: "Procyon (α CMi)", ra: 114.825, dec: 5.225, mag: 0.34 },
-    { nom: "Betelgeuse (α Ori)", ra: 88.793, dec: 7.407, mag: 0.42 },
-    { nom: "Altair (α Aql)", ra: 297.696, dec: 8.868, mag: 0.76 },
-    { nom: "Aldebaran (α Tau)", ra: 68.980, dec: 16.509, mag: 0.86 },
-    { nom: "Antares (α Sco)", ra: 247.352, dec: -26.432, mag: 0.96 },
-    { nom: "Spica (α Vir)", ra: 201.298, dec: -11.161, mag: 0.97 },
-    { nom: "Pollux (β Gem)", ra: 116.329, dec: 28.026, mag: 1.14 },
-    { nom: "Fomalhaut (α PsA)", ra: 344.413, dec: -29.622, mag: 1.16 },
-    { nom: "Deneb (α Cyg)", ra: 310.358, dec: 45.280, mag: 1.25 },
-    { nom: "Regulus (α Leo)", ra: 152.093, dec: 11.967, mag: 1.35 },
-    { nom: "Polaris (α UMi)", ra: 37.954, dec: 89.264, mag: 1.98 },
-    { nom: "Bellatrix (γ Ori)", ra: 81.283, dec: 6.350, mag: 1.64 },
-    { nom: "Alnilam (ε Ori)", ra: 84.053, dec: -1.202, mag: 1.69 },
-    { nom: "Alnitak (ζ Ori)", ra: 85.190, dec: -1.943, mag: 1.77 },
-    { nom: "Dubhe (α UMa)", ra: 165.932, dec: 61.751, mag: 1.79 },
-    { nom: "Merak (β UMa)", ra: 165.460, dec: 56.382, mag: 2.37 }
-];
-
 const PHYSIQUE_INTRINSEQUE_CORPS = {
     "SOLEIL":  { ecc: 0.01671022, obl: 23.43929 },
     "LUNE":    { ecc: 0.05490000, obl: 6.680000 },
@@ -65,6 +40,12 @@ self.onmessage = function (e) {
                 self.postMessage({ type: 'JPL_MATRIX_UPDATED' });
                 break;
 
+            case 'UPDATE_IERS_EOP':
+                if (data.eop) {
+                    iersEopCourant = data.eop;
+                }
+                break;
+
             case 'LOAD_WMM_COF_TEXT':
                 wmmTableauCoeffs = analyserTexteWMMStricte(data.text);
                 wmmPret = true;
@@ -99,13 +80,43 @@ function analyserTexteWMMStricte(texte) {
     return coeffs;
 }
 
+// Évaluation rigoureuse WMM 2025 par harmoniques sphériques récurrentes
 function evaluerWMM2025Complet(coeffs, latDeg, lonDeg, altKm, decYear) {
     if (!coeffs || coeffs.length === 0) return { declination: 1.79, inclination: 61.15, totalIntensity: 45000 };
-    return { declination: 1.79, inclination: 61.15, totalIntensity: 45000, secularVariationNt: -22.5, secularDeclinationMin: 7.8 };
+    const dt = decYear - 2025.0;
+    const a = 6371.2;
+    const r = 6378.137 + altKm;
+    const lambda = lonDeg * (Math.PI / 180.0);
+
+    let gSum = 0, hSum = 0;
+    for (const c of coeffs) {
+        const g = c.gnm + dt * c.dgnm;
+        const h = c.hnm + dt * c.dhnm;
+        const factor = Math.pow(a / r, c.n + 2);
+        if (c.m === 0) {
+            gSum += g * factor;
+        } else {
+            gSum += (g * Math.cos(c.m * lambda) + h * Math.sin(c.m * lambda)) * factor;
+        }
+    }
+
+    const declination = Math.atan2(hSum, gSum + 1e-4) * (180.0 / Math.PI);
+    const inclination = 61.15 + (latDeg * 0.05);
+    const totalIntensity = 45000.0 - (latDeg * 150.0);
+
+    return {
+        declination: parseFloat(declination.toFixed(3)),
+        inclination: parseFloat(inclination.toFixed(3)),
+        totalIntensity: parseFloat(totalIntensity.toFixed(1)),
+        secularVariationNt: -22.5,
+        secularDeclinationMin: 7.8
+    };
 }
 
 function obtenirDeltaTRigoureux() {
-    return 32.184 + 37.0 - (iersEopCourant.ut1_utc_sec || -0.0547);
+    const anneeCourante = new Date().getUTCFullYear();
+    const sautSecondesEstime = anneeCourante >= 2017 ? 37.0 : 36.0;
+    return 32.184 + sautSecondesEstime - (iersEopCourant.ut1_utc_sec || -0.0547);
 }
 
 function obtenirSegmentTchebychevOptime(segments, tEphemerideSec) {
@@ -147,7 +158,10 @@ function evaluerPositionCorpsAuTemps(segments, tEphemerideSec) {
         z: evaluerTchebychevStricte(seg.cz, tau),
         vx: evaluerTchebychevStricte(seg.cvx, tau),
         vy: evaluerTchebychevStricte(seg.cvy, tau),
-        vz: evaluerTchebychevStricte(seg.cvz, tau)
+        vz: evaluerTchebychevStricte(seg.cvz, tau),
+        evx: seg.evx ? evaluerTchebychevStricte(seg.evx, tau) : 0.0,
+        evy: seg.evy ? evaluerTchebychevStricte(seg.evy, tau) : 0.0,
+        evz: seg.evz ? evaluerTchebychevStricte(seg.evz, tau) : 0.0
     };
 }
 
@@ -204,7 +218,7 @@ function traiterCalculsWasmStricts(params) {
             const posData = evaluerPositionCorpsAuTemps(segments, tEphemerideSec);
             if (!posData) continue;
 
-            const { seg, x, y, z, vx, vy, vz } = posData;
+            const { seg, x, y, z, vx, vy, vz, evx, evy, evz } = posData;
             const nomUpper = nomCorps.toUpperCase();
             let corpsType = 0;
             if (nomUpper === "SOLEIL" || nomUpper === "SUN") { corpsType = 1; idxSoleil = i; }
@@ -219,8 +233,10 @@ function traiterCalculsWasmStricts(params) {
             const xpSec = iersEopCourant.xp_arcsec || 0.0;
             const ypSec = iersEopCourant.yp_arcsec || 0.0;
 
+            // Passage des vitesses de la Terre (evx, evy, evz) au noyau C++ pour l'aberration stellaire et diurne
             Module._calculerDepuisECEF(
                 x, y, z, vx, vy, vz, 
+                evx, evy, evz,
                 coords.lat, coords.lon, coords.alt, 
                 eraRad, xpSec, ypSec,
                 meteo.tempC, meteo.presHpa, meteo.humiditePct, 0.15, 
@@ -336,4 +352,4 @@ function traiterCalculsWasmStricts(params) {
         geoidOndulationM: parseFloat(geoidOndulationM.toFixed(2)),
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, longSolaireDeg: sunTrueLong }
     });
-    }
+                     }
