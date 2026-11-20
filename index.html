@@ -446,6 +446,7 @@
                 <span>4. PLANÉTARIUM IRL &amp; BALISE</span>
                 <span style="display:flex; align-items:center; gap:4px;">
                     <span id="badge-sky-state" style="font-size:0.6rem; color:var(--amber);">--</span>
+                    <button id="btn-orient-mode" class="btn-mini" onclick="basculerOrientationPlanetarium()" title="Basculer Nord Fixe / Orientation Quaternion">NORD FIXE</button>
                     <button id="btn-xray-sky" class="btn-mini" onclick="basculerRayonsXCiel()" title="Afficher les astres sous l'horizon">RAYONS X</button>
                 </span>
             </h3>
@@ -465,8 +466,8 @@
                     <span style="color: var(--sky);">CAP: <strong id="val-waypoint-az">--°</strong> | <strong id="val-waypoint-dist">-- km</strong></span>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 4px;">
-                    <input type="number" id="input-waypoint-lat" placeholder="Lat cible" step="0.0001" style="background:var(--bg-base); color:var(--neon-green); border:1px solid var(--border-dim); padding:3px; border-radius:3px; font-family:monospace;">
-                    <input type="number" id="input-waypoint-lon" placeholder="Lon cible" step="0.0001" style="background:var(--bg-base); color:var(--neon-green); border:1px solid var(--border-dim); padding:3px; border-radius:3px; font-family:monospace;">
+                    <input type="number" id="input-waypoint-lat" placeholder="Lat (-90..90)" min="-90" max="90" step="0.0001" style="background:var(--bg-base); color:var(--neon-green); border:1px solid var(--border-dim); padding:3px; border-radius:3px; font-family:monospace;">
+                    <input type="number" id="input-waypoint-lon" placeholder="Lon (-180..180)" min="-180" max="180" step="0.0001" style="background:var(--bg-base); color:var(--neon-green); border:1px solid var(--border-dim); padding:3px; border-radius:3px; font-family:monospace;">
                     <button class="btn-action" style="padding: 3px 8px;" onclick="calculerCapWaypoint()">VERROUILLER</button>
                 </div>
             </div>
@@ -809,20 +810,34 @@
         return Math.round(Td);
     }
 
-    function calculerPressionHypsometrique(altM, tempC = 15.0) {
-        const P0 = 1013.25;
-        const T0 = 288.15;
-        const L = 0.0065;
-        const exp = 5.25588;
-        const pQfe = P0 * Math.pow(Math.max(0.1, 1.0 - (L * altM) / T0), exp);
-        return Math.round(pQfe);
+    function calculerTemperatureVirtuelleK(tempC, presHpa, humiditePct) {
+        const tk = tempC + 273.15;
+        const hr = Math.max(0, Math.min(100, humiditePct)) / 100.0;
+        const es = 6.112 * Math.exp((17.67 * tempC) / (tempC + 243.5));
+        const e = hr * es;
+        const q = (0.622 * e) / Math.max(10.0, presHpa - 0.378 * e);
+        return tk * (1.0 + 0.608 * q);
     }
 
-    function convertirQFEversQNH(pQfe, altM) {
-        const T0 = 288.15;
+    function calculerPressionHypsometrique(altM, tempC = 15.0, humiditePct = 50.0) {
+        const P0 = 1013.25;
         const L = 0.0065;
-        const exp = 5.25588;
-        return pQfe / Math.pow(Math.max(0.1, 1.0 - (L * altM) / T0), exp);
+        const g0 = 9.80665;
+        const Rd = 287.058;
+        const TvStation = calculerTemperatureVirtuelleK(tempC, P0, humiditePct);
+        const TvMer = TvStation + L * altM;
+        const exp = g0 / (Rd * L);
+        const pQfe = P0 * Math.pow(Math.max(0.1, 1.0 - (L * altM) / TvMer), exp);
+        return Math.round(pQfe * 10) / 10;
+    }
+
+    function convertirQFEversQNH(pQfe, altM, tempC = 15.0, humiditePct = 50.0) {
+        const L = 0.0065;
+        const g0 = 9.80665;
+        const Rd = 287.058;
+        const TvStation = calculerTemperatureVirtuelleK(tempC, pQfe, humiditePct);
+        const exp = g0 / (Rd * L);
+        return pQfe * Math.pow(1.0 + (L * altM) / Math.max(150.0, TvStation), exp);
     }
 
     function actualiserAffichageMeteoGUM() {
@@ -850,7 +865,7 @@
             if (elSource) { elSource.innerText = "ISA 1976 / DÉFAUT"; elSource.style.color = "var(--amber)"; }
         }
 
-        const qnhEstime = convertirQFEversQNH(meteoActive.pressionBaroQFE, stationActive.altMeters);
+        const qnhEstime = convertirQFEversQNH(meteoActive.pressionBaroQFE, stationActive.altMeters, meteoActive.temperatureC, meteoActive.humiditePct);
         if (elQfe) elQfe.innerText = `${pStr} (QNH ${Math.round(qnhEstime)})`;
         if (elTd) elTd.innerText = `${meteoActive.pointRoseeC} °C (HR ${meteoActive.humiditePct}%)`;
         if (elVv) elVv.innerText = `${meteoActive.visibiliteKm} km / ${meteoActive.nebulositePct}%`;
@@ -896,7 +911,7 @@
         meteoActive = {
             temperatureC: t,
             pressionBaroQFE: p,
-            pressionQNH: convertirQFEversQNH(p, stationActive.altMeters),
+            pressionQNH: convertirQFEversQNH(p, stationActive.altMeters, t, h),
             humiditePct: Math.max(0, Math.min(100, h)),
             pointRoseeC: td,
             visibiliteKm: Math.max(0, vv),
@@ -947,7 +962,7 @@
             meteoActive = {
                 temperatureC: t,
                 pressionBaroQFE: pQfe,
-                pressionQNH: convertirQFEversQNH(pQfe, stationActive.altMeters),
+                pressionQNH: convertirQFEversQNH(pQfe, stationActive.altMeters, t, hr),
                 humiditePct: hr,
                 pointRoseeC: td,
                 visibiliteKm: vvKm,
@@ -971,7 +986,7 @@
         } catch (err) {
             ecrireLog(`[MÉTÉO] Échec synchro AROME (${err.message}). Repli hypsométrique actif.`);
             if (meteoActive.certLevel === 'ISA_DEFAULT') {
-                meteoActive.pressionBaroQFE = calculerPressionHypsometrique(stationActive.altMeters, meteoActive.temperatureC);
+                meteoActive.pressionBaroQFE = calculerPressionHypsometrique(stationActive.altMeters, meteoActive.temperatureC, meteoActive.humiditePct);
                 meteoActive.certLevel = 'HYPSOMETRIC_MODEL';
                 actualiserAffichageMeteoGUM();
             }
@@ -1141,6 +1156,40 @@
         );
     }
 
+    let modeOrientationAuto = false;
+
+    function basculerOrientationPlanetarium() {
+        modeOrientationAuto = !modeOrientationAuto;
+        const btn = document.getElementById('btn-orient-mode');
+        if (btn) {
+            btn.innerText = modeOrientationAuto ? "CAP QUATERNION" : "NORD FIXE";
+            btn.classList.toggle('active', modeOrientationAuto);
+        }
+        if (modeOrientationAuto && !capteursActifs) {
+            basculerTousLesCapteurs();
+        }
+        dessinerPlanetariumScientifique(derniersResultatsAstres, capVraiActuel);
+    }
+
+    function calculerCapQuaternion(alphaDeg, betaDeg, gammaDeg) {
+        const deg2rad = Math.PI / 180.0;
+        const alpha = alphaDeg ? alphaDeg * deg2rad : 0.0;
+        const beta  = betaDeg  ? betaDeg  * deg2rad : 0.0;
+        const gamma = gammaDeg ? gammaDeg * deg2rad : 0.0;
+        const screenOrient = ((window.screen && window.screen.orientation ? window.screen.orientation.angle : window.orientation) || 0) * deg2rad;
+
+        const euler = new THREE.Euler(beta, alpha, -gamma, 'YXZ');
+        const qDevice = new THREE.Quaternion().setFromEuler(euler);
+
+        const qCamOffset = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+        const qScreen = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -screenOrient);
+        qDevice.multiply(qCamOffset).multiply(qScreen);
+
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(qDevice);
+        let capMagDeg = (Math.atan2(forward.x, forward.y) * (180.0 / Math.PI) + 360.0) % 360.0;
+        return capMagDeg;
+    }
+
     function activerIMU() {
         if (listenerIMU && eventNameIMU) { window.removeEventListener(eventNameIMU, listenerIMU, true); }
         eventNameIMU = 'deviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation';
@@ -1150,13 +1199,7 @@
                 mettreAJourCapBrut(e.webkitCompassHeading, true);
                 return;
             }
-            const alpha = e.alpha ? e.alpha * (Math.PI / 180) : 0;
-            const beta = e.beta ? e.beta * (Math.PI / 180) : 0;
-            const gamma = e.gamma ? e.gamma * (Math.PI / 180) : 0;
-            const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(beta, gamma, -alpha, 'ZXY'));
-            const yawRad = Math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z));
-            let capMag = (360 - (yawRad * (180 / Math.PI))) % 360;
-            if (capMag < 0) capMag += 360;
+            const capMag = calculerCapQuaternion(e.alpha, e.beta, e.gamma);
             mettreAJourCapBrut(capMag, false);
         };
         window.addEventListener(eventNameIMU, listenerIMU, true);
@@ -1182,7 +1225,7 @@
                     elBaro.style.color = "var(--neon-green)";
                     
                     meteoActive.pressionBaroQFE = Math.round(p * 10) / 10;
-                    meteoActive.pressionQNH = convertirQFEversQNH(meteoActive.pressionBaroQFE, stationActive.altMeters);
+                    meteoActive.pressionQNH = convertirQFEversQNH(meteoActive.pressionBaroQFE, stationActive.altMeters, meteoActive.temperatureC, meteoActive.humiditePct);
                     meteoActive.certLevel = 'MEMS_RAW';
                     document.getElementById('input-pres').value = meteoActive.pressionBaroQFE.toFixed(1);
                     actualiserAffichageMeteoGUM();
@@ -1193,7 +1236,7 @@
             elBaro.innerText = "ABSENT (REPLI HYPSO)";
             elBaro.style.color = "var(--amber)";
             if (meteoActive.certLevel === 'ISA_DEFAULT') {
-                meteoActive.pressionBaroQFE = calculerPressionHypsometrique(stationActive.altMeters, meteoActive.temperatureC);
+                meteoActive.pressionBaroQFE = calculerPressionHypsometrique(stationActive.altMeters, meteoActive.temperatureC, meteoActive.humiditePct);
                 meteoActive.certLevel = 'HYPSOMETRIC_MODEL';
                 actualiserAffichageMeteoGUM();
             }
@@ -1454,7 +1497,7 @@ function initialiserWorkerAstronomie() {
             if (cache.jde) cache.jde.textContent = donneesAstre.jde !== undefined ? donneesAstre.jde.toFixed(2) : '--';
             if (cache.deltat) cache.deltat.textContent = donneesAstre.deltat !== undefined ? donneesAstre.deltat.toFixed(1) : '--';
             if (cache.gha) cache.gha.textContent = donneesAstre.ghaDeg !== undefined ? donneesAstre.ghaDeg.toFixed(2) + '°' : '--';
-            if (cache.solConst) cache.solConst.textContent = donneesAstre.distanceAu ? (1361.0 / (donneesAstre.distanceAu ** 2)).toFixed(1) : 'N/A';
+             if (cache.solConst) cache.solConst.textContent = donneesAstre.distanceAu ? (1361.0 / (donneesAstre.distanceAu ** 2)).toFixed(1) : 'N/A';
             if (cache.am) cache.am.textContent = donneesAstre.airMass !== undefined ? donneesAstre.airMass.toFixed(2) : '--';
             if (cache.irr) cache.irr.textContent = donneesAstre.irradiance !== undefined ? donneesAstre.irradiance.toFixed(1) : '--';
             if (cache.rms) cache.rms.textContent = donneesAstre.rmsArcsecDisplay ?? '--';
@@ -1575,7 +1618,7 @@ function initialiserWorkerAstronomie() {
         }
 
         if (meteoActive.certLevel === 'ISA_DEFAULT' || meteoActive.certLevel === 'HYPSOMETRIC_MODEL') {
-            meteoActive.pressionBaroQFE = calculerPressionHypsometrique(altM, meteoActive.temperatureC);
+            meteoActive.pressionBaroQFE = calculerPressionHypsometrique(altM, meteoActive.temperatureC, meteoActive.humiditePct);
             meteoActive.certLevel = 'HYPSOMETRIC_MODEL';
             actualiserAffichageMeteoGUM();
         }
@@ -1695,6 +1738,32 @@ function initialiserWorkerAstronomie() {
         ctx.fillStyle = skyGrad;
         ctx.fill();
 
+        ctx.save();
+        if (modeOrientationAuto && Number.isFinite(cap)) {
+            ctx.rotate(-cap * Math.PI / 180.0);
+        }
+
+        const sunObj = astresData && (astresData.soleil || astresData.sun || astresData.SUN);
+        if (sunObj && Number.isFinite(sunObj.elevationApparente) && Number.isFinite(sunObj.azimuth)) {
+            if (sunObj.elevationApparente > -16 && sunObj.elevationApparente < 14) {
+                const tint = Math.max(0, 1 - Math.abs(sunObj.elevationApparente + 1) / 15);
+                const sunAzRad = sunObj.azimuth * Math.PI / 180.0;
+                const gx = R * 0.92 * Math.sin(sunAzRad);
+                const gy = -R * 0.92 * Math.cos(sunAzRad);
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(0, 0, R, 0, Math.PI * 2);
+                ctx.clip();
+                const hGlow = ctx.createRadialGradient(gx, gy, 4, gx, gy, R * 0.85);
+                hGlow.addColorStop(0, `rgba(251, 146, 60, ${0.58 * tint})`);
+                hGlow.addColorStop(0.45, `rgba(244, 63, 94, ${0.28 * tint})`);
+                hGlow.addColorStop(1, 'rgba(244, 63, 94, 0)');
+                ctx.fillStyle = hGlow;
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
         if (sky.starAlpha > 0.02) {
             etoilesPlanisphere.forEach(s => {
                 const sx = Math.cos(s.angle) * s.dist * R;
@@ -1729,15 +1798,43 @@ function initialiserWorkerAstronomie() {
         ctx.moveTo(-R, 0); ctx.lineTo(R, 0);
         ctx.stroke();
 
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-        ctx.font = 'bold 8.5px monospace';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.font = 'bold 9px monospace';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText('N', 0, -R + 9);
         ctx.fillText('S', 0, R - 9);
         ctx.fillText('E', R - 9, 0);
         ctx.fillText('O', -R + 9, 0);
 
-        if (Number.isFinite(cap)) {
+        if (sunObj && Number.isFinite(sunObj.decDeg)) {
+            const phiRad = stationActive.lat * Math.PI / 180.0;
+            const decRad = sunObj.decDeg * Math.PI / 180.0;
+            ctx.save();
+            ctx.beginPath();
+            let started = false;
+            for (let hDeg = -180; hDeg <= 180; hDeg += 6) {
+                const H = hDeg * Math.PI / 180.0;
+                const sinAlt = Math.sin(phiRad) * Math.sin(decRad) + Math.cos(phiRad) * Math.cos(decRad) * Math.cos(H);
+                const altDeg = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * 180.0 / Math.PI;
+                if (altDeg < 0 && !rayonsXCielActif) {
+                    started = false;
+                    continue;
+                }
+                const azRad = Math.atan2(-Math.cos(decRad) * Math.sin(H), Math.sin(decRad) * Math.cos(phiRad) - Math.cos(decRad) * Math.sin(phiRad) * Math.cos(H));
+                const rArc = Math.min(R * 0.96, (Math.abs(90 - altDeg) / 90) * R);
+                const ax = rArc * Math.sin(azRad);
+                const ay = -rArc * Math.cos(azRad);
+                if (!started) { ctx.moveTo(ax, ay); started = true; }
+                else { ctx.lineTo(ax, ay); }
+            }
+            ctx.strokeStyle = 'rgba(251, 191, 36, 0.45)';
+            ctx.lineWidth = 1.4;
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        if (!modeOrientationAuto && Number.isFinite(cap)) {
             const capRad = cap * Math.PI / 180.0;
             ctx.strokeStyle = '#f85149';
             ctx.lineWidth = 1.8;
@@ -1785,7 +1882,7 @@ function initialiserWorkerAstronomie() {
                 if (el < 0) ctx.globalAlpha = 0.42;
 
                 if (nomUpper === 'SUN' || nomUpper === 'SOLEIL') {
-                    const safeGlowRadius = Math.max(1, rayonAstre * 2.4);
+                    const safeGlowRadius = Math.max(1, rayonAstre * 2.5);
                     if (Number.isFinite(safeGlowRadius)) {
                         const sGlow = ctx.createRadialGradient(x, y, 2, x, y, safeGlowRadius);
                         sGlow.addColorStop(0, 'rgba(253, 224, 71, 0.95)');
@@ -1812,6 +1909,18 @@ function initialiserWorkerAstronomie() {
             }
         }
 
+        ctx.restore();
+
+        if (modeOrientationAuto) {
+            ctx.fillStyle = '#f85149';
+            ctx.beginPath();
+            ctx.moveTo(0, -R - 2);
+            ctx.lineTo(-5, -R - 10);
+            ctx.lineTo(5, -R - 10);
+            ctx.closePath();
+            ctx.fill();
+        }
+
         ctx.beginPath();
         ctx.arc(0, 0, R, 0, Math.PI * 2);
         ctx.strokeStyle = '#38bdf8';
@@ -1824,7 +1933,10 @@ function initialiserWorkerAstronomie() {
     function calculerCapWaypoint(silencieux = false) {
         const latCible = parseFloat(document.getElementById('input-waypoint-lat').value.replace(',', '.'));
         const lonCible = parseFloat(document.getElementById('input-waypoint-lon').value.replace(',', '.'));
-        if (isNaN(latCible) || isNaN(lonCible)) { if (!silencieux) alert("Coordonnées de balise invalides."); return; }
+        if (isNaN(latCible) || isNaN(lonCible) || latCible < -90 || latCible > 90 || lonCible < -180 || lonCible > 180) {
+            if (!silencieux) alert("Erreur : Latitude (-90 à 90) ou Longitude (-180 à 180) invalide.");
+            return;
+        }
         
         const phi1 = stationActive.lat * (Math.PI / 180), phi2 = latCible * (Math.PI / 180);
         const dLambda = (lonCible - stationActive.lon) * (Math.PI / 180);
