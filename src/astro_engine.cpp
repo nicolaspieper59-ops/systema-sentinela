@@ -194,17 +194,21 @@ void calculerDepuisECEF(
 
     // Combinaison de la vitesse orbitale de la Terre et de la vitesse diurne de l'observateur
     double v[3] = {
-        (earthVx_km_s + vx_diurne) / VITESSE_LUMIERE_KM_S,
-        (earthVy_km_s + vy_diurne) / VITESSE_LUMIERE_KM_S,
-        (earthVz_km_s + vz_diurne) / VITESSE_LUMIERE_KM_S
-    };
+    (earthVx_km_s + vx_diurne) / VITESSE_LUMIERE_KM_S,
+    (earthVy_km_s + vy_diurne) / VITESSE_LUMIERE_KM_S,
+    (earthVz_km_s + vz_diurne) / VITESSE_LUMIERE_KM_S
+};
 
-    double pabr[3];
-    iauAb(pnat, v, 1.0, 0.0, pabr);
+// 2. Calcul de la norme de la vitesse (bbr en fraction de c)
+double bbr = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
 
-    double xI = pabr[0] * 1000.0;
-    double yI = pabr[1] * 1000.0;
-    double zI = pabr[2] * 1000.0;
+double pabr[3];
+// CORRECTION : On passe la distance réelle (distKm) et la norme de vitesse (bbr) à SOFA iauAb
+iauAb(pnat, v, distKm, bbr, pabr);
+
+double xI = pabr[0] * 1000.0;
+double yI = pabr[1] * 1000.0;
+double zI = pabr[2] * 1000.0;
 
     double normICRF = std::sqrt(xI * xI + yI * yI + zI * zI);
     result->raDeg = normaliserDegres(std::atan2(yI, xI) * RAD2DEG);
