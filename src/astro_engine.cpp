@@ -165,6 +165,12 @@ void calculerDepuisECEF(
     if (!result) return;
     std::memset(result, 0, sizeof(AstroResult));
 
+    // GARDE-FOU SCIENTIFIQUE : Si la position ICRF est nulle (erreur de chargement JPL/Tchebychev)
+    if (std::abs(xICRF_km) < 1e-6 && std::abs(yICRF_km) < 1e-6 && std::abs(zICRF_km) < 1e-6) {
+        result->visibiliteCode = 0; // Marqué comme invisible / erreur de données
+        return; 
+    }
+
     // Correction rigoureuse du temps de parcours de la lumière
     double distKm = std::sqrt(xICRF_km * xICRF_km + yICRF_km * yICRF_km + zICRF_km * zICRF_km);
     double tau = distKm / VITESSE_LUMIERE_KM_S;
