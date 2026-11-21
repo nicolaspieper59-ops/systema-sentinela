@@ -246,19 +246,22 @@ double zI = pabr[2] * 1000.0;
     rpom[2][1] = -sinY;
     rpom[2][2] = cosY * cosX;
 
-    double cosERA = std::cos(eraRad);
-    double sinERA = std::sin(eraRad);
-    double xTmp =  xI * cosERA + yI * sinERA;
-    double yTmp = -xI * sinERA + yI * cosERA;
-    double zTmp =  zI;
+    // 1. Passage du vecteur ICRF corrigé d'aberration vers le repère terrestre (ECEF)
+double cosERA = std::cos(eraRad);
+double sinERA = std::sin(eraRad);
+double xTmp =  xI * cosERA + yI * sinERA;
+double yTmp = -xI * sinERA + yI * cosERA;
+double zTmp =  zI;
 
-    double xECEF = rpom[0][0] * xTmp + rpom[0][1] * yTmp + rpom[0][2] * zTmp;
-    double yECEF = rpom[1][0] * xTmp + rpom[1][1] * yTmp + rpom[1][2] * zTmp;
-    double zECEF = rpom[2][0] * xTmp + rpom[2][1] * yTmp + rpom[2][2] * zTmp;
+// Application de la matrice de polar motion (xp, yp)
+double xECEF = rpom[0][0] * xTmp + rpom[0][1] * yTmp + rpom[0][2] * zTmp;
+double yECEF = rpom[1][0] * xTmp + rpom[1][1] * yTmp + rpom[1][2] * zTmp;
+double zECEF = rpom[2][0] * xTmp + rpom[2][1] * yTmp + rpom[2][2] * zTmp;
 
-    double dx = xECEF - xObs;
-    double dy = yECEF - yObs;
-    double dz = zECEF - zObs;
+// 2. Calcul topocentrique rigoureux (station - astre dans le même référentiel ECEF)
+double dx = xECEF - xObs;
+double dy = yECEF - yObs;
+double dz = zECEF - zObs;
 
     double E = -std::sin(lambda) * dx + std::cos(lambda) * dy;
     double N_top = -std::sin(phi) * std::cos(lambda) * dx - std::sin(phi) * std::sin(lambda) * dy + std::cos(phi) * dz;
