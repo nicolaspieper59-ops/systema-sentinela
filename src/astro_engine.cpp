@@ -165,13 +165,13 @@ void calculerDepuisECEF(
     if (!result) return;
     std::memset(result, 0, sizeof(AstroResult));
 
-    // GARDE-FOU SCIENTIFIQUE : Si la position ICRF est nulle (erreur de chargement JPL/Tchebychev)
+    // GARDE-FOU SCIENTIFIQUE : Empêche l'effondrement si les éphémérides sont nulles
     if (std::abs(xICRF_km) < 1e-6 && std::abs(yICRF_km) < 1e-6 && std::abs(zICRF_km) < 1e-6) {
-        result->visibiliteCode = 0; // Marqué comme invisible / erreur de données
+        result->visibiliteCode = 0;
         return; 
     }
 
-    // Correction rigoureuse du temps de parcours de la lumière
+    // Correction du temps de parcours de la lumière
     double distKm = std::sqrt(xICRF_km * xICRF_km + yICRF_km * yICRF_km + zICRF_km * zICRF_km);
     double tau = distKm / VITESSE_LUMIERE_KM_S;
     double xCorr = xICRF_km - vx_km_s * tau;
@@ -180,7 +180,7 @@ void calculerDepuisECEF(
 
     double pnat[3] = { xCorr, yCorr, zCorr };
 
-    // Calcul de la position géodésique et de la vitesse diurne de la station
+    // Position géodésique et vitesse diurne de la station
     double phi = latDeg * DEG2RAD;
     double lambda = lonDeg * DEG2RAD;
     double a = 6378137.0;
@@ -192,29 +192,28 @@ void calculerDepuisECEF(
     double yObs = (N_obs + altM) * std::cos(phi) * std::sin(lambda);
     double zObs = (N_obs * (1.0 - e2) + altM) * std::sin(phi);
 
-    // Vitesse angulaire de la Terre (~7.292115e-5 rad/s)
     double omegaEarth = 7.292115e-5;
     double vx_diurne = -omegaEarth * (yObs / 1000.0);
     double vy_diurne =  omegaEarth * (xObs / 1000.0);
     double vz_diurne =  0.0;
 
-    // Combinaison de la vitesse orbitale de la Terre et de la vitesse diurne de l'observateur
     double v[3] = {
-    (earthVx_km_s + vx_diurne) / VITESSE_LUMIERE_KM_S,
-    (earthVy_km_s + vy_diurne) / VITESSE_LUMIERE_KM_S,
-    (earthVz_km_s + vz_diurne) / VITESSE_LUMIERE_KM_S
-};
+        (earthVx_km_s + vx_diurne) / VITESSE_LUMIERE_KM_S,
+        (earthVy_km_s + vy_diurne) / VITESSE_LUMIERE_KM_S,
+        (earthVz_km_s + vz_diurne) / VITESSE_LUMIERE_KM_S
+    };
 
-// 2. Calcul de la norme de la vitesse (bbr en fraction de c)
-double bbr = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+    double bbr = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+    double pabr[3];
+    
+    // CORRECTION MAJEURE : Injection de distKm et bbr
+    iauAb(pnat, v, distKm, bbr, pabr);
 
-double pabr[3];
-// CORRECTION : On passe la distance réelle (distKm) et la norme de vitesse (bbr) à SOFA iauAb
-iauAb(pnat, v, distKm, bbr, pabr);
+    double xI = pabr[0] * 1000.0;
+    double yI = pabr[1] * 1000.0;
+    double zI = pabr[2] * 1000.0;
 
-double xI = pabr[0] * 1000.0;
-double yI = pabr[1] * 1000.0;
-double zI = pabr[2] * 1000.0;
+    // ... (suite des calculs ECEF et topographiques)
 
     double normICRF = std::sqrt(xI * xI + yI * yI + zI * zI);
     result->raDeg = normaliserDegres(std::atan2(yI, xI) * RAD2DEG);
