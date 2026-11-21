@@ -7,6 +7,7 @@ on:
     branches: [ main ]
     paths:
       - 'src/**'
+      - '*.cpp'
       - '*.js'
       - '*.html'
       - 'dynamic_multiphysics_engine.py'
@@ -90,7 +91,16 @@ jobs:
 
       - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
         run: |
-          SRC_FILE="src/astro_engine.cpp"
+          # Détection automatique de l'emplacement de astro_engine.cpp
+          if [ -f "astro_engine.cpp" ]; then
+            SRC_FILE="astro_engine.cpp"
+          elif [ -f "src/astro_engine.cpp" ]; then
+            SRC_FILE="src/astro_engine.cpp"
+          else
+            echo "[ERREUR FATAL] Impossible de trouver astro_engine.cpp"
+            exit 1
+          fi
+          
           mkdir -p build_sofa
           for f in lib/sofa/src/*.c; do
             [ -f "$f" ] || continue
@@ -116,10 +126,10 @@ jobs:
       - name: 🔀 Créer une Pull Request automatique pour flux_live.json
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.ACTIONS_PAT }}
+          token: ${{ secrets.ACTIONS_PAT || secrets.GITHUB_TOKEN }}
           commit-message: "Mise à jour automatique du flux live journalier [skip ci]"
           title: "🤖 Mise à jour automatique de flux_live.json"
-          body: "Mise à jour automatique de flux_live.json."
+          body: "Mise à jour automatique de flux_live.json par le pipeline cron."
           branch: update-flux-live
           delete-branch: true
           base: main
