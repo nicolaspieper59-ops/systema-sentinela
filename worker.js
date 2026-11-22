@@ -149,7 +149,7 @@ function evaluerPositionCorpsAuTemps(segments, tEphemerideSec) {
     const seg = obtenirSegmentTchebychevOptime(segments, tEphemerideSec);
     if (!seg) return null;
     let tau = (2.0 * (tEphemerideSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
-    tau = Math.max(-1.0, Math.min(1.0, tau)); // Clamping strict anti-divergence
+    tau = Math.max(-1.0, Math.min(1.0, tau));
     return {
         seg: seg,
         x: evaluerTchebychevStricte(seg.cx, tau),
@@ -199,6 +199,13 @@ function traiterCalculsWasmStricts(params) {
     const bodiesResult = {};
     const UA_KM = 149597870.7;
 
+    // Extraction stricte de la position et de la vitesse barycentrique de la Terre pour l'aberration
+    const terreSegments = jplMatrixData.DATA["TERRE"] || jplMatrixData.DATA["EARTH"];
+    const terrePos = evaluerPositionCorpsAuTemps(terreSegments, tEphemerideSec);
+    const earthVx = terrePos ? terrePos.evx : 0.0;
+    const earthVy = terrePos ? terrePos.evy : 0.0;
+    const earthVz = terrePos ? terrePos.evz : 0.0;
+
     const sunSegments = jplMatrixData.DATA["SOLEIL"] || jplMatrixData.DATA["SUN"];
     const sunPos = evaluerPositionCorpsAuTemps(sunSegments, tEphemerideSec);
     const dSunEarthUA = sunPos ? (Math.hypot(sunPos.x, sunPos.y, sunPos.z) / UA_KM) : 1.0;
@@ -217,13 +224,20 @@ function traiterCalculsWasmStricts(params) {
             const posData = evaluerPositionCorpsAuTemps(segments, tEphemerideSec);
             if (!posData) continue;
 
-            const { seg, x, y, z, vx, vy, vz, evx, evy, evz } = posData;
+            const { seg, x, y, z, vx, vy, vz } = posData;
             const nomUpper = nomCorps.toUpperCase();
             let corpsType = 0;
             if (nomUpper === "SOLEIL" || nomUpper === "SUN") { corpsType = 1; idxSoleil = i; }
             else if (nomUpper === "LUNE" || nomUpper === "MOON") { corpsType = 2; idxLune = i; }
 
-            const eraRad = (gastDeg + (iersEopCourant.ut1_utc_sec || 0.0) * (15.0 / 3600.0)) * (Math.PI / 180.0);
+            // Calcul rigoureux de l'angle de rotation terrestre (ERA) basé sur UT1
+            const dj1 = 2440587.5;
+            const dj2 = timestampSec / 86400.0;
+            const ut1Sec = (iersEopCourant.ut1_utc_sec || 0.0);
+            const eraRad = (typeof Module._iauEra00 === 'function') 
+                ? Module._iauEra00(dj1, dj2 + ut1Sec / 86400.0) 
+                : (gastDeg * (Math.PI / 180.0));
+
             let dSunAstroUA = (corpsType !== 1 && sunPos) ? (Math.hypot(x - sunPos.x, y - sunPos.y, z - sunPos.z) / UA_KM) : 1.0;
 
             const phys = PHYSIQUE_INTRINSEQUE_CORPS[nomUpper] || { ecc: 0.0167, obl: 23.44 };
@@ -234,7 +248,7 @@ function traiterCalculsWasmStricts(params) {
 
             Module._calculerDepuisECEF(
                 x, y, z, vx, vy, vz, 
-                evx, evy, evz,
+                earthVx, earthVy, earthVz,
                 coords.lat, coords.lon, coords.alt, 
                 eraRad, xpSec, ypSec,
                 meteo.tempC, meteo.presHpa, meteo.humiditePct, 0.15, 
@@ -350,4 +364,4 @@ function traiterCalculsWasmStricts(params) {
         geoidOndulationM: parseFloat(geoidOndulationM.toFixed(2)),
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, longSolaireDeg: sunTrueLong }
     });
-        }
+    }
