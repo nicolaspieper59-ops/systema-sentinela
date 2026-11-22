@@ -176,7 +176,6 @@ void calculerDepuisECEF(
     double yCorr = yICRF_km - vy_km_s * tau;
     double zCorr = zICRF_km - vz_km_s * tau;
 
-    // CORRECTION CRITIQUE : iauAb exige des Unités Astronomiques (AU) pour pnat et distAU
     double distAU = distKm / 149597870.7;
     double pnat[3] = { 
         xCorr / 149597870.7, 
@@ -200,6 +199,7 @@ void calculerDepuisECEF(
     double vy_diurne =  omegaEarth * (xObs / 1000.0);
     double vz_diurne =  0.0;
 
+    // Utilisation stricte de la vitesse de la Terre (earthVx, y, z) pour l'aberration globale
     double v[3] = {
         (earthVx_km_s + vx_diurne) / VITESSE_LUMIERE_KM_S,
         (earthVy_km_s + vy_diurne) / VITESSE_LUMIERE_KM_S,
@@ -207,11 +207,11 @@ void calculerDepuisECEF(
     };
 
     double bbr = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+    double bm1 = std::sqrt(std::fmax(0.0, 1.0 - bbr * bbr));
     double pabr[3];
     
-    iauAb(pnat, v, distAU, pabr);
+    iauAb(pnat, v, distAU, bm1, pabr);
 
-    // Retour des coordonnées corrigées en kilomètres
     double xI = pabr[0] * 149597870.7;
     double yI = pabr[1] * 149597870.7;
     double zI = pabr[2] * 149597870.7;
@@ -222,6 +222,7 @@ void calculerDepuisECEF(
     result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
 
     if (normICRF > 0.0) {
+        // Vitesse radiale rigoureuse basée sur le mouvement propre de l'astre
         result->radialVelocityKmS = (xICRF_km * vx_km_s + yICRF_km * vy_km_s + zICRF_km * vz_km_s) / (normICRF / 1000.0);
     }
 
@@ -256,24 +257,28 @@ void calculerDepuisECEF(
     double yECEF = rpom[1][0] * xTmp + rpom[1][1] * yTmp + rpom[1][2] * zTmp;
     double zECEF = rpom[2][0] * xTmp + rpom[2][1] * yTmp + rpom[2][2] * zTmp;
 
-    double dx = xECEF - xObs;
-    double dy = yECEF - yObs;
-    double dz = zECEF - zObs;
+    double xObsKm = xObs / 1000.0;
+    double yObsKm = yObs / 1000.0;
+    double zObsKm = zObs / 1000.0;
+
+    double dx = xECEF - xObsKm;
+    double dy = yECEF - yObsKm;
+    double dz = zECEF - zObsKm;
+
+    double distKmTop = std::sqrt(dx * dx + dy * dy + dz * dz);
+    result->distUA = distKmTop / 149597870.7; 
 
     double E = -std::sin(lambda) * dx + std::cos(lambda) * dy;
     double N_top = -std::sin(phi) * std::cos(lambda) * dx - std::sin(phi) * std::sin(lambda) * dy + std::cos(phi) * dz;
     double U = std::cos(phi) * std::cos(lambda) * dx + std::cos(phi) * std::sin(lambda) * dy + std::sin(phi) * dz;
 
-    double distM = std::sqrt(dx * dx + dy * dy + dz * dz);
-    result->distUA = distM / UA_EN_METRES;
-
     result->azim = normaliserDegres(std::atan2(E, N_top) * RAD2DEG);
-    double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
-    result->elevGeom = std::fmax(-90.0, std::fmin(90.0, std::atan2(U, rhoHorizontal) * RAD2DEG));
+    double rhoHoriz = std::sqrt(E * E + N_top * N_top);
+    result->elevGeom = std::fmax(-90.0, std::fmin(90.0, std::atan2(U, rhoHoriz) * RAD2DEG));
 
     double rKm = (rayonAstreKm > 0.0) ? rayonAstreKm : (corpsType == 1 ? RAYON_SOLEIL_KM : 1737.4);
-    if (distM > 0.0) {
-        result->angularDiamArcsec = (2.0 * std::asin(std::fmin(1.0, (rKm * 1000.0) / distM))) * RAD2DEG * 3600.0;
+    if (distKmTop > 0.0) {
+        result->angularDiamArcsec = (2.0 * std::asin(std::fmin(1.0, (rKm * 1000.0) / distKmTop))) * RAD2DEG * 3600.0;
     }
 
     double rhNorm = std::fmax(0.0, std::min(1.0, humiditePct / 100.0));
