@@ -207,9 +207,10 @@ void calculerDepuisECEF(
     };
 
     double bbr = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+    double bm1 = std::sqrt(1.0 - bbr * bbr); // Calcul du facteur lorentzien manquant
     double pabr[3];
     
-    iauAb(pnat, v, distAU, pabr);
+    iauAb(pnat, v, distAU, bm1, pabr);
 
     // Retour des coordonnées corrigées en kilomètres
     double xI = pabr[0] * 149597870.7;
