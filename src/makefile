@@ -9,7 +9,8 @@ TARGET = ../wasm_astronomie.js
 SRCS_C = $(wildcard lib/sofa/src/*.c)
 SRCS_CPP = src/astro_engine.cpp
 
-EXPORTS = "['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_normaliserDegres','_malloc','_free']"
+# CORRECTION : Ajout des fonctions géoïde et occultations manquantes
+EXPORTS = "['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_evaluerOccultationsEtEclipses','_calculerOndulationGeoideEGM','_normaliserDegres','_malloc','_free']"
 EXTRA_METHODS = "['ccall','cwrap','HEAPF64','HEAP32','getValue','setValue']"
 
 all: $(TARGET)
