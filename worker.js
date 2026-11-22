@@ -199,7 +199,7 @@ function traiterCalculsWasmStricts(params) {
     const bodiesResult = {};
     const UA_KM = 149597870.7;
 
-    // Extraction stricte de la position et de la vitesse barycentrique de la Terre pour l'aberration
+    // Récupération correcte de la vitesse de la Terre générée par le script Python[cite: 5]
     const terreSegments = jplMatrixData.DATA["TERRE"] || jplMatrixData.DATA["EARTH"];
     const terrePos = evaluerPositionCorpsAuTemps(terreSegments, tEphemerideSec);
     const earthVx = terrePos ? terrePos.evx : 0.0;
@@ -226,11 +226,12 @@ function traiterCalculsWasmStricts(params) {
 
             const { seg, x, y, z, vx, vy, vz } = posData;
             const nomUpper = nomCorps.toUpperCase();
+            if (nomUpper === "TERRE" || nomUpper === "EARTH") continue; // Ne pas afficher la Terre comme cible d'observation
+
             let corpsType = 0;
             if (nomUpper === "SOLEIL" || nomUpper === "SUN") { corpsType = 1; idxSoleil = i; }
             else if (nomUpper === "LUNE" || nomUpper === "MOON") { corpsType = 2; idxLune = i; }
 
-            // Calcul rigoureux de l'angle de rotation terrestre (ERA) basé sur UT1
             const dj1 = 2440587.5;
             const dj2 = timestampSec / 86400.0;
             const ut1Sec = (iersEopCourant.ut1_utc_sec || 0.0);
@@ -266,6 +267,9 @@ function traiterCalculsWasmStricts(params) {
 
         for (let i = 0; i < count; i++) {
             const nomCorps = nomsCorps[i];
+            const nomUpper = nomCorps.toUpperCase();
+            if (nomUpper === "TERRE" || nomUpper === "EARTH") continue;
+
             const seg = obtenirSegmentTchebychevOptime(jplMatrixData.DATA[nomCorps], tEphemerideSec);
             if (!seg) continue;
 
@@ -303,7 +307,6 @@ function traiterCalculsWasmStricts(params) {
             const occultCode = Module.HEAP32[(itemPtr + 228) >> 2];
             const glowTypeCode = Module.HEAP32[(itemPtr + 232) >> 2];
 
-            const nomUpper = nomCorps.toUpperCase();
             const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN");
             const estLune = (nomUpper === "LUNE" || nomUpper === "MOON");
             const phys = PHYSIQUE_INTRINSEQUE_CORPS[nomUpper] || { ecc: 0.0167, obl: 23.44 };
