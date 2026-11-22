@@ -176,7 +176,13 @@ void calculerDepuisECEF(
     double yCorr = yICRF_km - vy_km_s * tau;
     double zCorr = zICRF_km - vz_km_s * tau;
 
-    double pnat[3] = { xCorr, yCorr, zCorr };
+    // CORRECTION CRITIQUE : iauAb exige des Unités Astronomiques (AU) pour pnat et distAU
+    double distAU = distKm / 149597870.7;
+    double pnat[3] = { 
+        xCorr / 149597870.7, 
+        yCorr / 149597870.7, 
+        zCorr / 149597870.7 
+    };
 
     double phi = latDeg * DEG2RAD;
     double lambda = lonDeg * DEG2RAD;
@@ -203,11 +209,12 @@ void calculerDepuisECEF(
     double bbr = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
     double pabr[3];
     
-    iauAb(pnat, v, distKm, bbr, pabr);
+    iauAb(pnat, v, distAU, pabr);
 
-    double xI = pabr[0] * 1000.0;
-    double yI = pabr[1] * 1000.0;
-    double zI = pabr[2] * 1000.0;
+    // Retour des coordonnées corrigées en kilomètres
+    double xI = pabr[0] * 149597870.7;
+    double yI = pabr[1] * 149597870.7;
+    double zI = pabr[2] * 149597870.7;
 
     double normICRF = std::sqrt(xI * xI + yI * yI + zI * zI);
     result->raDeg = normaliserDegres(std::atan2(yI, xI) * RAD2DEG);
