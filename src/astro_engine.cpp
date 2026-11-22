@@ -165,13 +165,11 @@ void calculerDepuisECEF(
     if (!result) return;
     std::memset(result, 0, sizeof(AstroResult));
 
-    // GARDE-FOU SCIENTIFIQUE : Empêche l'effondrement si les éphémérides sont nulles
     if (std::abs(xICRF_km) < 1e-6 && std::abs(yICRF_km) < 1e-6 && std::abs(zICRF_km) < 1e-6) {
         result->visibiliteCode = 0;
         return; 
     }
 
-    // Correction du temps de parcours de la lumière
     double distKm = std::sqrt(xICRF_km * xICRF_km + yICRF_km * yICRF_km + zICRF_km * zICRF_km);
     double tau = distKm / VITESSE_LUMIERE_KM_S;
     double xCorr = xICRF_km - vx_km_s * tau;
@@ -180,7 +178,6 @@ void calculerDepuisECEF(
 
     double pnat[3] = { xCorr, yCorr, zCorr };
 
-    // Position géodésique et vitesse diurne de la station
     double phi = latDeg * DEG2RAD;
     double lambda = lonDeg * DEG2RAD;
     double a = 6378137.0;
@@ -206,14 +203,11 @@ void calculerDepuisECEF(
     double bbr = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
     double pabr[3];
     
-    // CORRECTION MAJEURE : Injection de distKm et bbr
     iauAb(pnat, v, distKm, bbr, pabr);
 
     double xI = pabr[0] * 1000.0;
     double yI = pabr[1] * 1000.0;
     double zI = pabr[2] * 1000.0;
-
-    // ... (suite des calculs ECEF et topographiques)
 
     double normICRF = std::sqrt(xI * xI + yI * yI + zI * zI);
     result->raDeg = normaliserDegres(std::atan2(yI, xI) * RAD2DEG);
@@ -245,22 +239,19 @@ void calculerDepuisECEF(
     rpom[2][1] = -sinY;
     rpom[2][2] = cosY * cosX;
 
-    // 1. Passage du vecteur ICRF corrigé d'aberration vers le repère terrestre (ECEF)
-double cosERA = std::cos(eraRad);
-double sinERA = std::sin(eraRad);
-double xTmp =  xI * cosERA + yI * sinERA;
-double yTmp = -xI * sinERA + yI * cosERA;
-double zTmp =  zI;
+    double cosERA = std::cos(eraRad);
+    double sinERA = std::sin(eraRad);
+    double xTmp =  xI * cosERA + yI * sinERA;
+    double yTmp = -xI * sinERA + yI * cosERA;
+    double zTmp =  zI;
 
-// Application de la matrice de polar motion (xp, yp)
-double xECEF = rpom[0][0] * xTmp + rpom[0][1] * yTmp + rpom[0][2] * zTmp;
-double yECEF = rpom[1][0] * xTmp + rpom[1][1] * yTmp + rpom[1][2] * zTmp;
-double zECEF = rpom[2][0] * xTmp + rpom[2][1] * yTmp + rpom[2][2] * zTmp;
+    double xECEF = rpom[0][0] * xTmp + rpom[0][1] * yTmp + rpom[0][2] * zTmp;
+    double yECEF = rpom[1][0] * xTmp + rpom[1][1] * yTmp + rpom[1][2] * zTmp;
+    double zECEF = rpom[2][0] * xTmp + rpom[2][1] * yTmp + rpom[2][2] * zTmp;
 
-// 2. Calcul topocentrique rigoureux (station - astre dans le même référentiel ECEF)
-double dx = xECEF - xObs;
-double dy = yECEF - yObs;
-double dz = zECEF - zObs;
+    double dx = xECEF - xObs;
+    double dy = yECEF - yObs;
+    double dz = zECEF - zObs;
 
     double E = -std::sin(lambda) * dx + std::cos(lambda) * dy;
     double N_top = -std::sin(phi) * std::cos(lambda) * dx - std::sin(phi) * std::sin(lambda) * dy + std::cos(phi) * dz;
