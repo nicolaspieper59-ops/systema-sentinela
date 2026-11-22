@@ -207,10 +207,9 @@ void calculerDepuisECEF(
     };
 
     double bbr = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
-    double bm1 = std::sqrt(1.0 - bbr * bbr); // Calcul du facteur lorentzien manquant
     double pabr[3];
     
-    iauAb(pnat, v, distAU, bm1, pabr);
+    iauAb(pnat, v, distAU, pabr);
 
     // Retour des coordonnées corrigées en kilomètres
     double xI = pabr[0] * 149597870.7;
@@ -257,19 +256,21 @@ void calculerDepuisECEF(
     double yECEF = rpom[1][0] * xTmp + rpom[1][1] * yTmp + rpom[1][2] * zTmp;
     double zECEF = rpom[2][0] * xTmp + rpom[2][1] * yTmp + rpom[2][2] * zTmp;
 
-    // === CORRECTION CRITIQUE DES UNITÉS (Mètres -> Kilomètres) ===
-    double xObsKm = xObs / 1000.0;
-    double yObsKm = yObs / 1000.0;
-    double zObsKm = zObs / 1000.0;
+    double dx = xECEF - xObs;
+    double dy = yECEF - yObs;
+    double dz = zECEF - zObs;
 
-    double dx = xECEF - xObsKm;
-    double dy = yECEF - yObsKm;
-    double dz = zECEF - zObsKm;
-    // ============================================================
+    double E = -std::sin(lambda) * dx + std::cos(lambda) * dy;
+    double N_top = -std::sin(phi) * std::cos(lambda) * dx - std::sin(phi) * std::sin(lambda) * dy + std::cos(phi) * dz;
+    double U = std::cos(phi) * std::cos(lambda) * dx + std::cos(phi) * std::sin(lambda) * dy + std::sin(phi) * dz;
 
     double distM = std::sqrt(dx * dx + dy * dy + dz * dz);
-    result->distUA = distM / UA_EN_METRES; 
-    
+    result->distUA = distM / UA_EN_METRES;
+
+    result->azim = normaliserDegres(std::atan2(E, N_top) * RAD2DEG);
+    double rhoHorizontal = std::sqrt(E * E + N_top * N_top);
+    result->elevGeom = std::fmax(-90.0, std::fmin(90.0, std::atan2(U, rhoHorizontal) * RAD2DEG));
+
     double rKm = (rayonAstreKm > 0.0) ? rayonAstreKm : (corpsType == 1 ? RAYON_SOLEIL_KM : 1737.4);
     if (distM > 0.0) {
         result->angularDiamArcsec = (2.0 * std::asin(std::fmin(1.0, (rKm * 1000.0) / distM))) * RAD2DEG * 3600.0;
