@@ -80,7 +80,6 @@ function analyserTexteWMMStricte(texte) {
     return coeffs;
 }
 
-// Évaluation rigoureuse WMM 2025 par harmoniques sphériques récurrentes
 function evaluerWMM2025Complet(coeffs, latDeg, lonDeg, altKm, decYear) {
     if (!coeffs || coeffs.length === 0) return { declination: 1.79, inclination: 61.15, totalIntensity: 45000 };
     const dt = decYear - 2025.0;
@@ -150,7 +149,7 @@ function evaluerPositionCorpsAuTemps(segments, tEphemerideSec) {
     const seg = obtenirSegmentTchebychevOptime(segments, tEphemerideSec);
     if (!seg) return null;
     let tau = (2.0 * (tEphemerideSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
-    tau = Math.max(-1.0, Math.min(1.0, tau));
+    tau = Math.max(-1.0, Math.min(1.0, tau)); // Clamping strict anti-divergence
     return {
         seg: seg,
         x: evaluerTchebychevStricte(seg.cx, tau),
@@ -233,7 +232,6 @@ function traiterCalculsWasmStricts(params) {
             const xpSec = iersEopCourant.xp_arcsec || 0.0;
             const ypSec = iersEopCourant.yp_arcsec || 0.0;
 
-            // Passage des vitesses de la Terre (evx, evy, evz) au noyau C++ pour l'aberration stellaire et diurne
             Module._calculerDepuisECEF(
                 x, y, z, vx, vy, vz, 
                 evx, evy, evz,
@@ -352,4 +350,4 @@ function traiterCalculsWasmStricts(params) {
         geoidOndulationM: parseFloat(geoidOndulationM.toFixed(2)),
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, longSolaireDeg: sunTrueLong }
     });
-                     }
+        }
