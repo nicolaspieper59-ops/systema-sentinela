@@ -268,7 +268,7 @@ void calculerDepuisECEF(
     // ============================================================
 
     double distM = std::sqrt(dx * dx + dy * dy + dz * dz);
-    result->distUA = distM / UA_EN_METRES;
+    result->distUA = distM / UA_EN_METRES; 
     
     double rKm = (rayonAstreKm > 0.0) ? rayonAstreKm : (corpsType == 1 ? RAYON_SOLEIL_KM : 1737.4);
     if (distM > 0.0) {
