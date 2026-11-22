@@ -170,17 +170,13 @@ void calculerDepuisECEF(
         return; 
     }
 
+    // Suppression de la double correction light-time (gérée en amont par Skyfield)[cite: 3, 4]
     double distKm = std::sqrt(xICRF_km * xICRF_km + yICRF_km * yICRF_km + zICRF_km * zICRF_km);
-    double tau = distKm / VITESSE_LUMIERE_KM_S;
-    double xCorr = xICRF_km - vx_km_s * tau;
-    double yCorr = yICRF_km - vy_km_s * tau;
-    double zCorr = zICRF_km - vz_km_s * tau;
-
     double distAU = distKm / 149597870.7;
     double pnat[3] = { 
-        xCorr / 149597870.7, 
-        yCorr / 149597870.7, 
-        zCorr / 149597870.7 
+        xICRF_km / 149597870.7, 
+        yICRF_km / 149597870.7, 
+        zICRF_km / 149597870.7 
     };
 
     double phi = latDeg * DEG2RAD;
@@ -199,19 +195,16 @@ void calculerDepuisECEF(
     double vy_diurne =  omegaEarth * (xObs / 1000.0);
     double vz_diurne =  0.0;
 
-    // Raffinement du vecteur vitesse total de l'observateur (Vitesse Terre + Vitesse de rotation diurne)
     double v[3] = {
         (earthVx_km_s + vx_diurne) / VITESSE_LUMIERE_KM_S,
         (earthVy_km_s + vy_diurne) / VITESSE_LUMIERE_KM_S,
         (earthVz_km_s + vz_diurne) / VITESSE_LUMIERE_KM_S
     };
 
-    // Facteur relativiste rigoureux de Lorentz anti-dérive
     double bbr = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
     double bm1 = std::sqrt(std::fmax(0.0, 1.0 - bbr * bbr));
     double pabr[3];
     
-    // Application de la routine d'aberration SOFA avec le facteur de Lorentz exact
     iauAb(pnat, v, distAU, bm1, pabr);
 
     double xI = pabr[0] * 149597870.7;
@@ -224,7 +217,6 @@ void calculerDepuisECEF(
     result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
 
     if (normICRF > 0.0) {
-        // Vitesse radiale rigoureuse basée sur le mouvement propre de l'astre
         result->radialVelocityKmS = (xICRF_km * vx_km_s + yICRF_km * vy_km_s + zICRF_km * vz_km_s) / (normICRF / 1000.0);
     }
 
@@ -280,7 +272,8 @@ void calculerDepuisECEF(
 
     double rKm = (rayonAstreKm > 0.0) ? rayonAstreKm : (corpsType == 1 ? RAYON_SOLEIL_KM : 1737.4);
     if (distKmTop > 0.0) {
-        result->angularDiamArcsec = (2.0 * std::asin(std::fmin(1.0, (rKm * 1000.0) / distKmTop))) * RAD2DEG * 3600.0;
+        // Correction critique du diamètre angulaire (rKm et distKmTop tous deux en kilomètres)[cite: 3]
+        result->angularDiamArcsec = (2.0 * std::asin(std::fmin(1.0, rKm / distKmTop))) * RAD2DEG * 3600.0;
     }
 
     double rhNorm = std::fmax(0.0, std::min(1.0, humiditePct / 100.0));
