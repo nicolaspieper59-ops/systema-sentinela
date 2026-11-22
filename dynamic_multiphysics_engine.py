@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.61)
+SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.62)
 """
 
 import argparse
@@ -21,6 +21,7 @@ except ImportError:
 CORPS_MAP = {
     "SOLEIL": ["sun", 10],
     "LUNE": ["moon", 301],
+    "TERRE": ["earth", 399],
     "MERCURE": ["mercury barycenter", "mercury", 1],
     "VENUS": ["venus barycenter", "venus", 2],
     "MARS": ["mars barycenter", "mars", 4],
@@ -33,18 +34,20 @@ CORPS_MAP = {
 PAS_HEURES_MAP = {
     "SOLEIL": 1.0 / 60.0,
     "LUNE": 1.0 / 60.0,
+    "TERRE": 1.0,
     "MERCURE": 1.0, "VENUS": 1.0, "MARS": 1.0,
     "JUPITER": 1.0, "SATURNE": 1.0, "URANUS": 1.0, "NEPTUNE": 1.0
 }
 
 RAYONS_EQUATORIAUX_KM = {
-    "SOLEIL": 696340.0, "LUNE": 1737.4, "MERCURE": 2439.7, "VENUS": 6051.8,
+    "SOLEIL": 696340.0, "LUNE": 1737.4, "TERRE": 6378.137, "MERCURE": 2439.7, "VENUS": 6051.8,
     "MARS": 3396.2, "JUPITER": 71492.0, "SATURNE": 60268.0, "URANUS": 25559.0, "NEPTUNE": 24764.0
 }
 
 PARAMETRES_ORBITAUX = {
     "SOLEIL":  {"perihelion_ua": 0.98329, "aphelion_ua": 1.01710, "perigee_ua": 0.98329, "period_days": 365.256, "lod_hours": 609.6, "vel_kms": 0.0},
     "LUNE":    {"perihelion_ua": 0.00240, "aphelion_ua": 0.00271, "perigee_ua": 0.00243, "period_days": 27.321, "lod_hours": 655.7, "vel_kms": 1.022},
+    "TERRE":   {"perihelion_ua": 0.98329, "aphelion_ua": 1.01710, "perigee_ua": 0.98329, "period_days": 365.256, "lod_hours": 23.93, "vel_kms": 29.78},
     "MERCURE": {"perihelion_ua": 0.30750, "aphelion_ua": 0.46670, "perigee_ua": 0.54900, "period_days": 87.969, "lod_hours": 4222.6, "vel_kms": 47.36},
     "VENUS":   {"perihelion_ua": 0.71840, "aphelion_ua": 0.72820, "perigee_ua": 0.26400, "period_days": 224.701, "lod_hours": 2802.0, "vel_kms": 35.02},
     "MARS":    {"perihelion_ua": 1.38140, "aphelion_ua": 1.66600, "perigee_ua": 0.37200, "period_days": 686.980, "lod_hours": 24.62, "vel_kms": 24.07},
@@ -84,7 +87,7 @@ def obtenir_astre(eph, noms):
     for nom in noms:
         if nom in eph: 
             return eph[nom]
-    raise KeyError(f"Astre non trouvé dans le fichier BSP : {noms}")
+    raise KeyError(f"Astre non trouvé dans le BSP : {noms}")
 
 def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
     if nom_corps == "SOLEIL": 
@@ -127,7 +130,6 @@ def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2
     earth_at = earth.at(times_nodes)
     obs = earth_at.observe(astre_target)
     
-    # Utilisation des positions et vitesses géométriques astrométriques pures pour laisser SOFA gérer l'aberration
     pos_km = obs.position.km
     vel_kms = obs.velocity.km_per_s
     earth_vel_kms = earth_at.velocity.km_per_s
@@ -204,7 +206,7 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
     eop_data = extraire_donnees_iers_finals()
     resultat_global = {
         "ALMANACH": {
-            "generateur": "Systema Sentinela DE440s Kernel High-Res (Rigorous)",
+            "generateur": "Systema Sentinela DE440s Kernel High-Res (Rigorous v19.62)",
             "date_creation_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
             "epoch_utc_ms": int(time.time() * 1000),
             "fenetre_jours": int(nb_jours),
@@ -227,9 +229,9 @@ def main():
     args = parser.parse_args()
     try:
         generer_ephemerides(args.lat, args.lon, args.alt, args.days, args.bsp, args.out)
-        print(f"[SUCCÈS] Flux généré avec succès : {args.out}")
+        print(f"[SUCCÈS] Flux généré : {args.out}")
     except Exception:
-        print("[ERREUR FATALE] Échec du traitement Python :", file=sys.stderr)
+        print("[ERREUR FATALE] Échec Python :", file=sys.stderr)
         traceback.print_exc()
         sys.exit(1)
 
