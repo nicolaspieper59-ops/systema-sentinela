@@ -91,7 +91,6 @@ jobs:
 
       - name: 🔨 Compilation C++ & SOFA vers WebAssembly (Wasm)
         run: |
-          # Détection automatique de l'emplacement de astro_engine.cpp
           if [ -f "astro_engine.cpp" ]; then
             SRC_FILE="astro_engine.cpp"
           elif [ -f "src/astro_engine.cpp" ]; then
@@ -122,6 +121,12 @@ jobs:
           cp -f EGM2008.gfc public_site/ 2>/dev/null || true
           cp -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm public_site/ 2>/dev/null || true
           cp -f WMM2025.COF public_site/ 2>/dev/null || true
+
+      - name: 📌 Mettre à jour les binaires Wasm dans le dépôt principal
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(wasm): mise à jour automatique des binaires Wasm compilés [skip ci]"
+          file_pattern: "wasm_astronomie.wasm wasm_astronomie.js"
 
       - name: 🔀 Créer une Pull Request automatique pour flux_live.json
         uses: peter-evans/create-pull-request@v6
