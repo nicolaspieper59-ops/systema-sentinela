@@ -199,17 +199,19 @@ void calculerDepuisECEF(
     double vy_diurne =  omegaEarth * (xObs / 1000.0);
     double vz_diurne =  0.0;
 
-    // Utilisation stricte de la vitesse de la Terre (earthVx, y, z) pour l'aberration globale
+    // Raffinement du vecteur vitesse total de l'observateur (Vitesse Terre + Vitesse de rotation diurne)
     double v[3] = {
         (earthVx_km_s + vx_diurne) / VITESSE_LUMIERE_KM_S,
         (earthVy_km_s + vy_diurne) / VITESSE_LUMIERE_KM_S,
         (earthVz_km_s + vz_diurne) / VITESSE_LUMIERE_KM_S
     };
 
+    // Facteur relativiste rigoureux de Lorentz anti-dérive
     double bbr = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
     double bm1 = std::sqrt(std::fmax(0.0, 1.0 - bbr * bbr));
     double pabr[3];
     
+    // Application de la routine d'aberration SOFA avec le facteur de Lorentz exact
     iauAb(pnat, v, distAU, bm1, pabr);
 
     double xI = pabr[0] * 149597870.7;
