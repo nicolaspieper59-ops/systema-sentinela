@@ -475,7 +475,22 @@ void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int
     }
 
     for (int32_t i = 0; i < count; ++i) {
-        if (i == j || j == idxSoleil || j == idxLune) continue;
+        if (i == idxSoleil || i == idxLune) continue;
+        AstroResult* astre = &resultsArray[i];
+        double rAstreArcsec = astre->angularDiamArcsec * 0.5;
+
+        if (lune) {
+            double sep = separationAngulaireArcsec(astre->raDeg, astre->decDeg, lune->raDeg, lune->decDeg);
+            double rLune = lune->angularDiamArcsec * 0.5;
+            if (sep < (rLune + rAstreArcsec)) {
+                astre->occultationPct = calculerFractionRecouvrementDisques(sep, rAstreArcsec, rLune) * 100.0;
+                astre->occultationCode = 4;
+                continue;
+            }
+        }
+
+        for (int32_t j = 0; j < count; ++j) {
+            if (i == j || j == idxSoleil || j == idxLune) continue;
             AstroResult* autre = &resultsArray[j];
             if (autre->distUA < astre->distUA) {
                 double sepMut = separationAngulaireArcsec(astre->raDeg, astre->decDeg, autre->raDeg, autre->decDeg);
@@ -487,6 +502,4 @@ void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int
             }
         }
     }
-}
-
 }
