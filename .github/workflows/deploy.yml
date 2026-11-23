@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: 📥 Cloner le dépôt
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: 🐍 Configurer Python 3.11
         uses: actions/setup-python@v5
@@ -76,11 +78,17 @@ jobs:
           rm -rf lib/sofa_repo
           
           if [ -f "lib/sofa/src/erfa.h" ]; then
-            echo '#include "erfa.h"' > lib/sofa/src/sofa.h
-            echo '#define iauObl06 eraObl06' >> lib/sofa/src/sofa.h
-            echo '#define iauGst06a eraGst06a' >> lib/sofa/src/sofa.h
-            echo '#define iauAb eraAb' >> lib/sofa/src/sofa.h
-            echo '#define iauRefco eraRefco' >> lib/sofa/src/sofa.h
+            cat << 'EOF' > lib/sofa/src/sofa.h
+          #include "erfa.h"
+          #define iauObl06 eraObl06
+          #define iauGst06a eraGst06a
+          #define iauAb eraAb
+          #define iauRefco eraRefco
+          #define iauC2t06a eraC2t06a
+          #define iauC2i06a eraC2i06a
+          #define iauEo06a eraEo06a
+          #define iauEra00 eraEra00
+          EOF
           fi
           
           if [ -f "lib/sofa/src/erfam.h" ]; then
@@ -109,7 +117,7 @@ jobs:
           em++ "$SRC_FILE" build_sofa/*.o -O3 -std=c++17 \
             -I lib/sofa/src -I src/ \
             -s WASM=1 -s FORCE_FILESYSTEM=1 -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=33554432 \
-            -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_evaluerOccultationsEtEclipses','_calculerOndulationGeoideEGM','_normaliserDegres','_malloc','_free']" \
+            -s EXPORTED_FUNCTIONS="['_calculerParametresSiderauxEtSolaires','_calculerDepuisECEF','_evaluerOccultationsEtEclipses','_calculerOndulationGeoideEGM','_normaliserDegres','_eraEra00','_malloc','_free']" \
             -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','HEAPF64','HEAP32','getValue','setValue']" \
             -o wasm_astronomie.js
 
@@ -122,11 +130,13 @@ jobs:
           cp -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm public_site/ 2>/dev/null || true
           cp -f WMM2025.COF public_site/ 2>/dev/null || true
 
-      - name: 🔄 Synchronisation du dépôt distant (Rebase)
+      - name: 🔄 Synchronisation propre du dépôt distant (Stash & Rebase)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull origin main --rebase || true
+          git stash push -u -m "temp-wasm-build"
+          git pull origin main --rebase
+          git stash pop || true
 
       - name: 📌 Mettre à jour les binaires Wasm dans le dépôt principal
         uses: stefanzweifel/git-auto-commit-action@v5
