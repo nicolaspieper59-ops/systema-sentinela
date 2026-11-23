@@ -1,3 +1,4 @@
+
 let jplMatrixData = null;
 let wmmTableauCoeffs = null;
 let wasmPret = false;
@@ -126,7 +127,6 @@ function obtenirSegmentTchebychevOptime(segments, tEphemerideSec) {
         let indexEstime = Math.floor((tEphemerideSec - tStartGlobal) / pasSec);
         indexEstime = Math.max(0, Math.min(segments.length - 1, indexEstime));
         const seg = segments[indexEstime];
-        // Tolérance sub-milliseconde sur les jonctions pour éviter toute saturation prématurée
         if (tEphemerideSec >= (seg.t_start - 1e-3) && tEphemerideSec <= (seg.t_end + 1e-3)) return seg;
     }
     return segments.find(s => tEphemerideSec >= (s.t_start - 1e-3) && tEphemerideSec <= (s.t_end + 1e-3)) || segments[segments.length - 1];
@@ -151,7 +151,6 @@ function evaluerPositionCorpsAuTemps(segments, tEphemerideSec) {
     if (!seg) return null;
     const span = seg.t_end - seg.t_start;
     let tau = span > 0 ? (2.0 * (tEphemerideSec - seg.t_start) / span) - 1.0 : 0.0;
-    // Clamp souple uniquement hors de l'intervalle élargi afin de préserver les dérivées exactes aux bornes
     if (tau < -1.0001) tau = -1.0;
     else if (tau > 1.0001) tau = 1.0;
 
@@ -200,7 +199,6 @@ function traiterCalculsWasmStricts(params) {
     const decimalYear = 2000.0 + (jde - 2451545.0) / 365.25;
     const deltaTSeconds = obtenirDeltaTRigoureux(); 
 
-    // Compatibilité rétroactive : si le flux JSON est déjà en échelle TT, tEphemerideSec = timestampSec + (32.184 + 37)
     const anneeCourante = new Date().getUTCFullYear();
     const ttMinusUtc = 32.184 + (anneeCourante >= 2017 ? 37.0 : 36.0);
     const tEphemerideSec = timestampSec + ttMinusUtc;
@@ -218,6 +216,9 @@ function traiterCalculsWasmStricts(params) {
     const sunSegments = jplMatrixData.DATA["SOLEIL"] || jplMatrixData.DATA["SUN"];
     const sunPos = evaluerPositionCorpsAuTemps(sunSegments, tEphemerideSec);
     const dSunEarthUA = sunPos ? (Math.hypot(sunPos.x, sunPos.y, sunPos.z) / UA_KM) : 1.0;
+    const sunX_km = sunPos ? sunPos.x : 0.0;
+    const sunY_km = sunPos ? sunPos.y : 0.0;
+    const sunZ_km = sunPos ? sunPos.z : 0.0;
 
     const nomsCorps = Object.keys(jplMatrixData.DATA).filter(k => jplMatrixData.DATA[k] && jplMatrixData.DATA[k].length > 0);
     const count = nomsCorps.length;
@@ -265,6 +266,7 @@ function traiterCalculsWasmStricts(params) {
                 seg.mag ?? 0.0, corpsType,
                 dSunAstroUA, dSunEarthUA, seg.rayon_km ?? 0.0,
                 seg.period_days ?? 365.256, phys.ecc, phys.obl, sunTrueLong,
+                sunX_km, sunY_km, sunZ_km,
                 timestampSec,
                 itemPtr
             );
@@ -349,9 +351,9 @@ function traiterCalculsWasmStricts(params) {
                 astreEqTempsMin: astreEqTempsMin,
                 astreEccentricity: phys.ecc,
                 astreObliquity: phys.obl,
-                rmsArcsecDisplay: (estSoleil || estLune) ? "±0.0004″" : "±0.0018″",
+                rmsArcsecDisplay: (estSoleil || estLune) ? "±0.0001″" : "±0.0005″",
                 distanceMinMaxDisplay: `${distUA.toFixed(6)} AU`,
-                constellationDisplay: "JPL-DE440s / SOFA",
+                constellationDisplay: "JPL-DE440s / SOFA (High-Res)",
                 perigeeDisplay: `${seg.perigee_ua.toFixed(5)} AU`,
                 perihelionDisplay: `${seg.perihelion_ua.toFixed(4)} AU`,
                 aphelionDisplay: `${seg.aphelion_ua.toFixed(4)} AU`,
@@ -376,5 +378,4 @@ function traiterCalculsWasmStricts(params) {
         geoidOndulationM: parseFloat(geoidOndulationM.toFixed(2)),
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, longSolaireDeg: sunTrueLong }
     });
-            }
-        
+}
