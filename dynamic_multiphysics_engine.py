@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.62)
+SYSTEMA SENTINELA — DYNAMIC MULTIPHYSICS GENERATOR (JPL DE440s Rigorous Engine v19.70)
+Corrections scientifiques intégrales :
+- Alignement strict des échelles de temps TT vs UTC (suppression du décalage ΔT de ~69.2s sur les nœuds JPL)
+- Extraction topocentrique rigoureuse pour l'angle de phase et la magnitude apparente (Lune & planètes proches)
+- Conservation intégrale de toutes les fonctionnalités et clés JSON existantes
 """
 
 import argparse
@@ -13,7 +17,7 @@ import datetime
 import numpy as np
 
 try:
-    from skyfield.api import load
+    from skyfield.api import load, wgs84
 except ImportError:
     print("[FATAL] Skyfield introuvable (`pip install skyfield numpy`).", file=sys.stderr)
     sys.exit(1)
@@ -85,18 +89,18 @@ def valider_coordonnees(lat, lon, alt):
 
 def obtenir_astre(eph, noms):
     for nom in noms:
-        if nom in eph: 
+        if nom in eph:
             return eph[nom]
     raise KeyError(f"Astre non trouvé dans le BSP : {noms}")
 
-def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
-    if nom_corps == "SOLEIL": 
+def calculer_magnitude_apparente(nom_corps, pos_astre_topo_km, pos_soleil_topo_km):
+    if nom_corps == "SOLEIL":
         return -26.74
-    r_AE = -pos_astre_km
-    r_AS = pos_soleil_km - pos_astre_km
+    r_AE = -pos_astre_topo_km
+    r_AS = pos_soleil_topo_km - pos_astre_topo_km
     norm_AE = np.linalg.norm(r_AE)
     norm_AS = np.linalg.norm(r_AS)
-    if norm_AE == 0 or norm_AS == 0: 
+    if norm_AE == 0 or norm_AS == 0:
         return 0.0
     delta_ua = norm_AE / UA_KM
     r_ua = norm_AS / UA_KM
@@ -122,42 +126,48 @@ def calculer_magnitude_apparente(nom_corps, pos_astre_km, pos_soleil_km):
         return round(float(v_0 + 5.0 * np.log10(r_ua * delta_ua) + corr), 2)
     return 0.0
 
-def calculer_segment_tchebychev(earth, astre_target, sun_target, ts, t1_unix, t2_unix, nom_corps, degre=12):
+def calculer_segment_tchebychev(earth, observer_topo, astre_target, sun_target, ts, t1_tt_unix, t2_tt_unix, nom_corps, degre=12):
+    """
+    Évalue les polynômes de Tchebychev strictement sur l'axe temporel dynamique TT (t_start_tt, t_end_tt)
+    afin d'assurer une continuité absolue avec le Worker JS sans désynchronisation ΔT.
+    """
     nodes_std = np.cos(np.pi * np.arange(degre + 1) / degre)
-    t_sec_nodes = 0.5 * (t2_unix - t1_unix) * nodes_std + 0.5 * (t2_unix + t1_unix)
-    times_nodes = ts.tt_jd((t_sec_nodes / 86400.0) + 2440587.5)
+    t_tt_sec_nodes = 0.5 * (t2_tt_unix - t1_tt_unix) * nodes_std + 0.5 * (t2_tt_unix + t1_tt_unix)
+    times_nodes = ts.tt_jd((t_tt_sec_nodes / 86400.0) + 2440587.5)
 
     earth_at = earth.at(times_nodes)
     obs = earth_at.observe(astre_target)
-    
+
     pos_km = obs.position.km
     vel_kms = obs.velocity.km_per_s
     earth_vel_kms = earth_at.velocity.km_per_s
 
-    cx = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[0], degre)]
-    cy = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[1], degre)]
-    cz = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[2], degre)]
+    cx = [round(float(v), 10) for v in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[0], degre)]
+    cy = [round(float(v), 10) for v in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[1], degre)]
+    cz = [round(float(v), 10) for v in np.polynomial.chebyshev.chebfit(nodes_std, pos_km[2], degre)]
 
-    cvx = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[0], degre)]
-    cvy = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[1], degre)]
-    cvz = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[2], degre)]
+    cvx = [round(float(v), 10) for v in np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[0], degre)]
+    cvy = [round(float(v), 10) for v in np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[1], degre)]
+    cvz = [round(float(v), 10) for v in np.polynomial.chebyshev.chebfit(nodes_std, vel_kms[2], degre)]
 
-    evx = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, earth_vel_kms[0], degre)]
-    evy = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, earth_vel_kms[1], degre)]
-    evz = [round(float(v), 8) for v in np.polynomial.chebyshev.chebfit(nodes_std, earth_vel_kms[2], degre)]
+    evx = [round(float(v), 10) for v in np.polynomial.chebyshev.chebfit(nodes_std, earth_vel_kms[0], degre)]
+    evy = [round(float(v), 10) for v in np.polynomial.chebyshev.chebfit(nodes_std, earth_vel_kms[1], degre)]
+    evz = [round(float(v), 10) for v in np.polynomial.chebyshev.chebfit(nodes_std, earth_vel_kms[2], degre)]
 
-    t_mid_unix = 0.5 * (t1_unix + t2_unix)
-    time_mid = ts.tt_jd((t_mid_unix / 86400.0) + 2440587.5)
-    
-    pos_astre_mid = earth.at(time_mid).observe(astre_target).apparent().position.km
-    pos_soleil_mid = earth.at(time_mid).observe(sun_target).apparent().position.km
+    t_mid_tt = 0.5 * (t1_tt_unix + t2_tt_unix)
+    time_mid = ts.tt_jd((t_mid_tt / 86400.0) + 2440587.5)
+
+    # Calcul topocentrique rigoureux au milieu du segment pour l'angle de phase et la magnitude apparente
+    pos_astre_mid = observer_topo.at(time_mid).observe(astre_target).apparent().position.km
+    pos_soleil_mid = observer_topo.at(time_mid).observe(sun_target).apparent().position.km
     mag_val = calculer_magnitude_apparente(nom_corps, pos_astre_mid, pos_soleil_mid)
 
     orb = PARAMETRES_ORBITAUX.get(nom_corps, {})
 
     return {
-        "t_start": float(t1_unix),
-        "t_end": float(t2_unix),
+        "t_start": float(t1_tt_unix),
+        "t_end": float(t2_tt_unix),
+        "time_scale": "TT",
         "pre_corrected_ab": 0,
         "rayon_km": float(RAYONS_EQUATORIAUX_KM.get(nom_corps, 0.0)),
         "cx": cx, "cy": cy, "cz": cz,
@@ -184,21 +194,27 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
     eph = load(bsp_path)
     earth = obtenir_astre(eph, ["earth", 399, "earth barycenter", 3])
     sun_target = obtenir_astre(eph, ["sun", 10])
+    observer_topo = earth + wgs84.latlon(lat, lon, elevation_m=alt)
 
+    # Conversion exacte du minuit UTC en Temps Terrestre (TT) pour alignement total avec le Worker JS
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     midnight_utc = datetime.datetime(now_utc.year, now_utc.month, now_utc.day, tzinfo=datetime.timezone.utc)
-    t_start_unix = midnight_utc.timestamp()
-    t_end_unix = t_start_unix + (nb_jours * 86400)
+    t_skyfield_start = ts.from_datetime(midnight_utc)
+    t_start_tt_unix = (t_skyfield_start.tt - 2440587.5) * 86400.0
+    t_end_tt_unix = t_start_tt_unix + (nb_jours * 86400.0)
+
     data_output = {}
 
     for nom_corps, cibles in CORPS_MAP.items():
         astre = obtenir_astre(eph, cibles)
         pas_sec = PAS_HEURES_MAP.get(nom_corps, 6) * 3600.0
         segments = []
-        curr_t = t_start_unix
-        while curr_t < t_end_unix:
-            next_t = min(curr_t + pas_sec, t_end_unix)
-            seg = calculer_segment_tchebychev(earth, astre, sun_target, ts, curr_t, next_t, nom_corps, DEGRE_TCHEBYCHEV)
+        curr_t = t_start_tt_unix
+        while curr_t < t_end_tt_unix:
+            next_t = min(curr_t + pas_sec, t_end_tt_unix)
+            seg = calculer_segment_tchebychev(
+                earth, observer_topo, astre, sun_target, ts, curr_t, next_t, nom_corps, DEGRE_TCHEBYCHEV
+            )
             segments.append(seg)
             curr_t = next_t
         data_output[nom_corps] = segments
@@ -206,7 +222,7 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
     eop_data = extraire_donnees_iers_finals()
     resultat_global = {
         "ALMANACH": {
-            "generateur": "Systema Sentinela DE440s Kernel High-Res (Rigorous v19.62)",
+            "generateur": "Systema Sentinela DE440s Kernel High-Res (Rigorous v19.70)",
             "date_creation_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
             "epoch_utc_ms": int(time.time() * 1000),
             "fenetre_jours": int(nb_jours),
@@ -237,3 +253,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
