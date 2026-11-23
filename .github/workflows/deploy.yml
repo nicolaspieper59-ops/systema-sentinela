@@ -122,6 +122,12 @@ jobs:
           cp -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm public_site/ 2>/dev/null || true
           cp -f WMM2025.COF public_site/ 2>/dev/null || true
 
+      - name: 🔄 Synchronisation du dépôt distant (Rebase)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull origin main --rebase || true
+
       - name: 📌 Mettre à jour les binaires Wasm dans le dépôt principal
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
