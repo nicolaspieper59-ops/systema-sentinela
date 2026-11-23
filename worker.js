@@ -126,9 +126,10 @@ function obtenirSegmentTchebychevOptime(segments, tEphemerideSec) {
         let indexEstime = Math.floor((tEphemerideSec - tStartGlobal) / pasSec);
         indexEstime = Math.max(0, Math.min(segments.length - 1, indexEstime));
         const seg = segments[indexEstime];
-        if (tEphemerideSec >= seg.t_start && tEphemerideSec <= seg.t_end) return seg;
+        // Tolérance sub-milliseconde sur les jonctions pour éviter toute saturation prématurée
+        if (tEphemerideSec >= (seg.t_start - 1e-3) && tEphemerideSec <= (seg.t_end + 1e-3)) return seg;
     }
-    return segments.find(s => tEphemerideSec >= s.t_start && tEphemerideSec <= s.t_end);
+    return segments.find(s => tEphemerideSec >= (s.t_start - 1e-3) && tEphemerideSec <= (s.t_end + 1e-3)) || segments[segments.length - 1];
 }
 
 function evaluerTchebychevStricte(coeffs, tau) {
@@ -148,8 +149,12 @@ function evaluerTchebychevStricte(coeffs, tau) {
 function evaluerPositionCorpsAuTemps(segments, tEphemerideSec) {
     const seg = obtenirSegmentTchebychevOptime(segments, tEphemerideSec);
     if (!seg) return null;
-    let tau = (2.0 * (tEphemerideSec - seg.t_start) / (seg.t_end - seg.t_start)) - 1.0;
-    tau = Math.max(-1.0, Math.min(1.0, tau));
+    const span = seg.t_end - seg.t_start;
+    let tau = span > 0 ? (2.0 * (tEphemerideSec - seg.t_start) / span) - 1.0 : 0.0;
+    // Clamp souple uniquement hors de l'intervalle élargi afin de préserver les dérivées exactes aux bornes
+    if (tau < -1.0001) tau = -1.0;
+    else if (tau > 1.0001) tau = 1.0;
+
     return {
         seg: seg,
         x: evaluerTchebychevStricte(seg.cx, tau),
@@ -194,12 +199,16 @@ function traiterCalculsWasmStricts(params) {
     const jde = (ts / 86400000.0) + 2440587.5;
     const decimalYear = 2000.0 + (jde - 2451545.0) / 365.25;
     const deltaTSeconds = obtenirDeltaTRigoureux(); 
-    const tEphemerideSec = timestampSec + deltaTSeconds;
+
+    // Compatibilité rétroactive : si le flux JSON est déjà en échelle TT, tEphemerideSec = timestampSec + (32.184 + 37)
+    const anneeCourante = new Date().getUTCFullYear();
+    const ttMinusUtc = 32.184 + (anneeCourante >= 2017 ? 37.0 : 36.0);
+    const tEphemerideSec = timestampSec + ttMinusUtc;
+
     const structSize = 240;
     const bodiesResult = {};
     const UA_KM = 149597870.7;
 
-    // Récupération correcte de la vitesse de la Terre générée par le script Python[cite: 5]
     const terreSegments = jplMatrixData.DATA["TERRE"] || jplMatrixData.DATA["EARTH"];
     const terrePos = evaluerPositionCorpsAuTemps(terreSegments, tEphemerideSec);
     const earthVx = terrePos ? terrePos.evx : 0.0;
@@ -220,14 +229,14 @@ function traiterCalculsWasmStricts(params) {
     try {
         for (let i = 0; i < count; i++) {
             const nomCorps = nomsCorps[i];
+            const nomUpper = nomCorps.toUpperCase();
+            if (nomUpper === "TERRE" || nomUpper === "EARTH") continue;
+
             const segments = jplMatrixData.DATA[nomCorps];
             const posData = evaluerPositionCorpsAuTemps(segments, tEphemerideSec);
             if (!posData) continue;
 
             const { seg, x, y, z, vx, vy, vz } = posData;
-            const nomUpper = nomCorps.toUpperCase();
-            if (nomUpper === "TERRE" || nomUpper === "EARTH") continue; // Ne pas afficher la Terre comme cible d'observation
-
             let corpsType = 0;
             if (nomUpper === "SOLEIL" || nomUpper === "SUN") { corpsType = 1; idxSoleil = i; }
             else if (nomUpper === "LUNE" || nomUpper === "MOON") { corpsType = 2; idxLune = i; }
@@ -235,8 +244,8 @@ function traiterCalculsWasmStricts(params) {
             const dj1 = 2440587.5;
             const dj2 = timestampSec / 86400.0;
             const ut1Sec = (iersEopCourant.ut1_utc_sec || 0.0);
-            const eraRad = (typeof Module._iauEra00 === 'function') 
-                ? Module._iauEra00(dj1, dj2 + ut1Sec / 86400.0) 
+            const eraRad = (typeof Module._eraEra00 === 'function') 
+                ? Module._eraEra00(dj1, dj2 + ut1Sec / 86400.0) 
                 : (gastDeg * (Math.PI / 180.0));
 
             let dSunAstroUA = (corpsType !== 1 && sunPos) ? (Math.hypot(x - sunPos.x, y - sunPos.y, z - sunPos.z) / UA_KM) : 1.0;
@@ -367,4 +376,5 @@ function traiterCalculsWasmStricts(params) {
         geoidOndulationM: parseFloat(geoidOndulationM.toFixed(2)),
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, longSolaireDeg: sunTrueLong }
     });
-    }
+            }
+        
