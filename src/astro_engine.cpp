@@ -115,7 +115,6 @@ EMSCRIPTEN_KEEPALIVE
 void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, double* metricsPtr) {
     if (!metricsPtr) return;
 
-    // Séparation stricte UTC -> UT1 (approx EOP) et UTC -> TT (+69.184s en 2026)
     double dj1 = 2440587.5;
     double ut2 = (timestampSec - 0.0547) / 86400.0;
     double tt2 = (timestampSec + 69.184) / 86400.0;
@@ -180,7 +179,6 @@ void calculerDepuisECEF(
         zICRF_km / UA_EN_KM 
     };
 
-    // Coordonnées géodésiques station (WGS84)
     double phi = latDeg * DEG2RAD;
     double lambda = lonDeg * DEG2RAD;
     double a = 6378137.0;
@@ -192,13 +190,11 @@ void calculerDepuisECEF(
     double yObsM = (N_obs + altM) * std::cos(phi) * std::sin(lambda);
     double zObsM = (N_obs * (1.0 - e2) + altM) * std::sin(phi);
 
-    // Vitesse diurne de rotation de l'observateur (km/s)
     double omegaEarth = 7.292115e-5;
     double vx_diurne = -omegaEarth * (yObsM / 1000.0);
     double vy_diurne =  omegaEarth * (xObsM / 1000.0);
     double vz_diurne =  0.0;
 
-    // Aberration relativiste (vitesse barycentrique Terre + vitesse diurne)
     double v[3] = {
         (earthVx_km_s + vx_diurne) / VITESSE_LUMIERE_KM_S,
         (earthVy_km_s + vy_diurne) / VITESSE_LUMIERE_KM_S,
@@ -210,29 +206,24 @@ void calculerDepuisECEF(
     double pabr[3];
     iauAb(pnat, v, distAU, bm1, pabr);
 
-    // Vecteur GCRS apparent (km)
     double xGCRS = pabr[0] * UA_EN_KM;
     double yGCRS = pabr[1] * UA_EN_KM;
     double zGCRS = pabr[2] * UA_EN_KM;
 
-    // Échelles de temps rigoureuses pour transformation GCRS -> ITRS (ECEF)
     double dj1 = 2440587.5;
-    double deltaT = 69.2387; // TT - UT1 (32.184 + 37 - UT1_UTC)
+    double deltaT = 69.2387; 
     double tt2 = (timestampSec + 69.184) / 86400.0;
     double ut2 = (timestampSec + 69.184 - deltaT) / 86400.0;
     double xpRad = xpSec * (M_PI / 180.0) / 3600.0;
     double ypRad = ypSec * (M_PI / 180.0) / 3600.0;
 
-    // Matrice complète IAU 2006/2000A : Biais + Précession + Nutation + ERA(UT1) + Mouvement du Pôle
     double rc2t[3][3];
     iauC2t06a(dj1, ut2, dj1, tt2, xpRad, ypRad, rc2t);
 
-    // Transformation directe GCRS -> ITRS (ECEF vrai de date en km)
     double xECEF = rc2t[0][0] * xGCRS + rc2t[0][1] * yGCRS + rc2t[0][2] * zGCRS;
     double yECEF = rc2t[1][0] * xGCRS + rc2t[1][1] * yGCRS + rc2t[1][2] * zGCRS;
     double zECEF = rc2t[2][0] * xGCRS + rc2t[2][1] * yGCRS + rc2t[2][2] * zGCRS;
 
-    // Coordonnées équatoriales vraies de date (CIRS/TETE) pour RA/DEC apparentes
     double rc2i[3][3];
     iauC2i06a(dj1, tt2, rc2i);
     double xCIRS = rc2i[0][0] * xGCRS + rc2i[0][1] * yGCRS + rc2i[0][2] * zGCRS;
@@ -252,7 +243,6 @@ void calculerDepuisECEF(
         result->radialVelocityKmS = (xICRF_km * vx_km_s + yICRF_km * vy_km_s + zICRF_km * vz_km_s) / distKm;
     }
 
-    // Vecteur topocentrique (Astre ECEF - Observateur ECEF en km)
     double dx = xECEF - (xObsM / 1000.0);
     double dy = yECEF - (yObsM / 1000.0);
     double dz = zECEF - (zObsM / 1000.0);
@@ -260,7 +250,6 @@ void calculerDepuisECEF(
     double distKmTop = std::sqrt(dx * dx + dy * dy + dz * dz);
     result->distUA = distKmTop / UA_EN_KM; 
 
-    // Projection repère local ENU (East-North-Up)
     double E = -std::sin(lambda) * dx + std::cos(lambda) * dy;
     double N_top = -std::sin(phi) * std::cos(lambda) * dx - std::sin(phi) * std::sin(lambda) * dy + std::cos(phi) * dz;
     double U = std::cos(phi) * std::cos(lambda) * dx + std::cos(phi) * std::sin(lambda) * dy + std::sin(phi) * dz;
@@ -274,7 +263,6 @@ void calculerDepuisECEF(
         result->angularDiamArcsec = (2.0 * std::asin(std::fmin(1.0, rKm / distKmTop))) * RAD2DEG * 3600.0;
     }
 
-    // Réfraction atmosphérique (SOFA iauRefco)
     double rhNorm = std::fmax(0.0, std::min(1.0, humiditePct / 100.0));
     if (result->elevGeom > -5.0) {
         double refa, refb;
@@ -502,4 +490,6 @@ void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int
             }
         }
     }
+}
+
 }
