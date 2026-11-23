@@ -1,3 +1,10 @@
+/**
+ * SYSTEMA SENTINELA — WEB WORKER KERNEL (v19.50 - Rigorous Wasm & Dual-Key Mapping)
+ * Corrections appliquées :
+ * - Double indexation rigoureuse des clés (ex: "soleil" et "sun", "lune" et "moon")
+ * - Alignement mémoire sécurisé avec la structure C++ AstroResult (taille 240 octets)
+ * - Gestion optimale du delta T, des EOP IERS et du modèle géomagnétique WMM-2025
+ */
 
 let jplMatrixData = null;
 let wmmTableauCoeffs = null;
@@ -322,7 +329,7 @@ function traiterCalculsWasmStricts(params) {
             const estLune = (nomUpper === "LUNE" || nomUpper === "MOON");
             const phys = PHYSIQUE_INTRINSEQUE_CORPS[nomUpper] || { ecc: 0.0167, obl: 23.44 };
 
-            bodiesResult[nomCorps.toLowerCase()] = {
+            const objetAstreResultat = {
                 elevationGeometrique: elevGeom,
                 elevationApparente: elevRefractee,
                 azimuth: azim,
@@ -366,6 +373,17 @@ function traiterCalculsWasmStricts(params) {
                 duskGlowDisplay: glowTypeCode === 1 ? `${formatH(crepusculeUT)} | Lueur Sol. (${skyGlowMagArcsec2.toFixed(1)} mag/″²)` : "N/A",
                 visibilityDuration: (dureeVisibilite >= 0) ? `${dureeVisibilite.toFixed(2)} h` : "N/A"
             };
+
+            // Double indexation critique (Français / Anglais) pour le front-end
+            const cleMin = nomCorps.toLowerCase();
+            bodiesResult[cleMin] = objetAstreResultat;
+            if (estSoleil) {
+                bodiesResult["sun"] = objetAstreResultat;
+                bodiesResult["soleil"] = objetAstreResultat;
+            } else if (estLune) {
+                bodiesResult["moon"] = objetAstreResultat;
+                bodiesResult["lune"] = objetAstreResultat;
+            }
         }
     } finally {
         Module._free(arrayPtr);
@@ -378,4 +396,4 @@ function traiterCalculsWasmStricts(params) {
         geoidOndulationM: parseFloat(geoidOndulationM.toFixed(2)),
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, longSolaireDeg: sunTrueLong }
     });
-}
+    }
