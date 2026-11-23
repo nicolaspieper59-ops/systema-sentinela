@@ -4,7 +4,7 @@ on:
   schedule:
     - cron: '0 2 * * *'
   push:
-    branches: [ main ]
+    branches: [ main, master ]
     paths:
       - 'src/**'
       - '*.cpp'
@@ -88,6 +88,7 @@ jobs:
           #define iauC2i06a eraC2i06a
           #define iauEo06a eraEo06a
           #define iauEra00 eraEra00
+          #define iauLd eraLd
           EOF
           fi
           
@@ -135,7 +136,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git stash push -u -m "temp-wasm-build"
-          git pull origin main --rebase
+          git pull origin main --rebase || git pull origin master --rebase || true
           git stash pop || true
 
       - name: 📌 Mettre à jour les binaires Wasm dans le dépôt principal
