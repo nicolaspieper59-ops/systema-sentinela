@@ -16,6 +16,7 @@ extern "C" {
 #define DEG2RAD (M_PI / 180.0)
 #define RAD2DEG (180.0 / M_PI)
 #define UA_EN_METRES 149597870700.0
+#define UA_EN_KM 149597870.7
 #define VITESSE_LUMIERE_KM_S 299792.458
 #define RAYON_SOLEIL_KM 696340.0
 #define RAYON_TERRE_KM 6378.137
@@ -104,28 +105,29 @@ EMSCRIPTEN_KEEPALIVE
 double calculerOndulationGeoideEGM(double latDeg, double lonDeg) {
     double phi = latDeg * DEG2RAD;
     double lam = lonDeg * DEG2RAD;
-    double N = 28.5 * std::sin(2.0 * phi) * std::cos(lam - 0.15)
-             - 18.2 * std::cos(phi) * std::sin(2.0 * lam)
-             + 14.0 * std::sin(phi)
-             + 8.4 * std::cos(2.0 * phi) * std::cos(2.0 * lam);
-    return N;
+    return 28.5 * std::sin(2.0 * phi) * std::cos(lam - 0.15)
+         - 18.2 * std::cos(phi) * std::sin(2.0 * lam)
+         + 14.0 * std::sin(phi)
+         + 8.4 * std::cos(2.0 * phi) * std::cos(2.0 * lam);
 }
 
 EMSCRIPTEN_KEEPALIVE
 void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, double* metricsPtr) {
     if (!metricsPtr) return;
 
+    // Séparation stricte UTC -> UT1 (approx EOP) et UTC -> TT (+69.184s en 2026)
     double dj1 = 2440587.5;
-    double dj2 = timestampSec / 86400.0;
+    double ut2 = (timestampSec - 0.0547) / 86400.0;
+    double tt2 = (timestampSec + 69.184) / 86400.0;
 
-    double epsA = iauObl06(dj1, dj2);
+    double epsA = iauObl06(dj1, tt2);
     double obliquiteDeg = epsA * RAD2DEG;
 
-    double gastRad = iauGst06a(dj1, dj2, dj1, dj2);
+    double gastRad = iauGst06a(dj1, ut2, dj1, tt2);
     double gastDeg = normaliserDegres(gastRad * RAD2DEG);
     double lstDeg = normaliserDegres(gastDeg + lonDeg);
 
-    double T = (dj1 + dj2 - 2451545.0) / 36525.0;
+    double T = (dj1 + tt2 - 2451545.0) / 36525.0;
     double l0 = normaliserDegres(280.4664567 + 36000.76982779 * T + 0.0003032 * T * T);
     double m = normaliserDegres(357.52911 + 35999.05029 * T - 0.0001537 * T * T);
     double c = (1.914602 - 0.004817 * T - 0.000014 * T * T) * std::sin(m * DEG2RAD) 
@@ -170,15 +172,15 @@ void calculerDepuisECEF(
         return; 
     }
 
-    // Suppression de la double correction light-time (gérée en amont par Skyfield)[cite: 3, 4]
     double distKm = std::sqrt(xICRF_km * xICRF_km + yICRF_km * yICRF_km + zICRF_km * zICRF_km);
-    double distAU = distKm / 149597870.7;
+    double distAU = distKm / UA_EN_KM;
     double pnat[3] = { 
-        xICRF_km / 149597870.7, 
-        yICRF_km / 149597870.7, 
-        zICRF_km / 149597870.7 
+        xICRF_km / UA_EN_KM, 
+        yICRF_km / UA_EN_KM, 
+        zICRF_km / UA_EN_KM 
     };
 
+    // Coordonnées géodésiques station (WGS84)
     double phi = latDeg * DEG2RAD;
     double lambda = lonDeg * DEG2RAD;
     double a = 6378137.0;
@@ -186,15 +188,17 @@ void calculerDepuisECEF(
     double e2 = f * (2.0 - f);
 
     double N_obs = a / std::sqrt(1.0 - e2 * std::sin(phi) * std::sin(phi));
-    double xObs = (N_obs + altM) * std::cos(phi) * std::cos(lambda);
-    double yObs = (N_obs + altM) * std::cos(phi) * std::sin(lambda);
-    double zObs = (N_obs * (1.0 - e2) + altM) * std::sin(phi);
+    double xObsM = (N_obs + altM) * std::cos(phi) * std::cos(lambda);
+    double yObsM = (N_obs + altM) * std::cos(phi) * std::sin(lambda);
+    double zObsM = (N_obs * (1.0 - e2) + altM) * std::sin(phi);
 
+    // Vitesse diurne de rotation de l'observateur (km/s)
     double omegaEarth = 7.292115e-5;
-    double vx_diurne = -omegaEarth * (yObs / 1000.0);
-    double vy_diurne =  omegaEarth * (xObs / 1000.0);
+    double vx_diurne = -omegaEarth * (yObsM / 1000.0);
+    double vy_diurne =  omegaEarth * (xObsM / 1000.0);
     double vz_diurne =  0.0;
 
+    // Aberration relativiste (vitesse barycentrique Terre + vitesse diurne)
     double v[3] = {
         (earthVx_km_s + vx_diurne) / VITESSE_LUMIERE_KM_S,
         (earthVy_km_s + vy_diurne) / VITESSE_LUMIERE_KM_S,
@@ -204,64 +208,59 @@ void calculerDepuisECEF(
     double bbr = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
     double bm1 = std::sqrt(std::fmax(0.0, 1.0 - bbr * bbr));
     double pabr[3];
-    
     iauAb(pnat, v, distAU, bm1, pabr);
 
-    double xI = pabr[0] * 149597870.7;
-    double yI = pabr[1] * 149597870.7;
-    double zI = pabr[2] * 149597870.7;
+    // Vecteur GCRS apparent (km)
+    double xGCRS = pabr[0] * UA_EN_KM;
+    double yGCRS = pabr[1] * UA_EN_KM;
+    double zGCRS = pabr[2] * UA_EN_KM;
 
-    double normICRF = std::sqrt(xI * xI + yI * yI + zI * zI);
-    result->raDeg = normaliserDegres(std::atan2(yI, xI) * RAD2DEG);
-    result->decDeg = (normICRF > 0.0) ? std::asin(std::fmax(-1.0, std::min(1.0, zI / normICRF))) * RAD2DEG : 0.0;
-    result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
-
-    if (normICRF > 0.0) {
-        result->radialVelocityKmS = (xICRF_km * vx_km_s + yICRF_km * vy_km_s + zICRF_km * vz_km_s) / (normICRF / 1000.0);
-    }
-
+    // Échelles de temps rigoureuses pour transformation GCRS -> ITRS (ECEF)
+    double dj1 = 2440587.5;
+    double deltaT = 69.2387; // TT - UT1 (32.184 + 37 - UT1_UTC)
+    double tt2 = (timestampSec + 69.184) / 86400.0;
+    double ut2 = (timestampSec + 69.184 - deltaT) / 86400.0;
     double xpRad = xpSec * (M_PI / 180.0) / 3600.0;
     double ypRad = ypSec * (M_PI / 180.0) / 3600.0;
-    double rpom[3][3];
 
-    double cosX = std::cos(-xpRad);
-    double sinX = std::sin(-xpRad);
-    double cosY = std::cos(-ypRad);
-    double sinY = std::sin(-ypRad);
+    // Matrice complète IAU 2006/2000A : Biais + Précession + Nutation + ERA(UT1) + Mouvement du Pôle
+    double rc2t[3][3];
+    iauC2t06a(dj1, ut2, dj1, tt2, xpRad, ypRad, rc2t);
 
-    rpom[0][0] = cosX;
-    rpom[0][1] = 0.0;
-    rpom[0][2] = -sinX;
+    // Transformation directe GCRS -> ITRS (ECEF vrai de date en km)
+    double xECEF = rc2t[0][0] * xGCRS + rc2t[0][1] * yGCRS + rc2t[0][2] * zGCRS;
+    double yECEF = rc2t[1][0] * xGCRS + rc2t[1][1] * yGCRS + rc2t[1][2] * zGCRS;
+    double zECEF = rc2t[2][0] * xGCRS + rc2t[2][1] * yGCRS + rc2t[2][2] * zGCRS;
 
-    rpom[1][0] = sinY * sinX;
-    rpom[1][1] = cosY;
-    rpom[1][2] = sinY * cosX;
+    // Coordonnées équatoriales vraies de date (CIRS/TETE) pour RA/DEC apparentes
+    double rc2i[3][3];
+    iauC2i06a(dj1, tt2, rc2i);
+    double xCIRS = rc2i[0][0] * xGCRS + rc2i[0][1] * yGCRS + rc2i[0][2] * zGCRS;
+    double yCIRS = rc2i[1][0] * xGCRS + rc2i[1][1] * yGCRS + rc2i[1][2] * zGCRS;
+    double zCIRS = rc2i[2][0] * xGCRS + rc2i[2][1] * yGCRS + rc2i[2][2] * zGCRS;
 
-    rpom[2][0] = cosY * sinX;
-    rpom[2][1] = -sinY;
-    rpom[2][2] = cosY * cosX;
+    double eo = iauEo06a(dj1, tt2);
+    double normCIRS = std::sqrt(xCIRS * xCIRS + yCIRS * yCIRS + zCIRS * zCIRS);
+    double raCIRS = std::atan2(yCIRS, xCIRS);
+    result->raDeg = normaliserDegres((raCIRS - eo) * RAD2DEG);
+    result->decDeg = (normCIRS > 0.0) ? std::asin(std::fmax(-1.0, std::min(1.0, zCIRS / normCIRS))) * RAD2DEG : 0.0;
+    result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
+    result->deltaT = deltaT;
+    result->jde = dj1 + tt2;
 
-    double cosERA = std::cos(eraRad);
-    double sinERA = std::sin(eraRad);
-    double xTmp =  xI * cosERA + yI * sinERA;
-    double yTmp = -xI * sinERA + yI * cosERA;
-    double zTmp =  zI;
+    if (distKm > 0.0) {
+        result->radialVelocityKmS = (xICRF_km * vx_km_s + yICRF_km * vy_km_s + zICRF_km * vz_km_s) / distKm;
+    }
 
-    double xECEF = rpom[0][0] * xTmp + rpom[0][1] * yTmp + rpom[0][2] * zTmp;
-    double yECEF = rpom[1][0] * xTmp + rpom[1][1] * yTmp + rpom[1][2] * zTmp;
-    double zECEF = rpom[2][0] * xTmp + rpom[2][1] * yTmp + rpom[2][2] * zTmp;
-
-    double xObsKm = xObs / 1000.0;
-    double yObsKm = yObs / 1000.0;
-    double zObsKm = zObs / 1000.0;
-
-    double dx = xECEF - xObsKm;
-    double dy = yECEF - yObsKm;
-    double dz = zECEF - zObsKm;
+    // Vecteur topocentrique (Astre ECEF - Observateur ECEF en km)
+    double dx = xECEF - (xObsM / 1000.0);
+    double dy = yECEF - (yObsM / 1000.0);
+    double dz = zECEF - (zObsM / 1000.0);
 
     double distKmTop = std::sqrt(dx * dx + dy * dy + dz * dz);
-    result->distUA = distKmTop / 149597870.7; 
+    result->distUA = distKmTop / UA_EN_KM; 
 
+    // Projection repère local ENU (East-North-Up)
     double E = -std::sin(lambda) * dx + std::cos(lambda) * dy;
     double N_top = -std::sin(phi) * std::cos(lambda) * dx - std::sin(phi) * std::sin(lambda) * dy + std::cos(phi) * dz;
     double U = std::cos(phi) * std::cos(lambda) * dx + std::cos(phi) * std::sin(lambda) * dy + std::sin(phi) * dz;
@@ -272,10 +271,10 @@ void calculerDepuisECEF(
 
     double rKm = (rayonAstreKm > 0.0) ? rayonAstreKm : (corpsType == 1 ? RAYON_SOLEIL_KM : 1737.4);
     if (distKmTop > 0.0) {
-        // Correction critique du diamètre angulaire (rKm et distKmTop tous deux en kilomètres)[cite: 3]
         result->angularDiamArcsec = (2.0 * std::asin(std::fmin(1.0, rKm / distKmTop))) * RAD2DEG * 3600.0;
     }
 
+    // Réfraction atmosphérique (SOFA iauRefco)
     double rhNorm = std::fmax(0.0, std::min(1.0, humiditePct / 100.0));
     if (result->elevGeom > -5.0) {
         double refa, refb;
@@ -452,8 +451,8 @@ void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int
         double decAntiSol = -soleil->decDeg;
         double sepLuneOmbreArcsec = separationAngulaireArcsec(lune->raDeg, lune->decDeg, raAntiSol, decAntiSol);
 
-        double distLuneKm = lune->distUA * (UA_EN_METRES / 1000.0);
-        double distSolKm  = soleil->distUA * (UA_EN_METRES / 1000.0);
+        double distLuneKm = lune->distUA * UA_EN_KM;
+        double distSolKm  = soleil->distUA * UA_EN_KM;
 
         if (distLuneKm > 0.0 && distSolKm > 0.0) {
             double piLuneRad = std::asin(std::fmin(1.0, RAYON_TERRE_KM / distLuneKm));
@@ -476,22 +475,7 @@ void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int
     }
 
     for (int32_t i = 0; i < count; ++i) {
-        if (i == idxSoleil || i == idxLune) continue;
-        AstroResult* astre = &resultsArray[i];
-        double rAstreArcsec = astre->angularDiamArcsec * 0.5;
-
-        if (lune) {
-            double sep = separationAngulaireArcsec(astre->raDeg, astre->decDeg, lune->raDeg, lune->decDeg);
-            double rLune = lune->angularDiamArcsec * 0.5;
-            if (sep < (rLune + rAstreArcsec)) {
-                astre->occultationPct = calculerFractionRecouvrementDisques(sep, rAstreArcsec, rLune) * 100.0;
-                astre->occultationCode = 4;
-                continue;
-            }
-        }
-
-        for (int32_t j = 0; j < count; ++j) {
-            if (i == j || j == idxSoleil || j == idxLune) continue;
+        if (i == j || j == idxSoleil || j == idxLune) continue;
             AstroResult* autre = &resultsArray[j];
             if (autre->distUA < astre->distUA) {
                 double sepMut = separationAngulaireArcsec(astre->raDeg, astre->decDeg, autre->raDeg, autre->decDeg);
