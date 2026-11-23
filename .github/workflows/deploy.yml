@@ -14,11 +14,10 @@ on:
       - '.github/workflows/**'
   workflow_dispatch:
 
-# --- AJOUTER CETTE SECTION ICI ---
+# Règle critique pour éviter les conflits de déploiement Pages simultanés
 concurrency:
   group: "pages"
   cancel-in-progress: true
-# ---------------------------------
 
 permissions:
   contents: write
