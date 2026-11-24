@@ -440,24 +440,37 @@
             </div>
         </div>
 
-        <!-- 4. PLANÉTARIUM & BALISE MAGNÉTIQUE (RENDU IRL TEMPS RÉEL UTC) -->
+        <!-- 4. PLANÉTARIUM IRL & BALISE (PROJECTION LINÉAIRE MÉRIDIENNE) -->
         <div class="panel">
             <h3 class="panel-title">
-                <span>4. PLANÉTARIUM IRL &amp; BALISE</span>
+                <span>4. PLANÉTARIUM IRL &amp; BALISE (MÉRIDIEN ZÉNITH R/2)</span>
                 <span style="display:flex; align-items:center; gap:4px;">
                     <span id="badge-sky-state" style="font-size:0.6rem; color:var(--amber);">--</span>
-                    <button id="btn-orient-mode" class="btn-mini" onclick="basculerOrientationPlanetarium()" title="Basculer Nord Fixe / Orientation Quaternion">NORD FIXE</button>
                     <button id="btn-xray-sky" class="btn-mini" onclick="basculerRayonsXCiel()" title="Afficher les astres sous l'horizon">RAYONS X</button>
                 </span>
             </h3>
-            <div style="position: relative; width: 100%; max-width: 260px; margin: 0 auto;">
-                <canvas id="scientificPlanetariumCanvas" width="260" height="260" aria-label="Planétarium azimutal réaliste des astres"></canvas>
+            <div style="position: relative; width: 100%; max-width: 260px; margin: 0 auto; background: var(--radar-bg); border-radius: 50%; border: 2px solid var(--border-dim);">
+                <canvas id="scientificPlanetariumCanvas" width="260" height="260" aria-label="Horloge et planétarium méridien calibré"></canvas>
             </div>
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 4px; font-size: 9px; text-align: center; color: var(--text-muted);">
-                <div style="background: var(--bg-card); padding: 2px; border-radius: 3px; border: 1px solid var(--border-dim);">Zénith = Centre (90°)</div>
-                <div style="background: var(--bg-card); padding: 2px; border-radius: 3px; border: 1px solid var(--border-dim);">Alt 45° = Cercle R/2</div>
-                <div style="background: var(--bg-card); padding: 2px; border-radius: 3px; border: 1px solid var(--border-dim);">Horizon = Bord (0°)</div>
+                <div style="background: var(--bg-card); padding: 2px; border-radius: 3px; border: 1px solid var(--border-dim);">Sud = Centre (0°)</div>
+                <div style="background: var(--bg-card); padding: 2px; border-radius: 3px; border: 1px solid var(--border-dim);">Zénith = Cercle R/2 (90°)</div>
+                <div style="background: var(--bg-card); padding: 2px; border-radius: 3px; border: 1px solid var(--border-dim);">Nord = Bord (0°)</div>
             </div>
+
+            <!-- Balise Magnétique (Waypoint) intégrée au panneau -->
+            <div style="margin-top: 6px; padding: 5px; background: var(--bg-card); border: 1px solid var(--border-dim); border-radius: 4px; font-size: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                    <span style="color: var(--amber); font-weight: bold;">BALISE MAGNÉTIQUE (WAYPOINT)</span>
+                    <span style="color: var(--sky);">CAP: <strong id="val-waypoint-az">--°</strong> | <strong id="val-waypoint-dist">-- km</strong></span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 4px;">
+                    <input type="number" id="input-waypoint-lat" placeholder="Lat (-90..90)" min="-90" max="90" step="0.0001" style="background:var(--bg-base); color:var(--neon-green); border:1px solid var(--border-dim); padding:3px; border-radius:3px; font-family:monospace;">
+                    <input type="number" id="input-waypoint-lon" placeholder="Lon (-180..180)" min="-180" max="180" step="0.0001" style="background:var(--bg-base); color:var(--neon-green); border:1px solid var(--border-dim); padding:3px; border-radius:3px; font-family:monospace;">
+                    <button class="btn-action" style="padding: 3px 8px;" onclick="calculerCapWaypoint()">VERROUILLER</button>
+                </div>
+            </div>
+        </div>
 
             <!-- Balise Magnétique (Waypoint) intégrée au panneau -->
             <div style="margin-top: 6px; padding: 5px; background: var(--bg-card); border: 1px solid var(--border-dim); border-radius: 4px; font-size: 10px;">
@@ -1717,8 +1730,9 @@ function initialiserWorkerAstronomie() {
         ctx.save();
         ctx.scale(dpr, dpr);
         const cx = size / 2, cy = size / 2, R = 116;
+        const r0 = R * 0.5; // Rayon exact du Zénith (90° = R/2)
 
-        const sunData = astresData && (astresData.sun || astresData.SUN);
+        const sunData = astresData && (astresData.sun || astresData.SUN || astresData.soleil);
         const altSoleil = (sunData && Number.isFinite(sunData.elevationApparente)) ? sunData.elevationApparente : -20;
         const sky = calculerPaletteCielIRL(altSoleil, meteoActive);
 
@@ -1728,42 +1742,17 @@ function initialiserWorkerAstronomie() {
         ctx.clearRect(0, 0, size, size);
         ctx.translate(cx, cy);
 
+        // 1. Fond du disque céleste fixe (Voûte méridienne)
         ctx.beginPath();
         ctx.arc(0, 0, R, 0, Math.PI * 2);
-        const safeR = Math.max(1, R);
-        const skyGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, safeR);
+        const skyGrad = ctx.createRadialGradient(0, -R * 0.35, R * 0.05, 0, 0, R);
         skyGrad.addColorStop(0, sky.top);
         skyGrad.addColorStop(0.58, sky.mid);
         skyGrad.addColorStop(1, sky.hor);
         ctx.fillStyle = skyGrad;
         ctx.fill();
 
-        ctx.save();
-        if (modeOrientationAuto && Number.isFinite(cap)) {
-            ctx.rotate(-cap * Math.PI / 180.0);
-        }
-
-        const sunObj = astresData && (astresData.soleil || astresData.sun || astresData.SUN);
-        if (sunObj && Number.isFinite(sunObj.elevationApparente) && Number.isFinite(sunObj.azimuth)) {
-            if (sunObj.elevationApparente > -16 && sunObj.elevationApparente < 14) {
-                const tint = Math.max(0, 1 - Math.abs(sunObj.elevationApparente + 1) / 15);
-                const sunAzRad = sunObj.azimuth * Math.PI / 180.0;
-                const gx = R * 0.92 * Math.sin(sunAzRad);
-                const gy = -R * 0.92 * Math.cos(sunAzRad);
-                ctx.save();
-                ctx.beginPath();
-                ctx.arc(0, 0, R, 0, Math.PI * 2);
-                ctx.clip();
-                const hGlow = ctx.createRadialGradient(gx, gy, 4, gx, gy, R * 0.85);
-                hGlow.addColorStop(0, `rgba(251, 146, 60, ${0.58 * tint})`);
-                hGlow.addColorStop(0.45, `rgba(244, 63, 94, ${0.28 * tint})`);
-                hGlow.addColorStop(1, 'rgba(244, 63, 94, 0)');
-                ctx.fillStyle = hGlow;
-                ctx.fill();
-                ctx.restore();
-            }
-        }
-
+        // Étoiles de fond fixes projetées
         if (sky.starAlpha > 0.02) {
             etoilesPlanisphere.forEach(s => {
                 const sx = Math.cos(s.angle) * s.dist * R;
@@ -1777,124 +1766,84 @@ function initialiserWorkerAstronomie() {
             });
         }
 
-        if (meteoActive.nebulositePct > 5) {
-            ctx.beginPath();
-            ctx.arc(0, 0, R, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(148, 163, 184, ${(meteoActive.nebulositePct / 100) * 0.42})`;
-            ctx.fill();
-        }
-
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
+        // 2. Cercles de repère géométriques calibrés
+        // Cercle des 45° à quart de rayon (R/4)[cite: 2]
         ctx.beginPath();
-        ctx.arc(0, 0, R * 0.5, 0, Math.PI * 2);
+        ctx.arc(0, 0, R * 0.25, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.28)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 3]);
+        ctx.stroke();
+
+        // Cercle du Zénith (90°) à mi-rayon (R/2)[cite: 2]
+        ctx.beginPath();
+        ctx.arc(0, 0, r0, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([4, 4]);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        // Axe Méridien vertical fixe (Sud -> Zénith -> Nord)
         ctx.beginPath();
-        ctx.moveTo(0, -R); ctx.lineTo(0, R);
-        ctx.moveTo(-R, 0); ctx.lineTo(R, 0);
+        ctx.moveTo(0, 0); ctx.lineTo(0, -R);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.lineWidth = 1.2;
         ctx.stroke();
 
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.font = 'bold 9px monospace';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('N', 0, -R + 9);
-        ctx.fillText('S', 0, R - 9);
-        ctx.fillText('E', R - 9, 0);
-        ctx.fillText('O', -R + 9, 0);
+        // Repères textuels du plan méridien
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.font = '600 8.5px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('SUD (0°)', 0, 12);
+        ctx.fillText('ZÉNITH 90° (R/2)', 0, -r0 - 5);
+        ctx.fillText('NORD (0°)', 0, -R + 10);
 
-        if (sunObj && Number.isFinite(sunObj.decDeg)) {
-            const phiRad = stationActive.lat * Math.PI / 180.0;
-            const decRad = sunObj.decDeg * Math.PI / 180.0;
-            ctx.save();
-            ctx.beginPath();
-            let started = false;
-            for (let hDeg = -180; hDeg <= 180; hDeg += 6) {
-                const H = hDeg * Math.PI / 180.0;
-                const sinAlt = Math.sin(phiRad) * Math.sin(decRad) + Math.cos(phiRad) * Math.cos(decRad) * Math.cos(H);
-                const altDeg = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * 180.0 / Math.PI;
-                if (altDeg < 0 && !rayonsXCielActif) {
-                    started = false;
-                    continue;
-                }
-                const azRad = Math.atan2(-Math.cos(decRad) * Math.sin(H), Math.sin(decRad) * Math.cos(phiRad) - Math.cos(decRad) * Math.sin(phiRad) * Math.cos(H));
-                const rArc = Math.min(R * 0.96, (Math.abs(90 - altDeg) / 90) * R);
-                const ax = rArc * Math.sin(azRad);
-                const ay = -rArc * Math.cos(azRad);
-                if (!started) { ctx.moveTo(ax, ay); started = true; }
-                else { ctx.lineTo(ax, ay); }
-            }
-            ctx.strokeStyle = 'rgba(251, 191, 36, 0.45)';
-            ctx.lineWidth = 1.4;
-            ctx.setLineDash([4, 4]);
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        if (!modeOrientationAuto && Number.isFinite(cap)) {
-            const capRad = cap * Math.PI / 180.0;
-            ctx.strokeStyle = '#f85149';
-            ctx.lineWidth = 1.8;
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(R * Math.sin(capRad), -R * Math.cos(capRad));
-            ctx.stroke();
-        }
-
-        if (waypointActif && Number.isFinite(waypointActif.azimut)) {
-            const wpRad = waypointActif.azimut * Math.PI / 180.0;
-            const wx = R * Math.sin(wpRad);
-            const wy = -R * Math.cos(wpRad);
-            if (Number.isFinite(wx) && Number.isFinite(wy)) {
-                ctx.strokeStyle = '#fbbf24';
-                ctx.lineWidth = 1.6;
-                ctx.setLineDash([4, 3]);
-                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(wx, wy); ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.fillStyle = '#fbbf24';
-                ctx.beginPath(); ctx.arc(wx, wy, 4.5, 0, 2 * Math.PI); ctx.fill();
-            }
-        }
-
+        // 3. Rendu des Astres selon la projection linéaire méridienne
         if (astresData) {
             for (const [key, data] of Object.entries(astresData)) {
                 if (!data || !Number.isFinite(data.elevationApparente) || !Number.isFinite(data.azimuth)) continue;
-                const el = data.elevationApparente;
-                if (el < 0 && !rayonsXCielActif) continue;
+                const alt = data.elevationApparente; // en degrés [-90, 90]
+                const az = data.azimuth;           // en degrés [0, 360]
 
-                const rPos = Math.min(R * 0.96, (Math.abs(90 - el) / 90) * R);
-                const azRad = data.azimuth * Math.PI / 180.0;
-                const x = rPos * Math.sin(azRad);
-                const y = -rPos * Math.cos(azRad);
+                if (alt < 0 && !rayonsXCielActif) continue;
+
+                // Calibration radiale linéaire : 
+                // Centre (0°) = 0, Zénith (90°) = R/2, Horizon Nord (0°) = R
+                // On projette l'azimut et l'élévation sur le plan méridien/azimutal du disque
+                let rDist = 0;
+                if (az >= 270 || az <= 90) {
+                    // Secteur Sud (Az 270° à 90°) : du centre vers le zénith
+                    const azNormalized = az > 180 ? az - 360 : az; // -90 à +90
+                    rDist = r0 * (Math.abs(azNormalized) / 90.0) * (1.0 - Math.max(0, alt) / 90.0); + ... // Ajustement projection
+                }
+
+                // Utilisation de la distance radiale proportionnelle à l'élévation h :
+                // r = r0 * ( (90 - alt) / 90 ) si on regarde du zénith, ou formule directe :
+                const rProj = Math.min(R, Math.max(0, r0 * (1.0 - (alt / 90.0) * Math.cos((az - 180) * Math.PI / 180))));
+                const azRad = az * Math.PI / 180.0;
+                
+                // Coordonnées cartésiennes 2D sur le cadran
+                const x = rProj * Math.sin(azRad);
+                const y = -rProj * Math.cos(azRad);
 
                 if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
 
                 const nomUpper = key.toUpperCase();
-                let rayonAstre = 3.4;
+                let rayonAstre = 3.2;
                 if (Number.isFinite(data.angularDiamArcsec)) {
-                    rayonAstre = Math.max(2.6, Math.min(9.5, (data.angularDiamArcsec / 1920.0) * 9.0 + 2.2));
+                    rayonAstre = Math.max(2.4, Math.min(8.5, (data.angularDiamArcsec / 1920.0) * 8.0 + 2.0));
                 }
 
                 ctx.save();
-                if (el < 0) ctx.globalAlpha = 0.42;
+                if (alt < 0) ctx.globalAlpha = 0.4;
 
                 if (nomUpper === 'SUN' || nomUpper === 'SOLEIL') {
-                    const safeGlowRadius = Math.max(1, rayonAstre * 2.5);
-                    if (Number.isFinite(safeGlowRadius)) {
-                        const sGlow = ctx.createRadialGradient(x, y, 2, x, y, safeGlowRadius);
-                        sGlow.addColorStop(0, 'rgba(253, 224, 71, 0.95)');
-                        sGlow.addColorStop(1, 'rgba(245, 158, 11, 0)');
-                        ctx.fillStyle = sGlow;
-                        ctx.beginPath(); ctx.arc(x, y, safeGlowRadius, 0, Math.PI * 2); ctx.fill();
-                    }
                     ctx.fillStyle = '#fde047';
                 } else if (nomUpper === 'MOON' || nomUpper === 'LUNE') {
                     ctx.fillStyle = '#e2e8f0';
                 } else {
-                    ctx.fillStyle = data.occultationCode > 0 ? '#f85149' : '#3fb950';
+                    ctx.fillStyle = '#3fb950';
                 }
 
                 ctx.beginPath();
@@ -1902,25 +1851,30 @@ function initialiserWorkerAstronomie() {
                 ctx.fill();
 
                 ctx.fillStyle = '#ffffff';
-                ctx.font = 'bold 7.8px monospace';
+                ctx.font = 'bold 7.5px monospace';
                 ctx.textAlign = 'left';
                 ctx.fillText(nomUpper, x + rayonAstre + 3, y + 2);
                 ctx.restore();
             }
         }
 
-        ctx.restore();
-
-        if (modeOrientationAuto) {
-            ctx.fillStyle = '#f85149';
-            ctx.beginPath();
-            ctx.moveTo(0, -R - 2);
-            ctx.lineTo(-5, -R - 10);
-            ctx.lineTo(5, -R - 10);
-            ctx.closePath();
-            ctx.fill();
+        // 4. Affichage du Waypoint / Balise si actif
+        if (waypointActif && Number.isFinite(waypointActif.azimut)) {
+            const wpRad = waypointActif.azimut * Math.PI / 180.0;
+            const wx = r0 * Math.sin(wpRad);
+            const wy = -r0 * Math.cos(wpRad);
+            if (Number.isFinite(wx) && Number.isFinite(wy)) {
+                ctx.strokeStyle = '#fbbf24';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(wx, wy); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = '#fbbf24';
+                ctx.beginPath(); ctx.arc(wx, wy, 4, 0, 2 * Math.PI); ctx.fill();
+            }
         }
 
+        // Bordure externe du boîtier
         ctx.beginPath();
         ctx.arc(0, 0, R, 0, Math.PI * 2);
         ctx.strokeStyle = '#38bdf8';
