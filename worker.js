@@ -120,10 +120,21 @@ function evaluerWMM2025Complet(coeffs, latDeg, lonDeg, altKm, decYear) {
     };
 }
 
+/**
+ * Calcule un Delta T rigoureux basé sur les données IERS EOP courantes.
+ * @returns {number} Delta T en secondes
+ */
 function obtenirDeltaTRigoureux() {
     const anneeCourante = new Date().getUTCFullYear();
-    const sautSecondesEstime = anneeCourante >= 2017 ? 37.0 : 36.0;
-    return 32.184 + sautSecondesEstime - (iersEopCourant.ut1_utc_sec || -0.0547);
+    // Secondes intercalaires officielles (TAI - UTC) estimées ou récupérées
+    const sautSecondesTAI_UTC = anneeCourante >= 2017 ? 37.0 : 36.0;
+    const ut1UtcSec = (iersEopCourant && typeof iersEopCourant.ut1_utc_sec === 'number') 
+        ? iersEopCourant.ut1_utc_sec 
+        : -0.0547;
+    
+    // Formule standard : ΔT = (TT - TAI) + (TAI - UTC) - (UT1 - UTC)
+    // TT - TAI = 32.184 secondes exactes
+    return 32.184 + sautSecondesTAI_UTC - ut1UtcSec;
 }
 
 function obtenirSegmentTchebychevOptime(segments, tEphemerideSec) {
