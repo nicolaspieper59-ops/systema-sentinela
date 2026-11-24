@@ -73,6 +73,15 @@ jobs:
         run: |
           python dynamic_multiphysics_engine.py "43.284356" "5.358507" "49.81" --days 7 --out flux_live.json
 
+      - name: 🧪 Validation automatique de la précision (JPL vs Local)
+        run: |
+          # Exemple de validation automatisée sur le Soleil (si un fichier de référence existe)
+          if [ -f "reference_soleil.csv" ]; then
+            python validate_jpl_diff.py reference_soleil.csv --corps sun --bsp de440s.bsp
+          else
+            echo "[INFO] Aucun fichier de référence CSV trouvé, étape de validation ignorée pour ce build."
+          fi
+
       - name: 📂 Préparation de la bibliothèque SOFA C / ERFA
         run: |
           rm -rf lib/sofa
