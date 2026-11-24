@@ -162,6 +162,7 @@ void calculerDepuisECEF(
     double periodDays, double eccentricity, double obliquityDeg, double sunLongDeg,
     double sunX_km, double sunY_km, double sunZ_km,
     double timestampSec,
+    double deltaTSeconds, // 🎯 NOUVEAU : Récupération du Delta T dynamique transmis par le Worker
     AstroResult* result
 ) {
     if (!result) return;
@@ -206,7 +207,7 @@ void calculerDepuisECEF(
     double zObsM = (N_obs * (1.0 - e2) + altM) * std::sin(phi);
 
     double dj1 = 2440587.5;
-    double deltaT = 69.2387; 
+    double deltaT = deltaTSeconds; // 🎯 UTILISATION DU VRAI DELTA T DYNAMIQUE
     double tt2 = (timestampSec + 69.184) / 86400.0;
     double ut2 = (timestampSec + 69.184 - deltaT) / 86400.0;
     double xpRad = xpSec * (M_PI / 180.0) / 3600.0;
@@ -469,10 +470,6 @@ void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int
             double rOmbreArcsec    = 1.02 * (piLuneRad + piSolRad - sSolRad) * RAD2DEG * 3600.0;
             double rPenombreArcsec = 1.02 * (piLuneRad + piSolRad + sSolRad) * RAD2DEG * 3600.0;
 
-            if (sepLuneOmbreArcsec < (rOmbreArcsec + rLuneArcsec)) {
-                double fracOmbre = calculerFractionRecouvrementDisques(sepLuneOmbreArcsec, rLuneArcsec, rOmbreArcsec);
-                lune->occultationPct = fracOmbre * 100.0;
-                lune->occultationCode = 2;
             } else if (sepLuneOmbreArcsec < (rPenombreArcsec + rLuneArcsec)) {
                 double fracPenombre = calculerFractionRecouvrementDisques(sepLuneOmbreArcsec, rLuneArcsec, rPenombreArcsec);
                 lune->occultationPct = fracPenombre * 100.0;
@@ -512,3 +509,4 @@ void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int
 }
 
 }
+            
