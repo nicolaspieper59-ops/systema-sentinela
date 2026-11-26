@@ -376,18 +376,19 @@ function traiterCalculsWasmStricts(params) {
             const ypSec = iersEopCourant.yp_arcsec || 0.0;
 
             Module._calculerDepuisECEF(
-                x, y, z, vx, vy, vz, 
-                earthVx, earthVy, earthVz,
-                coords.lat, coords.lon, coords.alt, 
-                eraRad, xpSec, ypSec,
-                meteo.tempC, meteo.presHpa, meteo.humiditePct, 0.15, 
-                seg.mag ?? 0.0, corpsType,
-                dSunAstroUA, dSunEarthUA, seg.rayon_km ?? 0.0,
-                seg.period_days ?? 365.256, phys.ecc, phys.obl, sunTrueLong,
-                sunX_km, sunY_km, sunZ_km,
-                timestampSec,
-                itemPtr
-            );
+    x, y, z, vx, vy, vz, 
+    earthVx, earthVy, earthVz,
+    coords.lat, coords.lon, coords.alt, 
+    eraRad, xpSec, ypSec,
+    meteo.tempC, meteo.presHpa, meteo.humiditePct, 0.15, 
+    seg.mag ?? 0.0, corpsType,
+    dSunAstroUA, dSunEarthUA, seg.rayon_km ?? 0.0,
+    seg.period_days ?? 365.256, phys.ecc, phys.obl, sunTrueLong,
+    sunX_km, sunY_km, sunZ_km,
+    timestampSec,
+    deltaTSeconds, // <-- ARGUMENT 32 (double) INDISPENSABLE
+    itemPtr        // <-- ARGUMENT 33 (pointeur C++)
+);
         }
 
         if (typeof Module._evaluerOccultationsEtEclipses === 'function') {
