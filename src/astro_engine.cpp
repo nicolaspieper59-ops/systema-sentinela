@@ -83,17 +83,10 @@ inline double separationAngulaireArcsec(double ra1Deg, double dec1Deg, double ra
     return std::acos(cosSep) * RAD2DEG * 3600.0;
 }
 
-inline double obtenirElevationHorizonTopographique(double azimDeg) {
-    double az = std::fmod(azimDeg, 360.0);
-    if (az < 0.0) az += 360.0;
-    if (az >= 0.0 && az < 45.0)    return 1.2;
-    if (az >= 45.0 && az < 120.0)  return 2.8;
-    if (az >= 120.0 && az < 210.0) return 4.5;
-    if (az >= 210.0 && az < 315.0) return -0.1;
-    return 1.5;
+double obtenirElevationHorizonTopographique(double azimutDeg, double profilHorizonMNT = 0.0) {
+    (void)azimutDeg;
+    return profilHorizonMNT; // Retourne 0.0 par défaut (ou la valeur MNT réelle)
 }
-
-extern "C" {
 
 EMSCRIPTEN_KEEPALIVE
 double normaliserDegres(double deg) {
