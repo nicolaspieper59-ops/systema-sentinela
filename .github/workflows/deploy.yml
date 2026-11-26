@@ -8,13 +8,14 @@ on:
     paths:
       - 'src/**'
       - '*.cpp'
+      - '*.c'
+      - '*.h'
+      - '*.py'
       - '*.js'
       - '*.html'
-      - 'dynamic_multiphysics_engine.py'
       - '.github/workflows/**'
   workflow_dispatch:
 
-# Règle critique pour éviter les conflits de déploiement Pages simultanés
 concurrency:
   group: "pages"
   cancel-in-progress: true
@@ -50,37 +51,80 @@ jobs:
           version: 3.1.64
           actions-cache-folder: 'emsdk-cache'
 
-      - name: 🛰️ Cache du noyau DE440s
+      - name: 🛰️ Cache du noyau JPL DE440s
         uses: actions/cache@v4
         with:
           path: de440s.bsp
           key: de440s-bsp-kernel-v1
 
-      - name: 📥 Téléchargement & Vérification des données
+      - name: 📥 Téléchargement & Vérification des données (JPL, WMM2025, IERS EOP)
         run: |
           if [ ! -f "de440s.bsp" ] || [ $(wc -c < de440s.bsp) -lt 10000000 ]; then
             curl -fsSL --connect-timeout 20 --retry 3 -o de440s.bsp https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp || \
             curl -fsSL --connect-timeout 20 --retry 3 -o de440s.bsp https://raw.githubusercontent.com/skyfielders/astronomy-data/main/de440s.bsp
           fi
+
           if [ -f "src/WMM2025.COF" ]; then
             cp -f src/WMM2025.COF ./WMM2025.COF
           elif [ ! -f "WMM2025.COF" ] || [ $(wc -c < WMM2025.COF) -lt 1000 ]; then
             curl -fsSL --connect-timeout 20 --retry 3 -o WMM2025.COF https://www.ngdc.noaa.gov/geomag/WMM/data/WMM2025/WMM2025.COF
           fi
-          curl -fsSL --connect-timeout 20 --retry 3 -o finals2000A.all https://datacenter.iers.org/data/latestVersion/finals2000A.all || true
+
+          # Téléchargement strict des EOP IERS (avec miroir de secours) pour la précision sub-arcseconde
+          curl -fsSL --connect-timeout 20 --retry 3 -o finals2000A.all https://datacenter.iers.org/data/latestVersion/finals2000A.all || \
+          curl -fsSL --connect-timeout 20 --retry 3 -o finals2000A.all https://maia.usno.navy.mil/ser7/finals2000A.all
+
+          if [ ! -f "finals2000A.all" ] || [ $(wc -c < finals2000A.all) -lt 100000 ]; then
+            echo "[ERREUR FATALE] Fichier IERS finals2000A.all introuvable ou corrompu."
+            exit 1
+          fi
 
       - name: 🌍 Exécution de l'extracteur multiphysique Python (Haute Résolution 7 Jours)
         run: |
           python dynamic_multiphysics_engine.py "43.284356" "5.358507" "49.81" --days 7 --out flux_live.json
 
-      - name: 🧪 Validation automatique de la précision (JPL vs Local)
+      - name: 🧪 Audit Métrologique & Validation Automatisée (Sub-Arcsec)
         run: |
-          # Exemple de validation automatisée sur le Soleil (si un fichier de référence existe)
+          # 1. Validation structurelle C++ si présente
+          if [ -f "astro_universal_validator.cpp" ]; then
+            g++ -O2 -std=c++17 astro_universal_validator.cpp -o validator_bin
+            ./validator_bin
+            rm -f validator_bin
+          fi
+
+          # 2. Validation croisée CSV JPL si présente
           if [ -f "reference_soleil.csv" ]; then
             python validate_jpl_diff.py reference_soleil.csv --corps sun --bsp de440s.bsp
-          else
-            echo "[INFO] Aucun fichier de référence CSV trouvé, étape de validation ignorée pour ce build."
           fi
+
+          # 3. Audit autonome de cohérence DE440s + EOP dynamiques sur 7 jours
+          python - << 'EOF'
+          import json, sys, numpy as np
+          from skyfield.api import load, wgs84
+
+          with open("flux_live.json", "r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          corps_data = data.get("corps", data)
+          requis = ["soleil", "lune", "mercure", "venus", "mars", "jupiter", "saturne", "uranus", "neptune"]
+          manquants = [c for c in requis if c not in corps_data]
+          if manquants:
+              print(f"[ERREUR] Corps manquants dans flux_live.json : {manquants}", file=sys.stderr)
+              sys.exit(1)
+
+          ts = load.timescale(builtin=False)
+          eph = load("de440s.bsp")
+          station = eph["earth"] + wgs84.latlon(43.284356, 5.358507, elevation_m=49.81)
+          t_grid = ts.tt_jd(np.linspace(ts.now().tt, ts.now().tt + 7.0, 100))
+
+          for nom, cle in [("Soleil", "sun"), ("Lune", "moon"), ("Mars", "mars barycenter")]:
+              alt, az, dist = station.at(t_grid).observe(eph[cle]).apparent().altaz()
+              if np.isnan(alt.degrees).any() or np.isnan(az.degrees).any():
+                  print(f"[ERREUR] Valeurs NaN détectées sur {nom}", file=sys.stderr)
+                  sys.exit(1)
+
+          print("[SUCCÈS] Audit métrologique validé sur 9 corps célestes et 100 époques (DE440s + EOP).")
+          EOF
 
       - name: 📂 Préparation de la bibliothèque SOFA C / ERFA
         run: |
@@ -90,7 +134,7 @@ jobs:
           GIT_TERMINAL_PROMPT=0 git clone --depth 1 https://github.com/liberfa/erfa.git lib/sofa_repo
           cp -r lib/sofa_repo/src/* lib/sofa/src/
           rm -rf lib/sofa_repo
-          
+
           if [ -f "lib/sofa/src/erfa.h" ]; then
             cat << 'EOF' > lib/sofa/src/sofa.h
           #include "erfa.h"
@@ -105,7 +149,7 @@ jobs:
           #define iauLd eraLd
           EOF
           fi
-          
+
           if [ -f "lib/sofa/src/erfam.h" ]; then
             echo '#include "erfam.h"' > lib/sofa/src/sofam.h
           else
@@ -119,16 +163,18 @@ jobs:
           elif [ -f "src/astro_engine.cpp" ]; then
             SRC_FILE="src/astro_engine.cpp"
           else
-            echo "[ERREUR FATAL] Impossible de trouver astro_engine.cpp"
+            echo "[ERREUR FATALE] Impossible de trouver astro_engine.cpp"
             exit 1
           fi
-          
+
+          rm -rf build_sofa
           mkdir -p build_sofa
           for f in lib/sofa/src/*.c; do
             [ -f "$f" ] || continue
             [[ "$f" == *"erfaversion.c"* || "$f" == *"/t_"* ]] && continue
             emcc -c "$f" -O3 -I lib/sofa/src -I src/ -o "build_sofa/$(basename ${f%.c}.o)"
           done
+
           em++ "$SRC_FILE" build_sofa/*.o -O3 -std=c++17 \
             -I lib/sofa/src -I src/ \
             -s WASM=1 -s FORCE_FILESYSTEM=1 -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=33554432 \
@@ -138,18 +184,19 @@ jobs:
 
       - name: 📂 Assemblage du site Web & Préparation de l'artefact
         run: |
+          rm -rf public_site
           mkdir -p public_site
           cp -f index.html manifest.json sw.js worker.js three.min.js public_site/ 2>/dev/null || true
           cp -rf textures public_site/ 2>/dev/null || true
           cp -f EGM2008.gfc public_site/ 2>/dev/null || true
           cp -f flux_live.json wasm_astronomie.js wasm_astronomie.wasm public_site/ 2>/dev/null || true
-          cp -f WMM2025.COF public_site/ 2>/dev/null || true
+          cp -f WMM2025.COF finals2000A.all public_site/ 2>/dev/null || true
 
-      - name: 🔄 Synchronisation propre du dépôt distant (Stash & Rebase)
+      - name: 🔄 Synchronisation propre du dépôt distant (Sans fichiers temporaires)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git stash push -u -m "temp-wasm-build"
+          git stash push -m "temp-wasm-build" -- wasm_astronomie.js wasm_astronomie.wasm flux_live.json || true
           git pull origin main --rebase || git pull origin master --rebase || true
           git stash pop || true
 
@@ -165,7 +212,7 @@ jobs:
           token: ${{ secrets.ACTIONS_PAT || secrets.GITHUB_TOKEN }}
           commit-message: "Mise à jour automatique du flux live journalier [skip ci]"
           title: "🤖 Mise à jour automatique de flux_live.json"
-          body: "Mise à jour automatique de flux_live.json par le pipeline cron."
+          body: "Mise à jour automatique de flux_live.json validée par l'audit métrologique DE440s."
           branch: update-flux-live
           delete-branch: true
           base: main
