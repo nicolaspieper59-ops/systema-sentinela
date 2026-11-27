@@ -71,13 +71,16 @@ def extraire_donnees_iers_finals(fichier_path="finals2000A.all"):
     xp, yp, ut1_utc = 0.05, 0.12, -0.0547
     try:
         with open(fichier_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
+            lines = [line.strip() for line in f if line.strip()]
             if lines:
                 last_line = lines[-1]
                 if len(last_line) >= 68:
-                    xp = float(last_line[18:27].strip())
-                    yp = float(last_line[37:46].strip())
-                    ut1_utc = float(last_line[58:68].strip())
+                    xp_str = last_line[18:27].strip()
+                    yp_str = last_line[37:46].strip()
+                    ut1_str = last_line[58:68].strip()
+                    if xp_str: xp = float(xp_str)
+                    if yp_str: yp = float(yp_str)
+                    if ut1_str: ut1_utc = float(ut1_str)
     except Exception as e:
         print(f"[WARN IERS] Lecture {fichier_path} : {e}", file=sys.stderr)
     return {"xp_arcsec": xp, "yp_arcsec": yp, "ut1_utc_sec": ut1_utc}
@@ -214,6 +217,10 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
         data_output[nom_corps] = segments
 
     eop_data = extraire_donnees_iers_finals()
+    
+    # Définition de la version en minuscules pour l'audit et la validation
+    corps_lower = {k.lower(): v for k, v in data_output.items()}
+
     resultat_global = {
         "ALMANACH": {
             "generateur": "Systema Sentinela DE440s Kernel High-Res (Rigorous v20.0 - Max Precision)",
@@ -223,8 +230,8 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
             "station": {"latitude": float(lat), "longitude": float(lon), "altitude_m": float(alt)},
             "iers_eop": eop_data
         },
-        "corps": corps_lower,  # Ajout attendu par l'audit
-        "DATA": data_output    # Conservé pour le moteur front-end
+        "corps": corps_lower,
+        "DATA": data_output
     }
     with open(fichier_sortie, "w", encoding="utf-8") as f:
         json.dump(resultat_global, f, separators=(',', ':'), ensure_ascii=False)
