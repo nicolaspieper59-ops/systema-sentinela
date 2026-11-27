@@ -473,14 +473,15 @@ void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int
             if (sepLuneOmbreArcsec < (rOmbreArcsec + rLuneArcsec)) {
                 double fracOmbre = calculerFractionRecouvrementDisques(sepLuneOmbreArcsec, rLuneArcsec, rOmbreArcsec);
                 lune->occultationPct = fracOmbre * 100.0;
-                lune->occultationCode = 2; // Ombre (Éclipse)
+                lune->occultationCode = 2; // Ombre (Éclipse totale/partielle)
             } else if (sepLuneOmbreArcsec < (rPenombreArcsec + rLuneArcsec)) {
                 double fracPenombre = calculerFractionRecouvrementDisques(sepLuneOmbreArcsec, rLuneArcsec, rPenombreArcsec);
                 lune->occultationPct = fracPenombre * 100.0;
-                lune->occultationCode = 3; // Pénombre
+                lune->occultationCode = 1; // Pénombre
             }
         }
     }
+}
 
     for (int32_t i = 0; i < count; ++i) {
         if (i == idxSoleil || i == idxLune) continue;
