@@ -223,7 +223,8 @@ def generer_ephemerides(lat, lon, alt, nb_jours, bsp_path, fichier_sortie):
             "station": {"latitude": float(lat), "longitude": float(lon), "altitude_m": float(alt)},
             "iers_eop": eop_data
         },
-        "DATA": data_output
+        "corps": corps_lower,  # Ajout attendu par l'audit
+        "DATA": data_output    # Conservé pour le moteur front-end
     }
     with open(fichier_sortie, "w", encoding="utf-8") as f:
         json.dump(resultat_global, f, separators=(',', ':'), ensure_ascii=False)
