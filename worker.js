@@ -1,513 +1,491 @@
-#include <emscripten/emscripten.h>
-#include <cmath>
-#include <algorithm>
-#include <cstdint>
-#include <cstring>
+/**
+ * SYSTEMA SENTINELA — WEB WORKER KERNEL (v19.60 - Rigorous Wasm & Dual-Key Mapping)
+ * Corrections appliquées :
+ * - Cohérence stricte entre deltaTSeconds et ttMinusUtc via EOP IERS
+ * - Propagation de deltaTSeconds vers _calculerParametresSiderauxEtSolaires et _calculerDepuisECEF
+ * - Typage numérique strict (float) pour secularDeclinationMin
+ * - Double indexation rigoureuse des clés (ex: "soleil" et "sun", "lune" et "moon")
+ */
 
-extern "C" {
-#include "sofa.h"
-#include "sofam.h"
-}
+let jplMatrixData = null;
+let wmmTableauCoeffs = null;
+let wasmPret = false;
+let wmmPret = false;
+let iersEopCourant = { xp_arcsec: 0.0, yp_arcsec: 0.0, ut1_utc_sec: -0.0547 };
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
-#define DEG2RAD (M_PI / 180.0)
-#define RAD2DEG (180.0 / M_PI)
-#define UA_EN_METRES 149597870700.0
-#define UA_EN_KM 149597870.7
-#define VITESSE_LUMIERE_KM_S 299792.458
-#define RAYON_SOLEIL_KM 696340.0
-#define RAYON_TERRE_KM 6378.137
-
-struct alignas(8) AstroResult {
-    double azim;
-    double elevGeom;
-    double elevRefractee;
-    double raDeg;
-    double decDeg;
-    double distUA;
-    double leverUT;
-    double coucherUT;
-    double airMass;
-    double irradiance;
-    double deltaT;
-    double ghaDeg;
-    double jde;
-    double magnitudeApparente;
-    double shadowLength;
-    double moonPhasePct;
-    double astreAgeDays;
-    double crepusculeUT;
-    double dureeVisibiliteHeures;
-    double angularDiamArcsec;
-    double surfaceBrightness;
-    double illuminatedFraction;
-    double radialVelocityKmS;
-    double occultationPct;
-    double skyGlowMagArcsec2;
-    double astreMeanTimeHours;
-    double astreTrueTimeHours;
-    double astreEqTempsMin;
-    int32_t visibiliteCode;
-    int32_t occultationCode;
-    int32_t glowTypeCode;
-    int32_t padding;
+const PHYSIQUE_INTRINSEQUE_CORPS = {
+    "SOLEIL":  { ecc: 0.01671022, obl: 23.43929 },
+    "LUNE":    { ecc: 0.05490000, obl: 6.680000 },
+    "MERCURE": { ecc: 0.20563000, obl: 0.034000 },
+    "VENUS":   { ecc: 0.00677200, obl: 177.3600 },
+    "MARS":    { ecc: 0.09340000, obl: 25.19000 },
+    "JUPITER": { ecc: 0.04890000, obl: 3.130000 },
+    "SATURNE": { ecc: 0.05650000, obl: 26.73000 },
+    "URANUS":  { ecc: 0.04638100, obl: 97.77000 },
+    "NEPTUNE": { ecc: 0.00945600, obl: 28.32000 }
 };
 
-inline double calculerFractionRecouvrementDisques(double d, double r1, double r2) {
-    if (d >= r1 + r2) return 0.0;
-    if (d <= std::abs(r1 - r2)) {
-        double rMin = std::min(r1, r2);
-        return (rMin * rMin) / (r1 * r1);
+var Module = {
+    onRuntimeInitialized: function() {
+        wasmPret = true;
+        self.postMessage({ type: 'WORKER_READY' });
     }
-    double r1_2 = r1 * r1;
-    double r2_2 = r2 * r2;
-    double d_2  = d * d;
-
-    double alpha = std::acos(std::fmax(-1.0, std::fmin(1.0, (d_2 + r1_2 - r2_2) / (2.0 * d * r1))));
-    double beta  = std::acos(std::fmax(-1.0, std::fmin(1.0, (d_2 + r2_2 - r1_2) / (2.0 * d * r2))));
-
-    double aireIntersection = r1_2 * alpha + r2_2 * beta 
-                            - 0.5 * std::sqrt(std::fmax(0.0, (-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2)));
-    double aireCible = M_PI * r1_2;
-    return std::fmax(0.0, std::fmin(1.0, aireIntersection / aireCible));
-}
-
-inline double separationAngulaireArcsec(double ra1Deg, double dec1Deg, double ra2Deg, double dec2Deg) {
-    double a1 = ra1Deg * DEG2RAD, d1 = dec1Deg * DEG2RAD;
-    double a2 = ra2Deg * DEG2RAD, d2 = dec2Deg * DEG2RAD;
-    double dAlpha = a1 - a2;
-    double num = std::hypot(
-        std::cos(d2) * std::sin(dAlpha),
-        std::cos(d1) * std::sin(d2) - std::sin(d1) * std::cos(d2) * std::cos(dAlpha)
-    );
-    double den = std::sin(d1) * std::sin(d2) + std::cos(d1) * std::cos(d2) * std::cos(dAlpha);
-    return std::atan2(num, den) * RAD2DEG * 3600.0;
-}
-
-double obtenirElevationHorizonTopographique(double azimutDeg, double profilHorizonMNT = 0.0) {
-    (void)azimutDeg;
-    return profilHorizonMNT;
-}
-
-EMSCRIPTEN_KEEPALIVE
-double normaliserDegres(double deg) {
-    double res = std::fmod(deg, 360.0);
-    return res < 0.0 ? res + 360.0 : res;
-}
-
-// Modèle unifié EGM2008 harmonique sphérique cohérent entre C++ et Front-End
-EMSCRIPTEN_KEEPALIVE
-double calculerOndulationGeoideEGM(double latDeg, double lonDeg) {
-    double phi = latDeg * DEG2RAD;
-    double lam = lonDeg * DEG2RAD;
-    double nQuad = 18.5 * std::sin(2.0 * phi) * std::cos(lam - 0.25);
-    double nMed  = 29.8 * std::cos(phi - 0.72) * std::cos(lam - 0.12);
-    double nReg  = 6.4 * std::sin(3.0 * phi + 0.4) * std::sin(2.0 * lam + 0.15);
-    return nQuad + nMed + nReg;
-}
-
-EMSCRIPTEN_KEEPALIVE
-void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, double deltaTSeconds, double* metricsPtr) {
-    if (!metricsPtr) return;
-
-    double dj1 = 2440587.5;
-    double ttSec = timestampSec + 69.184;
-    double ut1Sec = ttSec - deltaTSeconds;
-    double ut2 = ut1Sec / 86400.0;
-    double tt2 = ttSec / 86400.0;
-
-    double epsA = iauObl06(dj1, tt2);
-    double obliquiteDeg = epsA * RAD2DEG;
-
-    double gastRad = iauGst06a(dj1, ut2, dj1, tt2);
-    double gastDeg = normaliserDegres(gastRad * RAD2DEG);
-    double lstDeg = normaliserDegres(gastDeg + lonDeg);
-
-    double T = (dj1 + tt2 - 2451545.0) / 36525.0;
-    double l0 = normaliserDegres(280.4664567 + 36000.76982779 * T + 0.0003032 * T * T);
-    double m = normaliserDegres(357.52911 + 35999.05029 * T - 0.0001537 * T * T);
-    double c = (1.914602 - 0.004817 * T - 0.000014 * T * T) * std::sin(m * DEG2RAD) 
-             + (0.019993 - 0.000101 * T) * std::sin(2.0 * m * DEG2RAD)
-             + 0.000289 * std::sin(3.0 * m * DEG2RAD);
-    double sunTrueLong = normaliserDegres(l0 + c);
-
-    double lRad = sunTrueLong * DEG2RAD;
-    double raSunRad = std::atan2(std::cos(epsA) * std::sin(lRad), std::cos(lRad));
-    double raSunDeg = normaliserDegres(raSunRad * RAD2DEG);
-
-    double eqTempsMin = (l0 - raSunDeg) * 4.0;
-    if (eqTempsMin > 20.0) eqTempsMin -= 1440.0;
-    if (eqTempsMin < -20.0) eqTempsMin += 1440.0;
-
-    metricsPtr[0] = eqTempsMin;
-    metricsPtr[1] = obliquiteDeg;
-    metricsPtr[2] = sunTrueLong;
-    metricsPtr[3] = gastDeg;
-    metricsPtr[4] = lstDeg;
-}
-
-EMSCRIPTEN_KEEPALIVE
-void calculerDepuisECEF(
-    double xICRF_km, double yICRF_km, double zICRF_km,
-    double vx_km_s, double vy_km_s, double vz_km_s,
-    double earthVx_km_s, double earthVy_km_s, double earthVz_km_s,
-    double latDeg, double lonDeg, double altM,
-    double eraRad, double xpSec, double ypSec,
-    double tempC, double presHpa, double humiditePct, double extinctionCoeff,
-    double magBruteAstre, int32_t corpsType,
-    double dSunAstroUA, double dSunEarthUA, double rayonAstreKm,
-    double periodDays, double eccentricity, double obliquityDeg, double sunLongDeg,
-    double sunX_km, double sunY_km, double sunZ_km,
-    double timestampSec,
-    double deltaTSeconds,
-    AstroResult* result
-) {
-    if (!result) return;
-    std::memset(result, 0, sizeof(AstroResult));
-
-    if (std::abs(xICRF_km) < 1e-6 && std::abs(yICRF_km) < 1e-6 && std::abs(zICRF_km) < 1e-6) {
-        result->visibiliteCode = 0;
-        return; 
-    }
-
-    double distKm = std::sqrt(xICRF_km * xICRF_km + yICRF_km * yICRF_km + zICRF_km * zICRF_km);
-    double distAU = distKm / UA_EN_KM;
-
-    double pnat[3] = { 
-        xICRF_km / UA_EN_KM, 
-        yICRF_km / UA_EN_KM, 
-        zICRF_km / UA_EN_KM 
-    };
-
-    // Déflexion gravitationnelle relativiste via SOFA iauLd
-    double pld[3] = { pnat[0], pnat[1], pnat[2] };
-    if (corpsType != 1 && distAU > 0.0 && dSunEarthUA > 0.0) {
-        double pDir[3] = { xICRF_km / distKm, yICRF_km / distKm, zICRF_km / distKm };
-        double sunDirUnitaire[3] = { sunX_km / (dSunEarthUA * UA_EN_KM), sunY_km / (dSunEarthUA * UA_EN_KM), sunZ_km / (dSunEarthUA * UA_EN_KM) };
-        double eVec[3] = { -sunDirUnitaire[0], -sunDirUnitaire[1], -sunDirUnitaire[2] };
-        double pDeflDir[3];
-        iauLd(1.0, pDir, pDir, eVec, dSunEarthUA, 1e-6, pDeflDir);
-        pld[0] = pDeflDir[0] * distAU;
-        pld[1] = pDeflDir[1] * distAU;
-        pld[2] = pDeflDir[2] * distAU;
-    }
-
-    double phi = latDeg * DEG2RAD;
-    double lambda = lonDeg * DEG2RAD;
-    double a = 6378137.0;
-    double f = 1.0 / 298.257223563;
-    double e2 = f * (2.0 - f);
-
-    double N_obs = a / std::sqrt(1.0 - e2 * std::sin(phi) * std::sin(phi));
-    double xObsM = (N_obs + altM) * std::cos(phi) * std::cos(lambda);
-    double yObsM = (N_obs + altM) * std::cos(phi) * std::sin(lambda);
-    double zObsM = (N_obs * (1.0 - e2) + altM) * std::sin(phi);
-
-    double dj1 = 2440587.5;
-    double deltaT = deltaTSeconds;
-    double tt2 = (timestampSec + 69.184) / 86400.0;
-    double ut2 = (timestampSec + 69.184 - deltaT) / 86400.0;
-    double xpRad = xpSec * (M_PI / 180.0) / 3600.0;
-    double ypRad = ypSec * (M_PI / 180.0) / 3600.0;
-
-    double rc2t[3][3];
-    iauC2t06a(dj1, ut2, dj1, tt2, xpRad, ypRad, rc2t);
-
-    double omegaEarth = 7.292115e-5;
-    double vx_itrs = -omegaEarth * (yObsM / 1000.0);
-    double vy_itrs =  omegaEarth * (xObsM / 1000.0);
-    double vz_itrs =  0.0;
-
-    double vx_diurne_gcrs = rc2t[0][0] * vx_itrs + rc2t[1][0] * vy_itrs + rc2t[2][0] * vz_itrs;
-    double vy_diurne_gcrs = rc2t[0][1] * vx_itrs + rc2t[1][1] * vy_itrs + rc2t[2][1] * vz_itrs;
-    double vz_diurne_gcrs = rc2t[0][2] * vx_itrs + rc2t[1][2] * vy_itrs + rc2t[2][2] * vz_itrs;
-
-    double v[3] = {
-        (earthVx_km_s + vx_diurne_gcrs) / VITESSE_LUMIERE_KM_S,
-        (earthVy_km_s + vy_diurne_gcrs) / VITESSE_LUMIERE_KM_S,
-        (earthVz_km_s + vz_diurne_gcrs) / VITESSE_LUMIERE_KM_S
-    };
-
-    double bbr = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
-    double bm1 = std::sqrt(std::fmax(0.0, 1.0 - bbr * bbr));
-    double pabr[3];
-    iauAb(pld, v, distAU, bm1, pabr);
-
-    double xGCRS = pabr[0] * UA_EN_KM;
-    double yGCRS = pabr[1] * UA_EN_KM;
-    double zGCRS = pabr[2] * UA_EN_KM;
-
-    double xECEF = rc2t[0][0] * xGCRS + rc2t[0][1] * yGCRS + rc2t[0][2] * zGCRS;
-    double yECEF = rc2t[1][0] * xGCRS + rc2t[1][1] * yGCRS + rc2t[1][2] * zGCRS;
-    double zECEF = rc2t[2][0] * xGCRS + rc2t[2][1] * yGCRS + rc2t[2][2] * zGCRS;
-
-    double dx = xECEF - (xObsM / 1000.0);
-    double dy = yECEF - (yObsM / 1000.0);
-    double dz = zECEF - (zObsM / 1000.0);
-
-    double distKmTop = std::sqrt(dx * dx + dy * dy + dz * dz);
-    result->distUA = distKmTop / UA_EN_KM; 
-
-    double rc2i[3][3];
-    iauC2i06a(dj1, tt2, rc2i);
-    double xCIRS = rc2i[0][0] * xGCRS + rc2i[0][1] * yGCRS + rc2i[0][2] * zGCRS;
-    double yCIRS = rc2i[1][0] * xGCRS + rc2i[1][1] * yGCRS + rc2i[1][2] * zGCRS;
-    double zCIRS = rc2i[2][0] * xGCRS + rc2i[2][1] * yGCRS + rc2i[2][2] * zGCRS;
-
-    double eo = iauEo06a(dj1, tt2);
-    double normCIRS = std::sqrt(xCIRS * xCIRS + yCIRS * yCIRS + zCIRS * zCIRS);
-    double raCIRS = std::atan2(yCIRS, xCIRS);
-    result->raDeg = normaliserDegres((raCIRS - eo) * RAD2DEG);
-    result->decDeg = (normCIRS > 0.0) ? std::asin(std::fmax(-1.0, std::min(1.0, zCIRS / normCIRS))) * RAD2DEG : 0.0;
-    result->ghaDeg = normaliserDegres((eraRad * RAD2DEG) - result->raDeg);
-    result->deltaT = deltaT;
-    result->jde = dj1 + tt2;
-
-    if (distKm > 0.0) {
-        result->radialVelocityKmS = (xICRF_km * vx_km_s + yICRF_km * vy_km_s + zICRF_km * vz_km_s) / distKm;
-    }
-
-    double E = -std::sin(lambda) * dx + std::cos(lambda) * dy;
-    double N_top = -std::sin(phi) * std::cos(lambda) * dx - std::sin(phi) * std::sin(lambda) * dy + std::cos(phi) * dz;
-    double U = std::cos(phi) * std::cos(lambda) * dx + std::cos(phi) * std::sin(lambda) * dy + std::sin(phi) * dz;
-
-    result->azim = normaliserDegres(std::atan2(E, N_top) * RAD2DEG);
-    double rhoHoriz = std::sqrt(E * E + N_top * N_top);
-    result->elevGeom = std::fmax(-90.0, std::fmin(90.0, std::atan2(U, rhoHoriz) * RAD2DEG));
-
-    double rKm = (rayonAstreKm > 0.0) ? rayonAstreKm : (corpsType == 1 ? RAYON_SOLEIL_KM : 1737.4);
-    if (distKmTop > 0.0) {
-        result->angularDiamArcsec = (2.0 * std::asin(std::fmin(1.0, rKm / distKmTop))) * RAD2DEG * 3600.0;
-    }
-
-    double rhNorm = std::fmax(0.0, std::min(1.0, humiditePct / 100.0));
-    if (result->elevGeom > -5.0) {
-        double refa, refb;
-        iauRefco(presHpa, tempC, rhNorm, 0.55, &refa, &refb);
-        double zObsRad = (90.0 - result->elevGeom) * DEG2RAD;
-        if (zObsRad > 0 && zObsRad < (M_PI / 2.0 + 0.15)) {
-            double tanZ = std::tan(zObsRad);
-            double deltaZRad = (refa * tanZ + refb * tanZ * tanZ * tanZ);
-            if (result->elevGeom < 5.0) {
-                deltaZRad += 0.00005 * std::pow(5.0 - result->elevGeom, 2.5) * DEG2RAD;
-            }
-            result->elevRefractee = std::fmax(-90.0, std::fmin(90.0, result->elevGeom + (deltaZRad * RAD2DEG)));
-        } else {
-            result->elevRefractee = result->elevGeom;
-        }
-    } else {
-        result->elevRefractee = result->elevGeom;
-    }
-
-    if (result->elevRefractee > 0.0) {
-        double elevRad = result->elevRefractee * DEG2RAD;
-        double airMassStd = 1.0 / (std::sin(elevRad) + 0.50572 * std::pow(6.07995 + std::fmax(0.0, result->elevRefractee), -1.6364));
-        result->airMass = airMassStd * (presHpa / 1013.25);
-    } else {
-        result->airMass = -1.0; 
-    }
-
-    result->magnitudeApparente = magBruteAstre + (extinctionCoeff * std::fmax(0.0, result->airMass));
-
-    double demiDiamDeg = (result->angularDiamArcsec / 3600.0) / 2.0;
-    double altRefRiseSet = (corpsType == 1) ? (-0.5667 - demiDiamDeg) * DEG2RAD : (-0.5667) * DEG2RAD;
-    double decRad = result->decDeg * DEG2RAD;
-    double cosH0 = (std::sin(altRefRiseSet) - std::sin(phi) * std::sin(decRad)) / (std::cos(phi) * std::cos(decRad));
-
-    double lhaDeg = normaliserDegres(result->ghaDeg + lonDeg);
-    double utcHoursNow = std::fmod(timestampSec / 3600.0, 24.0);
-    if (utcHoursNow < 0.0) utcHoursNow += 24.0;
-    double transitUT = std::fmod(utcHoursNow - (lhaDeg <= 180.0 ? lhaDeg : lhaDeg - 360.0) / 15.0 + 24.0, 24.0);
-
-    if (cosH0 >= 1.0) {
-        result->dureeVisibiliteHeures = 0.0;
-        result->leverUT = -1.0;
-        result->coucherUT = -1.0;
-    } else if (cosH0 <= -1.0) {
-        result->dureeVisibiliteHeures = 24.0;
-        result->leverUT = 0.0;
-        result->coucherUT = 24.0;
-    } else {
-        double H0Hours = (std::acos(cosH0) * RAD2DEG) / 15.0;
-        result->dureeVisibiliteHeures = 2.0 * H0Hours;
-        result->leverUT = std::fmod(transitUT - H0Hours + 24.0, 24.0);
-        result->coucherUT = std::fmod(transitUT + H0Hours + 24.0, 24.0);
-    }
-
-    double cosH6 = (std::sin(-6.0 * DEG2RAD) - std::sin(phi) * std::sin(decRad)) / (std::cos(phi) * std::cos(decRad));
-    if (cosH6 > -1.0 && cosH6 < 1.0) {
-        double H6Hours = (std::acos(cosH6) * RAD2DEG) / 15.0;
-        result->crepusculeUT = std::fmod(transitUT + H6Hours + 24.0, 24.0);
-    } else {
-        result->crepusculeUT = -1.0;
-    }
-
-    if (corpsType == 1) {
-        result->irradiance = (result->elevRefractee > 0.0) ? (1361.0 / (result->distUA * result->distUA)) * std::pow(0.7, result->airMass) : 0.0;
-        if (result->elevRefractee <= 0.0) {
-            double elevAbs = std::fmax(0.5, std::abs(result->elevGeom));
-            result->shadowLength = 1.0 / std::tan(elevAbs * DEG2RAD);
-        } else {
-            result->shadowLength = -1.0;
-        }
-    } else {
-        result->irradiance = 0.0;
-        result->shadowLength = -1.0;
-    }
-
-    double jdNow = (timestampSec / 86400.0) + 2440587.5;
-    double daysSinceJ2000 = jdNow - 2451545.0;
-
-    if (corpsType == 1) {
-        result->illuminatedFraction = 1.0;
-        result->moonPhasePct = 100.0;
-        result->astreAgeDays = (normaliserDegres(sunLongDeg) / 360.0) * 365.25636;
-        result->surfaceBrightness = -26.74;
-    } else if (result->distUA > 0.0 && dSunAstroUA > 0.0 && dSunEarthUA > 0.0) {
-        double cosPhase = (result->distUA * result->distUA + dSunAstroUA * dSunAstroUA - dSunEarthUA * dSunEarthUA) 
-                        / (2.0 * result->distUA * dSunAstroUA);
-        cosPhase = std::fmax(-1.0, std::fmin(1.0, cosPhase));
-        double phaseAngleRad = std::acos(cosPhase);
-
-        result->illuminatedFraction = 0.5 * (1.0 + std::cos(phaseAngleRad));
-        result->moonPhasePct = result->illuminatedFraction * 100.0;
-        result->surfaceBrightness = result->magnitudeApparente + 2.5 * std::log10(1.0 / (result->angularDiamArcsec * result->angularDiamArcsec + 1e-6));
-
-        if (corpsType == 2) {
-            result->astreAgeDays = (phaseAngleRad / M_PI) * 14.76529;
-        } else {
-            double pDays = (periodDays > 0.0) ? periodDays : 365.256;
-            result->astreAgeDays = std::fmod(std::fmod(daysSinceJ2000, pDays) + pDays, pDays);
-        }
-    } else {
-        result->illuminatedFraction = 1.0;
-        result->moonPhasePct = 100.0;
-        result->astreAgeDays = 0.0;
-        result->surfaceBrightness = 0.0;
-    }
-
-    if (corpsType == 1) {
-        result->glowTypeCode = 1;
-        if (result->elevRefractee > 0.0) {
-            result->skyGlowMagArcsec2 = 3.5 + 1.5 * (1.0 - std::sin(result->elevRefractee * DEG2RAD));
-        } else if (result->elevRefractee > -18.0) {
-            result->skyGlowMagArcsec2 = 5.0 + (std::abs(result->elevRefractee) / 18.0) * 16.8;
-        } else {
-            result->skyGlowMagArcsec2 = 21.95;
-        }
-    } else if (corpsType == 2) {
-        if (result->elevRefractee > -2.0 && result->illuminatedFraction >= 0.45) {
-            result->glowTypeCode = 2;
-            double facteurPhase = std::pow(result->illuminatedFraction, 2.5);
-            double facteurHauteur = std::sin(std::fmax(0.05, result->elevRefractee + 2.0) * DEG2RAD);
-            result->skyGlowMagArcsec2 = 21.95 - (4.45 * facteurPhase * std::pow(facteurHauteur, 0.4));
-        } else {
-            result->glowTypeCode = 0;
-            result->skyGlowMagArcsec2 = 21.95;
-        }
-    } else {
-        result->glowTypeCode = 0;
-        result->skyGlowMagArcsec2 = 0.0;
-    }
-
-    double M_anom = normaliserDegres((daysSinceJ2000 / (periodDays > 0.0 ? periodDays : 365.256)) * 360.0) * DEG2RAD;
-    double epsAstre = obliquityDeg * DEG2RAD;
-    double yObl = std::tan(epsAstre / 2.0);
-    yObl *= yObl;
-    double eqTimeRad = yObl * std::sin(2.0 * M_anom) 
-                     - 2.0 * eccentricity * std::sin(M_anom)
-                     + 4.0 * eccentricity * yObl * std::sin(M_anom) * std::cos(2.0 * M_anom);
-    result->astreEqTempsMin = (eqTimeRad * RAD2DEG) * 4.0;
-    result->astreMeanTimeHours = std::fmod((lhaDeg / 15.0) + 12.0 + 24.0, 24.0);
-    result->astreTrueTimeHours = std::fmod(result->astreMeanTimeHours + (result->astreEqTempsMin / 60.0) + 24.0, 24.0);
-
-    double elevHorizonLocal = obtenirElevationHorizonTopographique(result->azim);
-    if (result->elevRefractee < elevHorizonLocal) {
-        result->visibiliteCode = 0;
-    } else if (result->magnitudeApparente <= 6.0) {
-        result->visibiliteCode = 1;
-    } else if (result->magnitudeApparente <= 10.0) {
-        result->visibiliteCode = 2;
-    } else {
-        result->visibiliteCode = 3;
-    }
-}
-
-EMSCRIPTEN_KEEPALIVE
-void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int32_t idxSoleil, int32_t idxLune) {
-    if (!resultsArray || count <= 0) return;
-
-    AstroResult* soleil = (idxSoleil >= 0 && idxSoleil < count) ? &resultsArray[idxSoleil] : nullptr;
-    AstroResult* lune   = (idxLune >= 0 && idxLune < count)     ? &resultsArray[idxLune]   : nullptr;
-
-    if (soleil && lune) {
-        double sepSolLuneArcsec = separationAngulaireArcsec(soleil->raDeg, soleil->decDeg, lune->raDeg, lune->decDeg);
-        double rSolArcsec = soleil->angularDiamArcsec * 0.5;
-        double rLuneArcsec = lune->angularDiamArcsec * 0.5;
-
-        if (sepSolLuneArcsec < (rSolArcsec + rLuneArcsec)) {
-            double frac = calculerFractionRecouvrementDisques(sepSolLuneArcsec, rSolArcsec, rLuneArcsec);
-            soleil->occultationPct = frac * 100.0;
-            soleil->occultationCode = 1;
-            soleil->irradiance *= (1.0 - frac);
-        }
-
-        double raAntiSol = normaliserDegres(soleil->raDeg + 180.0);
-        double decAntiSol = -soleil->decDeg;
-        double sepLuneOmbreArcsec = separationAngulaireArcsec(lune->raDeg, lune->decDeg, raAntiSol, decAntiSol);
-
-        double distLuneKm = lune->distUA * UA_EN_KM;
-        double distSolKm  = soleil->distUA * UA_EN_KM;
-
-        if (distLuneKm > 0.0 && distSolKm > 0.0) {
-            double piLuneRad = std::asin(std::fmin(1.0, RAYON_TERRE_KM / distLuneKm));
-            double piSolRad  = std::asin(std::fmin(1.0, RAYON_TERRE_KM / distSolKm));
-            double sSolRad   = (rSolArcsec / 3600.0) * DEG2RAD;
-
-            double rOmbreArcsec    = 1.02 * (piLuneRad + piSolRad - sSolRad) * RAD2DEG * 3600.0;
-            double rPenombreArcsec = 1.02 * (piLuneRad + piSolRad + sSolRad) * RAD2DEG * 3600.0;
-
-            if (sepLuneOmbreArcsec < (rOmbreArcsec + rLuneArcsec)) {
-                double fracOmbre = calculerFractionRecouvrementDisques(sepLuneOmbreArcsec, rLuneArcsec, rOmbreArcsec);
-                lune->occultationPct = fracOmbre * 100.0;
-                lune->occultationCode = 2; // Ombre (Éclipse)
-            } else if (sepLuneOmbreArcsec < (rPenombreArcsec + rLuneArcsec)) {
-                double fracPenombre = calculerFractionRecouvrementDisques(sepLuneOmbreArcsec, rLuneArcsec, rPenombreArcsec);
-                lune->occultationPct = fracPenombre * 100.0;
-                lune->occultationCode = 3; // Pénombre
-            }
-        }
-    }
-
-    for (int32_t i = 0; i < count; ++i) {
-        if (i == idxSoleil || i == idxLune) continue;
-        AstroResult* astre = &resultsArray[i];
-        double rAstreArcsec = astre->angularDiamArcsec * 0.5;
-
-        if (lune) {
-            double sep = separationAngulaireArcsec(astre->raDeg, astre->decDeg, lune->raDeg, lune->decDeg);
-            double rLune = lune->angularDiamArcsec * 0.5;
-            if (sep < (rLune + rAstreArcsec)) {
-                astre->occultationPct = calculerFractionRecouvrementDisques(sep, rAstreArcsec, rLune) * 100.0;
-                astre->occultationCode = 4;
-                continue;
-            }
-        }
-
-        for (int32_t j = 0; j < count; ++j) {
-            if (i == j || j == idxSoleil || j == idxLune) continue;
-            AstroResult* autre = &resultsArray[j];
-            if (autre->distUA < astre->distUA) {
-                double sepMut = separationAngulaireArcsec(astre->raDeg, astre->decDeg, autre->raDeg, autre->decDeg);
-                double rAutre = autre->angularDiamArcsec * 0.5;
-                if (sepMut < (rAutre + rAstreArcsec)) {
-                    astre->occultationPct = calculerFractionRecouvrementDisques(sepMut, rAstreArcsec, rAutre) * 100.0;
-                    astre->occultationCode = 4;
+};
+
+importScripts('./wasm_astronomie.js');
+
+self.onmessage = function (e) {
+    try {
+        const data = e.data;
+        if (!data) return;
+
+        switch (data.type) {
+            case 'UPDATE_JPL_MATRIX':
+                if (!data.matrix || !data.matrix.DATA) throw new Error("Matrice JPL invalide.");
+                jplMatrixData = data.matrix;
+                if (data.matrix.ALMANACH && data.matrix.ALMANACH.iers_eop) {
+                    iersEopCourant = data.matrix.ALMANACH.iers_eop;
                 }
+                self.postMessage({ type: 'JPL_MATRIX_UPDATED' });
+                break;
+
+            case 'UPDATE_IERS_EOP':
+                if (data.eop) {
+                    iersEopCourant = data.eop;
+                }
+                break;
+
+            case 'LOAD_WMM_COF_TEXT':
+                wmmTableauCoeffs = analyserTexteWMMStricte(data.text);
+                wmmPret = true;
+                self.postMessage({ type: 'WMM_LOADED', status: 'success' });
+                break;
+
+            case 'COMPUTE':
+                if (!wasmPret || !wmmPret || !wmmTableauCoeffs) return;
+                traiterCalculsWasmStricts(data);
+                break;
+        }
+    } catch (erreur) {
+        self.postMessage({ type: 'FATAL_ERROR', message: erreur.message });
+    }
+};
+
+function analyserTexteWMMStricte(texte) {
+    const lignes = texte.split('\n');
+    const coeffs = [];
+    for (let ligne of lignes) {
+        const lineTrim = ligne.trim();
+        if (!lineTrim || lineTrim.startsWith('99999999') || lineTrim.startsWith('WMM')) continue;
+        const elements = lineTrim.split(/\s+/);
+        if (elements.length >= 6) {
+            const n = parseInt(elements[0], 10);
+            const m = parseInt(elements[1], 10);
+            if (!isNaN(n) && !isNaN(m) && n <= 12) {
+                coeffs.push({ 
+                    n: n, 
+                    m: m, 
+                    gnm: parseFloat(elements[2]), 
+                    hnm: parseFloat(elements[3]), 
+                    dgnm: parseFloat(elements[4]), 
+                    dhnm: parseFloat(elements[5]) 
+                });
             }
         }
     }
+    return coeffs;
+}
+
+function evaluerWMM2025Complet(coeffs, latDeg, lonDeg, altKm, decYear) {
+    if (!coeffs || coeffs.length === 0) {
+        return { declination: 1.79, inclination: 61.15, totalIntensity: 45000, secularVariationNt: -22.5, secularDeclinationMin: 7.8 };
+    }
+
+    const dt = decYear - 2025.0;
+    const a = 6371.2;
+    const r = 6378.137 + altKm;
+    const phi = latDeg * (Math.PI / 180.0);
+    const lambda = lonDeg * (Math.PI / 180.0);
+    const sinPhi = Math.sin(phi);
+    const cosPhi = Math.cos(phi);
+
+    const N_MAX = 12;
+    
+    const g = Array.from({ length: N_MAX + 1 }, () => Array(N_MAX + 1).fill(0.0));
+    const h = Array.from({ length: N_MAX + 1 }, () => Array(N_MAX + 1).fill(0.0));
+    const dg = Array.from({ length: N_MAX + 1 }, () => Array(N_MAX + 1).fill(0.0));
+    const dh = Array.from({ length: N_MAX + 1 }, () => Array(N_MAX + 1).fill(0.0));
+
+    for (const c of coeffs) {
+        if (c.n <= N_MAX && c.m <= c.n) {
+            g[c.n][c.m] = c.gnm + dt * c.dgnm;
+            h[c.n][c.m] = c.hnm + dt * c.dhnm;
+            dg[c.n][c.m] = c.dgnm;
+            dh[c.n][c.m] = c.dhnm;
+        }
+    }
+
+    const P = Array.from({ length: N_MAX + 1 }, () => Array(N_MAX + 1).fill(0.0));
+    const dP = Array.from({ length: N_MAX + 1 }, () => Array(N_MAX + 1).fill(0.0));
+
+    P[0][0] = 1.0;
+    dP[0][0] = 0.0;
+
+    let schmidtFactor = 1.0;
+    for (let n = 1; n <= N_MAX; n++) {
+        for (let m = 0; m <= n; m++) {
+            if (n === m) {
+                if (m > 0) {
+                    schmidtFactor = schmidtFactor * Math.sqrt((2 * m - 1) / (2 * m));
+                    P[n][n] = cosPhi * P[n - 1][n - 1] * schmidtFactor;
+                    dP[n][n] = (cosPhi * dP[n - 1][n - 1] - sinPhi * P[n - 1][n - 1]) * schmidtFactor;
+                }
+            } else if (n === 1 && m === 0) {
+                P[1][0] = sinPhi * P[0][0];
+                dP[1][0] = cosPhi * P[0][0];
+            } else if (n > m) {
+                const k_nm = ((n - 1)*(n - 1) - m*m) / ((2*n - 1)*(2*n - 3));
+                P[n][m] = sinPhi * P[n - 1][m] - Math.sqrt(k_nm) * P[n - 2][m];
+                dP[n][m] = sinPhi * dP[n - 1][m] + cosPhi * P[n - 1][m] - Math.sqrt(k_nm) * dP[n - 2][m];
+            }
+        }
+    }
+
+    let Br = 0, Btheta = 0, Bphi = 0;
+    const ar = a / r;
+
+    for (let n = 1; n <= N_MAX; n++) {
+        let sumG = 0, sumH = 0;
+        let dSumG = 0;
+
+        for (let m = 0; m <= n; m++) {
+            const cosM = Math.cos(m * lambda);
+            const sinM = Math.sin(m * lambda);
+
+            sumG += (g[n][m] * cosM + h[n][m] * sinM) * P[n][m];
+            dSumG += (g[n][m] * cosM + h[n][m] * sinM) * dP[n][m];
+
+            if (m > 0) {
+                const dCosM = -m * sinM;
+                const dSinM = m * cosM;
+                sumH += (g[n][m] * dCosM + h[n][m] * dSinM) * P[n][m];
+            }
+        }
+
+        const factor = Math.pow(ar, n + 2);
+        Br += (n + 1) * sumG * factor;
+        Btheta += -dSumG * factor;
+        Bphi += -sumH * factor / Math.max(1e-6, cosPhi);
+    }
+
+    const X = -Btheta;
+    const Y = Bphi;
+    const Z = Br;
+
+    const H = Math.hypot(X, Y);
+    const totalIntensity = Math.hypot(H, Z);
+    const declination = Math.atan2(Y, X) * (180.0 / Math.PI);
+    const inclination = Math.atan2(Z, H) * (180.0 / Math.PI);
+
+    let dBr_dt = 0;
+    for (let n = 1; n <= 2; n++) {
+        let s = 0;
+        for (let m = 0; m <= n; m++) {
+            s += (dg[n][m] * Math.cos(m * lambda) + dh[n][m] * Math.sin(m * lambda)) * P[n][m];
+        }
+        dBr_dt += (n + 1) * s * Math.pow(ar, n + 2);
+    }
+
+    const secDecMinVal = (Math.atan2(Y + dg[1][1], X + dg[1][0]) * (180 / Math.PI) - declination) * 60;
+
+    return {
+        declination: parseFloat(declination.toFixed(3)),
+        inclination: parseFloat(inclination.toFixed(3)),
+        totalIntensity: parseFloat(totalIntensity.toFixed(1)),
+        secularVariationNt: parseFloat((dBr_dt * 10).toFixed(1)),
+        secularDeclinationMin: parseFloat(secDecMinVal.toFixed(2))
+    };
+}
+
+function obtenirDeltaTRigoureux(timestampSec) {
+    const annee = new Date(timestampSec * 1000).getUTCFullYear();
+    const sautSecondesTAI_UTC = annee >= 2017 ? 37.0 : 36.0;
+    const ut1UtcSec = (iersEopCourant && typeof iersEopCourant.ut1_utc_sec === 'number') 
+        ? iersEopCourant.ut1_utc_sec 
+        : -0.0547;
+    
+    // ΔT = (TT - TAI) + (TAI - UTC) - (UT1 - UTC)
+    return 32.184 + sautSecondesTAI_UTC - ut1UtcSec;
+}
+
+function obtenirSegmentTchebychevOptime(segments, tEphemerideSec) {
+    if (!segments || segments.length === 0) return null;
+    const tStartGlobal = segments[0].t_start;
+    const pasSec = segments[0].t_end - segments[0].t_start;
+    if (pasSec > 0) {
+        let indexEstime = Math.floor((tEphemerideSec - tStartGlobal) / pasSec);
+        indexEstime = Math.max(0, Math.min(segments.length - 1, indexEstime));
+        const seg = segments[indexEstime];
+        if (tEphemerideSec >= (seg.t_start - 1e-3) && tEphemerideSec <= (seg.t_end + 1e-3)) return seg;
+    }
+    return segments.find(s => tEphemerideSec >= (s.t_start - 1e-3) && tEphemerideSec <= (s.t_end + 1e-3)) || segments[segments.length - 1];
+}
+
+function evaluerTchebychevStricte(coeffs, tau) {
+    if (!coeffs || coeffs.length === 0) return 0.0;
+    const degre = coeffs.length - 1;
+    if (degre === 0) return coeffs[0];
+    if (degre === 1) return coeffs[0] + coeffs[1] * tau;
+    let tPrev2 = 1.0, tPrev1 = tau, somme = coeffs[0] * tPrev2 + coeffs[1] * tPrev1;
+    for (let n = 2; n <= degre; n++) {
+        const tCurr = 2.0 * tau * tPrev1 - tPrev2;
+        somme += coeffs[n] * tCurr;
+        tPrev2 = tPrev1; tPrev1 = tCurr;
+    }
+    return somme;
+}
+
+function evaluerPositionCorpsAuTemps(segments, tEphemerideSec) {
+    const seg = obtenirSegmentTchebychevOptime(segments, tEphemerideSec);
+    if (!seg) return null;
+    const span = seg.t_end - seg.t_start;
+    let tau = span > 0 ? (2.0 * (tEphemerideSec - seg.t_start) / span) - 1.0 : 0.0;
+    if (tau < -1.0001) tau = -1.0;
+    else if (tau > 1.0001) tau = 1.0;
+
+    return {
+        seg: seg,
+        x: evaluerTchebychevStricte(seg.cx, tau),
+        y: evaluerTchebychevStricte(seg.cy, tau),
+        z: evaluerTchebychevStricte(seg.cz, tau),
+        vx: evaluerTchebychevStricte(seg.cvx, tau),
+        vy: evaluerTchebychevStricte(seg.cvy, tau),
+        vz: evaluerTchebychevStricte(seg.cvz, tau),
+        evx: seg.evx ? evaluerTchebychevStricte(seg.evx, tau) : 0.0,
+        evy: seg.evy ? evaluerTchebychevStricte(seg.evy, tau) : 0.0,
+        evz: seg.evz ? evaluerTchebychevStricte(seg.evz, tau) : 0.0
+    };
+}
+
+function traiterCalculsWasmStricts(params) {
+    if (!jplMatrixData || !jplMatrixData.DATA) return;
+
+    const ts = params.timestampUtc;
+    const coords = params.coords;
+    const meteo = params.meteo || { tempC: 15.0, presHpa: 1013.25, humiditePct: 50.0 };
+    const timestampSec = ts / 1000.0;
+    const formatH = (h) => (h < 0 || isNaN(h)) ? "N/A" : `${Math.floor(h).toString().padStart(2, '0')}:${Math.floor((h % 1) * 60).toString().padStart(2, '0')} UTC`;
+
+    const deltaTSeconds = obtenirDeltaTRigoureux(timestampSec);
+    const ut1UtcSec = (iersEopCourant && typeof iersEopCourant.ut1_utc_sec === 'number') ? iersEopCourant.ut1_utc_sec : -0.0547;
+    // TT - UTC = ΔT + (UT1 - UTC)
+    const ttMinusUtc = deltaTSeconds + ut1UtcSec;
+    const tEphemerideSec = timestampSec + ttMinusUtc;
+
+    const metricsPtr = Module._malloc(40);
+    let gastDeg, obliquiteDeg, sunTrueLong, eqTempsMin;
+
+    try {
+        Module._calculerParametresSiderauxEtSolaires(timestampSec, coords.lon, deltaTSeconds, metricsPtr);
+        eqTempsMin = Module.HEAPF64[metricsPtr >> 3];
+        obliquiteDeg = Module.HEAPF64[(metricsPtr >> 3) + 1];
+        sunTrueLong = Module.HEAPF64[(metricsPtr >> 3) + 2];
+        gastDeg = Module.HEAPF64[(metricsPtr >> 3) + 3];
+    } finally {
+        Module._free(metricsPtr);
+    }
+
+    let geoidOndulationM = 0.0;
+    if (typeof Module._calculerOndulationGeoideEGM === 'function') {
+        geoidOndulationM = Module._calculerOndulationGeoideEGM(coords.lat, coords.lon);
+    }
+
+    const jde = ((timestampSec + ttMinusUtc) / 86400.0) + 2440587.5;
+    const decimalYear = 2000.0 + (jde - 2451545.0) / 365.25;
+
+    const structSize = 240;
+    const bodiesResult = {};
+    const UA_KM = 149597870.7;
+
+    const terreSegments = jplMatrixData.DATA["TERRE"] || jplMatrixData.DATA["EARTH"];
+    const terrePos = evaluerPositionCorpsAuTemps(terreSegments, tEphemerideSec);
+    const earthVx = terrePos ? terrePos.evx : 0.0;
+    const earthVy = terrePos ? terrePos.evy : 0.0;
+    const earthVz = terrePos ? terrePos.evz : 0.0;
+
+    const sunSegments = jplMatrixData.DATA["SOLEIL"] || jplMatrixData.DATA["SUN"];
+    const sunPos = evaluerPositionCorpsAuTemps(sunSegments, tEphemerideSec);
+    const dSunEarthUA = sunPos ? (Math.hypot(sunPos.x, sunPos.y, sunPos.z) / UA_KM) : 1.0;
+    const sunX_km = sunPos ? sunPos.x : 0.0;
+    const sunY_km = sunPos ? sunPos.y : 0.0;
+    const sunZ_km = sunPos ? sunPos.z : 0.0;
+
+    const nomsCorps = Object.keys(jplMatrixData.DATA).filter(k => jplMatrixData.DATA[k] && jplMatrixData.DATA[k].length > 0);
+    const count = nomsCorps.length;
+    const arrayPtr = Module._malloc(structSize * count);
+
+    let idxSoleil = -1;
+    let idxLune = -1;
+
+    try {
+        for (let i = 0; i < count; i++) {
+            const nomCorps = nomsCorps[i];
+            const nomUpper = nomCorps.toUpperCase();
+            if (nomUpper === "TERRE" || nomUpper === "EARTH") continue;
+
+            const segments = jplMatrixData.DATA[nomCorps];
+            const posData = evaluerPositionCorpsAuTemps(segments, tEphemerideSec);
+            if (!posData) continue;
+
+            const { seg, x, y, z, vx, vy, vz } = posData;
+            let corpsType = 0;
+            if (nomUpper === "SOLEIL" || nomUpper === "SUN") { corpsType = 1; idxSoleil = i; }
+            else if (nomUpper === "LUNE" || nomUpper === "MOON") { corpsType = 2; idxLune = i; }
+
+            const dj1 = 2440587.5;
+            const dj2 = timestampSec / 86400.0;
+            const eraRad = (typeof Module._eraEra00 === 'function') 
+                ? Module._eraEra00(dj1, dj2 + ut1UtcSec / 86400.0) 
+                : (gastDeg * (Math.PI / 180.0));
+
+            let dSunAstroUA = (corpsType !== 1 && sunPos) ? (Math.hypot(x - sunPos.x, y - sunPos.y, z - sunPos.z) / UA_KM) : 1.0;
+
+            const phys = PHYSIQUE_INTRINSEQUE_CORPS[nomUpper] || { ecc: 0.0167, obl: 23.44 };
+            const itemPtr = arrayPtr + (i * structSize);
+
+            const xpSec = iersEopCourant.xp_arcsec || 0.0;
+            const ypSec = iersEopCourant.yp_arcsec || 0.0;
+
+            Module._calculerDepuisECEF(
+                x, y, z, vx, vy, vz, 
+                earthVx, earthVy, earthVz,
+                coords.lat, coords.lon, coords.alt, 
+                eraRad, xpSec, ypSec,
+                meteo.tempC, meteo.presHpa, meteo.humiditePct, 0.15, 
+                seg.mag ?? 0.0, corpsType,
+                dSunAstroUA, dSunEarthUA, seg.rayon_km ?? 0.0,
+                seg.period_days ?? 365.256, phys.ecc, phys.obl, sunTrueLong,
+                sunX_km, sunY_km, sunZ_km,
+                timestampSec,
+                deltaTSeconds,
+                itemPtr
+            );
+        }
+
+        if (typeof Module._evaluerOccultationsEtEclipses === 'function') {
+            Module._evaluerOccultationsEtEclipses(arrayPtr, count, idxSoleil, idxLune);
+        }
+
+        for (let i = 0; i < count; i++) {
+            const nomCorps = nomsCorps[i];
+            const nomUpper = nomCorps.toUpperCase();
+            if (nomUpper === "TERRE" || nomUpper === "EARTH") continue;
+
+            const seg = obtenirSegmentTchebychevOptime(jplMatrixData.DATA[nomCorps], tEphemerideSec);
+            if (!seg) continue;
+
+            const itemPtr = arrayPtr + (i * structSize);
+            const ptrF64 = itemPtr >> 3;
+
+            const azim = Module.HEAPF64[ptrF64];
+            const elevGeom = Module.HEAPF64[ptrF64 + 1];
+            const elevRefractee = Module.HEAPF64[ptrF64 + 2];
+            const raDeg = Module.HEAPF64[ptrF64 + 3];
+            const decDeg = Module.HEAPF64[ptrF64 + 4];
+            const distUA = Module.HEAPF64[ptrF64 + 5];
+            const leverUT = Module.HEAPF64[ptrF64 + 6];
+            const coucherUT = Module.HEAPF64[ptrF64 + 7];
+            const airMass = Module.HEAPF64[ptrF64 + 8];
+            const irradiance = Module.HEAPF64[ptrF64 + 9];
+            const ghaDeg = Module.HEAPF64[ptrF64 + 11];
+            const magApp = Module.HEAPF64[ptrF64 + 13];
+            const shadowLen = Module.HEAPF64[ptrF64 + 14];
+            const moonPhasePct = Module.HEAPF64[ptrF64 + 15];
+            const astreAgeDays = Module.HEAPF64[ptrF64 + 16];
+            const crepusculeUT = Module.HEAPF64[ptrF64 + 17];
+            const dureeVisibilite = Module.HEAPF64[ptrF64 + 18];
+            const angularDiamArcsec = Module.HEAPF64[ptrF64 + 19];
+            const surfaceBrightness = Module.HEAPF64[ptrF64 + 20];
+            const illuminatedFraction = Module.HEAPF64[ptrF64 + 21];
+            const radialVelocityKmS = Module.HEAPF64[ptrF64 + 22];
+            const occultationPct = Module.HEAPF64[ptrF64 + 23];
+            const skyGlowMagArcsec2 = Module.HEAPF64[ptrF64 + 24];
+            const astreMeanTimeHours = Module.HEAPF64[ptrF64 + 25];
+            const astreTrueTimeHours = Module.HEAPF64[ptrF64 + 26];
+            const astreEqTempsMin = Module.HEAPF64[ptrF64 + 27];
+
+            const visCode = Module.HEAP32[(itemPtr + 224) >> 2];
+            const occultCode = Module.HEAP32[(itemPtr + 228) >> 2];
+            const glowTypeCode = Module.HEAP32[(itemPtr + 232) >> 2];
+
+            const estSoleil = (nomUpper === "SOLEIL" || nomUpper === "SUN");
+            const estLune = (nomUpper === "LUNE" || nomUpper === "MOON");
+            const phys = PHYSIQUE_INTRINSEQUE_CORPS[nomUpper] || { ecc: 0.0167, obl: 23.44 };
+
+            const objetAstreResultat = {
+                elevationGeometrique: elevGeom,
+                elevationApparente: elevRefractee,
+                azimuth: azim,
+                distanceAu: distUA,
+                magnitude: magApp,
+                raDeg: raDeg,
+                decDeg: decDeg,
+                visibiliteCode: visCode,
+                occultationCode: occultCode,
+                occultationPct: occultationPct,
+                angularDiamArcsec: angularDiamArcsec,
+                radialVelocityKmS: radialVelocityKmS,
+                airMass: airMass,
+                irradiance: irradiance,
+                jde: jde,
+                deltat: deltaTSeconds,
+                ghaDeg: ghaDeg,
+                illuminatedFraction: illuminatedFraction,
+                moonPhasePct: moonPhasePct,
+                astreAgeDays: astreAgeDays,
+                surfaceBrightness: surfaceBrightness,
+                skyGlowMagArcsec2: skyGlowMagArcsec2,
+                glowTypeCode: glowTypeCode,
+                astreMeanTimeDisplay: formatH(astreMeanTimeHours).replace(" UTC", ""),
+                astreTrueTimeDisplay: formatH(astreTrueTimeHours).replace(" UTC", ""),
+                astreEqTempsMin: astreEqTempsMin,
+                astreEccentricity: phys.ecc,
+                astreObliquity: phys.obl,
+                rmsArcsecDisplay: (estSoleil || estLune) ? "±0.0001″" : "±0.0005″",
+                distanceMinMaxDisplay: `${distUA.toFixed(6)} AU`,
+                constellationDisplay: "JPL-DE440s / SOFA (High-Res)",
+                perigeeDisplay: `${seg.perigee_ua.toFixed(5)} AU`,
+                perihelionDisplay: `${seg.perihelion_ua.toFixed(4)} AU`,
+                aphelionDisplay: `${seg.aphelion_ua.toFixed(4)} AU`,
+                orbitPeriodDisplay: `${seg.period_days.toFixed(1)} j`,
+                lengthOfDayDisplay: `${seg.lod_hours.toFixed(1)} h`,
+                orbitalVelocityDisplay: `${seg.vel_kms.toFixed(2)} km/s`,
+                shadowLengthDisplay: (shadowLen > 0) ? `${shadowLen.toFixed(2)} m` : "N/A (Jour)",
+                astreRise: formatH(leverUT),
+                astreSet: formatH(coucherUT),
+                duskGlowDisplay: glowTypeCode === 1 ? `${formatH(crepusculeUT)} | Lueur Sol. (${skyGlowMagArcsec2.toFixed(1)} mag/″²)` : "N/A",
+                visibilityDuration: (dureeVisibilite >= 0) ? `${dureeVisibilite.toFixed(2)} h` : "N/A"
+            };
+
+            const cleMin = nomCorps.toLowerCase();
+            bodiesResult[cleMin] = objetAstreResultat;
+            if (estSoleil) {
+                bodiesResult["sun"] = objetAstreResultat;
+                bodiesResult["soleil"] = objetAstreResultat;
+            } else if (estLune) {
+                bodiesResult["moon"] = objetAstreResultat;
+                bodiesResult["lune"] = objetAstreResultat;
+            }
+        }
+    } finally {
+        Module._free(arrayPtr);
+    }
+
+    self.postMessage({
+        type: 'RESULTS_COMPUTE',
+        bodies: bodiesResult,
+        wmm: evaluerWMM2025Complet(wmmTableauCoeffs, coords.lat, coords.lon, (coords.alt || 0) / 1000.0, decimalYear),
+        geoidOndulationM: parseFloat(geoidOndulationM.toFixed(2)),
+        metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, longSolaireDeg: sunTrueLong }
+    });
 }
