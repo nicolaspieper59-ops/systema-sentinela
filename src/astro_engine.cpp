@@ -7,7 +7,6 @@
 extern "C" {
 #include "sofa.h"
 #include "sofam.h"
-}
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -87,7 +86,7 @@ inline double separationAngulaireArcsec(double ra1Deg, double dec1Deg, double ra
     return std::atan2(num, den) * RAD2DEG * 3600.0;
 }
 
-double obtenirElevationHorizonTopographique(double azimutDeg, double profilHorizonMNT = 0.0) {
+inline double obtenirElevationHorizonTopographique(double azimutDeg, double profilHorizonMNT = 0.0) {
     (void)azimutDeg;
     return profilHorizonMNT;
 }
@@ -98,7 +97,6 @@ double normaliserDegres(double deg) {
     return res < 0.0 ? res + 360.0 : res;
 }
 
-// Modèle unifié EGM2008 harmonique sphérique cohérent entre C++ et Front-End
 EMSCRIPTEN_KEEPALIVE
 double calculerOndulationGeoideEGM(double latDeg, double lonDeg) {
     double phi = latDeg * DEG2RAD;
@@ -182,7 +180,6 @@ void calculerDepuisECEF(
         zICRF_km / UA_EN_KM 
     };
 
-    // Déflexion gravitationnelle relativiste via SOFA iauLd
     double pld[3] = { pnat[0], pnat[1], pnat[2] };
     if (corpsType != 1 && distAU > 0.0 && dSunEarthUA > 0.0) {
         double pDir[3] = { xICRF_km / distKm, yICRF_km / distKm, zICRF_km / distKm };
@@ -436,8 +433,7 @@ void calculerDepuisECEF(
     }
 }
 
-
-            EMSCRIPTEN_KEEPALIVE
+EMSCRIPTEN_KEEPALIVE
 void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int32_t idxSoleil, int32_t idxLune) {
     if (!resultsArray || count <= 0) return;
 
@@ -488,7 +484,7 @@ void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int
         AstroResult* astre = &resultsArray[i];
         double rAstreArcsec = astre->angularDiamArcsec * 0.5;
 
-        if (lune) {
+if (lune){
             double sep = separationAngulaireArcsec(astre->raDeg, astre->decDeg, lune->raDeg, lune->decDeg);
             double rLune = lune->angularDiamArcsec * 0.5;
             if (sep < (rLune + rAstreArcsec)) {
@@ -496,9 +492,9 @@ void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int
                 astre->occultationCode = 4;
                 continue;
             }
-        }
+}
 
-        for (int32_t j = 0; j < count; ++j) {
+for (int32_t j = 0; j < count; ++j) {
             if (i == j || j == idxSoleil || j == idxLune) continue;
             AstroResult* autre = &resultsArray[j];
             if (autre->distUA < astre->distUA) {
