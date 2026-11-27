@@ -484,7 +484,7 @@ void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int
         AstroResult* astre = &resultsArray[i];
         double rAstreArcsec = astre->angularDiamArcsec * 0.5;
 
-if (lune){
+        if (lune) {
             double sep = separationAngulaireArcsec(astre->raDeg, astre->decDeg, lune->raDeg, lune->decDeg);
             double rLune = lune->angularDiamArcsec * 0.5;
             if (sep < (rLune + rAstreArcsec)) {
@@ -492,9 +492,9 @@ if (lune){
                 astre->occultationCode = 4;
                 continue;
             }
-}
+        }
 
-for (int32_t j = 0; j < count; ++j) {
+        for (int32_t j = 0; j < count; ++j) {
             if (i == j || j == idxSoleil || j == idxLune) continue;
             AstroResult* autre = &resultsArray[j];
             if (autre->distUA < astre->distUA) {
@@ -507,4 +507,6 @@ for (int32_t j = 0; j < count; ++j) {
             }
         }
     }
-}
+} // Fin de la fonction evaluerOccultationsEtEclipses
+
+} // Fin unique du bloc global extern "C" ouvert au début du fichier
