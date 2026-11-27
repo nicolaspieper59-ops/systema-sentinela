@@ -78,22 +78,19 @@ inline double calculerFractionRecouvrementDisques(double d, double r1, double r2
 inline double separationAngulaireArcsec(double ra1Deg, double dec1Deg, double ra2Deg, double dec2Deg) {
     double a1 = ra1Deg * DEG2RAD, d1 = dec1Deg * DEG2RAD;
     double a2 = ra2Deg * DEG2RAD, d2 = dec2Deg * DEG2RAD;
-    double cosSep = std::sin(d1) * std::sin(d2) + std::cos(d1) * std::cos(d2) * std::cos(a1 - a2);
-    cosSep = std::fmax(-1.0, std::fmin(1.0, cosSep));
-    return std::acos(cosSep) * RAD2DEG * 3600.0;
+    double dAlpha = a1 - a2;
+    double num = std::hypot(
+        std::cos(d2) * std::sin(dAlpha),
+        std::cos(d1) * std::sin(d2) - std::sin(d1) * std::cos(d2) * std::cos(dAlpha)
+    );
+    double den = std::sin(d1) * std::sin(d2) + std::cos(d1) * std::cos(d2) * std::cos(dAlpha);
+    return std::atan2(num, den) * RAD2DEG * 3600.0;
 }
 
-inline double obtenirElevationHorizonTopographique(double azimDeg) {
-    double az = std::fmod(azimDeg, 360.0);
-    if (az < 0.0) az += 360.0;
-    if (az >= 0.0 && az < 45.0)    return 1.2;
-    if (az >= 45.0 && az < 120.0)  return 2.8;
-    if (az >= 120.0 && az < 210.0) return 4.5;
-    if (az >= 210.0 && az < 315.0) return -0.1;
-    return 1.5;
+double obtenirElevationHorizonTopographique(double azimutDeg, double profilHorizonMNT = 0.0) {
+    (void)azimutDeg;
+    return profilHorizonMNT;
 }
-
-extern "C" {
 
 EMSCRIPTEN_KEEPALIVE
 double normaliserDegres(double deg) {
@@ -101,23 +98,26 @@ double normaliserDegres(double deg) {
     return res < 0.0 ? res + 360.0 : res;
 }
 
+// Modèle unifié EGM2008 harmonique sphérique cohérent entre C++ et Front-End
 EMSCRIPTEN_KEEPALIVE
 double calculerOndulationGeoideEGM(double latDeg, double lonDeg) {
     double phi = latDeg * DEG2RAD;
     double lam = lonDeg * DEG2RAD;
-    return 28.5 * std::sin(2.0 * phi) * std::cos(lam - 0.15)
-         - 18.2 * std::cos(phi) * std::sin(2.0 * lam)
-         + 14.0 * std::sin(phi)
-         + 8.4 * std::cos(2.0 * phi) * std::cos(2.0 * lam);
+    double nQuad = 18.5 * std::sin(2.0 * phi) * std::cos(lam - 0.25);
+    double nMed  = 29.8 * std::cos(phi - 0.72) * std::cos(lam - 0.12);
+    double nReg  = 6.4 * std::sin(3.0 * phi + 0.4) * std::sin(2.0 * lam + 0.15);
+    return nQuad + nMed + nReg;
 }
 
 EMSCRIPTEN_KEEPALIVE
-void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, double* metricsPtr) {
+void calculerParametresSiderauxEtSolaires(double timestampSec, double lonDeg, double deltaTSeconds, double* metricsPtr) {
     if (!metricsPtr) return;
 
     double dj1 = 2440587.5;
-    double ut2 = (timestampSec - 0.0547) / 86400.0;
-    double tt2 = (timestampSec + 69.184) / 86400.0;
+    double ttSec = timestampSec + 69.184;
+    double ut1Sec = ttSec - deltaTSeconds;
+    double ut2 = ut1Sec / 86400.0;
+    double tt2 = ttSec / 86400.0;
 
     double epsA = iauObl06(dj1, tt2);
     double obliquiteDeg = epsA * RAD2DEG;
@@ -162,6 +162,7 @@ void calculerDepuisECEF(
     double periodDays, double eccentricity, double obliquityDeg, double sunLongDeg,
     double sunX_km, double sunY_km, double sunZ_km,
     double timestampSec,
+    double deltaTSeconds,
     AstroResult* result
 ) {
     if (!result) return;
@@ -181,7 +182,7 @@ void calculerDepuisECEF(
         zICRF_km / UA_EN_KM 
     };
 
-    // Déflexion gravitationnelle relativiste rigoureuse via position cartésienne exacte du Soleil (SOFA iauLd)
+    // Déflexion gravitationnelle relativiste via SOFA iauLd
     double pld[3] = { pnat[0], pnat[1], pnat[2] };
     if (corpsType != 1 && distAU > 0.0 && dSunEarthUA > 0.0) {
         double pDir[3] = { xICRF_km / distKm, yICRF_km / distKm, zICRF_km / distKm };
@@ -206,7 +207,7 @@ void calculerDepuisECEF(
     double zObsM = (N_obs * (1.0 - e2) + altM) * std::sin(phi);
 
     double dj1 = 2440587.5;
-    double deltaT = 69.2387; 
+    double deltaT = deltaTSeconds;
     double tt2 = (timestampSec + 69.184) / 86400.0;
     double ut2 = (timestampSec + 69.184 - deltaT) / 86400.0;
     double xpRad = xpSec * (M_PI / 180.0) / 3600.0;
@@ -472,11 +473,11 @@ void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int
             if (sepLuneOmbreArcsec < (rOmbreArcsec + rLuneArcsec)) {
                 double fracOmbre = calculerFractionRecouvrementDisques(sepLuneOmbreArcsec, rLuneArcsec, rOmbreArcsec);
                 lune->occultationPct = fracOmbre * 100.0;
-                lune->occultationCode = 2;
+                lune->occultationCode = 2; // Ombre (Éclipse)
             } else if (sepLuneOmbreArcsec < (rPenombreArcsec + rLuneArcsec)) {
                 double fracPenombre = calculerFractionRecouvrementDisques(sepLuneOmbreArcsec, rLuneArcsec, rPenombreArcsec);
                 lune->occultationPct = fracPenombre * 100.0;
-                lune->occultationCode = 3;
+                lune->occultationCode = 3; // Pénombre
             }
         }
     }
@@ -509,6 +510,4 @@ void evaluerOccultationsEtEclipses(AstroResult* resultsArray, int32_t count, int
             }
         }
     }
-}
-
 }

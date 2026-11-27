@@ -1,9 +1,10 @@
 /**
- * SYSTEMA SENTINELA — WEB WORKER KERNEL (v19.50 - Rigorous Wasm & Dual-Key Mapping)
+ * SYSTEMA SENTINELA — WEB WORKER KERNEL (v19.60 - Rigorous Wasm & Dual-Key Mapping)
  * Corrections appliquées :
+ * - Cohérence stricte entre deltaTSeconds et ttMinusUtc via EOP IERS
+ * - Propagation de deltaTSeconds vers _calculerParametresSiderauxEtSolaires et _calculerDepuisECEF
+ * - Typage numérique strict (float) pour secularDeclinationMin
  * - Double indexation rigoureuse des clés (ex: "soleil" et "sun", "lune" et "moon")
- * - Alignement mémoire sécurisé avec la structure C++ AstroResult (taille 240 octets)
- * - Gestion optimale du delta T, des EOP IERS et du modèle géomagnétique WMM-2025
  */
 
 let jplMatrixData = null;
@@ -81,7 +82,14 @@ function analyserTexteWMMStricte(texte) {
             const n = parseInt(elements[0], 10);
             const m = parseInt(elements[1], 10);
             if (!isNaN(n) && !isNaN(m) && n <= 12) {
-                coeffs.push({ n: n, m: m, gnm: parseFloat(elements[2]), hnm: parseFloat(elements[3]), dgnm: parseFloat(elements[4]), dhnm: parseFloat(elements[5]) });
+                coeffs.push({ 
+                    n: n, 
+                    m: m, 
+                    gnm: parseFloat(elements[2]), 
+                    hnm: parseFloat(elements[3]), 
+                    dgnm: parseFloat(elements[4]), 
+                    dhnm: parseFloat(elements[5]) 
+                });
             }
         }
     }
@@ -89,51 +97,124 @@ function analyserTexteWMMStricte(texte) {
 }
 
 function evaluerWMM2025Complet(coeffs, latDeg, lonDeg, altKm, decYear) {
-    if (!coeffs || coeffs.length === 0) return { declination: 1.79, inclination: 61.15, totalIntensity: 45000 };
+    if (!coeffs || coeffs.length === 0) {
+        return { declination: 1.79, inclination: 61.15, totalIntensity: 45000, secularVariationNt: -22.5, secularDeclinationMin: 7.8 };
+    }
+
     const dt = decYear - 2025.0;
     const a = 6371.2;
     const r = 6378.137 + altKm;
+    const phi = latDeg * (Math.PI / 180.0);
     const lambda = lonDeg * (Math.PI / 180.0);
+    const sinPhi = Math.sin(phi);
+    const cosPhi = Math.cos(phi);
 
-    let gSum = 0, hSum = 0;
+    const N_MAX = 12;
+    
+    const g = Array.from({ length: N_MAX + 1 }, () => Array(N_MAX + 1).fill(0.0));
+    const h = Array.from({ length: N_MAX + 1 }, () => Array(N_MAX + 1).fill(0.0));
+    const dg = Array.from({ length: N_MAX + 1 }, () => Array(N_MAX + 1).fill(0.0));
+    const dh = Array.from({ length: N_MAX + 1 }, () => Array(N_MAX + 1).fill(0.0));
+
     for (const c of coeffs) {
-        const g = c.gnm + dt * c.dgnm;
-        const h = c.hnm + dt * c.dhnm;
-        const factor = Math.pow(a / r, c.n + 2);
-        if (c.m === 0) {
-            gSum += g * factor;
-        } else {
-            gSum += (g * Math.cos(c.m * lambda) + h * Math.sin(c.m * lambda)) * factor;
+        if (c.n <= N_MAX && c.m <= c.n) {
+            g[c.n][c.m] = c.gnm + dt * c.dgnm;
+            h[c.n][c.m] = c.hnm + dt * c.dhnm;
+            dg[c.n][c.m] = c.dgnm;
+            dh[c.n][c.m] = c.dhnm;
         }
     }
 
-    const declination = Math.atan2(hSum, gSum + 1e-4) * (180.0 / Math.PI);
-    const inclination = 61.15 + (latDeg * 0.05);
-    const totalIntensity = 45000.0 - (latDeg * 150.0);
+    const P = Array.from({ length: N_MAX + 1 }, () => Array(N_MAX + 1).fill(0.0));
+    const dP = Array.from({ length: N_MAX + 1 }, () => Array(N_MAX + 1).fill(0.0));
+
+    P[0][0] = 1.0;
+    dP[0][0] = 0.0;
+
+    let schmidtFactor = 1.0;
+    for (let n = 1; n <= N_MAX; n++) {
+        for (let m = 0; m <= n; m++) {
+            if (n === m) {
+                if (m > 0) {
+                    schmidtFactor = schmidtFactor * Math.sqrt((2 * m - 1) / (2 * m));
+                    P[n][n] = cosPhi * P[n - 1][n - 1] * schmidtFactor;
+                    dP[n][n] = (cosPhi * dP[n - 1][n - 1] - sinPhi * P[n - 1][n - 1]) * schmidtFactor;
+                }
+            } else if (n === 1 && m === 0) {
+                P[1][0] = sinPhi * P[0][0];
+                dP[1][0] = cosPhi * P[0][0];
+            } else if (n > m) {
+                const k_nm = ((n - 1)*(n - 1) - m*m) / ((2*n - 1)*(2*n - 3));
+                P[n][m] = sinPhi * P[n - 1][m] - Math.sqrt(k_nm) * P[n - 2][m];
+                dP[n][m] = sinPhi * dP[n - 1][m] + cosPhi * P[n - 1][m] - Math.sqrt(k_nm) * dP[n - 2][m];
+            }
+        }
+    }
+
+    let Br = 0, Btheta = 0, Bphi = 0;
+    const ar = a / r;
+
+    for (let n = 1; n <= N_MAX; n++) {
+        let sumG = 0, sumH = 0;
+        let dSumG = 0;
+
+        for (let m = 0; m <= n; m++) {
+            const cosM = Math.cos(m * lambda);
+            const sinM = Math.sin(m * lambda);
+
+            sumG += (g[n][m] * cosM + h[n][m] * sinM) * P[n][m];
+            dSumG += (g[n][m] * cosM + h[n][m] * sinM) * dP[n][m];
+
+            if (m > 0) {
+                const dCosM = -m * sinM;
+                const dSinM = m * cosM;
+                sumH += (g[n][m] * dCosM + h[n][m] * dSinM) * P[n][m];
+            }
+        }
+
+        const factor = Math.pow(ar, n + 2);
+        Br += (n + 1) * sumG * factor;
+        Btheta += -dSumG * factor;
+        Bphi += -sumH * factor / Math.max(1e-6, cosPhi);
+    }
+
+    const X = -Btheta;
+    const Y = Bphi;
+    const Z = Br;
+
+    const H = Math.hypot(X, Y);
+    const totalIntensity = Math.hypot(H, Z);
+    const declination = Math.atan2(Y, X) * (180.0 / Math.PI);
+    const inclination = Math.atan2(Z, H) * (180.0 / Math.PI);
+
+    let dBr_dt = 0;
+    for (let n = 1; n <= 2; n++) {
+        let s = 0;
+        for (let m = 0; m <= n; m++) {
+            s += (dg[n][m] * Math.cos(m * lambda) + dh[n][m] * Math.sin(m * lambda)) * P[n][m];
+        }
+        dBr_dt += (n + 1) * s * Math.pow(ar, n + 2);
+    }
+
+    const secDecMinVal = (Math.atan2(Y + dg[1][1], X + dg[1][0]) * (180 / Math.PI) - declination) * 60;
 
     return {
         declination: parseFloat(declination.toFixed(3)),
         inclination: parseFloat(inclination.toFixed(3)),
         totalIntensity: parseFloat(totalIntensity.toFixed(1)),
-        secularVariationNt: -22.5,
-        secularDeclinationMin: 7.8
+        secularVariationNt: parseFloat((dBr_dt * 10).toFixed(1)),
+        secularDeclinationMin: parseFloat(secDecMinVal.toFixed(2))
     };
 }
 
-/**
- * Calcule un Delta T rigoureux basé sur les données IERS EOP courantes.
- * @returns {number} Delta T en secondes
- */
-function obtenirDeltaTRigoureux() {
-    const anneeCourante = new Date().getUTCFullYear();
-    // Secondes intercalaires officielles (TAI - UTC) estimées ou récupérées
-    const sautSecondesTAI_UTC = anneeCourante >= 2017 ? 37.0 : 36.0;
+function obtenirDeltaTRigoureux(timestampSec) {
+    const annee = new Date(timestampSec * 1000).getUTCFullYear();
+    const sautSecondesTAI_UTC = annee >= 2017 ? 37.0 : 36.0;
     const ut1UtcSec = (iersEopCourant && typeof iersEopCourant.ut1_utc_sec === 'number') 
         ? iersEopCourant.ut1_utc_sec 
         : -0.0547;
     
-    // Formule standard : ΔT = (TT - TAI) + (TAI - UTC) - (UT1 - UTC)
-    // TT - TAI = 32.184 secondes exactes
+    // ΔT = (TT - TAI) + (TAI - UTC) - (UT1 - UTC)
     return 32.184 + sautSecondesTAI_UTC - ut1UtcSec;
 }
 
@@ -195,11 +276,17 @@ function traiterCalculsWasmStricts(params) {
     const timestampSec = ts / 1000.0;
     const formatH = (h) => (h < 0 || isNaN(h)) ? "N/A" : `${Math.floor(h).toString().padStart(2, '0')}:${Math.floor((h % 1) * 60).toString().padStart(2, '0')} UTC`;
 
+    const deltaTSeconds = obtenirDeltaTRigoureux(timestampSec);
+    const ut1UtcSec = (iersEopCourant && typeof iersEopCourant.ut1_utc_sec === 'number') ? iersEopCourant.ut1_utc_sec : -0.0547;
+    // TT - UTC = ΔT + (UT1 - UTC)
+    const ttMinusUtc = deltaTSeconds + ut1UtcSec;
+    const tEphemerideSec = timestampSec + ttMinusUtc;
+
     const metricsPtr = Module._malloc(40);
     let gastDeg, obliquiteDeg, sunTrueLong, eqTempsMin;
 
     try {
-        Module._calculerParametresSiderauxEtSolaires(timestampSec, coords.lon, metricsPtr);
+        Module._calculerParametresSiderauxEtSolaires(timestampSec, coords.lon, deltaTSeconds, metricsPtr);
         eqTempsMin = Module.HEAPF64[metricsPtr >> 3];
         obliquiteDeg = Module.HEAPF64[(metricsPtr >> 3) + 1];
         sunTrueLong = Module.HEAPF64[(metricsPtr >> 3) + 2];
@@ -213,13 +300,8 @@ function traiterCalculsWasmStricts(params) {
         geoidOndulationM = Module._calculerOndulationGeoideEGM(coords.lat, coords.lon);
     }
 
-    const jde = (ts / 86400000.0) + 2440587.5;
+    const jde = ((timestampSec + ttMinusUtc) / 86400.0) + 2440587.5;
     const decimalYear = 2000.0 + (jde - 2451545.0) / 365.25;
-    const deltaTSeconds = obtenirDeltaTRigoureux(); 
-
-    const anneeCourante = new Date().getUTCFullYear();
-    const ttMinusUtc = 32.184 + (anneeCourante >= 2017 ? 37.0 : 36.0);
-    const tEphemerideSec = timestampSec + ttMinusUtc;
 
     const structSize = 240;
     const bodiesResult = {};
@@ -262,9 +344,8 @@ function traiterCalculsWasmStricts(params) {
 
             const dj1 = 2440587.5;
             const dj2 = timestampSec / 86400.0;
-            const ut1Sec = (iersEopCourant.ut1_utc_sec || 0.0);
             const eraRad = (typeof Module._eraEra00 === 'function') 
-                ? Module._eraEra00(dj1, dj2 + ut1Sec / 86400.0) 
+                ? Module._eraEra00(dj1, dj2 + ut1UtcSec / 86400.0) 
                 : (gastDeg * (Math.PI / 180.0));
 
             let dSunAstroUA = (corpsType !== 1 && sunPos) ? (Math.hypot(x - sunPos.x, y - sunPos.y, z - sunPos.z) / UA_KM) : 1.0;
@@ -286,6 +367,7 @@ function traiterCalculsWasmStricts(params) {
                 seg.period_days ?? 365.256, phys.ecc, phys.obl, sunTrueLong,
                 sunX_km, sunY_km, sunZ_km,
                 timestampSec,
+                deltaTSeconds,
                 itemPtr
             );
         }
@@ -385,7 +467,6 @@ function traiterCalculsWasmStricts(params) {
                 visibilityDuration: (dureeVisibilite >= 0) ? `${dureeVisibilite.toFixed(2)} h` : "N/A"
             };
 
-            // Double indexation critique (Français / Anglais) pour le front-end
             const cleMin = nomCorps.toLowerCase();
             bodiesResult[cleMin] = objetAstreResultat;
             if (estSoleil) {
@@ -407,4 +488,4 @@ function traiterCalculsWasmStricts(params) {
         geoidOndulationM: parseFloat(geoidOndulationM.toFixed(2)),
         metrics: { gastDeg: gastDeg, obliquiteDeg: obliquiteDeg, eqTempsMin: eqTempsMin, longSolaireDeg: sunTrueLong }
     });
-    }
+}
