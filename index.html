@@ -1139,23 +1139,6 @@
         }
     }
 
-    function appliquerMeteoManuelleCertifiee() {
-        const t = parseFloat(document.getElementById('input-temp').value.replace(',', '.'));
-        const p = parseFloat(document.getElementById('input-pres').value.replace(',', '.'));
-        const h = parseInt(document.getElementById('input-humidity').value, 10);
-        const vv = parseInt(document.getElementById('input-visibility').value, 10);
-        const clouds = parseInt(document.getElementById('input-clouds').value, 10);
-
-        if (isNaN(t) || isNaN(p) || isNaN(h) || isNaN(vv) || isNaN(clouds)) {
-            alert("Erreur : Paramètres météorologiques invalides.");
-            return;
-        }
-
-        const td = calculerPointRoseeGUM(t, h);
-            const elTd = document.getElementById('val-td');
-            if (elTd) elTd.innerText = `${td} °C (Prévis.)`;
-        }
-    }
 
     function appliquerMeteoManuelleCertifiee() {
         const t = parseFloat(document.getElementById('input-temp').value.replace(',', '.'));
