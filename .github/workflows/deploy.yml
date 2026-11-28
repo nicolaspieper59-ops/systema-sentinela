@@ -34,6 +34,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: true
 
       - name: 🐍 Configurer Python 3.11
         uses: actions/setup-python@v5
@@ -70,7 +71,6 @@ jobs:
             curl -fsSL --connect-timeout 20 --retry 3 -o WMM2025.COF https://www.ngdc.noaa.gov/geomag/WMM/data/WMM2025/WMM2025.COF
           fi
 
-          # Téléchargement strict des EOP IERS (avec miroir de secours) pour la précision sub-arcseconde
           curl -fsSL --connect-timeout 20 --retry 3 -o finals2000A.all https://datacenter.iers.org/data/latestVersion/finals2000A.all || \
           curl -fsSL --connect-timeout 20 --retry 3 -o finals2000A.all https://maia.usno.navy.mil/ser7/finals2000A.all
 
@@ -85,19 +85,16 @@ jobs:
 
       - name: 🧪 Audit Métrologique & Validation Automatisée (Sub-Arcsec)
         run: |
-          # 1. Validation structurelle C++ si présente
           if [ -f "astro_universal_validator.cpp" ]; then
             g++ -O2 -std=c++17 astro_universal_validator.cpp -o validator_bin
             ./validator_bin
             rm -f validator_bin
           fi
 
-          # 2. Validation croisée CSV JPL si présente
           if [ -f "reference_soleil.csv" ]; then
             python validate_jpl_diff.py reference_soleil.csv --corps sun --bsp de440s.bsp
           fi
 
-          # 3. Audit autonome de cohérence DE440s + EOP dynamiques sur 7 jours
           python - << 'EOF'
           import json, sys, numpy as np
           from skyfield.api import load, wgs84
